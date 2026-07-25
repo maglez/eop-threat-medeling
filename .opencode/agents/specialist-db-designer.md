@@ -56,3 +56,12 @@ When presenting schema changes or optimized queries, always provide:
 1. The ORM schema / DDL SQL changes.
 2. The generated migration file contents.
 3. The `EXPLAIN` query plan analysis justifying the index design and query structure.
+
+# Git Commit Message Protocol
+- Every Git commit message MUST begin with the uppercase Jira issue key (e.g., `THREAT-101`).
+- Recommended Structure: `[JIRA-KEY] <type>: <short summary>`
+- Examples:
+  - `[THREAT-12] feat: implement card dealing animation`
+  - `[THREAT-45] fix: resolve WebSocket disconnect on turn timeout`
+  - `[THREAT-1] chore: configure Walking Skeleton GitHub Actions workflow`
+- NEVER make a commit without an active Jira ticket prefix.
