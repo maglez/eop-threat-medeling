@@ -158,7 +158,7 @@ The system architecture and agent relationships are captured in an interactive k
 graphify reduces token consumption and drives down operational costs by replacing expensive LLM re-reading of source files with cheap, deterministic local computation. Graphify's creator (Safi Shamsi) reports a 71.5× token reduction (~98.6% reduction) — distilling a typical 100,000-token codebase into roughly 1,400 tokens of graph structure. By injecting far less content into every prompt, the AI takes substantially longer to hallucinate, producing more reliable and focused reasoning, and a massive cost reduction on token usage.
 
 - **AST Extraction is Free**: Code structure — classes, functions, imports, dependencies — is parsed locally using tree-sitter parsers. This runs at zero token cost, producing structured nodes and edges without any LLM call.
-- **Cached Semantic Extraction**: Once entities and relationships are extracted from documentation or images, the results are cached on disk. Incremental updates (`graphify --update`) only re-process changed files, avoiding redundant API calls.
+- **Cached Semantic Extraction**: Once entities and relationships are extracted from documentation or images, the results are cached on disk. Incremental updates (`graphify update .`) only re-process changed files, avoiding redundant API calls.
 - **Subgraph Queries Over Full Files**: When an agent needs to understand a specific part of the system, it queries the graph for a scoped subgraph instead of loading every source file into context. This dramatically reduces the token footprint per session.
 - **Community-Directed Navigation**: Community detection groups related code into clusters. Agents can jump directly to the relevant community rather than scanning the entire codebase, keeping context windows small and focused.
 
@@ -168,39 +168,41 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 
 | Metric | Value |
 |---|---|
-| Total Nodes | 261 |
-| Total Edges | 234 |
-| Communities | 30 (27 shown, 3 thin omitted) |
+| Total Nodes | 337 |
+| Total Edges | 320 |
+| Communities | 38 (35 shown, 3 thin omitted) |
+| Corpus | 39 files (~18,188 words) |
 | Extraction | 100% EXTRACTED (0% inferred) |
 | Token Cost | 0 input · 0 output (code-only, no LLM round-trip) |
+| Source Commit | `c0d4c8f2` |
 
 ### Community Breakdown (Top 10 by Node Count)
 
 | Community | Nodes | Description |
 |---|---|---|
+| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 29 | Agent model matrix, provider config, model ID mappings, responsibilities, bedrock-mantle connection details |
+| bedrock-mantle | 25 | Provider connectivity — MCP endpoint, auth, model definitions, Jira + GitHub env vars |
 | OpenCode Autonomous Engineering System Blueprint | 24 | Entire blueprint document — intro, foundations, agent architecture, workflow, getting started |
-| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 22 | Agent model matrix, provider config, model ID mappings, responsibilities |
-| bedrock-mantle | 21 | Provider connectivity — MCP endpoint, auth, Jira integration, model definitions |
+| opencode-setup.md | 22 | ADR-002 (Spring Boot), ADR-003 (GitHub MCP), AGENTS.md project specifics, security rules |
 | Non-Negotiable Rules | 19 | Defect tracking, DoD, deployment strategy, Gherkin BDD, acceptance criteria |
+| 7. Ecosystem Integrations & Governance Rules | 14 | Documentation strategy, Jira, GitHub MCP, AWS, direnv, CI/CD pipeline |
 | GOV.UK Design Principles & Rules | 12 | Security audit, clean code, code review agent, language-specific standards |
+| Local Development Guide | 10 | Setup guide, env vars, Maven Wrapper, project structure, doc references |
 | Code Reviewer Agent | 10 | DB schema, migration safety, query security, indexing standards |
-| 7. Ecosystem Integrations & Governance Rules | 10 | Documentation strategy, Jira, GitHub, AWS, direnv/.env setup |
 | DevOps & Infrastructure Specialist | 9 | AWS/GitHub OIDC, trunk-based deployment, CD pipelines, governance |
-| atlassian | 8 | §3 subsections (defence-in-depth, matrix, responsibilities, provider), model details |
-| opencode.json | 8 | Supply chain security, IaC, frontend/backend security, security auditor agent |
 
 ### God Nodes (Most Connected)
 
 1. Product Owner / Business Analyst Agent — 12 edges
 2. OpenCode Autonomous Engineering System Blueprint — 11 edges
-3. models — 8 edges
-4. StrideCategory — 7 edges
-5. 7. Ecosystem Integrations & Governance Rules — 7 edges
-6. Non-Negotiable Rules — 6 edges
-7. 5. Visual Knowledge Graph Overview — 6 edges
-8. atlassian — 5 edges
-9. bedrock-mantle — 5 edges
-10. Expert Member: Alex Xu (ByteByteGo) — 5 edges
+3. StrideCategoryTest — 9 edges
+4. models — 8 edges
+5. StrideCategory — 7 edges
+6. 7. Ecosystem Integrations & Governance Rules — 7 edges
+7. Non-Negotiable Rules — 6 edges
+8. 5. Visual Knowledge Graph Overview — 6 edges
+9. 7.6 Local Development Environment — 6 edges
+10. Elevation of Privilege - EoP — 6 edges
 
 ### HTML Visualisation Features
 
