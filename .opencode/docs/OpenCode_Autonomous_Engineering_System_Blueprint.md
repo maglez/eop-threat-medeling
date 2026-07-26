@@ -437,6 +437,7 @@ Key ADRs:
 - [ADR-005: Error Handling Strategy](../adr/ADR-005-error-handling-strategy.md) — documents RFC 9457 Problem Details and the exception hierarchy
 - [ADR-006: Build Quality Gates](../adr/ADR-006-build-quality-gates.md) — documents Checkstyle, SpotBugs, JaCoCo, and Enforcer rules
 - [ADR-007: Versioning Strategy](../adr/ADR-007-versioning-strategy.md) — documents SemVer 2.0.0 and Keep a Changelog conventions
+- [ADR-008: Database Migration Strategy](../adr/ADR-008-database-migration-liquibase.md) — documents Liquibase with XML changelogs for all schema changes
 
 ### Recommended Approach
 

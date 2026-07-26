@@ -20,5 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-agent system: 17 agents defined in `.opencode/agents/`
 - Graphify knowledge graph for context optimisation
 - AGENTS.md with Clean Architecture, Security by Design, project conventions
+- Database migration strategy: Liquibase with XML changelogs, H2 in dev, PostgreSQL in prod (ADR-008)
 
 [1.0.0-SNAPSHOT]: https://github.com/maglez/eop-threat-medeling/releases/tag/v1.0.0-SNAPSHOT

@@ -39,8 +39,39 @@ echo $OPENAI_API_KEY
 | `JIRA_URL` | For Jira | Atlassian | Jira instance URL |
 | `JIRA_USERNAME` | For Jira | Atlassian | Jira bot email |
 | `JIRA_API_TOKEN` | For Jira | Atlassian | Jira API auth |
+| `DATASOURCE_URL` | For prod | PostgreSQL | JDBC URL (default: `jdbc:h2:mem:eop` for dev) |
+| `DATASOURCE_USER` | For prod | PostgreSQL | DB user (default: `sa` for dev) |
+| `DATASOURCE_PASSWORD` | For prod | PostgreSQL | DB password (default: empty for dev) |
 
 All vars go in `.env` (gitignored).
+
+## Database
+
+### Development (H2)
+
+The default `application.yml` profile uses an **H2 in-memory database** with zero setup required. Liquibase runs automatically on application startup — changelogs are applied in order.
+
+- H2 console is available at `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:eop`, user: `sa`, no password)
+- Hibernate `ddl-auto=validate` — the schema is entirely managed by Liquibase
+
+### Production (PostgreSQL)
+
+Activate the `prod` profile to connect to PostgreSQL:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
+```
+
+PostgreSQL connection details are read from `DATASOURCE_URL`, `DATASOURCE_USER`, and `DATASOURCE_PASSWORD` env vars (set in `.env`).
+
+### Adding a migration
+
+1. Create a new file in `src/main/resources/db/changelog/changes/YYYY-MM-DD--<description>.xml`
+2. Add one or more `<changeSet>` blocks with `<rollback>` instructions
+3. Run `./mvnw spring-boot:run` — Liquibase applies the new changeset automatically
+4. To preview the SQL: `./mvnw liquibase:updateSQL`
+
+See `.opencode/rules/database.md` and ADR-008 for full conventions.
 
 ## Common Commands
 

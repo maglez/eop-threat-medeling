@@ -13,7 +13,8 @@
     "## Resilience Patterns\n\n- Resilience4j for external service calls: retry (max 3), circuit-breaker (50% threshold), time-limiter (5s)\n- Annotate with `@Retry`, `@CircuitBreaker`, `@TimeLimiter` — never raw try-catch at call site\n- Log circuit state transitions at `WARN` — see `.opencode/rules/resilience.md`",
     "## Feature Flags\n\n- `@ConditionalOnProperty` with `application.yml` toggles — no extra library\n- Naming: `ff_{feature}_v{n}` — default OFF (opt-in, fail secure)\n- Gate incomplete features behind flags to merge to `main` early\n- Remove flag + conditional once feature is stable — see `.opencode/rules/feature-flags.md`",
     "## Caching\n\n- Spring Cache abstraction: `@Cacheable`, `@CacheEvict`, `@CachePut`\n- Cache naming: `{domain}.{entity}.{operation}` — TTL default 60s\n- `@CacheEvict` on writes for the affected region\n- Never cache security-sensitive domain decisions — see `.opencode/rules/caching.md`",
-    "## Test Data Builders\n\n- Use Builder pattern for domain entity creation in tests (not large constructor calls)\n- Place builders in `src/test/java/org/maglez/eop/entity/` next to the entity under test — see `.opencode/rules/testing.md`"
+    "## Test Data Builders\n\n- Use Builder pattern for domain entity creation in tests (not large constructor calls)\n- Place builders in `src/test/java/org/maglez/eop/entity/` next to the entity under test — see `.opencode/rules/testing.md`",
+    "## Database Migrations — Liquibase\n\n- All DDL and reference data DML go through Liquibase XML changelogs — never raw SQL or Hibernate DDL auto-generation\n- Changelog master: `db/changelog/db.changelog-master.xml`; changesets in `db/changelog/changes/` with date-based filenames\n- Each changeset must include a `<rollback>` block; never modify a merged changeset\n- Hibernate `ddl-auto=validate` — Liquibase owns the schema, Hibernate only validates — see `.opencode/rules/database.md`"
   ],
   "mcp": {
     "atlassian": {
