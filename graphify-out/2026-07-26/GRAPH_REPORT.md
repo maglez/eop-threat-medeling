@@ -1,16 +1,16 @@
-# Graph Report - Elevation of Privilege - EoP  (2026-07-26)
+# Graph Report - Elevation of Privilege - EoP  (2026-07-25)
 
 ## Corpus Check
-- 28 files · ~9,322 words
+- 27 files · ~7,803 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 51 nodes · 45 edges · 7 communities
+- 50 nodes · 45 edges · 6 communities
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `74a09f97`
+- Built from commit: `c9562130`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -37,7 +37,7 @@
 ## Surprising Connections (you probably didn't know these)
 - None detected - all connections are within the same source files.
 
-## Communities (7 total, 0 thin omitted)
+## Communities (6 total, 0 thin omitted)
 
 ### Community 0 - "Non-Negotiable Rules"
 Cohesion: 0.18
@@ -71,8 +71,8 @@ Nodes (5): Java / JVM, Language-Specific Standards, Python (PEP 8 & The Zen of P
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Code Reviewer Agent` connect `Code Reviewer Agent` to `Language-Specific Standards`?**
-  _High betweenness centrality (0.041) - this node is a cross-community bridge._
+  _High betweenness centrality (0.043) - this node is a cross-community bridge._
 - **Why does `Language-Specific Standards` connect `Language-Specific Standards` to `Code Reviewer Agent`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+  _High betweenness centrality (0.032) - this node is a cross-community bridge._
 - **What connects `1. Security & Vulnerability Audit`, `2. General Clean Code Rules (Uncle Bob's *Clean Code*)`, `Java / JVM` to the rest of the system?**
   _33 weakly-connected nodes found - possible documentation gaps or missing edges._

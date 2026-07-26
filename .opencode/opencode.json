@@ -6,12 +6,9 @@
       "command": ["uvx", "mcp-atlassian"],
       "enabled": true,
       "environment": {
-        "JIRA_URL": "https://your-domain.atlassian.net",
-        "JIRA_USERNAME": "opencode-bot@yourdomain.com",
-        "JIRA_API_TOKEN": "{env:JIRA_API_TOKEN}",
-        "CONFLUENCE_URL": "https://your-domain.atlassian.net/wiki",
-        "CONFLUENCE_USERNAME": "opencode-bot@yourdomain.com",
-        "CONFLUENCE_API_TOKEN": "{env:CONFLUENCE_API_TOKEN}"
+        "JIRA_URL": "{env.JIRA_URL}",
+        "JIRA_USERNAME": "opencodebot@btinternet.com",
+        "JIRA_API_TOKEN": "{env:JIRA_API_TOKEN}"
       }
     }
   },

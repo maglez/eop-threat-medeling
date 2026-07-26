@@ -1,6 +1,6 @@
 {
   ".opencode/opencode.json": {
-    "mtime": 1785045564.7752316,
+    "mtime": 1785007494.4393432,
     "ast_hash": "987da969cf1360457c0c711cff5cf632",
     "semantic_hash": ""
   },
@@ -85,7 +85,7 @@
     "semantic_hash": ""
   },
   ".opencode/agents/specialist-product-owner.md": {
-    "mtime": 1785045407.5342817,
+    "mtime": 1785007105.515294,
     "ast_hash": "1f1086cf6aebad12ee07dcab4f9e6feb",
     "semantic_hash": ""
   },
@@ -132,11 +132,6 @@
   "AGENTS.md": {
     "mtime": 1784899690.116372,
     "ast_hash": "4cc1d6d16e75d5d76a9d5ff16e49f3b9",
-    "semantic_hash": ""
-  },
-  ".opencode/opencode-setup.md": {
-    "mtime": 1785010590.3288858,
-    "ast_hash": "94d3c3da1bbeac63dea683ebd5fd1650",
     "semantic_hash": ""
   }
 }
