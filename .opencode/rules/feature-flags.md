@@ -1,0 +1,8 @@
+- Use `@ConditionalOnProperty` with `application.yml` toggles — no additional library needed
+- Naming convention: `ff_{feature_name}_v{n}` (e.g. `ff_privilege_escalation_v1`)
+- Default all flags to `false` (opt-in) — fail securely
+- Flag config: `eop.feature-flags.ff_privilege_escalation_v1: false`
+- In tests, override flags per scenario with `@TestPropertySource` or `application-test.yml`
+- Gate experimental or incomplete features behind flags — merge to `main` with flag OFF
+- Remove flag and its conditional checks once feature is stable (one release after full rollout)
+- Document active flags in `docs/feature-flags.md`

@@ -1,0 +1,7 @@
+- Use Spring Cache abstraction (`@Cacheable`, `@CacheEvict`, `@CachePut`) — never manual `ConcurrentHashMap`
+- Cache naming: `{domain}.{entity}.{operation}` (e.g. `eop.games.byId`, `eop.cards.byCategory`)
+- TTL default: 60 seconds (set per cache via `application.yml` under `spring.cache.cache-names` + `cache/specs`)
+- `@CacheEvict` on write operations (create, update, delete) for the affected cache region
+- Only cache read-heavy, write-light data (game state snapshots, card definitions)
+- Never cache domain decisions or privilege escalation results (security-sensitive)
+- Profile-based: disable caching in `dev` profile to avoid stale-data confusion during development

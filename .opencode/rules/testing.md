@@ -5,3 +5,5 @@
 - Use `@DisplayName` for test class/ method descriptions
 - AAA pattern: Arrange → Act → Assert
 - No test dependencies on external services (mock or stub)
+- Use test data builders (Builder pattern) for domain entity creation — avoid large constructor calls in test code
+- Place builders in `src/test/java/org/maglez/eop/entity/` next to the entity they construct
