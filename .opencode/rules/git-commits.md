@@ -1,0 +1,5 @@
+- Every commit message MUST start with uppercase Jira issue key: `[THREAT-NNN]`
+- Structure: `[THREAT-NNN] <type>: <short summary>`
+- Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`
+- Example: `[THREAT-12] feat: implement card dealing animation`
+- NEVER commit without an active Jira ticket prefix

@@ -1,0 +1,4 @@
+- Dependencies point inward: Entities → Use Cases → Interface Adapters → Frameworks & Drivers
+- Cross-boundary data uses DTOs, not entities
+- Core business logic has zero framework imports (no Spring, no Jakarta)
+- Database and UI are details, not core architecture

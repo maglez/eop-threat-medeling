@@ -1,0 +1,6 @@
+- Validate all inputs at system boundaries — reject early, reject explicitly
+- Principle of least privilege — grant minimal access per operation
+- Fail securely — default-denied access, explicit allow-lists
+- Defense in depth — multiple independent checks, not a single gate
+- No secrets in code — use env vars or config, never literals
+- Immutable domain entities where possible — reduce attack surface

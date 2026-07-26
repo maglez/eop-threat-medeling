@@ -1,0 +1,7 @@
+- Framework: JUnit 5 + Spring Boot Test
+- Unit tests: zero Spring context, sub-second execution
+- Integration tests: `@SpringBootTest` for context verification only
+- Test file mirrors source path under `src/test/java/`
+- Use `@DisplayName` for test class/ method descriptions
+- AAA pattern: Arrange → Act → Assert
+- No test dependencies on external services (mock or stub)
