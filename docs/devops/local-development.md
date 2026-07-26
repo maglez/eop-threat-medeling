@@ -2,6 +2,7 @@
 
 ## Prerequisites
 - **Java 21** (JDK) — Install via [Homebrew](https://brew.sh): `brew install openjdk@21`
+- **Node.js 20+** — for the front-end (React + Vite). Install via [Homebrew](https://brew.sh): `brew install node`
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** (optional, for MCP servers)
 - **GitHub PAT** with `repo` scope — for MCP integration
@@ -129,6 +130,26 @@ Each subsequent run adds data to InfluxDB — the Grafana dashboard accumulates 
 
 See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/config/options.js` for thresholds.
 
+## Front-End (React + TypeScript)
+
+The front-end lives in `ui/` and uses React + TypeScript + Vite with GOV.UK Design System styling.
+
+### Quick start
+
+```bash
+cd ui
+npm install
+npm run dev
+# Opens at http://localhost:5173 — proxies /api/* to Spring Boot on :8080
+```
+
+### Development workflow
+
+```
+Terminal 1: ./mvnw spring-boot:run     # API on :8080
+Terminal 2: cd ui && npm run dev        # Front-end on :5173
+```
+
 ## Common Commands
 
 | Command | Purpose |
@@ -138,6 +159,9 @@ See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/c
 | `./mvnw verify` | Full verification (including integration tests) |
 | `./mvnw spring-boot:run` | Start application on port 8080 |
 | `./mvnw clean` | Clean build artifacts |
+| `cd ui && npm run dev` | Start Vite dev server on port 5173 |
+| `cd ui && npm run build` | Production build to `ui/dist/` |
+| `cd ui && npm test` | Run Vitest + React Testing Library tests |
 
 ## Troubleshooting
 

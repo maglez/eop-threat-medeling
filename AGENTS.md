@@ -28,6 +28,7 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
   - `./mvnw spring-boot:run` — start application on port 8080
 - Domain lives under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation rules
 - Tests mirror source at `src/test/java/org/maglez/eop/`
+- **Front-end:** React + TypeScript + Vite under `ui/`, GOV.UK Design System CSS
 
 ## OpenCode Agent System
 
