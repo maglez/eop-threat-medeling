@@ -45,7 +45,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 ### 3.2 Agent Model Matrix
 
 | Agent | Primary Role | Model Short Name | Mantle Model ID | Family | Temp |
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|
 | @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.3 |
 | @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.2 |
 | @team-member-devops-engineer | Terraform, CDK & CI/CD | amazon-nova-pro | deepseek.v3.2 | DeepSeek | 0.1 |
