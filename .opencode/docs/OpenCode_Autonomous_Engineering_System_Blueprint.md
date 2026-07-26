@@ -449,9 +449,11 @@ Start with **few details** and let @team-member-product-owner (PO) guide the dis
 3. **Let your PO interview you** — they will ask about target audience, scope, constraints
 4. **Refine together** — clarify business objectives, end-user needs, and acceptance criteria
 5. **Your PO validates** — checks against accessibility and usability standards
-6. **Your PO signals your Tech Lead** — only once requirements are worthy of building
+6. **Your PO sets a `/goal`** — "Implement \<user story\>" — which routes through your Tech Lead for autonomous execution with auto-continue and safety limits
 
 ### Sample First Prompt
+
+**1. Requirements discovery** — prompt your PO:
 
 ```
 @team-member-product-owner I want to build an Elevation of Privilege (EoP) card
@@ -461,7 +463,14 @@ threats in a fun, interactive way. Can you help me define the
 requirements and scope for this project?
 ```
 
-Dumping everything at once overloads context and bypasses the PO validation gate. The PO is your requirements partner, not a passive note-taker.
+**2. Autonomous implementation** — once your PO validates a story, set a `/goal` that routes through your Tech Lead:
+
+```
+/goal Implement the threat card deck — create the entity, use case,
+controller, and tests for drawing random STRIDE threat cards
+```
+
+Dumping everything at once overloads context and bypasses the PO validation gate. The PO is your requirements partner, not a passive note-taker. Once validated, `/goal` hands off to the Tech Lead for autonomous execution.
 
 ---
 
@@ -543,7 +552,7 @@ Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, sy
 Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, the plugin keeps it in context, auto-continues when idle, and stops when complete, blocked, or a safety limit is hit. Supports evidence-gated completion with optional independent auditor.
 
 - **Package**: `opencode-goal-plugin` (npm)
-- **Command**: `/goal` — configured in `opencode.json` under `"command"` with defaults (max 10 turns, 15 min duration, 200k tokens)
+- **Command**: `/goal` — configured in `opencode.json` under `"command"` with `"agent": "team-member-tech-lead"` for orchestrator-driven execution (defaults: max 10 turns, 15 min duration, 200k tokens)
 - **Config**: Plugin-level defaults passed as options array in `opencode.json`
 - **State file**: `.opencode/goals/state.json` (chmod 0600; added to `.gitignore`)
 - **Notable**: Only one persistence-enabled instance per state file; session forks don't inherit parent goals. Relies on experimental OpenCode hooks (`experimental.chat.system.transform`).
