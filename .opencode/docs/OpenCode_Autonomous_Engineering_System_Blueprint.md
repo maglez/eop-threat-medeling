@@ -510,20 +510,7 @@ Persists project knowledge, user preferences, and session summaries across OpenC
 - **Data**: Run `/supermemory-init` to seed codebase memory; memories accumulate naturally through use
 - **Notable**: 1.5k ★, MIT, privacy via `<private>` tags
 
-### 11.5 Plugin Lifecycle
-
-| Action | Command |
-|---|---|
-| **Install (npm)** | Add package name to `opencode.json` → `"plugin"` array (auto-installed by Bun at next startup) |
-| **Install (manual)** | Clone repo, `npm install && npm run build && npm run deploy` — deploys to `~/.config/opencode/plugin/` |
-| **Update** | `opencode plugin <package>@latest --global` |
-| **Disable** | Set `"enabled": false` in plugin config file, or remove from `opencode.json` |
-| **Local plugin** | Place `.js`/`.ts` in `.opencode/plugins/` — loaded automatically |
-| **Command plugin** | Add `"command"` entry in `opencode.json` — maps a slash command to an agent (e.g. `/goal`) |
-
-Config lookup order (per-plugin): global (`~/.config/opencode/`) → project (`.opencode/`). Project overrides win.
-
-### 11.6 Type Inject — TypeScript Type Context (installed)
+### 11.5 Type Inject — TypeScript Type Context (installed)
 
 Injects TypeScript type signatures into file reads so the LLM sees type context without manual lookup. Reports type errors on writes. Provides MCP tools: `lookup_type`, `list_types`, `type_check`. Resolves imports up to 4 levels deep.
 
@@ -532,7 +519,7 @@ Injects TypeScript type signatures into file reads so the LLM sees type context 
 - **Data**: None persisted — acts on file reads/writes transparently
 - **Notable**: TypeScript-only; has zero effect on Java files. Most useful when working on `ui/`.
 
-### 11.7 Notificator — Desktop Notifications (installed)
+### 11.6 Notificator — Desktop Notifications (installed)
 
 Sends desktop notifications and plays sound alerts for OpenCode events — generation completion, permission requests, long-running task milestones. Cross-platform (macOS, Linux).
 
@@ -541,7 +528,7 @@ Sends desktop notifications and plays sound alerts for OpenCode events — gener
 - **Data**: None — purely local notifications; custom sounds in `~/.config/opencode/plugin/notificator-sounds/`
 - **Notable**: Silent on missing config — no errors if unconfigured. macOS uses built-in `osascript` + `afplay`; Linux requires `libnotify-bin` and `ffmpeg`.
 
-### 11.8 Scheduler — Recurring Agent Jobs (installed)
+### 11.7 Scheduler — Recurring Agent Jobs (installed)
 
 Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, systemd on Linux). Jobs run `opencode run` with the project's full MCP configuration. Includes no-overlap guard, optional timeout, and automatic logging.
 
@@ -551,7 +538,7 @@ Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, sy
 - **Scheduled job**: `nightly-load-test` — runs daily at 02:00, executes k6 health check against `localhost:8080`, reports SLO breaches
 - **Notable**: Requires Perl for the supervisor script. Per-project scoping via working directory. Use the `/schedule` OpenCode command to create jobs.
 
-### 11.9 Goal Plugin — Session-Scoped Goals (installed)
+### 11.8 Goal Plugin — Session-Scoped Goals (installed)
 
 Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, the plugin keeps it in context, auto-continues when idle, and stops when complete, blocked, or a safety limit is hit. Supports evidence-gated completion with optional independent auditor.
 
