@@ -5,6 +5,8 @@
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** (optional, for MCP servers)
 - **GitHub PAT** with `repo` scope — for MCP integration
+- **Docker Desktop** — for the monitoring stack (InfluxDB + Grafana). [Download here](https://www.docker.com/products/docker-desktop/) or `brew install --cask docker`
+- **k6** — for load testing: `brew install k6`
 
 ## Setup
 
@@ -72,6 +74,60 @@ PostgreSQL connection details are read from `DATASOURCE_URL`, `DATASOURCE_USER`,
 4. To preview the SQL: `./mvnw liquibase:updateSQL`
 
 See `.opencode/rules/database.md` and ADR-008 for full conventions.
+
+## Load Testing with k6
+
+The project uses **k6** for load and smoke testing, with results streamed to **InfluxDB** and visualised in **Grafana** for historical trend analysis.
+
+### Architecture
+
+```
+k6 run ──► InfluxDB (:8086) ──► Grafana (:3000)
+           (database: k6)       (provisioned dashboard)
+```
+
+### Quick smoke test (standalone, no Docker needed)
+
+```bash
+# App must be running
+k6 run test/k6/health-check.js
+```
+
+### Full monitoring stack
+
+```bash
+# Terminal 1: Start monitoring
+docker compose up -d
+
+# Terminal 2: Start the app
+./mvnw spring-boot:run
+
+# Terminal 3: Run load test (pushes to InfluxDB for Grafana)
+test/k6/run.sh
+
+# Open Grafana dashboard
+open http://localhost:3000  # Dashboard → k6 Load Testing
+```
+
+Each subsequent run adds data to InfluxDB — the Grafana dashboard accumulates history so you can compare "today" vs "last week" vs "all time."
+
+### Test profiles
+
+| Profile | Purpose | Duration | Peak VUs |
+|---|---|---|---|
+| `SMOKE_STAGES` | Quick health check | 40s | 10 |
+| `LOAD_STAGES` | Sustained load | 5m | 100 |
+| `STRESS_STAGES` | Find breaking point | 9m | 400 |
+
+### SLOs
+
+| Metric | Threshold | Action on breach |
+|---|---|---|
+| p95 latency | < 200ms | Test aborts (if `abortOnFail: true`) |
+| max latency | < 1000ms | Warning |
+| error rate | < 0.1% | Test aborts |
+
+See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/config/options.js` for thresholds.
 
 ## Common Commands
 
