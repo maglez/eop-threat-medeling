@@ -7,7 +7,7 @@
       "enabled": true,
       "environment": {
         "JIRA_URL": "{env.JIRA_URL}",
-        "JIRA_USERNAME": "opencodebot@btinternet.com",
+        "JIRA_USERNAME": "{env:JIRA_USERNAME}",
         "JIRA_API_TOKEN": "{env:JIRA_API_TOKEN}"
       }
     }

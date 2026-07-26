@@ -46,39 +46,39 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 | Agent | Primary Role | OpenCode Zen Model | Free / Open Model | Temp |
 |---|---|---|---|---|
-| @product-owner | Requirement Discovery & BDD Criteria | opencode/claude-3-5-sonnet | qwen3:30b | 0.3 |
-| @tech-lead | Planner & Sub-Agent Dispatcher | opencode/claude-3-7-sonnet | deepseek-r1 | 0.2 |
-| @devops-engineer | Terraform, CDK & CI/CD | opencode/gpt-4o | llama3.3-nemotron-super | 0.1 |
-| @architecture-guardian | C4 Models, Domain Boundaries & ADRs | opencode/claude-3-5-sonnet | glm-5.1 | 0.2 |
-| @db-specialist | Schemas, DDL Migrations & Queries | opencode/gpt-4o | qwen3-coder | 0.1 |
-| @ui-builder | Frontend & WCAG 2.2 AA Standards | opencode/claude-3-5-sonnet | qwen3-coder | 0.3 |
-| @unit-tester / @api-tester | Test Suite Automation & Payload Checks | opencode/gpt-4o-mini | mistral-small-3.2:24b | 0.1 |
-| @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | opencode/o3-mini | gpt-oss-120b | 0.0 |
-| @code-reviewer (Audit) | Static Code Review & SOLID Compliance | opencode/deepseek-r1 | deepseek-r1 | 0.1 |
+| @team-member-product-owner | Requirement Discovery & BDD Criteria | opencode/claude-3-5-sonnet | qwen3:30b | 0.3 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | opencode/claude-3-7-sonnet | deepseek-r1 | 0.2 |
+| @team-member-devops-engineer | Terraform, CDK & CI/CD | opencode/gpt-4o | llama3.3-nemotron-super | 0.1 |
+| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | opencode/claude-3-5-sonnet | glm-5.1 | 0.2 |
+| @team-member-db-designer | Schemas, DDL Migrations & Queries | opencode/gpt-4o | qwen3-coder | 0.1 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | opencode/claude-3-5-sonnet | qwen3-coder | 0.3 |
+| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | opencode/gpt-4o-mini | mistral-small-3.2:24b | 0.1 |
+| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | opencode/o3-mini | gpt-oss-120b | 0.0 |
+| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | opencode/deepseek-r1 | deepseek-r1 | 0.1 |
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
 ### 3.3 Agent Responsibilities
 
-**@product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
+**@team-member-product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
 
-**@tech-lead** — Acts as system planner and engineering dispatcher. Advises on technical trade-offs, coordinates sub-agent execution pipelines, enforces Trunk-Based rules, and maintains architectural integrity.
+**@team-member-tech-lead** — Acts as system planner and engineering dispatcher. Advises on technical trade-offs, coordinates sub-agent execution pipelines, enforces Trunk-Based rules, and maintains architectural integrity.
 
-**@devops-engineer** — Generates Infrastructure-as-Code (Terraform / AWS CDK), constructs CI/CD workflows, configures cloud OIDC authentication, and manages continuous deployment pipelines.
+**@team-member-devops-engineer** — Generates Infrastructure-as-Code (Terraform / AWS CDK), constructs CI/CD workflows, configures cloud OIDC authentication, and manages continuous deployment pipelines.
 
-**@architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
+**@team-member-architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
 
-**@db-specialist** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
+**@team-member-db-designer** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
 
-**@ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
+**@team-member-ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
 
-**@unit-tester** — Writes fast, isolated unit tests with high branch coverage prior to PR creation.
+**@team-member-tester-unit-and-quality** — Writes fast, isolated unit tests with high branch coverage prior to PR creation.
 
-**@api-tester** — Verifies REST/GraphQL API contracts, end-to-end payload validations, and integration boundary tests.
+**@team-member-tester-api** — Verifies REST/GraphQL API contracts, end-to-end payload validations, and integration boundary tests.
 
-**@security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
+**@team-member-security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
 
-**@code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
+**@team-member-code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
 
 ---
 
@@ -242,28 +242,28 @@ The full operational sequence demonstrates how a requirement flows from initial 
 
 ```mermaid
 graph TB
-    P1["Phase 1: Requirements Discovery<br/>@product-owner"]
-    P2["Phase 2: Backlog & Jira Seeding<br/>@product-owner"]
-    P3["Phase 3: Technical Design & Branching<br/>@tech-lead"]
-    P4["Phase 4: Implementation & Flagging<br/>@ui-builder"]
-    P5["Phase 5: Automated Verification<br/>@unit-tester & @api-tester"]
-    P6["Phase 6: PR, Audit & Human Gate<br/>@security-auditor & @code-reviewer"]
+    P1["Phase 1: Requirements Discovery<br/>@team-member-product-owner"]
+    P2["Phase 2: Backlog & Jira Seeding<br/>@team-member-product-owner"]
+    P3["Phase 3: Technical Design & Branching<br/>@team-member-tech-lead"]
+    P4["Phase 4: Implementation & Flagging<br/>@team-member-ui-builder"]
+    P5["Phase 5: Automated Verification<br/>@team-member-tester-unit-and-quality & @team-member-tester-api"]
+    P6["Phase 6: PR, Audit & Human Gate<br/>@team-member-security-auditor & @team-member-code-reviewer"]
     P7["Phase 7: Continuous Deployment<br/>CI/CD via OIDC → AWS"]
 
     P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
 ```
 
-**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @product-owner pass the instruction to @tech-lead. Story #1 is always designated as the Walking Skeleton.
+**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @team-member-product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @team-member-product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @team-member-product-owner pass the instruction to @team-member-tech-lead. Story #1 is always designated as the Walking Skeleton.
 
-**Phase 2 — Backlog & Jira Seeding**: @product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @tech-lead.
+**Phase 2 — Backlog & Jira Seeding**: @team-member-product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @team-member-tech-lead.
 
-**Phase 3 — Technical Design & Branching**: @tech-lead creates a short-lived topic branch from `main` and dispatches @architecture-guardian, @db-specialist, and @devops-engineer to prepare infrastructure and domain models.
+**Phase 3 — Technical Design & Branching**: @team-member-tech-lead creates a short-lived topic branch from `main` and dispatches @team-member-architecture-guardian, @team-member-db-designer, and @team-member-devops-engineer to prepare infrastructure and domain models.
 
-**Phase 4 — Implementation & Flagging**: @ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
+**Phase 4 — Implementation & Flagging**: @team-member-ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
 
-**Phase 5 — Automated Verification**: @unit-tester and @api-tester run test suites, creating Bug Sub-tasks for any failing checks.
+**Phase 5 — Automated Verification**: @team-member-tester-unit-and-quality and @team-member-tester-api run test suites, creating Bug Sub-tasks for any failing checks.
 
-**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @security-auditor and @code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
+**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @team-member-security-auditor and @team-member-code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
 
 **Phase 7 — Continuous Deployment**: PR merges to `main`. CI assumes the cloud IAM role via OIDC, executes infrastructure-as-code, and deploys to production.
 
@@ -274,7 +274,7 @@ graph TB
 Teams looking to build a similar system can customise this blueprint with three key adaptations:
 
 - **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@team-member-devops-engineer.md`.
-- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
+- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@team-member-product-owner.md`.
 - **UI Standards**: Customise `@team-member-ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
 
 ---
@@ -283,7 +283,7 @@ Teams looking to build a similar system can customise this blueprint with three 
 
 ### Recommended Approach
 
-Start with **few details** and let @product-owner (PO) guide the discovery process:
+Start with **few details** and let @team-member-product-owner (PO) guide the discovery process:
 
 1. **Open a fresh session** (`/new`) — one story per session
 2. **Give a lightweight prompt** — a sentence or two about what you want to build
@@ -295,7 +295,7 @@ Start with **few details** and let @product-owner (PO) guide the discovery proce
 ### Sample First Prompt
 
 ```
-@product-owner I want to build an Elevation of Privilege (EoP) card
+@team-member-product-owner I want to build an Elevation of Privilege (EoP) card
 game — a threat modelling exercise based on the STRIDE framework.
 The goal is to help development teams learn to identify security
 threats in a fun, interactive way. Can you help me define the

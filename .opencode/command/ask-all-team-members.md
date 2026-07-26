@@ -1,5 +1,5 @@
 ---
-description: Run a query across all specialist sub-agents in parallel and synthesize the results.
+description: Run a query across all team member sub-agents in parallel and synthesize the results.
 ---
 
 1. Trigger all specialist sub-agent concurrently with the user query.
