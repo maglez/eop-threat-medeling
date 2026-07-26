@@ -47,7 +47,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | Agent | Primary Role | Model Short Name | Mantle Model ID | Family | Temp |
 |---|---|---|---|---|---|
 | @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.2 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.1 |
 | @team-member-devops-engineer | Terraform, CDK & CI/CD | amazon-nova-pro | deepseek.v3.2 | DeepSeek | 0.1 |
 | @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | qwen.qwen3-coder-next | Qwen (Alibaba) | 0.2 |
 | @team-member-db-designer | Schemas, DDL Migrations & Queries | mistral-large-2 | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.1 |
