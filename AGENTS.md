@@ -18,12 +18,14 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
 
 ## Project Specifics
 
-- **Java 26** / **Maven** — single module, groupId `org.maglez`
-- **Entrypoint:** `src/main/java/org/maglez/Main.java`
-- **Test framework:** JUnit 5 (add to pom.xml before writing tests)
+- **Java 21 LTS** / **Spring Boot 3.4.4** — single module, groupId `org.maglez`
+- **Build:** `./mvnw` (Maven Wrapper — no global Maven install required)
+- **Entrypoint:** `src/main/java/org/maglez/Main.java` — `@SpringBootApplication` with `GET /health`
+- **Test framework:** JUnit 5 + Spring Boot Test
 - **Commands:**
-  - `mvn test` — run all tests
-  - `mvn compile` — fast compile check
+  - `./mvnw test` — run all tests
+  - `./mvnw compile` — fast compile check
+  - `./mvnw spring-boot:run` — start application on port 8080
 - Domain lives under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation rules
 - Tests mirror source at `src/test/java/org/maglez/eop/`
 
