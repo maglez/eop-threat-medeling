@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "debug": false,
+  "redact": {
+    "patterns": [
+      { "pattern": "OPENAI_API_KEY", "category": "api-key" },
+      { "pattern": "JIRA_API_TOKEN", "category": "jira-token" },
+      { "pattern": "GITHUB_TOKEN", "category": "github-token" },
+      { "pattern": "DATASOURCE_PASSWORD", "category": "db-password" },
+      { "pattern": "SUPERMEMORY_API_KEY", "category": "memory-key" },
+      { "pattern": "sk-[a-zA-Z0-9]{20,}", "category": "openai-key" },
+      { "pattern": "ghp_[a-zA-Z0-9]{36}", "category": "github-pat" },
+      { "pattern": "ATATT[A-Za-z0-9=]+", "category": "atlassian-token" }
+    ],
+    "exclude": []
+  }
+}

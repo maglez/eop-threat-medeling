@@ -462,3 +462,61 @@ requirements and scope for this project?
 ```
 
 Dumping everything at once overloads context and bypasses the PO validation gate. The PO is your requirements partner, not a passive note-taker.
+
+---
+
+## 11. Plugins
+
+OpenCode supports two plugin types: **local plugin files** (`.js`/`.ts` in `.opencode/plugins/`) and **npm packages** declared in `opencode.json`. All are auto-loaded at startup.
+
+The project uses four plugins, each serving a distinct architectural concern. Configs live in `.opencode/` (project) or `~/.config/opencode/` (global), with project-level overrides taking priority.
+
+### 11.1 Graphify — Knowledge Graph (installed, data available)
+
+Graphify generates a persistent AST-level knowledge graph of the entire codebase. See §5 for the visual overview and §6.2 for the operational integration.
+
+Mature data — 388 nodes, 362 edges, 48 communities — makes Graphify the most impactful plugin to date, reducing token consumption by ~71.5×.
+
+- **File**: `.opencode/plugins/graphify.js`
+- **Hook**: `tool.execute.before` — prepends a knowledge-graph reminder before `bash` calls
+- **Config**: None (auto-detects `graphify-out/graph.json`)
+- **Update**: `graphify update .` (incremental AST rebuild)
+
+### 11.2 VibeGuard — Secret Redaction (installed, active at next startup)
+
+Redacts configured sensitive strings before requests reach the LLM provider (Bedrock Mantle) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
+
+- **Package**: `opencode-vibeguard` (npm)
+- **Config**: `.opencode/vibeguard.config.json`
+- **Data**: None persisted — operates invisibly on every request
+- **Placeholder format**: `__VG_<CATEGORY>_<hash12>__` (HMAC-SHA256, session-random secret, irreversible to provider)
+
+### 11.3 Dynamic Context Pruning — DCP (installed, active at next startup)
+
+Reduces token usage by compressing stale conversation spans, deduplicating repeated tool calls, and pruning errored tool inputs. Preserves protected tools (`task`, `skill`, `todowrite`, etc.) and patterns from compression.
+
+- **Package**: `@tarquinen/opencode-dcp` (npm)
+- **Config**: `.opencode/dcp.jsonc` (project overrides); `~/.config/opencode/dcp.jsonc` (global defaults)
+- **Data**: Run `/dcp` in the TUI to view stats; `/dcp-compress [focus]` to trigger manually
+- **Notable**: 3.8k ★, AGPL-3.0, subagent support enabled via `experimental.allowSubAgents: true`
+
+### 11.4 Supermemory — Cross-Session Memory (installed, requires authentication)
+
+Persists project knowledge, user preferences, and session summaries across OpenCode sessions and even across tools (Claude Code, Codex). Injects relevant memories on first message and auto-saves on keywords ("remember...", "save this").
+
+- **Package**: `opencode-supermemory` (npm)
+- **Auth**: `bunx opencode-supermemory@latest login` (browser OAuth); or set `SUPERMEMORY_API_KEY` in `.env`
+- **Config**: `~/.config/opencode/supermemory.jsonc`
+- **Data**: Run `/supermemory-init` to seed codebase memory; memories accumulate naturally through use
+- **Notable**: 1.5k ★, MIT, privacy via `<private>` tags
+
+### 11.5 Plugin Lifecycle
+
+| Action | Command |
+|---|---|
+| **Install** | Add package name to `opencode.json` → `"plugin"` array (auto-installed by Bun at next startup) |
+| **Update** | `opencode plugin <package>@latest --global` |
+| **Disable** | Set `"enabled": false` in plugin config file, or remove from `opencode.json` |
+| **Local plugin** | Place `.js`/`.ts` in `.opencode/plugins/` — loaded automatically |
+
+Config lookup order (per-plugin): global (`~/.config/opencode/`) → project (`.opencode/`). Project overrides win.

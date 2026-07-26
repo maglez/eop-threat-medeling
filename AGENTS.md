@@ -29,6 +29,7 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
 - Domain lives under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation rules
 - Tests mirror source at `src/test/java/org/maglez/eop/`
 - **Front-end:** React + TypeScript + Vite under `ui/`, GOV.UK Design System CSS
+- **OpenCode plugins:** Graphify (knowledge graph), VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory) — see Blueprint §11
 
 ## OpenCode Agent System
 
