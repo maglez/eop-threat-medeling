@@ -477,8 +477,6 @@ The project uses eight plugins, each serving a distinct architectural concern. C
 
 Graphify generates a persistent AST-level knowledge graph of the entire codebase. See §5 for the visual overview and §6.2 for the operational integration.
 
-Mature data — 388 nodes, 362 edges, 48 communities — makes Graphify the most impactful plugin to date, reducing token consumption by ~71.5×.
-
 - **File**: `.opencode/plugins/graphify.js`
 - **Hook**: `tool.execute.before` — prepends a knowledge-graph reminder before `bash` calls
 - **Config**: None (auto-detects `graphify-out/graph.json`)
