@@ -1,5 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "## Clean Architecture\n\nAll code follows Clean Architecture — dependencies point inward. Layers: Entities → Use Cases → Interface Adapters → Frameworks & Drivers. Cross-boundary data uses DTOs, not entities.",
+    "## Security by Design\n\nSecurity is a first-class constraint: (1) Validate all inputs at system boundaries — reject early, reject explicitly. (2) Principle of least privilege — grant minimal access for each operation. (3) Fail securely — default-denied access, explicit allow-lists. (4) Defense in depth — multiple independent checks, not a single gate. (5) No secrets in code — use env vars or config, never literals. (6) Immutable domain entities where possible.",
+    "## Project Conventions\n\n- Java 21 LTS / Spring Boot 3.4.4 — Maven Wrapper (`./mvnw`), no global Maven required\n- Entrypoint: `org.maglez.Main` — `@SpringBootApplication` with `GET /health`\n- Test framework: JUnit 5 + Spring Boot Test\n- Domain under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation\n- All commit messages MUST start with `[THREAT-NNN]` (Jira prefix)\n- Agents defined in `.opencode/agents/` — multi-agent team with subagent mode"
+  ],
   "mcp": {
     "atlassian": {
       "type": "local",
@@ -9,6 +14,14 @@
         "JIRA_URL": "{env.JIRA_URL}",
         "JIRA_USERNAME": "{env:JIRA_USERNAME}",
         "JIRA_API_TOKEN": "{env:JIRA_API_TOKEN}"
+      }
+    },
+    "github": {
+      "type": "local",
+      "command": ["uvx", "@modelcontextprotocol/github"],
+      "enabled": true,
+      "environment": {
+        "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
       }
     }
   },
