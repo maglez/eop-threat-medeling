@@ -253,7 +253,7 @@ graph TB
     P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
 ```
 
-**Phase 1 — Requirements Discovery**: Prompter submits feature request. @product-owner challenges premature solutionising, clarifies business objectives, and ensures Story #1 is the Walking Skeleton.
+**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @product-owner pass the instruction to @tech-lead. Story #1 is always designated as the Walking Skeleton.
 
 **Phase 2 — Backlog & Jira Seeding**: @product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @tech-lead.
 
