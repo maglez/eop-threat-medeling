@@ -56,6 +56,8 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | opencode/o3-mini | gpt-oss-120b | 0.0 |
 | @code-reviewer (Audit) | Static Code Review & SOLID Compliance | opencode/deepseek-r1 | deepseek-r1 | 0.1 |
 
+> **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritize deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigor by eliminating output randomness.
+
 ### 3.3 Agent Responsibilities
 
 **@product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
