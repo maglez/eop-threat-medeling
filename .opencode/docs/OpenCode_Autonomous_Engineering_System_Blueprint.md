@@ -44,17 +44,19 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.2 Agent Model Matrix
 
-| Agent | Primary Role | Bedrock Model | Family | Temp |
-|---|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | Claude (Anthropic) | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | Claude (Anthropic) | 0.2 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | amazon-nova-pro | Amazon Nova | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | Claude (Anthropic) | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | mistral-large-2 | Mistral AI | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | claude-3-5-sonnet | Claude (Anthropic) | 0.3 |
-| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | amazon-nova-lite | Amazon Nova | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | mistral-large-2 | Mistral AI | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | llama-3-1-70b | Llama (Meta) | 0.1 |
+| Agent | Primary Role | Model Short Name | Mantle Model ID | Family | Temp |
+|---|---|---|---|---|---|---|
+| @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.3 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.2 |
+| @team-member-devops-engineer | Terraform, CDK & CI/CD | amazon-nova-pro | deepseek.v3.2 | DeepSeek | 0.1 |
+| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | qwen.qwen3-coder-next | Qwen (Alibaba) | 0.2 |
+| @team-member-db-designer | Schemas, DDL Migrations & Queries | mistral-large-2 | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.1 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.3 |
+| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | amazon-nova-lite | moonshotai.kimi-k2.5 | Moonshot AI (Kimi) | 0.1 |
+| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | mistral-large-2 | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.0 |
+| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | llama-3-1-70b | nvidia.nemotron-super-3-120b | NVIDIA | 0.1 |
+
+> **Model Alias Mapping:** The "Model Short Name" column shows the identifier used in each agent's `model:` frontmatter field. These short names are mapped to actual Mantle API model IDs via the `id` field in `opencode.json`'s provider configuration (see §3.4). This decoupling allows changing the underlying model without editing every agent file.
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
@@ -79,6 +81,50 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 **@team-member-security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
 
 **@team-member-code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
+
+### 3.4 Provider Architecture
+
+OpenCode routes all LLM requests through a single provider configured in `opencode.json`. The connection uses the AWS Bedrock Mantle (Stream Responses) endpoint exposed via an OpenAI-compatible API.
+
+#### Connection Details
+
+| Property | Value |
+|---|---|
+| Provider ID | `bedrock-mantle` |
+| Endpoint | `https://bedrock-mantle.eu-west-2.api.aws/v1` |
+| SDK Package | `@ai-sdk/openai-compatible` |
+| Auth Header | `Authorization: Bearer <api-key>` (OpenAI-compatible) |
+| API Key Source | `OPENAI_API_KEY` env var (loaded via direnv from `.env`) |
+
+#### Model ID Mapping
+
+Agent configs reference models by short names (e.g., `claude-3-5-sonnet`). The provider config maps each short name to a concrete Mantle model ID via the `id` field:
+
+```json
+"claude-3-5-sonnet": {
+  "name": "DeepSeek V3.1",
+  "id": "deepseek.v3.1"
+}
+```
+
+This decoupling means:
+- **Changing the underlying model** requires only a config edit in `opencode.json`, not every agent file.
+- **Display names** in the model picker are set via the `name` field.
+- **The API model ID** sent in requests is the `id` field value (e.g., `deepseek.v3.1`).
+
+#### Available Models
+
+The Mantle marketplace exposes these models (subject to change):
+
+| Short Name | Mantle Model ID | Use Case |
+|---|---|---|
+| claude-3-5-sonnet | deepseek.v3.1 | General purpose, coding, architecture |
+| claude-3-5-haiku | qwen.qwen3-coder-next | Fast coding specialist |
+| amazon-nova-pro | deepseek.v3.2 | Latest DeepSeek, complex reasoning |
+| amazon-nova-lite | moonshotai.kimi-k2.5 | General purpose, API testing |
+| mistral-large-2 | mistral.mistral-large-3-675b-instruct | Security audits, DB schema |
+| llama-3-1-70b | nvidia.nemotron-super-3-120b | Code review, static analysis |
+| llama-3-1-8b | google.gemma-3-27b-it | Fast throughput, performance tests |
 
 ---
 
@@ -122,33 +168,39 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 
 | Metric | Value |
 |---|---|
-| Total Nodes | 97 |
-| Total Edges | 87 |
-| Communities | 10 |
-| Extraction | 100% EXTRACTED |
+| Total Nodes | 261 |
+| Total Edges | 234 |
+| Communities | 30 (27 shown, 3 thin omitted) |
+| Extraction | 100% EXTRACTED (0% inferred) |
+| Token Cost | 0 input · 0 output (code-only, no LLM round-trip) |
 
-### Community Breakdown
+### Community Breakdown (Top 10 by Node Count)
 
 | Community | Nodes | Description |
 |---|---|---|
-| Language-Specific Standards | 20 | Product Owner responsibilities, user stories, Gherkin BDD, defect tracking |
-| atlassian | 15 | MCP configuration, Jira URL, credentials, API tokens |
-| Code Reviewer Agent | 13 | Security audits, clean code guidelines, language-specific standards |
-| Non-Negotiable Rules | 11 | Database protocols, zero-downtime migrations, query analysis |
-| GOV.UK Design Principles & Rules | 10 | UI builder specs, accessibility, typography, form patterns |
-| opencode.json | 9 | Architectural Guardian, maintainability rules, living documentation |
-| tech-lead.md | 8 | Orchestrator agent, engineering principles, session hygiene |
-| DevOps & Infrastructure Specialist | 8 | AWS/GitHub OIDC, trunk-based deployment, CD pipelines |
-| README.md | 2 | Root project overview |
-| opencode-setup.md | 1 | OpenCode setup and configuration guide |
+| OpenCode Autonomous Engineering System Blueprint | 24 | Entire blueprint document — intro, foundations, agent architecture, workflow, getting started |
+| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 22 | Agent model matrix, provider config, model ID mappings, responsibilities |
+| bedrock-mantle | 21 | Provider connectivity — MCP endpoint, auth, Jira integration, model definitions |
+| Non-Negotiable Rules | 19 | Defect tracking, DoD, deployment strategy, Gherkin BDD, acceptance criteria |
+| GOV.UK Design Principles & Rules | 12 | Security audit, clean code, code review agent, language-specific standards |
+| Code Reviewer Agent | 10 | DB schema, migration safety, query security, indexing standards |
+| 7. Ecosystem Integrations & Governance Rules | 10 | Documentation strategy, Jira, GitHub, AWS, direnv/.env setup |
+| DevOps & Infrastructure Specialist | 9 | AWS/GitHub OIDC, trunk-based deployment, CD pipelines, governance |
+| atlassian | 8 | §3 subsections (defence-in-depth, matrix, responsibilities, provider), model details |
+| opencode.json | 8 | Supply chain security, IaC, frontend/backend security, security auditor agent |
 
 ### God Nodes (Most Connected)
 
 1. Product Owner / Business Analyst Agent — 12 edges
-2. Non-Negotiable Rules — 6 edges
-3. atlassian — 5 edges
-4. Language-Specific Standards — 5 edges
-5. GOV.UK Design Principles & Rules — 5 edges
+2. OpenCode Autonomous Engineering System Blueprint — 11 edges
+3. models — 8 edges
+4. StrideCategory — 7 edges
+5. 7. Ecosystem Integrations & Governance Rules — 7 edges
+6. Non-Negotiable Rules — 6 edges
+7. 5. Visual Knowledge Graph Overview — 6 edges
+8. atlassian — 5 edges
+9. bedrock-mantle — 5 edges
+10. Expert Member: Alex Xu (ByteByteGo) — 5 edges
 
 ### HTML Visualisation Features
 
@@ -234,6 +286,51 @@ if ! grep -qE "$JIRA_REGEX" "$1"; then
 fi
 ```
 
+### 7.6 Local Development Environment
+
+#### Environment Variables via direnv
+
+Sensitive credentials (API keys, tokens) are never committed to the repository. The project uses [direnv](https://direnv.net/) to auto-load environment variables from a gitignored `.env` file when entering the project directory.
+
+**Setup on a new clone:**
+
+```bash
+# 1. Install direnv (macOS)
+brew install direnv
+
+# 2. Add to ~/.zshrc
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+source ~/.zshrc
+
+# 3. Copy and populate the env file
+cp .env.example .env   # if an example exists, or create manually
+# Edit .env with your credentials:
+#   OPENAI_API_KEY=...
+#   OPENAI_BASE_URL=https://bedrock-mantle.eu-west-2.api.aws/v1
+#   JIRA_URL=...
+#   JIRA_API_TOKEN=...
+
+# 4. Allow direnv for this project
+direnv allow
+```
+
+**How it works:**
+
+- `.envrc` (tracked in git) contains only `dotenv` — a one-line directive telling direnv to load `.env`.
+- `.env` (gitignored) holds all secrets.
+- Every time you `cd` into the project directory, direnv automatically exports the variables into your shell.
+- No manual `export` commands are needed.
+
+#### Required Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Bedrock Mantle API key (bearer token) |
+| `OPENAI_BASE_URL` | Mantle endpoint URL |
+| `JIRA_URL` | Atlassian instance URL |
+| `JIRA_API_TOKEN` | Jira API token |
+| `JIRA_USERNAME` | Jira bot user email |
+
 ---
 
 ## 8. End-to-End Operational Workflow
@@ -280,6 +377,19 @@ Teams looking to build a similar system can customise this blueprint with three 
 ---
 
 ## 10. Getting Started: Your First Prompt
+
+### Prerequisites
+
+Before running any prompt, ensure your local environment is set up:
+
+- [ ] **direnv installed** — `brew install direnv` + hook in `~/.zshrc`
+- [ ] **`.env` populated** — `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `JIRA_URL`, `JIRA_API_TOKEN`
+- [ ] **direnv allowed** — `direnv allow` in the project root (run once per clone)
+- [ ] **OpenCode config installed** — `.opencode/opencode.json` and `.opencode/agents/` present
+- [ ] **Models verified** — `opencode models bedrock-mantle` lists all 7 models
+- [ ] **Jira MCP connected** — `/connect` in the TUI with Atlassian credentials (optional, for issue tracking)
+
+See §7.6 for detailed setup instructions.
 
 ### Recommended Approach
 
