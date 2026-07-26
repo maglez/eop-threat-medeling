@@ -240,6 +240,19 @@ fi
 
 The full operational sequence demonstrates how a requirement flows from initial prompt to production deployment:
 
+```mermaid
+graph TB
+    P1["Phase 1: Requirements Discovery<br/>@product-owner"]
+    P2["Phase 2: Backlog & Jira Seeding<br/>@product-owner"]
+    P3["Phase 3: Technical Design & Branching<br/>@tech-lead"]
+    P4["Phase 4: Implementation & Flagging<br/>@ui-builder"]
+    P5["Phase 5: Automated Verification<br/>@unit-tester & @api-tester"]
+    P6["Phase 6: PR, Audit & Human Gate<br/>@security-auditor & @code-reviewer"]
+    P7["Phase 7: Continuous Deployment<br/>CI/CD via OIDC → AWS"]
+
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+```
+
 **Phase 1 — Requirements Discovery**: Prompter submits feature request. @product-owner challenges premature solutionising, clarifies business objectives, and ensures Story #1 is the Walking Skeleton.
 
 **Phase 2 — Backlog & Jira Seeding**: @product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @tech-lead.
