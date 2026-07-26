@@ -170,7 +170,7 @@ The interactive graph (`graph.html`) includes:
 
 - **AST Parsing**: Uses local tree-sitter parsers at zero-token context cost.
 - **Output Files**: Stores assets in `graphify-out/` (`graph.json`, `GRAPH_REPORT.md`, `graph.html`).
-- **Automated Updates**: Git post-commit hook (`graphify hook install`) rebuilds the AST graph on every commit.
+- **Automated Updates**: Git post-commit hook (`graphify hook install`) rebuilds the AST graph on every commit, ensuring the AI always has a fresh knowledge graph up to date for any new task.
 
 ---
 
