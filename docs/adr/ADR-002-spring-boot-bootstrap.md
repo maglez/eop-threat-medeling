@@ -11,7 +11,7 @@ The choice was between: (a) plain Java with a custom HTTP server, (b) Spring Boo
 
 ## Decision
 - **Spring Boot 3.4.4** as the application framework
-- **Java 21 LTS** (Spring Boot's LTS baseline) — compiles under JDK 26 but targets 21
+- **Java 21 LTS** (Spring Boot's LTS baseline)
 - **`spring-boot-starter-web`** for REST + embedded Tomcat
 - **`spring-boot-starter-test`** (JUnit 5 + Mockito + Spring Test)
 - **`GET /health`** endpoint returning `"OK"` for deploy verification

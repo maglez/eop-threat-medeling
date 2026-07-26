@@ -1,7 +1,7 @@
 # Local Development Guide
 
 ## Prerequisites
-- **Java 21+** (JDK) — [Eclipse Temurin](https://adoptium.net/) recommended
+- **Java 21** (JDK) — Install via [Homebrew](https://brew.sh): `brew install openjdk@21`
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** (optional, for MCP servers)
 - **GitHub PAT** with `repo` scope — for MCP integration
@@ -34,6 +34,7 @@ echo $OPENAI_API_KEY
 |---|---|---|---|
 | `OPENAI_API_KEY` | Yes | AWS Bedrock Mantle | AI provider auth |
 | `OPENAI_BASE_URL` | Yes | AWS Bedrock Mantle | Provider endpoint |
+| `JAVA_HOME` | Yes | JDK 21 install | Path to JDK 21 (e.g. `/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`) |
 | `GITHUB_TOKEN` | Yes | GitHub PAT | GitHub MCP auth |
 | `JIRA_URL` | For Jira | Atlassian | Jira instance URL |
 | `JIRA_USERNAME` | For Jira | Atlassian | Jira bot email |
@@ -55,4 +56,4 @@ All vars go in `.env` (gitignored).
 
 - **`direnv: error .envrc is blocked`** — Run `direnv allow`
 - **`Error: Missing authorization header`** — Check `OPENAI_API_KEY` in `.env`
-- **Java version mismatch** — Run `java --version` and ensure ≥21
+- **Java version mismatch** — Run `java --version` and ensure it's 21. Install via Homebrew: `brew install openjdk@21`, set `JAVA_HOME` in `.env`

@@ -13,8 +13,8 @@ Multiple tools exist for each concern. The choice must balance thoroughness agai
 ## Decision
 
 - **Checkstyle** (custom ruleset — 4-space indent, consistent style) — fails on violations
+- **SpotBugs** for bytecode-level bug detection — high/medium severity fails the build
 - **JaCoCo** for code coverage — 80% instruction / 70% branch minimum
-- **SpotBugs** (deferred) — requires JDK 26+ ASM support; will be added when upstream releases compatible version
 - **Maven Enforcer** — JDK >= 21, dependency convergence, common banned dependencies
 - All gates run during `mvn verify` phase (not a separate step), keeping CI pipeline simple
 

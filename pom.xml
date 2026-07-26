@@ -20,6 +20,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
 
+        <spotbugs.version>4.9.3.0</spotbugs.version>
         <jacoco.version>0.8.13</jacoco.version>
         <jacoco.min.instruction>0.80</jacoco.min.instruction>
         <jacoco.min.branch>0.70</jacoco.min.branch>
@@ -71,7 +72,25 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- SpotBugs deferred: JDK 26+ support pending upstream release (see ADR-006) -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs.version}</version>
+                <configuration>
+                    <effort>Max</effort>
+                    <threshold>Medium</threshold>
+                    <failOnError>true</failOnError>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>analyze-bugs</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
