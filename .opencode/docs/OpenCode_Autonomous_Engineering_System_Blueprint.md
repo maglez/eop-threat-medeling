@@ -180,7 +180,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 
 | Community | Nodes | Description |
 |---|---|---|
-| OpenCode Autonomous Engineering System Blueprint | 34 | Entire blueprint document — §1–§11: intro, foundations, agent architecture, plugins, workflow |
+| OpenCode Autonomous Engineering System Blueprint | 34 | Entire blueprint document — §1–§12: intro, foundations, agent architecture, plugins, workflow |
 | Local Development Guide | 29 | Setup guide, env vars, Maven Wrapper, JDK 21 install, project structure, doc references |
 | 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 29 | Agent model matrix, model ID mappings, provider config, agent responsibilities |
 | opencode-setup.md | 26 | AGENTS.md — Clean Architecture, Security by Design, project conventions, ADR references |
@@ -415,9 +415,7 @@ Teams looking to build a similar system can customise this blueprint with three 
 
 ---
 
-## 10. Getting Started: Your First Prompt
-
-### Prerequisites
+## 10. Prerequisites
 
 Before running any prompt, ensure your local environment is set up:
 
@@ -440,7 +438,9 @@ Key ADRs:
 - [ADR-008: Database Migration Strategy](../adr/ADR-008-database-migration-liquibase.md) — documents Liquibase with XML changelogs for all schema changes
 - [ADR-009: Front-End Technology Stack](../adr/ADR-009-frontend-react-typescript.md) — documents React + TypeScript + Vite + GOV.UK Frontend CSS decision
 
-### Recommended Approach
+---
+
+## 11. Recommended Approach
 
 Start with **few details** and let @team-member-product-owner (PO) guide the discovery process:
 
@@ -467,13 +467,13 @@ Dumping everything at once overloads context and bypasses the PO validation gate
 
 ---
 
-## 11. Plugins
+## 12. Plugins
 
 OpenCode supports two plugin types: **local plugin files** (`.js`/`.ts` in `.opencode/plugins/`) and **npm packages** declared in `opencode.json`. All are auto-loaded at startup.
 
 The project uses eight plugins, each serving a distinct architectural concern. Configs live in `.opencode/` (project) or `~/.config/opencode/` (global), with project-level overrides taking priority.
 
-### 11.1 Graphify — Knowledge Graph (installed, data available)
+### 12.1 Graphify — Knowledge Graph (installed, data available)
 
 Graphify generates a persistent AST-level knowledge graph of the entire codebase. See §5 for the visual overview and §6.2 for the operational integration.
 
@@ -484,7 +484,7 @@ Mature data — 388 nodes, 362 edges, 48 communities — makes Graphify the most
 - **Config**: None (auto-detects `graphify-out/graph.json`)
 - **Update**: `graphify update .` (incremental AST rebuild)
 
-### 11.2 VibeGuard — Secret Redaction (installed, active at next startup)
+### 12.2 VibeGuard — Secret Redaction (installed, active at next startup)
 
 Redacts configured sensitive strings before requests reach the LLM provider (Bedrock Mantle) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
 
@@ -493,7 +493,7 @@ Redacts configured sensitive strings before requests reach the LLM provider (Bed
 - **Data**: None persisted — operates invisibly on every request
 - **Placeholder format**: `__VG_<CATEGORY>_<hash12>__` (HMAC-SHA256, session-random secret, irreversible to provider)
 
-### 11.3 Dynamic Context Pruning — DCP (installed, active at next startup)
+### 12.3 Dynamic Context Pruning — DCP (installed, active at next startup)
 
 Reduces token usage by compressing stale conversation spans, deduplicating repeated tool calls, and pruning errored tool inputs. Preserves protected tools (`task`, `skill`, `todowrite`, etc.) and patterns from compression.
 
@@ -502,7 +502,7 @@ Reduces token usage by compressing stale conversation spans, deduplicating repea
 - **Data**: Run `/dcp` in the TUI to view stats; `/dcp-compress [focus]` to trigger manually
 - **Notable**: 3.8k ★, AGPL-3.0, subagent support enabled via `experimental.allowSubAgents: true`
 
-### 11.4 Supermemory — Cross-Session Memory (installed, requires authentication)
+### 12.4 Supermemory — Cross-Session Memory (installed, requires authentication)
 
 Persists project knowledge, user preferences, and session summaries across OpenCode sessions and even across tools (Claude Code, Codex). Injects relevant memories on first message and auto-saves on keywords ("remember...", "save this").
 
@@ -512,7 +512,7 @@ Persists project knowledge, user preferences, and session summaries across OpenC
 - **Data**: Run `/supermemory-init` to seed codebase memory; memories accumulate naturally through use
 - **Notable**: 1.5k ★, MIT, privacy via `<private>` tags
 
-### 11.5 Type Inject — TypeScript Type Context (installed)
+### 12.5 Type Inject — TypeScript Type Context (installed)
 
 Injects TypeScript type signatures into file reads so the LLM sees type context without manual lookup. Reports type errors on writes. Provides MCP tools: `lookup_type`, `list_types`, `type_check`. Resolves imports up to 4 levels deep.
 
@@ -521,7 +521,7 @@ Injects TypeScript type signatures into file reads so the LLM sees type context 
 - **Data**: None persisted — acts on file reads/writes transparently
 - **Notable**: TypeScript-only; has zero effect on Java files. Most useful when working on `ui/`.
 
-### 11.6 Notificator — Desktop Notifications (installed)
+### 12.6 Notificator — Desktop Notifications (installed)
 
 Sends desktop notifications and plays sound alerts for OpenCode events — generation completion, permission requests, long-running task milestones. Cross-platform (macOS, Linux).
 
@@ -530,7 +530,7 @@ Sends desktop notifications and plays sound alerts for OpenCode events — gener
 - **Data**: None — purely local notifications; custom sounds in `~/.config/opencode/plugin/notificator-sounds/`
 - **Notable**: Silent on missing config — no errors if unconfigured. macOS uses built-in `osascript` + `afplay`; Linux requires `libnotify-bin` and `ffmpeg`.
 
-### 11.7 Scheduler — Recurring Agent Jobs (installed)
+### 12.7 Scheduler — Recurring Agent Jobs (installed)
 
 Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, systemd on Linux). Jobs run `opencode run` with the project's full MCP configuration. Includes no-overlap guard, optional timeout, and automatic logging.
 
@@ -540,7 +540,7 @@ Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, sy
 - **Scheduled job**: `nightly-load-test` — runs daily at 02:00, executes k6 health check against `localhost:8080`, reports SLO breaches
 - **Notable**: Requires Perl for the supervisor script. Per-project scoping via working directory. Use the `/schedule` OpenCode command to create jobs.
 
-### 11.8 Goal Plugin — Session-Scoped Goals (installed)
+### 12.8 Goal Plugin — Session-Scoped Goals (installed)
 
 Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, the plugin keeps it in context, auto-continues when idle, and stops when complete, blocked, or a safety limit is hit. Supports evidence-gated completion with optional independent auditor.
 
