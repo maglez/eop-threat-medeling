@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Software Craftsmanship, SOLID Principles, Clean Architecture, & Professional Ethics.
 mode: subagent
-model: qwen3:30b
+model: claude-3-5-sonnet
 temperature: 0.2
 ---
 

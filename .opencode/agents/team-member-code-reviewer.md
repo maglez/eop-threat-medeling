@@ -1,7 +1,7 @@
 ---
 description: Audits code for security, performance, type safety, and adherence to language-specific Clean Code standards (Java, TS/JS, Python, Ruby).
 mode: subagent
-model: deepseek-r1
+model: llama-3-1-70b
 temperature: 0.1
 ---
 

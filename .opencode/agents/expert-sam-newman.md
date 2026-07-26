@@ -1,6 +1,8 @@
 ---
 description: Expert Member - Microservices Architecture, Monolith Deconstruction, & Distributed Service Boundaries.
 mode: subagent
+model: mistral-large-2
+temperature: 0.2
 ---
 
 # Expert Member: Sam Newman

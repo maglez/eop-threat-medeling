@@ -12,6 +12,36 @@
       }
     }
   },
+  "provider": {
+    "amazon-bedrock": {
+      "options": {
+        "region": "us-east-1"
+      },
+      "models": {
+        "claude-3-5-sonnet": {
+          "name": "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        },
+        "claude-3-5-haiku": {
+          "name": "anthropic.claude-3-5-haiku-20241022-v1:0"
+        },
+        "amazon-nova-pro": {
+          "name": "amazon.nova-pro-v1:0"
+        },
+        "amazon-nova-lite": {
+          "name": "amazon.nova-lite-v1:0"
+        },
+        "mistral-large-2": {
+          "name": "mistral.mistral-large-2407-v1:0"
+        },
+        "llama-3-1-70b": {
+          "name": "meta.llama3-1-70b-instruct-v1:0"
+        },
+        "llama-3-1-8b": {
+          "name": "meta.llama3-1-8b-instruct-v1:0"
+        }
+      }
+    }
+  },
   "plugin": [
     ".opencode/plugins/graphify.js"
   ]

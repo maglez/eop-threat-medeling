@@ -1,7 +1,7 @@
 ---
 description: Handles database schema design, migrations, query performance optimization, and execution plan (EXPLAIN ANALYZE) verification.
 mode: subagent
-model: qwen3-coder
+model: mistral-large-2
 temperature: 0.1
 ---
 

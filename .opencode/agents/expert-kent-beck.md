@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Test-Driven Development (TDD), Extreme Programming (XP), & Incremental Refactoring.
 mode: subagent
-model: deepseek-r1
+model: llama-3-1-70b
 temperature: 0.2
 ---
 

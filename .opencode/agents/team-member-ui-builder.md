@@ -1,7 +1,7 @@
 ---
 description: Builds accessible, responsive front-end components and page layouts following GOV.UK Design System standards.
 mode: subagent
-model: qwen3-coder
+model: claude-3-5-sonnet
 temperature: 0.3
 ---
 

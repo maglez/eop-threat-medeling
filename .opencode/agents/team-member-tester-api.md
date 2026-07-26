@@ -1,7 +1,7 @@
 ---
 description: Writes and executes fast API integration tests, validates request/response contracts, and tests error handling boundaries.
 mode: subagent
-model: mistral-small-3.2:24b
+model: amazon-nova-lite
 temperature: 0.1
 ---
 

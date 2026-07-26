@@ -1,6 +1,8 @@
 ---
 description: Expert Member - AWS Cloud Infrastructure, Serverless Architecture, Cost Optimization, & IAM Security.
 mode: subagent
+model: amazon-nova-pro
+temperature: 0.2
 ---
 
 # Expert Member: Stephane Maarek

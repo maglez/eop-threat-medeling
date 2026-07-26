@@ -1,7 +1,7 @@
 ---
 description: Writes ultra-fast unit tests, analyzes code coverage gaps, and runs mutation testing to verify test suite strength.
 mode: subagent
-model: mistral-small-3.2:24b
+model: amazon-nova-lite
 temperature: 0.1
 ---
 

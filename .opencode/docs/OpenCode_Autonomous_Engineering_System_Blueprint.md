@@ -44,17 +44,17 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.2 Agent Model Matrix
 
-| Agent | Primary Role | OpenCode Zen Model | Free / Open Model | Temp |
-|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | opencode/claude-3-5-sonnet | qwen3:30b | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | opencode/claude-3-7-sonnet | deepseek-r1 | 0.2 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | opencode/gpt-4o | llama3.3-nemotron-super | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | opencode/claude-3-5-sonnet | glm-5.1 | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | opencode/gpt-4o | qwen3-coder | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | opencode/claude-3-5-sonnet | qwen3-coder | 0.3 |
-| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | opencode/gpt-4o-mini | mistral-small-3.2:24b | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | opencode/o3-mini | gpt-oss-120b | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | opencode/deepseek-r1 | deepseek-r1 | 0.1 |
+| Agent | Primary Role | Bedrock Model | Family | Temp |
+|---|---|---|---|---|---|
+| @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | Claude (Anthropic) | 0.3 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | Claude (Anthropic) | 0.2 |
+| @team-member-devops-engineer | Terraform, CDK & CI/CD | amazon-nova-pro | Amazon Nova | 0.1 |
+| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | Claude (Anthropic) | 0.2 |
+| @team-member-db-designer | Schemas, DDL Migrations & Queries | mistral-large-2 | Mistral AI | 0.1 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | claude-3-5-sonnet | Claude (Anthropic) | 0.3 |
+| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | amazon-nova-lite | Amazon Nova | 0.1 |
+| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | mistral-large-2 | Mistral AI | 0.0 |
+| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | llama-3-1-70b | Llama (Meta) | 0.1 |
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 

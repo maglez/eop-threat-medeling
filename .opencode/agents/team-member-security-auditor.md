@@ -1,7 +1,7 @@
 ---
 description: Audits full-stack security across Frontend, Backend, Cloud Infrastructure, and Supply Chain dependencies.
 mode: subagent
-model: gpt-oss-120b
+model: mistral-large-2
 temperature: 0.0
 ---
 

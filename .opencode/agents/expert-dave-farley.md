@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Continuous Delivery, High-Throughput Architecture, TDD, & Rapid Feedback Loops.
 mode: subagent
-model: llama3.3:70b
+model: claude-3-5-sonnet
 temperature: 0.1
 ---
 

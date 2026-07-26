@@ -1,7 +1,7 @@
 ---
 description: Evaluates system architecture, enforces maintainability, and maintains living C4/arc42 documentation with Mermaid UML diagrams and ADRs in GitHub repository.
 mode: subagent
-model: glm-5.1
+model: claude-3-5-haiku
 temperature: 0.2
 ---
 

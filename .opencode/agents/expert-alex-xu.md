@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Ultra-High-Scale Distributed Systems, System Design Interview Standards, & Large-Scale Storage.
 mode: subagent
-model: glm-5.1
+model: claude-3-5-sonnet
 temperature: 0.2
 ---
 
