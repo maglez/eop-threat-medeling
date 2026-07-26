@@ -86,6 +86,8 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 When the Product Owner or Tech Lead faces complex trade-offs (e.g., relational vs. document database), the system consults specialized expert profiles to present an objective trade-off matrix.
 
+> **Persona Creation:** These expert profiles were not manually written. An AI analyzed hundreds of hours of public content — YouTube talks, conference presentations, published books, and technical courses — from each individual. This content was synthesized into a persona that captures their core principles, decision-making frameworks, and typical advice patterns. When consulted, the personas respond in a manner the real person likely would. They are not real, but the sheer volume of public material makes them feel remarkably authentic.
+
 ### 4.1 Pruning Expert Noise (Why Less is More)
 
 Early iterations included dozens of expert profiles from YouTube educators, specific course creators, and niche authors. This created significant context noise, prompt dilution, and conflicting advice. After strict curation, the system consolidated down to **four industry-standard pillars**:
