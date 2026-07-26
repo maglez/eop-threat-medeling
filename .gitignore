@@ -37,6 +37,7 @@ build/
 
 ### Env ###
 .env
+.envrc
 
 ### Graphify ###
 graphify-out/
