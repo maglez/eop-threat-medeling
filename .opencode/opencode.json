@@ -22,25 +22,32 @@
       },
       "models": {
         "claude-3-5-sonnet": {
-          "name": "anthropic.claude-3-5-sonnet-20241022-v2:0"
+          "name": "DeepSeek V3.1",
+          "id": "deepseek.v3.1"
         },
         "claude-3-5-haiku": {
-          "name": "anthropic.claude-3-5-haiku-20241022-v1:0"
+          "name": "Qwen 3 Coder Next",
+          "id": "qwen.qwen3-coder-next"
         },
         "amazon-nova-pro": {
-          "name": "amazon.nova-pro-v1:0"
+          "name": "DeepSeek V3.2",
+          "id": "deepseek.v3.2"
         },
         "amazon-nova-lite": {
-          "name": "amazon.nova-lite-v1:0"
+          "name": "Kimi K2.5",
+          "id": "moonshotai.kimi-k2.5"
         },
         "mistral-large-2": {
-          "name": "mistral.mistral-large-2407-v1:0"
+          "name": "Mistral Large 3",
+          "id": "mistral.mistral-large-3-675b-instruct"
         },
         "llama-3-1-70b": {
-          "name": "meta.llama3-1-70b-instruct-v1:0"
+          "name": "Nemotron Super 3 120B",
+          "id": "nvidia.nemotron-super-3-120b"
         },
         "llama-3-1-8b": {
-          "name": "meta.llama3-1-8b-instruct-v1:0"
+          "name": "Gemma 3 27B",
+          "id": "google.gemma-3-27b-it"
         }
       }
     }
