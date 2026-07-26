@@ -158,7 +158,7 @@ The system architecture and agent relationships are captured in an interactive k
 
 > *Interactive version: open `graphify-out/graph.html` in a browser.*
 
-### Cost Optimisation Through Graphify
+### 5.1 Cost Optimisation Through Graphify
 
 graphify reduces token consumption and drives down operational costs by replacing expensive LLM re-reading of source files with cheap, deterministic local computation. Graphify's creator (Safi Shamsi) reports a 71.5× token reduction (~98.6% reduction) — distilling a typical 100,000-token codebase into roughly 1,400 tokens of graph structure. By injecting far less content into every prompt, the AI takes substantially longer to hallucinate, producing more reliable and focused reasoning, and a massive cost reduction on token usage.
 
@@ -169,7 +169,7 @@ graphify reduces token consumption and drives down operational costs by replacin
 
 The result: agents spend tokens on reasoning and code generation, not on re-discovering what the graph already knows.
 
-### Graph Statistics (Current)
+### 5.2 Graph Statistics (Current)
 
 | Metric | Value |
 |---|---|---|
@@ -181,7 +181,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 | Token Cost | 0 input · 0 output (code-only, no LLM round-trip) |
 | Source Commit | `d2c81212` |
 
-### Community Breakdown (Top 10 by Node Count)
+### 5.3 Community Breakdown (Top 10 by Node Count)
 
 | Community | Nodes | Description |
 |---|---|---|
@@ -196,7 +196,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 | atlassian | 18 | Jira server config — command, environment, token mappings |
 | 7. Ecosystem Integrations & Governance Rules | 14 | Documentation strategy, Jira, GitHub MCP, AWS OIDC, direnv, CI/CD pipeline |
 
-### God Nodes (Most Connected)
+### 5.4 God Nodes (Most Connected)
 
 1. `instructions` — 16 edges
 2. Product Owner / Business Analyst Agent — 12 edges
@@ -209,7 +209,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 9. plugin — 7 edges
 10. StrideCategory — 7 edges
 
-### HTML Visualisation Features
+### 5.5 HTML Visualisation Features
 
 The interactive graph (`graph.html`) includes:
 - **XSS Prevention** — safe HTML escaping with `data-nid` attributes and document-level event delegation
@@ -375,6 +375,16 @@ Every push/PR to `main` triggers `.github/workflows/ci.yml` — runs `mvn verify
 
 The `.opencode/rules/` directory contains reusable instruction snippets that agents can load on demand: clean architecture, git commits, testing standards, and security rules. These complement the base instructions in `opencode.json`.
 
+#### Custom Commands
+
+The `.opencode/command/` directory provides three ad-hoc multi-agent orchestration commands:
+
+- **`ask-all-experts`** — Triggers all expert sub-agents in parallel and synthesises their responses into a comparison matrix.
+- **`ask-all-team-members`** — Triggers all team-member sub-agents in parallel and synthesises their responses.
+- **`multi`** — Triggers specific `@agent` mentions from the prompt in parallel and synthesises their responses.
+
+These complement the `/goal` command (see §12.8) for when you want to poll multiple agents at once without setting a persistent goal.
+
 ---
 
 ## 8. End-to-End Operational Workflow
@@ -456,7 +466,7 @@ Start with **few details** and let @team-member-product-owner (PO) guide the dis
 5. **Your PO validates** — checks against accessibility and usability standards
 6. **Your PO dispatches** — the validated story is handed to the Tech Lead for autonomous implementation with auto-continue and safety limits
 
-### Sample First Prompt
+### 11.1 Sample First Prompt
 
 **1. Requirements discovery** — prompt your PO:
 
