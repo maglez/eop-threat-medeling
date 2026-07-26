@@ -1,0 +1,137 @@
+{
+  ".opencode/opencode.json": {
+    "mtime": 1785007494.4393432,
+    "ast_hash": "987da969cf1360457c0c711cff5cf632",
+    "semantic_hash": ""
+  },
+  ".opencode/plugins/graphify.js": {
+    "mtime": 1785001329.565366,
+    "ast_hash": "3ea725724bc8ebe483c9f13d6aa1124f",
+    "semantic_hash": ""
+  },
+  ".opencode/test-opencode.json": {
+    "mtime": 1785006054.818694,
+    "ast_hash": "cb49b9bf8e92c45ba5b42275b9a6423d",
+    "semantic_hash": ""
+  },
+  "pom.xml": {
+    "mtime": 1784899738.6253145,
+    "ast_hash": "de026ad5475ddf6a14adbf15006abb70",
+    "semantic_hash": ""
+  },
+  "src/main/java/org/maglez/Main.java": {
+    "mtime": 1784095335.8861887,
+    "ast_hash": "9d94f78befaf8545a250283f1a3a3d78",
+    "semantic_hash": ""
+  },
+  "src/main/java/org/maglez/eop/entity/StrideCategory.java": {
+    "mtime": 1784899746.4542167,
+    "ast_hash": "7845d4deff28868cb057d9003ccc4f1f",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/expert-alex-xu.md": {
+    "mtime": 1784999693.1502774,
+    "ast_hash": "7fb79b85033387c73950813fb070ff5d",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/expert-dave-farley.md": {
+    "mtime": 1784999637.950956,
+    "ast_hash": "122ae538aba3db77a43b071b825c510c",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/expert-kent-beck.md": {
+    "mtime": 1784999667.8223302,
+    "ast_hash": "7792aef512ee1666d55e23d4e205d1da",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/expert-sam-newman.md": {
+    "mtime": 1784915362.5992417,
+    "ast_hash": "a9a3d7c935ef66829b90941cc01c4eed",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/expert-stephane-maarek.md": {
+    "mtime": 1784915362.6501665,
+    "ast_hash": "47aaa44907056adfe1fc010adfb6cccd",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/expert-uncle-bod.md": {
+    "mtime": 1784999614.584126,
+    "ast_hash": "98435e11cf52532f9b3c2dde47fa2ca6",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-architecture-guardian.md": {
+    "mtime": 1785007051.2445784,
+    "ast_hash": "8fa6b39ce44928e8fb9c940f2fae3262",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-code-reviewer.md": {
+    "mtime": 1785009419.8582118,
+    "ast_hash": "db160f84f51a6a12d462e5a4c2c1d1d3",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-db-designer.md": {
+    "mtime": 1785009404.6063607,
+    "ast_hash": "ae404babc9f43518a19cbfe101364408",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-devops-engineer.md": {
+    "mtime": 1785009369.3533432,
+    "ast_hash": "1428627462dfdd253279244040270f0c",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-performance-engineer.md": {
+    "mtime": 1784913637.524603,
+    "ast_hash": "f1906ce31a7961fd71798bf553a07506",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-product-owner.md": {
+    "mtime": 1785007105.515294,
+    "ast_hash": "1f1086cf6aebad12ee07dcab4f9e6feb",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-security-auditor.md": {
+    "mtime": 1784999544.4065833,
+    "ast_hash": "cdb12ad629578bda8ec4c099bb9f71b0",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-tester-api.md": {
+    "mtime": 1784999501.4983745,
+    "ast_hash": "e3b9924ef39d3c588b47b211bdd203a3",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-tester-unit-and-quality.md": {
+    "mtime": 1784999485.3231874,
+    "ast_hash": "a556a46fbc63276e892367b4c4992587",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/specialist-ui-builder.md": {
+    "mtime": 1785009390.3629684,
+    "ast_hash": "469cabc8bd3734691aa2fccd44a7ea0a",
+    "semantic_hash": ""
+  },
+  ".opencode/agents/tech-lead.md": {
+    "mtime": 1785009332.2553525,
+    "ast_hash": "8f00747bc5115008f1eafa5b9a7f3edc",
+    "semantic_hash": ""
+  },
+  ".opencode/command/ask-all-experts.md": {
+    "mtime": 1784915362.5936835,
+    "ast_hash": "59fbb152ca149821a7000c4e3a1def4a",
+    "semantic_hash": ""
+  },
+  ".opencode/command/ask-all-specialist.md": {
+    "mtime": 1784909196.8143094,
+    "ast_hash": "48b8009d12c57a5689bb6ae158e70e35",
+    "semantic_hash": ""
+  },
+  ".opencode/command/multi.md": {
+    "mtime": 1784908619.2583845,
+    "ast_hash": "806e042c7bbe348c94b93d3ddf443723",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1784899690.116372,
+    "ast_hash": "4cc1d6d16e75d5d76a9d5ff16e49f3b9",
+    "semantic_hash": ""
+  }
+}
