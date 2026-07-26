@@ -375,7 +375,7 @@ Every push/PR to `main` triggers `.github/workflows/ci.yml` — runs `mvn verify
 
 The `.opencode/rules/` directory contains reusable instruction snippets that agents can load on demand: clean architecture, git commits, testing standards, and security rules. These complement the base instructions in `opencode.json`.
 
-#### Custom Commands
+### 7.7 Custom Commands
 
 The `.opencode/command/` directory provides three ad-hoc multi-agent orchestration commands:
 
