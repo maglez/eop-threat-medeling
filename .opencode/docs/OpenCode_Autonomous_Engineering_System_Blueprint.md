@@ -167,42 +167,42 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 ### Graph Statistics (Current)
 
 | Metric | Value |
-|---|---|
-| Total Nodes | 388 |
-| Total Edges | 362 |
-| Communities | 48 (45 shown, 3 thin omitted) |
-| Corpus | 53 files (~20,799 words) |
+|---|---|---|
+| Total Nodes | 486 |
+| Total Edges | 458 |
+| Communities | 53 (49 shown, 4 thin omitted) |
+| Corpus | 63 files (~26,854 words) |
 | Extraction | 100% EXTRACTED (0% inferred) |
 | Token Cost | 0 input · 0 output (code-only, no LLM round-trip) |
-| Source Commit | `d9ea332` |
+| Source Commit | `d2c81212` |
 
 ### Community Breakdown (Top 10 by Node Count)
 
 | Community | Nodes | Description |
 |---|---|---|
-| opencode-setup.md | 27 | ADR-002 (Spring Boot), ADR-003 (GitHub MCP), ADR-006 (Build Quality Gates), AGENTS.md, security rules |
-| OpenCode Autonomous Engineering System Blueprint | 24 | Entire blueprint document — intro, foundations, agent architecture, workflow, getting started |
-| Local Development Guide | 24 | Setup guide, env vars, Maven Wrapper, JDK 21 install, project structure, doc references |
-| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 22 | Agent model matrix, provider config, model ID mappings, agent responsibilities |
+| OpenCode Autonomous Engineering System Blueprint | 34 | Entire blueprint document — §1–§11: intro, foundations, agent architecture, plugins, workflow |
+| Local Development Guide | 29 | Setup guide, env vars, Maven Wrapper, JDK 21 install, project structure, doc references |
+| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 29 | Agent model matrix, model ID mappings, provider config, agent responsibilities |
+| opencode-setup.md | 26 | AGENTS.md — Clean Architecture, Security by Design, project conventions, ADR references |
+| bedrock-mantle | 24 | Provider connectivity — MCP endpoint, auth, model definitions, env vars, ADR refs |
 | Non-Negotiable Rules | 19 | Defect tracking, DoD, deployment strategy, Gherkin BDD, acceptance criteria |
-| bedrock-mantle | 18 | Provider connectivity — MCP endpoint, auth, model definitions, env vars |
+| Local Development Guide | 19 | DB migrations, changelog conventions, environment variables, dev workflow |
+| atlassian | 18 | Jira MCP server config, env vars, changelog, versioning, ADR references |
+| atlassian | 18 | Jira server config — command, environment, token mappings |
 | 7. Ecosystem Integrations & Governance Rules | 14 | Documentation strategy, Jira, GitHub MCP, AWS OIDC, direnv, CI/CD pipeline |
-| GOV.UK Design Principles & Rules | 12 | Security audit, clean code, code review agent, language-specific standards |
-| ADR-004: API Contract-First with OpenAPI | 10 | API design rules, springdoc, contract-first approach |
-| Code Reviewer Agent | 10 | DB schema, migration safety, query security, indexing standards |
 
 ### God Nodes (Most Connected)
 
-1. `instructions` — 14 edges
+1. `instructions` — 16 edges
 2. Product Owner / Business Analyst Agent — 12 edges
-3. OpenCode Autonomous Engineering System Blueprint — 11 edges
-4. StrideCategoryTest — 9 edges
-5. models — 8 edges
-6. StrideCategory — 7 edges
-7. 7. Ecosystem Integrations & Governance Rules — 7 edges
-8. Non-Negotiable Rules — 6 edges
-9. 5. Visual Knowledge Graph Overview — 6 edges
-10. 7.6 Local Development Environment — 6 edges
+3. OpenCode Autonomous Engineering System Blueprint — 12 edges
+4. 11. Plugins — 10 edges
+5. StrideCategoryTest — 9 edges
+6. Performance Testing Conventions — k6 + InfluxDB + Grafana — 9 edges
+7. Local Development Guide — 9 edges
+8. models — 8 edges
+9. plugin — 7 edges
+10. StrideCategory — 7 edges
 
 ### HTML Visualisation Features
 
@@ -469,7 +469,7 @@ Dumping everything at once overloads context and bypasses the PO validation gate
 
 OpenCode supports two plugin types: **local plugin files** (`.js`/`.ts` in `.opencode/plugins/`) and **npm packages** declared in `opencode.json`. All are auto-loaded at startup.
 
-The project uses four plugins, each serving a distinct architectural concern. Configs live in `.opencode/` (project) or `~/.config/opencode/` (global), with project-level overrides taking priority.
+The project uses eight plugins, each serving a distinct architectural concern. Configs live in `.opencode/` (project) or `~/.config/opencode/` (global), with project-level overrides taking priority.
 
 ### 11.1 Graphify — Knowledge Graph (installed, data available)
 
@@ -514,9 +514,49 @@ Persists project knowledge, user preferences, and session summaries across OpenC
 
 | Action | Command |
 |---|---|
-| **Install** | Add package name to `opencode.json` → `"plugin"` array (auto-installed by Bun at next startup) |
+| **Install (npm)** | Add package name to `opencode.json` → `"plugin"` array (auto-installed by Bun at next startup) |
+| **Install (manual)** | Clone repo, `npm install && npm run build && npm run deploy` — deploys to `~/.config/opencode/plugin/` |
 | **Update** | `opencode plugin <package>@latest --global` |
 | **Disable** | Set `"enabled": false` in plugin config file, or remove from `opencode.json` |
 | **Local plugin** | Place `.js`/`.ts` in `.opencode/plugins/` — loaded automatically |
+| **Command plugin** | Add `"command"` entry in `opencode.json` — maps a slash command to an agent (e.g. `/goal`) |
 
 Config lookup order (per-plugin): global (`~/.config/opencode/`) → project (`.opencode/`). Project overrides win.
+
+### 11.6 Type Inject — TypeScript Type Context (installed)
+
+Injects TypeScript type signatures into file reads so the LLM sees type context without manual lookup. Reports type errors on writes. Provides MCP tools: `lookup_type`, `list_types`, `type_check`. Resolves imports up to 4 levels deep.
+
+- **Package**: `@nick-vi/opencode-type-inject` (npm)
+- **Config**: None (works with existing `tsconfig.json`)
+- **Data**: None persisted — acts on file reads/writes transparently
+- **Notable**: TypeScript-only; has zero effect on Java files. Most useful when working on `ui/`.
+
+### 11.7 Notificator — Desktop Notifications (installed)
+
+Sends desktop notifications and plays sound alerts for OpenCode events — generation completion, permission requests, long-running task milestones. Cross-platform (macOS, Linux).
+
+- **File**: `~/.config/opencode/plugin/notificator/index.js` (manually cloned and built from [panta82/opencode-notificator](https://github.com/panta82/opencode-notificator))
+- **Config**: `~/.config/opencode/plugin/notificator.jsonc`
+- **Data**: None — purely local notifications; custom sounds in `~/.config/opencode/plugin/notificator-sounds/`
+- **Notable**: Silent on missing config — no errors if unconfigured. macOS uses built-in `osascript` + `afplay`; Linux requires `libnotify-bin` and `ffmpeg`.
+
+### 11.8 Scheduler — Recurring Agent Jobs (installed)
+
+Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, systemd on Linux). Jobs run `opencode run` with the project's full MCP configuration. Includes no-overlap guard, optional timeout, and automatic logging.
+
+- **Package**: `opencode-scheduler` (npm)
+- **Config**: Jobs stored at `~/.config/opencode/scheduler/scopes/*/jobs/*.json` (auto-managed by `/schedule` command)
+- **Data**: Run logs via `job_logs`; supervisord at `~/.config/opencode/scheduler/supervisor.pl`
+- **Scheduled job**: `nightly-load-test` — runs daily at 02:00, executes k6 health check against `localhost:8080`, reports SLO breaches
+- **Notable**: Requires Perl for the supervisor script. Per-project scoping via working directory. Use the `/schedule` OpenCode command to create jobs.
+
+### 11.9 Goal Plugin — Session-Scoped Goals (installed)
+
+Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, the plugin keeps it in context, auto-continues when idle, and stops when complete, blocked, or a safety limit is hit. Supports evidence-gated completion with optional independent auditor.
+
+- **Package**: `opencode-goal-plugin` (npm)
+- **Command**: `/goal` — configured in `opencode.json` under `"command"` with defaults (max 10 turns, 15 min duration, 200k tokens)
+- **Config**: Plugin-level defaults passed as options array in `opencode.json`
+- **State file**: `.opencode/goals/state.json` (chmod 0600; added to `.gitignore`)
+- **Notable**: Only one persistence-enabled instance per state file; session forks don't inherit parent goals. Relies on experimental OpenCode hooks (`experimental.chat.system.transform`).
