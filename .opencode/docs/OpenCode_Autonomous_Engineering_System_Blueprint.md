@@ -8,7 +8,7 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
 
 This document outlines the architectural blueprint, design philosophy, and operational guardrails of an enterprise-grade Multi-Agent Software Development System built inside OpenCode. The objective is to transform AI from a basic auto-complete snippet generator into a structured, highly disciplined, and autonomous engineering team capable of planning, executing, auditing, and continuously deploying production code.
 
-Many AI coding setups fail because they treat the AI as a single omniscient developer. In reality, complex software engineering requires distinct division of labor, domain specialization, rigorous governance, and automated verification. This framework establishes an interconnected ecosystem of sub-agents and expert advisory personas that mirror a high-performing human software organization while maintaining strict human-in-the-loop safety controls.
+Many AI coding setups fail because they treat the AI as a single omniscient developer. In reality, complex software engineering requires distinct division of labour, domain specialisation, rigorous governance, and automated verification. This framework establishes an interconnected ecosystem of sub-agents and expert advisory personas that mirror a high-performing human software organisation while maintaining strict human-in-the-loop safety controls.
 
 **Core Philosophy:** The goal is not to eliminate human oversight, but to elevate human engineers from manual coders to strategic orchestrators — spending minutes reviewing pre-tested, fully compliant Pull Requests instead of hours writing baseline code.
 
@@ -38,7 +38,7 @@ Incomplete user stories must never expose unready capabilities to end users. All
 
 ## 3. Multi-Agent Architecture & Multi-Model Allocation Strategy
 
-### 3.1 Defense-in-Depth Model Allocation
+### 3.1 Defence-in-Depth Model Allocation
 
 To eliminate systematic blind spots, authoring agents (who write code and infrastructure) and auditing agents (who review and check security) run on distinct model families or reasoning architectures. This prevents auditors from inheriting the exact same training biases, logic gaps, or hallucinations as the authors.
 
@@ -56,7 +56,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | opencode/o3-mini | gpt-oss-120b | 0.0 |
 | @code-reviewer (Audit) | Static Code Review & SOLID Compliance | opencode/deepseek-r1 | deepseek-r1 | 0.1 |
 
-> **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritize deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigor by eliminating output randomness.
+> **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
 ### 3.3 Agent Responsibilities
 
@@ -68,7 +68,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 **@architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
 
-**@db-specialist** — Designs relational and document schemas, writes migration scripts, optimizes query performance with execution plan verification, and manages index strategies.
+**@db-specialist** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
 
 **@ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
 
@@ -84,9 +84,9 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ## 4. Expert Advisory System & Curation Strategy
 
-When the Product Owner or Tech Lead faces complex trade-offs (e.g., relational vs. document database), the system consults specialized expert profiles to present an objective trade-off matrix.
+When the Product Owner or Tech Lead faces complex trade-offs (e.g., relational vs. document database), the system consults specialised expert profiles to present an objective trade-off matrix.
 
-> **Persona Creation:** These expert profiles were not manually written. An AI analyzed hundreds of hours of public content — YouTube talks, conference presentations, published books, and technical courses — from each individual. This content was synthesized into a persona that captures their core principles, decision-making frameworks, and typical advice patterns. When consulted, the personas respond in a manner the real person likely would. They are not real, but the sheer volume of public material makes them feel remarkably authentic.
+> **Persona Creation:** These expert profiles were not manually written. An AI analysed hundreds of hours of public content — YouTube talks, conference presentations, published books, and technical courses — from each individual. This content was synthesised into a persona that captures their core principles, decision-making frameworks, and typical advice patterns. When consulted, the personas respond in a manner the real person likely would. They are not real, but the sheer volume of public material makes them feel remarkably authentic.
 
 ### 4.1 Pruning Expert Noise (Why Less is More)
 
@@ -139,16 +139,16 @@ The system architecture and agent relationships are captured in an interactive k
 4. Language-Specific Standards — 5 edges
 5. GOV.UK Design Principles & Rules — 5 edges
 
-### HTML Visualization Features
+### HTML Visualisation Features
 
 The interactive graph (`graph.html`) includes:
 - **XSS Prevention** — safe HTML escaping with `data-nid` attributes and document-level event delegation
-- **Hyperedge Visualization** — shaded region hulls with centroid labels for hyperedge groups
+- **Hyperedge Visualisation** — shaded region hulls with centroid labels for hyperedge groups
 - **Interactive UI** — dynamic community filtering, select-all / indeterminate toggle, automatic node focus, and detail panels
 
 ---
 
-## 6. Context Hygiene & Optimization Protocols
+## 6. Context Hygiene & Optimisation Protocols
 
 ### 6.1 Session Discipline
 
@@ -229,7 +229,7 @@ fi
 
 The full operational sequence demonstrates how a requirement flows from initial prompt to production deployment:
 
-**Phase 1 — Requirements Discovery**: Prompter submits feature request. @product-owner challenges premature solutionizing, clarifies business objectives, and ensures Story #1 is the Walking Skeleton.
+**Phase 1 — Requirements Discovery**: Prompter submits feature request. @product-owner challenges premature solutionising, clarifies business objectives, and ensures Story #1 is the Walking Skeleton.
 
 **Phase 2 — Backlog & Jira Seeding**: @product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @tech-lead.
 
@@ -247,8 +247,8 @@ The full operational sequence demonstrates how a requirement flows from initial 
 
 ## 9. How to Adapt This Blueprint
 
-Teams looking to build a similar system can customize this blueprint with three key adaptations:
+Teams looking to build a similar system can customise this blueprint with three key adaptations:
 
 - **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@devops-engineer.md`.
 - **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
-- **UI Standards**: Customize `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
+- **UI Standards**: Customise `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
