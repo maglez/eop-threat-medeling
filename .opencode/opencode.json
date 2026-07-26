@@ -14,8 +14,9 @@
   },
   "provider": {
     "amazon-bedrock": {
+      "npm": "@ai-sdk/amazon-bedrock",
       "options": {
-        "region": "us-east-1"
+        "region": "eu-west-2"
       },
       "models": {
         "claude-3-5-sonnet": {
