@@ -276,3 +276,30 @@ Teams looking to build a similar system can customise this blueprint with three 
 - **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@devops-engineer.md`.
 - **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
 - **UI Standards**: Customise `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
+
+---
+
+## 10. Getting Started: Your First Prompt
+
+### Recommended Approach
+
+Start with **few details** and let @product-owner guide the discovery process:
+
+1. **Open a fresh session** (`/new`) — one story per session
+2. **Give a lightweight prompt** — a sentence or two about what you want to build
+3. **Let @product-owner interview you** — they will ask about target audience, scope, constraints
+4. **Refine together** — clarify business objectives, end-user needs, and acceptance criteria
+5. **@product-owner validates** — checks against accessibility and usability standards
+6. **@product-owner signals @tech-lead** — only once requirements are worthy of building
+
+### Sample First Prompt
+
+```
+@product-owner I want to build an Elevation of Privilege (EoP) card
+game — a threat modelling exercise based on the STRIDE framework.
+The goal is to help development teams learn to identify security
+threats in a fun, interactive way. Can you help me define the
+requirements and scope for this project?
+```
+
+Dumping everything at once overloads context and bypasses the PO validation gate. The PO is your requirements partner, not a passive note-taker.
