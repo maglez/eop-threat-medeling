@@ -261,7 +261,22 @@ Task tracking is integrated via the Atlassian MCP plugin:
 - **Rejection Workflow**: Obsolete stories receive an explanatory comment, a "Reject" transition, and resolution set to "Won't Do."
 - **Defect Tracking**: Pre-deployment defects are logged as Bug Sub-tasks under the parent User Story (blocking merge). Post-deployment defects are standalone Bug Issues linked via "caused by" for defect rate metrics.
 
-### 7.3 GitHub Protection
+### 7.3 GitHub MCP Integration
+
+Source code management and pull requests are handled via the GitHub MCP plugin, configured alongside Atlassian in `opencode.json`:
+
+```json
+"github": {
+  "type": "local",
+  "command": ["uvx", "@modelcontextprotocol/github"],
+  "enabled": true,
+  "environment": {
+    "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
+  }
+}
+```
+
+#### GitHub Protection
 
 - **Fine-Grained PATs**: OpenCode authenticates using Fine-Grained Personal Access Tokens scoped exclusively to targeted repositories. Administration permissions are set to **No Access**.
 - **Branch Protection**: Direct commits to `main` are blocked. Mandatory Pull Requests, green CI status checks, and at least one human approval are required before merging.
@@ -330,6 +345,28 @@ direnv allow
 | `JIRA_URL` | Atlassian instance URL |
 | `JIRA_API_TOKEN` | Jira API token |
 | `JIRA_USERNAME` | Jira bot user email |
+| `GITHUB_TOKEN` | GitHub PAT (repo scope) |
+
+#### Maven Wrapper
+
+The project uses the **Maven Wrapper** (`./mvnw`) for reproducible builds — no global Maven install required:
+
+| Command | Purpose |
+|---|---|
+| `./mvnw compile` | Fast compile check |
+| `./mvnw test` | Run all tests |
+| `./mvnw verify` | Full verification with integration tests |
+| `./mvnw spring-boot:run` | Start application on port 8080 |
+
+Requires **Java 21+** (Eclipse Temurin recommended).
+
+#### CI/CD Pipeline
+
+Every push/PR to `main` triggers `.github/workflows/ci.yml` — runs `mvn verify` on `ubuntu-latest` with JDK 21 and uploads the built JAR. See [CI/CD Pipeline](../devops/ci-cd-pipeline.md) for details.
+
+#### Rules Directory
+
+The `.opencode/rules/` directory contains reusable instruction snippets that agents can load on demand: clean architecture, git commits, testing standards, and security rules. These complement the base instructions in `opencode.json`.
 
 ---
 
@@ -389,7 +426,11 @@ Before running any prompt, ensure your local environment is set up:
 - [ ] **Models verified** — `opencode models bedrock-mantle` lists all 7 models
 - [ ] **Jira MCP connected** — `/connect` in the TUI with Atlassian credentials (optional, for issue tracking)
 
-See §7.6 for detailed setup instructions.
+See §7.6 for detailed setup instructions and [docs/devops/local-development.md](../devops/local-development.md) for the full guide.
+
+Key ADRs:
+- [ADR-002: Spring Boot Walking Skeleton](../adr/ADR-002-spring-boot-bootstrap.md) — documents the Spring Boot 3.4.4, Java 21, and Maven Wrapper decisions
+- [ADR-003: GitHub MCP Integration](../adr/ADR-003-github-mcp-integration.md) — documents the GitHub MCP server rationale and configuration
 
 ### Recommended Approach
 
