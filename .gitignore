@@ -41,3 +41,6 @@ build/
 
 ### Graphify ###
 graphify-out/
+
+### OpenCode Goal Plugin ###
+.opencode/goals/

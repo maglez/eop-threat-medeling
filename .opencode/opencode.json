@@ -81,6 +81,26 @@
     ".opencode/plugins/graphify.js",
     "opencode-vibeguard",
     "@tarquinen/opencode-dcp",
-    "opencode-supermemory"
-  ]
+    "opencode-supermemory",
+    "@nick-vi/opencode-type-inject",
+    "opencode-scheduler",
+    ["opencode-goal-plugin", {
+      "maxTurns": 10,
+      "maxDurationMs": 900000,
+      "maxTokens": 200000,
+      "minDelayMs": 1500,
+      "noProgressTokenThreshold": 50,
+      "noProgressTurnsBeforePause": 2,
+      "noToolCallTurnsBeforePause": 2,
+      "persistState": true,
+      "stateFilePath": ".opencode/goals/state.json"
+    }]
+  ],
+  "command": {
+    "goal": {
+      "description": "Set a session-scoped goal and auto-continue until complete.",
+      "template": "$ARGUMENTS",
+      "agent": "build"
+    }
+  }
 }
