@@ -1,0 +1,7 @@
+- Use Resilience4j for all resilience patterns (wraps external service calls)
+- **Retry**: auto-retry transient failures (network timeouts, 5xx) with exponential backoff — max 3 attempts
+- **Circuit Breaker**: open after 50% failure rate in sliding window (min 5 calls) — half-open after 10s
+- **Time Limiter**: timeout external calls at 5s by default, configurable per service
+- Annotate service methods with `@Retry`, `@CircuitBreaker`, `@TimeLimiter` — never wrap in try-catch at call site
+- Log circuit state transitions at `WARN` level for operational awareness
+- Keep config in `application.yml` under `resilience4j.*` namespace, externalised per profile

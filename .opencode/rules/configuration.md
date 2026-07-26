@@ -1,0 +1,8 @@
+- Externalize all environment-specific config to `application-{profile}.yml` files
+- Use `@ConfigurationProperties` with `@Validated` for type-safe config binding — never raw `@Value`
+- Prefix all custom properties with the domain (e.g. `eop.game.max-players`)
+- Validate config at startup via `@PostConstruct` validation in `@ConfigurationProperties` classes
+- Profile convention: `dev` (local), `test` (CI), `prod` (production)
+- `application.yml` holds defaults; profile overrides go in `application-{profile}.yml`
+- Secrets use env vars resolved via `${VARIABLE_NAME}` in yml — never literal values
+- Keep config classes in `org.maglez.eop.config` package (interface adapter layer)
