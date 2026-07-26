@@ -449,7 +449,7 @@ Start with **few details** and let @team-member-product-owner (PO) guide the dis
 3. **Let your PO interview you** — they will ask about target audience, scope, constraints
 4. **Refine together** — clarify business objectives, end-user needs, and acceptance criteria
 5. **Your PO validates** — checks against accessibility and usability standards
-6. **Your PO sets a `/goal`** — "Implement \<user story\>" — which routes through your Tech Lead for autonomous execution with auto-continue and safety limits
+6. **Your PO dispatches** — the validated story is handed to the Tech Lead for autonomous implementation with auto-continue and safety limits
 
 ### Sample First Prompt
 
@@ -463,14 +463,7 @@ threats in a fun, interactive way. Can you help me define the
 requirements and scope for this project?
 ```
 
-**2. Autonomous implementation** — once your PO validates a story, set a `/goal` that routes through your Tech Lead:
-
-```
-/goal Implement the threat card deck — create the entity, use case,
-controller, and tests for drawing random STRIDE threat cards
-```
-
-Dumping everything at once overloads context and bypasses the PO validation gate. The PO is your requirements partner, not a passive note-taker. Once validated, `/goal` hands off to the Tech Lead for autonomous execution.
+Dumping everything at once overloads context and bypasses the PO validation gate. The PO is your requirements partner, not a passive note-taker. Once validated, the PO hands off to the Tech Lead for autonomous execution.
 
 ---
 
