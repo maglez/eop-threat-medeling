@@ -163,7 +163,7 @@ The interactive graph (`graph.html`) includes:
 
 ### 6.1 Session Discipline
 
-- **One Session Per User Story**: Each Jira story is executed in a fresh OpenCode session (`/new`).
+- **One Session Per User Story**: Each Jira story is executed in a fresh OpenCode session (`/new`). This prevents context pollution and cross-story contamination, reducing the risk of AI hallucination and keeping response quality consistently high.
 - **Context Compaction**: For long sessions, run `/compact` to compress verbose output.
 
 ### 6.2 Graphify Integration
