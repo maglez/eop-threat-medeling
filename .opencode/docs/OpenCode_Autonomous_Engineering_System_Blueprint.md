@@ -273,9 +273,9 @@ graph TB
 
 Teams looking to build a similar system can customise this blueprint with three key adaptations:
 
-- **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@devops-engineer.md`.
+- **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@team-member-devops-engineer.md`.
 - **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
-- **UI Standards**: Customise `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
+- **UI Standards**: Customise `@team-member-ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
 
 ---
 
@@ -283,14 +283,14 @@ Teams looking to build a similar system can customise this blueprint with three 
 
 ### Recommended Approach
 
-Start with **few details** and let @product-owner guide the discovery process:
+Start with **few details** and let @product-owner (PO) guide the discovery process:
 
 1. **Open a fresh session** (`/new`) — one story per session
 2. **Give a lightweight prompt** — a sentence or two about what you want to build
-3. **Let @product-owner interview you** — they will ask about target audience, scope, constraints
+3. **Let your PO interview you** — they will ask about target audience, scope, constraints
 4. **Refine together** — clarify business objectives, end-user needs, and acceptance criteria
-5. **@product-owner validates** — checks against accessibility and usability standards
-6. **@product-owner signals @tech-lead** — only once requirements are worthy of building
+5. **Your PO validates** — checks against accessibility and usability standards
+6. **Your PO signals your Tech Lead** — only once requirements are worthy of building
 
 ### Sample First Prompt
 
