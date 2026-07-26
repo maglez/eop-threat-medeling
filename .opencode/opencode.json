@@ -13,10 +13,12 @@
     }
   },
   "provider": {
-    "amazon-bedrock": {
-      "npm": "@ai-sdk/amazon-bedrock",
+    "bedrock-mantle": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "AWS Bedrock Mantle",
       "options": {
-        "region": "eu-west-2"
+        "baseURL": "https://bedrock-mantle.eu-west-2.api.aws/v1",
+        "apiKey": "{env:OPENAI_API_KEY}"
       },
       "models": {
         "claude-3-5-sonnet": {
