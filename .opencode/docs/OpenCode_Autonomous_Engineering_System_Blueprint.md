@@ -168,41 +168,41 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 
 | Metric | Value |
 |---|---|
-| Total Nodes | 337 |
-| Total Edges | 320 |
-| Communities | 38 (35 shown, 3 thin omitted) |
-| Corpus | 39 files (~18,188 words) |
+| Total Nodes | 388 |
+| Total Edges | 362 |
+| Communities | 48 (45 shown, 3 thin omitted) |
+| Corpus | 53 files (~20,799 words) |
 | Extraction | 100% EXTRACTED (0% inferred) |
 | Token Cost | 0 input · 0 output (code-only, no LLM round-trip) |
-| Source Commit | `c0d4c8f2` |
+| Source Commit | `d9ea332` |
 
 ### Community Breakdown (Top 10 by Node Count)
 
 | Community | Nodes | Description |
 |---|---|---|
-| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 29 | Agent model matrix, provider config, model ID mappings, responsibilities, bedrock-mantle connection details |
-| bedrock-mantle | 25 | Provider connectivity — MCP endpoint, auth, model definitions, Jira + GitHub env vars |
+| opencode-setup.md | 27 | ADR-002 (Spring Boot), ADR-003 (GitHub MCP), ADR-006 (Build Quality Gates), AGENTS.md, security rules |
 | OpenCode Autonomous Engineering System Blueprint | 24 | Entire blueprint document — intro, foundations, agent architecture, workflow, getting started |
-| opencode-setup.md | 22 | ADR-002 (Spring Boot), ADR-003 (GitHub MCP), AGENTS.md project specifics, security rules |
+| Local Development Guide | 24 | Setup guide, env vars, Maven Wrapper, JDK 21 install, project structure, doc references |
+| 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 22 | Agent model matrix, provider config, model ID mappings, agent responsibilities |
 | Non-Negotiable Rules | 19 | Defect tracking, DoD, deployment strategy, Gherkin BDD, acceptance criteria |
-| 7. Ecosystem Integrations & Governance Rules | 14 | Documentation strategy, Jira, GitHub MCP, AWS, direnv, CI/CD pipeline |
+| bedrock-mantle | 18 | Provider connectivity — MCP endpoint, auth, model definitions, env vars |
+| 7. Ecosystem Integrations & Governance Rules | 14 | Documentation strategy, Jira, GitHub MCP, AWS OIDC, direnv, CI/CD pipeline |
 | GOV.UK Design Principles & Rules | 12 | Security audit, clean code, code review agent, language-specific standards |
-| Local Development Guide | 10 | Setup guide, env vars, Maven Wrapper, project structure, doc references |
+| ADR-004: API Contract-First with OpenAPI | 10 | API design rules, springdoc, contract-first approach |
 | Code Reviewer Agent | 10 | DB schema, migration safety, query security, indexing standards |
-| DevOps & Infrastructure Specialist | 9 | AWS/GitHub OIDC, trunk-based deployment, CD pipelines, governance |
 
 ### God Nodes (Most Connected)
 
-1. Product Owner / Business Analyst Agent — 12 edges
-2. OpenCode Autonomous Engineering System Blueprint — 11 edges
-3. StrideCategoryTest — 9 edges
-4. models — 8 edges
-5. StrideCategory — 7 edges
-6. 7. Ecosystem Integrations & Governance Rules — 7 edges
-7. Non-Negotiable Rules — 6 edges
-8. 5. Visual Knowledge Graph Overview — 6 edges
-9. 7.6 Local Development Environment — 6 edges
-10. Elevation of Privilege - EoP — 6 edges
+1. `instructions` — 14 edges
+2. Product Owner / Business Analyst Agent — 12 edges
+3. OpenCode Autonomous Engineering System Blueprint — 11 edges
+4. StrideCategoryTest — 9 edges
+5. models — 8 edges
+6. StrideCategory — 7 edges
+7. 7. Ecosystem Integrations & Governance Rules — 7 edges
+8. Non-Negotiable Rules — 6 edges
+9. 5. Visual Knowledge Graph Overview — 6 edges
+10. 7.6 Local Development Environment — 6 edges
 
 ### HTML Visualisation Features
 
@@ -433,6 +433,10 @@ See §7.6 for detailed setup instructions and [docs/devops/local-development.md]
 Key ADRs:
 - [ADR-002: Spring Boot Walking Skeleton](../adr/ADR-002-spring-boot-bootstrap.md) — documents the Spring Boot 3.4.4, Java 21, and Maven Wrapper decisions
 - [ADR-003: GitHub MCP Integration](../adr/ADR-003-github-mcp-integration.md) — documents the GitHub MCP server rationale and configuration
+- [ADR-004: API Contract-First](../adr/ADR-004-api-contract-first.md) — documents OpenAPI 3.1, springdoc, and contract-first conventions
+- [ADR-005: Error Handling Strategy](../adr/ADR-005-error-handling-strategy.md) — documents RFC 9457 Problem Details and the exception hierarchy
+- [ADR-006: Build Quality Gates](../adr/ADR-006-build-quality-gates.md) — documents Checkstyle, SpotBugs, JaCoCo, and Enforcer rules
+- [ADR-007: Versioning Strategy](../adr/ADR-007-versioning-strategy.md) — documents SemVer 2.0.0 and Keep a Changelog conventions
 
 ### Recommended Approach
 
