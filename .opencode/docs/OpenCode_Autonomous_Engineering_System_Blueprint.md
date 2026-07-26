@@ -523,9 +523,9 @@ Injects TypeScript type signatures into file reads so the LLM sees type context 
 
 Sends desktop notifications and plays sound alerts for OpenCode events — generation completion, permission requests, long-running task milestones. Cross-platform (macOS, Linux).
 
-- **File**: `~/.config/opencode/plugin/notificator/index.js` (manually cloned and built from [panta82/opencode-notificator](https://github.com/panta82/opencode-notificator))
-- **Config**: `~/.config/opencode/plugin/notificator.jsonc`
-- **Data**: None — purely local notifications; custom sounds in `~/.config/opencode/plugin/notificator-sounds/`
+- **File**: `.opencode/plugins/notificator.js`
+- **Config**: `.opencode/plugins/notificator.jsonc`
+- **Data**: None — purely local notifications; custom sounds in `.opencode/plugins/notificator-sounds/`
 - **Notable**: Silent on missing config — no errors if unconfigured. macOS uses built-in `osascript` + `afplay`; Linux requires `libnotify-bin` and `ffmpeg`.
 
 ### 12.7 Scheduler — Recurring Agent Jobs (installed)
