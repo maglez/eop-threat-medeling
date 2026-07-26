@@ -107,6 +107,17 @@ The system architecture and agent relationships are captured in an interactive k
 
 > *Interactive version: open `graphify-out/graph.html` in a browser.*
 
+### Cost Optimisation Through Graphify
+
+graphify reduces token consumption and drives down operational costs by replacing expensive LLM re-reading of source files with cheap, deterministic local computation:
+
+- **AST Extraction is Free**: Code structure — classes, functions, imports, dependencies — is parsed locally using tree-sitter parsers. This runs at zero token cost, producing structured nodes and edges without any LLM call.
+- **Cached Semantic Extraction**: Once entities and relationships are extracted from documentation or images, the results are cached on disk. Incremental updates (`graphify --update`) only re-process changed files, avoiding redundant API calls.
+- **Subgraph Queries Over Full Files**: When an agent needs to understand a specific part of the system, it queries the graph for a scoped subgraph instead of loading every source file into context. This dramatically reduces the token footprint per session.
+- **Community-Directed Navigation**: Community detection groups related code into clusters. Agents can jump directly to the relevant community rather than scanning the entire codebase, keeping context windows small and focused.
+
+The result: agents spend tokens on reasoning and code generation, not on re-discovering what the graph already knows.
+
 ### Graph Statistics (Current)
 
 | Metric | Value |
