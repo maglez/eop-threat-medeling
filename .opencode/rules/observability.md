@@ -1,0 +1,9 @@
+- Use SLF4J for all logging — never `System.out` or `System.err`
+- Structured JSON output via Logback (`logback-spring.xml`) for production profiles
+- Include MDC correlation ID on every log line (`X-Correlation-Id` request header → MDC)
+- Log levels per layer:
+  - Domain: `DEBUG` for state transitions, `INFO` for significant events (game created, card drawn)
+  - Application/Use Cases: `INFO` for operation boundaries, `WARN` for validation failures
+  - Interface/Controllers: `INFO` for request/response summary, `WARN` for client errors, `ERROR` for unhandled exceptions
+- Audit logging for game-affecting actions (card draws, privilege escalations) at `INFO` level with actor context
+- Never log PII, secrets, or full request bodies in production

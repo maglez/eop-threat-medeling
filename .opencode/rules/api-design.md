@@ -1,0 +1,8 @@
+- Contract-first: hand-author `docs/api/openapi.yml` before implementing new endpoints
+- URL pattern: `/api/v1/{resource}` with plural nouns (`/api/v1/games`, `/api/v1/cards`)
+- HTTP methods: GET (read), POST (create), PUT (replace), PATCH (partial update), DELETE (remove)
+- Response codes: 200 (success), 201 (created), 204 (deleted), 400 (bad request), 404 (not found), 409 (conflict), 422 (unprocessable), 500 (error)
+- Pagination: Spring `Page<T>` for list endpoints with `?page=0&size=20`
+- Error responses follow RFC 9457 Problem Details — see error-handling rules
+- Use `@Operation` and `@ApiResponse` on all controller methods
+- No `@RequestMapping` on interfaces — concrete controllers only

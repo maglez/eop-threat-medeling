@@ -1,0 +1,7 @@
+- Build MUST pass before any PR merge (`mvn verify` in CI)
+- Code style enforced by `checkstyle` (Google Java Style) — violations fail the build
+- Code coverage via `jacoco` — minimum 80% instruction coverage, 70% branch coverage
+- SpotBugs static analysis is deferred (JDK 26+ ASM support pending)
+- `maven-enforcer-plugin` enforces: JDK >= 21, dependency convergence (no version conflicts), no banned dependencies
+- All new code must meet quality gates before CI passes
+- Run quality checks locally with `./mvnw verify` before pushing

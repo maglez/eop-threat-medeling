@@ -1,0 +1,7 @@
+- All API error responses follow RFC 9457 Problem Details (`application/problem+json`)
+- Single `@ControllerAdvice` — never per-controller exception handlers
+- Domain exceptions live in `org.maglez.eop.*` with zero Spring imports
+- Global handler maps: domain exception → HTTP status (e.g., `GameNotFoundException` → 404, `IllegalMoveException` → 409)
+- `@Valid` validation errors produce `ValidationProblemDetail` with field-level messages
+- Every known exception must have a unit test verifying its HTTP status mapping
+- The `GlobalExceptionHandler` itself must be unit-tested for every mapped exception type
