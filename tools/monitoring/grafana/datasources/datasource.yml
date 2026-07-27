@@ -4,10 +4,10 @@ datasources:
   - name: InfluxDB
     type: influxdb
     access: proxy
-    url: http://influxdb:8086
+    url: ${INFLUXDB_URL}
     database: k6
-    user: admin
+    user: ${INFLUXDB_USER}
     secureJsonData:
-      password: ${GRAFANA_PASSWORD}
+      password: ${INFLUXDB_PASSWORD}
     isDefault: true
     editable: false

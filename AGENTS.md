@@ -18,10 +18,10 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
 
 ## Project Specifics
 
-- **Java 21 LTS** / **Spring Boot 3.4.4** — single module, groupId `org.maglez`
+- **Java 21 LTS** / **Spring Boot 3.5.16** — single module, groupId `org.maglez`
 - **Build:** `./mvnw` (Maven Wrapper — no global Maven install required)
 - **Entrypoint:** `src/main/java/org/maglez/Main.java` — `@SpringBootApplication` with `GET /health`
-- **Test framework:** JUnit 5 + Spring Boot Test
+- **Test framework:** JUnit 5 + Spring Boot Test — `src/test/resources/application.properties` overrides the datasource so tests run hermetically (no `DB_*` env vars needed)
 - **Commands:**
   - `./mvnw test` — run all tests
   - `./mvnw compile` — fast compile check

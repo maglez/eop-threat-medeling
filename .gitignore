@@ -37,6 +37,13 @@ build/
 
 ### Env ###
 .env
+.env.local
+.env*.local
+*.pem
+*.key
+*.cert
+*.crt
+*.jks
 
 ### Graphify ###
 graphify-out/

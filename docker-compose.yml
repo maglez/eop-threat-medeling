@@ -3,11 +3,12 @@ services:
     image: influxdb:1.8
     container_name: eop-influxdb
     ports:
-      - "8086:8086"
+      - "127.0.0.1:8086:8086"
     environment:
       INFLUXDB_DB: k6
-      INFLUXDB_ADMIN_USER: admin
-      INFLUXDB_ADMIN_PASSWORD: admin
+      INFLUXDB_ADMIN_USER: ${INFLUXDB_USER}
+      INFLUXDB_ADMIN_PASSWORD: ${INFLUXDB_PASSWORD}
+      INFLUXDB_HTTP_AUTH_ENABLED: "true"
     volumes:
       - influxdb_data:/var/lib/influxdb
     healthcheck:
@@ -22,8 +23,12 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      INFLUXDB_URL: ${INFLUXDB_URL}
+      INFLUXDB_USER: ${INFLUXDB_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
     volumes:
       - ./tools/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
       - ./tools/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards

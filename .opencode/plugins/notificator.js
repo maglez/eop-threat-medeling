@@ -2,6 +2,7 @@
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { readFileSync, readdirSync } from "fs";
+import { createHash } from "crypto";
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = dirname(__filename);
 function stripJsonComments(str) {
@@ -19,13 +20,8 @@ function loadConfig() {
   }
 }
 function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
+  const digest = createHash("sha256").update(str, "utf-8").digest("hex");
+  return parseInt(digest.slice(0, 8), 16);
 }
 function getSoundFiles() {
   try {
