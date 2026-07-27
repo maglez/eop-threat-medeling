@@ -206,6 +206,8 @@ The system architecture and agent relationships are captured in an interactive k
 
 > *Interactive version: open `graphify-out/graph.html` in a browser.*
 
+> **📅 Graph data snapshot:** This graph and all associated metrics (§5.1–§5.5) are accurate as of commit `d2c81212` (2026-07-26). The graph is a static snapshot — run `graphify update .` from the project root to regenerate with current code.
+
 ### 5.1 Cost Optimisation Through Graphify
 
 graphify reduces token consumption and drives down operational costs by replacing expensive LLM re-reading of source files with cheap, deterministic local computation. Graphify's creator (Safi Shamsi) reports a 71.5× token reduction (~98.6% reduction) — distilling a typical 100,000-token codebase into roughly 1,400 tokens of graph structure. By injecting far less content into every prompt, the AI takes substantially longer to hallucinate, producing more reliable and focused reasoning, and a massive cost reduction on token usage.
@@ -228,6 +230,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 | Extraction | 100% EXTRACTED (0% inferred) |
 | Token Cost | 0 input · 0 output (code-only, no LLM round-trip) |
 | Source Commit | `d2c81212` |
+| **Last Updated** | 2026-07-26 |
 
 ### 5.3 Community Breakdown (Top 10 by Node Count)
 
