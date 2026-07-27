@@ -42,7 +42,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "AWS Bedrock Mantle",
       "options": {
-        "baseURL": "https://bedrock-mantle.eu-west-2.api.aws/v1",
+        "baseURL": "{env:OPENAI_BASE_URL}",
         "apiKey": "{env:OPENAI_API_KEY}"
       },
       "models": {

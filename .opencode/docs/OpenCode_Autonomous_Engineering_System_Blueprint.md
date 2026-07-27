@@ -55,6 +55,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | amazon-nova-lite | moonshotai.kimi-k2.5 | Moonshot AI (Kimi) | 0.1 |
 | @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | mistral-large-2 | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.0 |
 | @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | llama-3-1-70b | nvidia.nemotron-super-3-120b | NVIDIA | 0.1 |
+| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | llama-3-1-8b | google.gemma-3-27b-it | Gemma (Google) | 0.2 |
 | **Expert Advisors** | | | | | |
 | @expert-alex-xu | Distributed Systems & System Design | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.2 |
 | @expert-dave-farley | Continuous Delivery & TDD | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.1 |
