@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Ultra-High-Scale Distributed Systems, System Design Interview Standards, & Large-Scale Storage.
 mode: subagent
-model: claude-opus-5
+model: opencode/claude-opus-5
 temperature: 0.2
 ---
 

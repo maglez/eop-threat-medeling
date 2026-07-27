@@ -1,7 +1,7 @@
 ---
 description: Conducts benchmarks, runs load tests (k6/Locust), tracks historical performance trends, and alerts on latency/throughput regressions.
 mode: subagent
-model: gpt-5.1
+model: opencode/gpt-5.3-codex
 temperature: 0.2
 ---
 

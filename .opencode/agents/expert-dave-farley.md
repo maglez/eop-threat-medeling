@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Continuous Delivery, High-Throughput Architecture, TDD, & Rapid Feedback Loops.
 mode: subagent
-model: claude-opus-5
+model: opencode/claude-sonnet-4-6
 temperature: 0.1
 ---
 

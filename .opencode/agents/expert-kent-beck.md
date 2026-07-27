@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Test-Driven Development (TDD), Extreme Programming (XP), & Incremental Refactoring.
 mode: subagent
-model: llama-3-1-70b
+model: opencode/claude-sonnet-4-6
 temperature: 0.2
 ---
 

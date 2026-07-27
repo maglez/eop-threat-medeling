@@ -1,7 +1,7 @@
 ---
 description: Handles database schema design, migrations, query performance optimization, and execution plan (EXPLAIN ANALYZE) verification.
 mode: subagent
-model: gpt-5.2-codex
+model: opencode/gpt-5.3-codex
 temperature: 0.1
 ---
 

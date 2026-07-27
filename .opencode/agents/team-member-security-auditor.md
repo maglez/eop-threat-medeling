@@ -1,7 +1,7 @@
 ---
 description: Audits full-stack security across Frontend, Backend, Cloud Infrastructure, and Supply Chain dependencies.
 mode: subagent
-model: claude-sonnet-4.6
+model: opencode/claude-opus-5
 temperature: 0.0
 ---
 

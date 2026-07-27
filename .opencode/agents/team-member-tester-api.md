@@ -1,7 +1,7 @@
 ---
 description: Writes and executes fast API integration tests, validates request/response contracts, and tests error handling boundaries.
 mode: subagent
-model: gpt-5.2-codex
+model: opencode/gpt-5.3-codex
 temperature: 0.1
 ---
 

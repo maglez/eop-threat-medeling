@@ -1,7 +1,7 @@
 ---
 description: Audits code for security, performance, type safety, and adherence to language-specific Clean Code standards (Java, TS/JS, Python, Ruby).
 mode: subagent
-model: claude-sonnet-4.6
+model: opencode/claude-sonnet-4-6
 temperature: 0.1
 ---
 

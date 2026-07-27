@@ -37,38 +37,8 @@
       }
     }
   },
-   "provider": {
-     "zen": {
-       "npm": "@ai-sdk/zen",
-       "name": "OpenCode Zen",
-       "options": {
-         "apiKey": "{env:AWS_BEARER_TOKEN_BEDROCK}",
-         "region": "{env:AWS_REGION}"
-       },
-       "models": {
-         "amazon-nova-pro": {
-           "name": "Amazon Nova Pro",
-           "id": "eu.amazon.nova-pro-v1:0"
-         },
-         "amazon-nova-lite": {
-           "name": "Amazon Nova Lite",
-           "id": "eu.amazon.nova-lite-v1:0"
-         },
-         "mistral-large-2": {
-           "name": "Mistral Large 2",
-           "id": "eu.mistral.mistral-large-2407-v1:0"
-         },
-         "llama-3-1-70b": {
-           "name": "Meta Llama 3.1 70B",
-           "id": "eu.meta.llama3-1-70b-instruct-v1:0"
-         },
-         "llama-3-1-8b": {
-           "name": "Meta Llama 3.1 8B",
-           "id": "eu.meta.llama3-1-8b-instruct-v1:0"
-         }
-       }
-     }
-   },
+  "model": "opencode/claude-opus-5",
+  "small_model": "opencode/gemini-3.5-flash-lite",
   "plugin": [
     ".opencode/plugins/graphify.js",
     "opencode-vibeguard",

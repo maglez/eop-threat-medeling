@@ -1,7 +1,7 @@
 ---
 description: Builds accessible React + TypeScript front-end components and page layouts following GOV.UK Design System standards.
 mode: subagent
-model: gemini-3-flash
+model: opencode/claude-sonnet-4-6
 temperature: 0.3
 ---
 
