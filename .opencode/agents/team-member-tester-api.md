@@ -1,7 +1,7 @@
 ---
 description: Writes and executes fast API integration tests, validates request/response contracts, and tests error handling boundaries.
 mode: subagent
-model: amazon-nova-lite
+model: gpt-5.2-codex
 temperature: 0.1
 ---
 

@@ -1,7 +1,7 @@
 ---
 description: DevOps & Infrastructure Specialist - Builds Walking Skeleton CI/CD pipelines, enforces Continuous Deployment on trunk commits, manages AWS OIDC, and configures Infrastructure-as-Code.
 mode: subagent
-model: amazon-nova-pro
+model: claude-opus-5
 temperature: 0.1
 ---
 

@@ -38,9 +38,9 @@
     }
   },
    "provider": {
-     "amazon-bedrock": {
-       "npm": "@ai-sdk/amazon-bedrock",
-       "name": "AWS Bedrock",
+     "zen": {
+       "npm": "@ai-sdk/zen",
+       "name": "OpenCode Zen",
        "options": {
          "apiKey": "{env:AWS_BEARER_TOKEN_BEDROCK}",
          "region": "{env:AWS_REGION}"

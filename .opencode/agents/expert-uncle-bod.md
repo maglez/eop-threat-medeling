@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Software Craftsmanship, SOLID Principles, Clean Architecture, & Professional Ethics.
 mode: subagent
-model: amazon-nova-pro
+model: claude-opus-5
 temperature: 0.2
 ---
 

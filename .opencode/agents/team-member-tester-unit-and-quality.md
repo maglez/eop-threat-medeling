@@ -1,7 +1,7 @@
 ---
 description: Writes ultra-fast unit tests, analyzes code coverage gaps, and runs mutation testing to verify test suite strength.
 mode: subagent
-model: amazon-nova-lite
+model: gpt-5.2-codex
 temperature: 0.1
 ---
 
