@@ -8,6 +8,6 @@ datasources:
     database: k6
     user: admin
     secureJsonData:
-      password: admin
+      password: ${GRAFANA_PASSWORD}
     isDefault: true
     editable: false
