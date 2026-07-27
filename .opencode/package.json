@@ -9,6 +9,9 @@
     "opencode-supermemory": "^2.0.10",
     "opencode-vibeguard": "^0.1.0"
   },
+  "overrides": {
+    "glob": "^13.0.0"
+  },
   "trustDependencies": [
     "esbuild"
   ]

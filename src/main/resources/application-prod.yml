@@ -15,6 +15,14 @@ spring:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
 
+server:
+  address: 127.0.0.1
+  error:
+    include-exception: false
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
 # Never expose API schema or Swagger UI in production
 springdoc:
   api-docs:
