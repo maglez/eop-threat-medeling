@@ -47,7 +47,7 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
   - [12.3 DCP](#123-dynamic-context-pruning--dcp-installed-active-at-next-startup)
   - [12.4 Supermemory](#124-supermemory--cross-session-memory-installed-requires-authentication)
   - [12.5 Type Inject](#125-type-inject--typescript-type-context-installed)
-  - [12.6 Notificator](#126-notificator--desktop-notifications-installed)
+   - [12.6 Notificator — REMOVED](#126-notificator--desktop-notifications-removed-2026-07-27)
   - [12.7 Scheduler](#127-scheduler--recurring-agent-jobs-installed)
   - [12.8 Goal Plugin](#128-goal-plugin--session-scoped-goals-installed)
 
@@ -585,14 +585,9 @@ Injects TypeScript type signatures into file reads so the LLM sees type context 
 - **Data**: None persisted — acts on file reads/writes transparently
 - **Notable**: TypeScript-only; has zero effect on Java files. Most useful when working on `ui/`.
 
-### 12.6 Notificator — Desktop Notifications (installed)
+### 12.6 Notificator — Desktop Notifications (REMOVED 2026-07-27)
 
-Sends desktop notifications and plays sound alerts for OpenCode events — generation completion, permission requests, long-running task milestones. Cross-platform (macOS, Linux).
-
-- **File**: `.opencode/plugins/notificator.js`
-- **Config**: `.opencode/plugins/notificator.jsonc`
-- **Data**: None — purely local notifications; custom sounds in `.opencode/plugins/notificator-sounds/`
-- **Notable**: Silent on missing config — no errors if unconfigured. macOS uses built-in `osascript` + `afplay`; Linux requires `libnotify-bin` and `ffmpeg`.
+**Removed following the 2026-07 security audit.** The plugin sent desktop notifications and sound alerts for OpenCode events by shelling out to OS commands (`osascript`/`afplay` on macOS, `notify-send`/ffmpeg on Linux). That command-execution attack surface was not justified by the notification utility. Deleted: `.opencode/plugins/notificator.js`, `notificator.js.map`, `notificator.jsonc`, `notificator-sounds/`, and the `opencode.json` plugin registration. Do not reinstall without an input-sanitization review.
 
 ### 12.7 Scheduler — Recurring Agent Jobs (installed)
 

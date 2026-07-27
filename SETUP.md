@@ -67,3 +67,36 @@ docker-compose up -d
 3. Password: your `GF_SECURITY_ADMIN_PASSWORD` value
 4. Changing the password in the UI afterwards is fine — it lives in
    Grafana's internal DB from then on (`.env` is only the first-boot seed).
+
+## Security Notes — Accepted Risks (2026-07-27 audit)
+
+The following items were reviewed and **accepted**; do not re-flag them in
+future audits without new evidence.
+
+### Production hardening applied
+- `application-prod.yml` disables springdoc (`/v3/api-docs`, `/swagger-ui.html`).
+  They remain enabled in the default (dev) profile for local development.
+- **Notificator plugin removed** — it shelled out to OS commands
+  (`osascript`/`afplay`/`notify-send`) for desktop notifications; attack
+  surface not justified by utility. See Blueprint §12.6.
+
+### OpenCode dev tooling (`.opencode/` — not shipped, never in production)
+- **`tiktoken`** (transitive via `@anthropic-ai/tokenizer`) — offline WASM
+  tokenizer, makes no network calls. No drop-in replacement exists without
+  forking upstream plugins.
+- **`@ai-sdk/openai-compatible`** — Vercel AI SDK; load-bearing custom
+  provider wired in `.opencode/opencode.json` (`OPENAI_BASE_URL` endpoint).
+- **`npm audit` residual: 5 high / 4 low** (ReDoS/DoS-class in
+  `glob`/`minimatch`/`brace-expansion` via `@opentui/solid` →
+  `babel-plugin-module-resolver`, plus advisories against
+  `@opencode-ai/plugin`, `@tarquinen/opencode-dcp`, `@babel/core`,
+  `opencode-goal-plugin`). Accepted because:
+  1. No patched versions exist for the flagged packages — npm's only
+     automated fix downgrades `@opencode-ai/plugin` 1.18.5 → 1.3.3 and
+     peers, breaking every local plugin (Graphify, DCP, goal).
+  2. Surgical `overrides` would require forcing 3–4 major-version jumps
+     (`glob` 9→13) deep in the TUI build chain — same breakage risk.
+  3. Exploitation requires crafted glob patterns; all patterns here come
+     from plugin source code, never untrusted input.
+- **Re-check** `cd .opencode && npm audit` whenever plugin versions are
+  bumped; drop this entry when upstream patches land.
