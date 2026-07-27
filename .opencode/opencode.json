@@ -4,7 +4,7 @@
     "## Clean Architecture\n\nAll code follows Clean Architecture — dependencies point inward. Layers: Entities → Use Cases → Interface Adapters → Frameworks & Drivers. Cross-boundary data uses DTOs, not entities.",
     "## Security by Design\n\nSecurity is a first-class constraint: (1) Validate all inputs at system boundaries — reject early, reject explicitly. (2) Principle of least privilege — grant minimal access for each operation. (3) Fail securely — default-denied access, explicit allow-lists. (4) Defense in depth — multiple independent checks, not a single gate. (5) No secrets in code — use env vars or config, never literals. (6) Immutable domain entities where possible. — see .opencode/rules/security.md",
     "## Project Conventions\n\n- Java 21 LTS / Spring Boot 3.4.4 — build with JDK 21 via Maven Wrapper (`./mvnw`)\n- Entrypoint: `org.maglez.Main` — `@SpringBootApplication` with `GET /health`\n- Test framework: JUnit 5 + Spring Boot Test\n- Domain under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation\n- All commit messages MUST start with `[THREAT-NNN]` (Jira prefix) — see .opencode/rules/git-commits.md\n- Agents defined in `.opencode/agents/` — multi-agent team with subagent mode",
-    "## API Design — Contract-First\n\n- Contract-first: hand-author `docs/api/openapi.yml` before implementing endpoints\n- URL pattern: `/api/v1/{resource}` with plural nouns\n- Standard response codes: 200/201/204/400/404/409/422/500\n- Pagination via Spring `Page<T>` on list endpoints\n- `@Operation` and `@ApiResponse` on all controller methods — see `.opencode/rules/api-design.md`",
+    "## API Design — Contract-First\n\n- Contract-first: hand-author `docs/api/openapi.yml` before implementing endpoints\n- URL pattern: `/api/v1/{resource}` with plural nouns\n- Standard response codes: 200/201/204/400/400/404/409/422/500\n- Pagination via Spring `Page<T>` on list endpoints\n- `@Operation` and `@ApiResponse` on all controller methods — see `.opencode/rules/api-design.md`",
     "## Error Handling — RFC 9457 Problem Details\n\n- All API errors return `application/problem+json` per RFC 9457\n- Single `@ControllerAdvice` — no per-controller exception handlers\n- Domain exceptions in `org.maglez.eop.*` have zero Spring imports\n- `@Valid` validation errors produce field-level problem details\n- Every exception-to-HTTP mapping is unit-tested — see `.opencode/rules/error-handling.md`",
     "## Observability & Logging\n\n- SLF4J for all logging — never `System.out`/`System.err`\n- Structured JSON via Logback in production\n- MDC correlation ID from `X-Correlation-Id` header\n- Audit-log game-affecting actions (card draws, privilege escalations)\n- Never log PII, secrets, or full request bodies — see `.opencode/rules/observability.md`",
     "## Build Quality Gates\n\n- `mvn verify` must pass before merge — gate is enforced in CI\n- Checkstyle (Google Java Style) — violations fail the build\n- SpotBugs — high/medium severity findings fail the build\n- JaCoCo — minimum 80% instruction / 70% branch coverage\n- Maven Enforcer — JDK >= 21, dependency convergence, banned deps — see `.opencode/rules/build-quality.md`",
@@ -37,46 +37,38 @@
       }
     }
   },
-  "provider": {
-    "bedrock-mantle": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "AWS Bedrock Mantle",
-      "options": {
-        "baseURL": "{env:OPENAI_BASE_URL}",
-        "apiKey": "{env:OPENAI_API_KEY}"
-      },
-      "models": {
-        "claude-3-5-sonnet": {
-          "name": "DeepSeek V3.1",
-          "id": "deepseek.v3.1"
-        },
-        "claude-3-5-haiku": {
-          "name": "Qwen 3 Coder Next",
-          "id": "qwen.qwen3-coder-next"
-        },
-        "amazon-nova-pro": {
-          "name": "DeepSeek V3.2",
-          "id": "deepseek.v3.2"
-        },
-        "amazon-nova-lite": {
-          "name": "Kimi K2.5",
-          "id": "moonshotai.kimi-k2.5"
-        },
-        "mistral-large-2": {
-          "name": "Mistral Large 3",
-          "id": "mistral.mistral-large-3-675b-instruct"
-        },
-        "llama-3-1-70b": {
-          "name": "Nemotron Super 3 120B",
-          "id": "nvidia.nemotron-super-3-120b"
-        },
-        "llama-3-1-8b": {
-          "name": "Gemma 3 27B",
-          "id": "google.gemma-3-27b-it"
-        }
-      }
-    }
-  },
+   "provider": {
+     "amazon-bedrock": {
+       "npm": "@ai-sdk/amazon-bedrock",
+       "name": "AWS Bedrock",
+       "options": {
+         "apiKey": "{env:AWS_BEARER_TOKEN_BEDROCK}",
+         "region": "{env:AWS_REGION}"
+       },
+       "models": {
+         "amazon-nova-pro": {
+           "name": "Amazon Nova Pro",
+           "id": "eu.amazon.nova-pro-v1:0"
+         },
+         "amazon-nova-lite": {
+           "name": "Amazon Nova Lite",
+           "id": "eu.amazon.nova-lite-v1:0"
+         },
+         "mistral-large-2": {
+           "name": "Mistral Large 2",
+           "id": "eu.mistral.mistral-large-2407-v1:0"
+         },
+         "llama-3-1-70b": {
+           "name": "Meta Llama 3.1 70B",
+           "id": "eu.meta.llama3-1-70b-instruct-v1:0"
+         },
+         "llama-3-1-8b": {
+           "name": "Meta Llama 3.1 8B",
+           "id": "eu.meta.llama3-1-8b-instruct-v1:0"
+         }
+       }
+     }
+   },
   "plugin": [
     ".opencode/plugins/graphify.js",
     "opencode-vibeguard",

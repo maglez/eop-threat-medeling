@@ -1,7 +1,7 @@
 ---
 description: Interactive Product Owner - Drives user discovery, mandates Walking Skeleton as Story #1, designs Feature-Flagged INVEST stories, manages Jira backlogs, and tracks in-sprint vs escaped defects.
 mode: subagent
-model: claude-3-5-sonnet
+model: amazon-nova-pro
 temperature: 0.3
 ---
 

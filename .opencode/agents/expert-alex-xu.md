@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Ultra-High-Scale Distributed Systems, System Design Interview Standards, & Large-Scale Storage.
 mode: subagent
-model: claude-3-5-sonnet
+model: amazon-nova-pro
 temperature: 0.2
 ---
 

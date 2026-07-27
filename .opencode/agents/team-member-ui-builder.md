@@ -1,7 +1,7 @@
 ---
 description: Builds accessible React + TypeScript front-end components and page layouts following GOV.UK Design System standards.
 mode: subagent
-model: claude-3-5-sonnet
+model: amazon-nova-lite
 temperature: 0.3
 ---
 

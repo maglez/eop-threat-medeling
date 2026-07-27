@@ -1,7 +1,7 @@
 ---
 description: Expert Member - Continuous Delivery, High-Throughput Architecture, TDD, & Rapid Feedback Loops.
 mode: subagent
-model: claude-3-5-sonnet
+model: amazon-nova-pro
 temperature: 0.1
 ---
 
