@@ -93,21 +93,21 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 | Agent | Primary Role | Model Short Name | Mantle Model ID | Family | Temp |
 |---|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.1 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | amazon-nova-pro | deepseek.v3.2 | DeepSeek | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | qwen.qwen3-coder-next | Qwen (Alibaba) | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | mistral-large-2 | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.3 |
-| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | amazon-nova-lite | moonshotai.kimi-k2.5 | Moonshot AI (Kimi) | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | mistral-large-2 | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | llama-3-1-70b | nvidia.nemotron-super-3-120b | NVIDIA | 0.1 |
-| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | llama-3-1-8b | google.gemma-3-27b-it | Gemma (Google) | 0.2 |
+| @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.3 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.1 |
+| @team-member-devops-engineer | Terraform, CDK & CI/CD | claude-opus-5 | zen.v3.2 | OpenCode Zen | 0.1 |
+| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | gpt-5.1 | Qwen (Alibaba) | 0.2 |
+| @team-member-db-designer | Schemas, DDL Migrations & Queries | gpt-5.2-codex | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.1 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.3 |
+| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | gpt-5.2-codex | gpt-5.2-codex | Moonshot AI (Kimi) | 0.1 |
+| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | gpt-5.2-codex | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.0 |
+| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | claude-sonnet-4.6 | nvidia.nemotron-super-3-120b | NVIDIA | 0.1 |
+| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | gpt-5.1 | google.gemma-3-27b-it | Gemma (Google) | 0.2 |
 | **Expert Advisors** | | | | | |
-| @expert-alex-xu | Distributed Systems & System Design | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.2 |
-| @expert-dave-farley | Continuous Delivery & TDD | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.1 |
-| @expert-kent-beck | TDD & XP | llama-3-1-70b | nvidia.nemotron-super-3-120b | NVIDIA | 0.2 |
-| @expert-uncle-bod | SOLID & Clean Architecture | claude-3-5-sonnet | deepseek.v3.1 | DeepSeek | 0.2 |
+| @expert-alex-xu | Distributed Systems & System Design | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.2 |
+| @expert-dave-farley | Continuous Delivery & TDD | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.1 |
+| @expert-kent-beck | TDD & XP | claude-sonnet-4.6 | nvidia.nemotron-super-3-120b | NVIDIA | 0.2 |
+| @expert-uncle-bod | SOLID & Clean Architecture | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.2 |
 
 > **Model Alias Mapping:** The "Model Short Name" column shows the identifier used in each agent's `model:` frontmatter field. These short names are mapped to actual Mantle API model IDs via the `id` field in `opencode.json`'s provider configuration (see §3.4). This decoupling allows changing the underlying model without editing every agent file.
 
@@ -137,14 +137,14 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.4 Provider Architecture
 
-OpenCode routes all LLM requests through a single provider configured in `opencode.json`. The connection uses the AWS Bedrock Mantle (Stream Responses) endpoint exposed via an OpenAI-compatible API.
+OpenCode routes all LLM requests through a single provider configured in `opencode.json`. The connection uses the AWS Zen Mantle (Stream Responses) endpoint exposed via an OpenAI-compatible API.
 
 #### Connection Details
 
 | Property | Value |
 |---|---|
-| Provider ID | `bedrock-mantle` |
-| Endpoint | `https://bedrock-mantle.eu-west-2.api.aws/v1` |
+| Provider ID | `zen` |
+| Endpoint | `https://zen.eu-west-2.api.aws/v1` |
 | SDK Package | `@ai-sdk/openai-compatible` |
 | Auth Header | `Authorization: Bearer <api-key>` (OpenAI-compatible) |
 | API Key Source | `OPENAI_API_KEY` env var (loaded via direnv from `.env`) |
@@ -155,15 +155,15 @@ Agent configs reference models by short names (e.g., `claude-3-5-sonnet`). The p
 
 ```json
 "claude-3-5-sonnet": {
-  "name": "DeepSeek V3.1",
-  "id": "deepseek.v3.1"
+  "name": "OpenCode Zen V3.1",
+  "id": "zen.v3.1"
 }
 ```
 
 This decoupling means:
 - **Changing the underlying model** requires only a config edit in `opencode.json`, not every agent file.
 - **Display names** in the model picker are set via the `name` field.
-- **The API model ID** sent in requests is the `id` field value (e.g., `deepseek.v3.1`).
+- **The API model ID** sent in requests is the `id` field value (e.g., `zen.v3.1`).
 
 #### Available Models
 
@@ -171,13 +171,13 @@ The Mantle marketplace exposes these models (subject to change):
 
 | Short Name | Mantle Model ID | Use Case |
 |---|---|---|
-| claude-3-5-sonnet | deepseek.v3.1 | General purpose, coding, architecture |
-| claude-3-5-haiku | qwen.qwen3-coder-next | Fast coding specialist |
-| amazon-nova-pro | deepseek.v3.2 | Latest DeepSeek, complex reasoning |
-| amazon-nova-lite | moonshotai.kimi-k2.5 | General purpose, API testing |
-| mistral-large-2 | mistral.mistral-large-3-675b-instruct | Security audits, DB schema |
-| llama-3-1-70b | nvidia.nemotron-super-3-120b | Code review, static analysis |
-| llama-3-1-8b | google.gemma-3-27b-it | Fast throughput, performance tests |
+| claude-3-5-sonnet | zen.v3.1 | General purpose, coding, architecture |
+| claude-3-5-haiku | gpt-5.1 | Fast coding specialist |
+| claude-opus-5 | zen.v3.2 | Latest OpenCode Zen, complex reasoning |
+| gpt-5.2-codex | gpt-5.2-codex | General purpose, API testing |
+| gpt-5.2-codex | mistral.mistral-large-3-675b-instruct | Security audits, DB schema |
+| claude-sonnet-4.6 | nvidia.nemotron-super-3-120b | Code review, static analysis |
+| gpt-5.1 | google.gemma-3-27b-it | Fast throughput, performance tests |
 
 ---
 
@@ -240,7 +240,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 | Local Development Guide | 29 | Setup guide, env vars, Maven Wrapper, JDK 21 install, project structure, doc references |
 | 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 29 | Agent model matrix, model ID mappings, provider config, agent responsibilities |
 | opencode-setup.md | 26 | AGENTS.md — Clean Architecture, Security by Design, project conventions, ADR references |
-| bedrock-mantle | 24 | Provider connectivity — MCP endpoint, auth, model definitions, env vars, ADR refs |
+| zen | 24 | Provider connectivity — MCP endpoint, auth, model definitions, env vars, ADR refs |
 | Non-Negotiable Rules | 19 | Defect tracking, DoD, deployment strategy, Gherkin BDD, acceptance criteria |
 | Local Development Guide | 19 | DB migrations, changelog conventions, environment variables, dev workflow |
 | atlassian | 18 | Jira MCP server config, env vars, changelog, versioning, ADR references |
@@ -379,7 +379,7 @@ source ~/.zshrc
 cp .env.example .env   # if an example exists, or create manually
 # Edit .env with your credentials:
 #   OPENAI_API_KEY=...
-#   OPENAI_BASE_URL=https://bedrock-mantle.eu-west-2.api.aws/v1
+#   OPENAI_BASE_URL=https://zen.eu-west-2.api.aws/v1
 #   JIRA_URL=...
 #   JIRA_API_TOKEN=...
 
@@ -398,7 +398,7 @@ direnv allow
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | Bedrock Mantle API key (bearer token) |
+| `OPENAI_API_KEY` | Zen Mantle API key (bearer token) |
 | `OPENAI_BASE_URL` | Mantle endpoint URL |
 | `JIRA_URL` | Atlassian instance URL |
 | `JIRA_API_TOKEN` | Jira API token |
@@ -489,7 +489,7 @@ Before running any prompt, ensure your local environment is set up:
 - [ ] **`.env` populated** — `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `JIRA_URL`, `JIRA_API_TOKEN`
 - [ ] **direnv allowed** — `direnv allow` in the project root (run once per clone)
 - [ ] **OpenCode config installed** — `.opencode/opencode.json` and `.opencode/agents/` present
-- [ ] **Models verified** — `opencode models bedrock-mantle` lists all 7 models
+- [ ] **Models verified** — `opencode models zen` lists all 7 models
 - [ ] **Jira MCP connected** — `/connect` in the TUI with Atlassian credentials (optional, for issue tracking)
 
 See §7.6 for detailed setup instructions and [docs/devops/local-development.md](../devops/local-development.md) for the full guide.
@@ -550,7 +550,7 @@ Graphify generates a persistent AST-level knowledge graph of the entire codebase
 
 ### 12.2 VibeGuard — Secret Redaction (installed, active at next startup)
 
-Redacts configured sensitive strings before requests reach the LLM provider (Bedrock Mantle) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
+Redacts configured sensitive strings before requests reach the LLM provider (Zen Mantle) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
 
 - **Package**: `opencode-vibeguard` (npm)
 - **Config**: `.opencode/vibeguard.config.json`
