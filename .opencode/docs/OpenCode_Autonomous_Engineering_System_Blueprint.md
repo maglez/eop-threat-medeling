@@ -4,6 +4,53 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
 
 ---
 
+## Table of Contents
+
+- [1. Introduction & Core Objective](#1-introduction--core-objective)
+- [2. Architectural Foundations & Delivery Paradigms](#2-architectural-foundations--delivery-paradigms)
+  - [2.1 Walking Skeleton First](#21-walking-skeleton-first)
+  - [2.2 Trunk-Based Development](#22-trunk-based-development-over-gitflow)
+  - [2.3 Continuous Deployment](#23-continuous-deployment-deploy-every-passing-commit)
+  - [2.4 Feature Flags](#24-decoupling-deployment-from-release-feature-flags)
+- [3. Multi-Agent Architecture & Model Allocation](#3-multi-agent-architecture--multi-model-allocation-strategy)
+  - [3.1 Defence-in-Depth Model Allocation](#31-defence-in-depth-model-allocation)
+  - [3.2 Agent Model Matrix](#32-agent-model-matrix)
+  - [3.3 Agent Responsibilities](#33-agent-responsibilities)
+  - [3.4 Provider Architecture](#34-provider-architecture)
+- [4. Expert Advisory System](#4-expert-advisory-system--curation-strategy)
+  - [4.1 Pruning Expert Noise](#41-pruning-expert-noise-why-less-is-more)
+- [5. Visual Knowledge Graph Overview](#5-visual-knowledge-graph-overview)
+  - [5.1 Cost Optimisation Through Graphify](#51-cost-optimisation-through-graphify)
+  - [5.2 Graph Statistics](#52-graph-statistics-current)
+  - [5.3 Community Breakdown](#53-community-breakdown-top-10-by-node-count)
+  - [5.4 God Nodes](#54-god-nodes-most-connected)
+  - [5.5 HTML Visualisation](#55-html-visualisation-features)
+- [6. Context Hygiene & Optimisation](#6-context-hygiene--optimisation-protocols)
+  - [6.1 Session Discipline](#61-session-discipline)
+  - [6.2 Graphify Integration](#62-graphify-integration)
+- [7. Ecosystem Integrations & Governance](#7-ecosystem-integrations--governance-rules)
+  - [7.1 Documentation Strategy](#71-documentation-strategy)
+  - [7.2 Jira Integration](#72-jira-integration)
+  - [7.3 GitHub MCP Integration](#73-github-mcp-integration)
+  - [7.4 AWS Security & OIDC](#74-aws-security--passwordless-oidc)
+  - [7.5 Mandatory Git Commit Ticket Prefix](#75-mandatory-git-commit-ticket-prefix)
+  - [7.6 Local Development Environment](#76-local-development-environment)
+  - [7.7 Custom Commands](#77-custom-commands)
+- [8. End-to-End Operational Workflow](#8-end-to-end-operational-workflow)
+- [9. How to Adapt This Blueprint](#9-how-to-adapt-this-blueprint)
+- [10. Prerequisites](#10-prerequisites)
+- [11. Recommended Approach](#11-recommended-approach)
+  - [11.1 Sample First Prompt](#111-sample-first-prompt)
+- [12. Plugins](#12-plugins)
+  - [12.1 Graphify](#121-graphify--knowledge-graph-installed-data-available)
+  - [12.2 VibeGuard](#122-vibeguard--secret-redaction-installed-active-at-next-startup)
+  - [12.3 DCP](#123-dynamic-context-pruning--dcp-installed-active-at-next-startup)
+  - [12.4 Supermemory](#124-supermemory--cross-session-memory-installed-requires-authentication)
+  - [12.5 Type Inject](#125-type-inject--typescript-type-context-installed)
+  - [12.6 Notificator](#126-notificator--desktop-notifications-installed)
+  - [12.7 Scheduler](#127-scheduler--recurring-agent-jobs-installed)
+  - [12.8 Goal Plugin](#128-goal-plugin--session-scoped-goals-installed)
+
 ## 1. Introduction & Core Objective
 
 This document outlines the architectural blueprint, design philosophy, and operational guardrails of an enterprise-grade Multi-Agent Software Development System built inside OpenCode. The objective is to transform AI from a basic auto-complete snippet generator into a structured, highly disciplined, and autonomous engineering team capable of planning, executing, auditing, and continuously deploying production code.
