@@ -91,25 +91,28 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.2 Agent Model Matrix
 
-| Agent | Primary Role | Model Short Name | Mantle Model ID | Family | Temp |
+| Agent | Primary Role | Model | Family | Role | Temp |
 |---|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.1 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | claude-opus-5 | zen.v3.2 | OpenCode Zen | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | claude-3-5-haiku | gpt-5.1 | Qwen (Alibaba) | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | gpt-5.2-codex | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.3 |
-| @team-member-tester-unit-and-quality / @team-member-tester-api | Test Suite Automation & Payload Checks | gpt-5.2-codex | gpt-5.2-codex | Moonshot AI (Kimi) | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | gpt-5.2-codex | mistral.mistral-large-3-675b-instruct | Mistral AI | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | claude-sonnet-4.6 | nvidia.nemotron-super-3-120b | NVIDIA | 0.1 |
-| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | gpt-5.1 | google.gemma-3-27b-it | Gemma (Google) | 0.2 |
+| @team-member-product-owner | Requirement Discovery & BDD Criteria | `opencode/claude-sonnet-4-6` | Anthropic | Author | 0.3 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | `opencode/claude-opus-5` | Anthropic | Planner | 0.1 |
+| @team-member-devops-engineer | Terraform, CDK & CI/CD | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
+| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | `opencode/claude-opus-5` | Anthropic | Audit | 0.2 |
+| @team-member-db-designer | Schemas, DDL Migrations & Queries | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `opencode/claude-sonnet-4-6` | Anthropic | Author | 0.3 |
+| @team-member-tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
+| @team-member-tester-api | API Contract & Payload Verification | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
+| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `opencode/claude-opus-5` | Anthropic | Audit | 0.0 |
+| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | `opencode/claude-sonnet-4-6` | Anthropic | Audit | 0.1 |
+| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.2 |
 | **Expert Advisors** | | | | | |
-| @expert-alex-xu | Distributed Systems & System Design | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.2 |
-| @expert-dave-farley | Continuous Delivery & TDD | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.1 |
-| @expert-kent-beck | TDD & XP | claude-sonnet-4.6 | nvidia.nemotron-super-3-120b | NVIDIA | 0.2 |
-| @expert-uncle-bod | SOLID & Clean Architecture | claude-3-5-sonnet | zen.v3.1 | OpenCode Zen | 0.2 |
+| @expert-alex-xu | Distributed Systems & System Design | `opencode/claude-opus-5` | Anthropic | Advisory | 0.2 |
+| @expert-dave-farley | Continuous Delivery & TDD | `opencode/claude-sonnet-4-6` | Anthropic | Advisory | 0.1 |
+| @expert-kent-beck | TDD & XP | `opencode/claude-sonnet-4-6` | Anthropic | Advisory | 0.2 |
+| @expert-uncle-bod | SOLID & Clean Architecture | `opencode/claude-opus-5` | Anthropic | Advisory | 0.2 |
 
-> **Model Alias Mapping:** The "Model Short Name" column shows the identifier used in each agent's `model:` frontmatter field. These short names are mapped to actual Mantle API model IDs via the `id` field in `opencode.json`'s provider configuration (see §3.4). This decoupling allows changing the underlying model without editing every agent file.
+> **Model References:** The `Model` column is the exact value of each agent's `model:` frontmatter field in `.opencode/agents/*.md`, which is the single source of truth for model allocation. Zen model IDs are fully qualified as `opencode/<model-id>` — see §3.4. Note that Zen uses **dashes** in Claude version numbers (`claude-sonnet-4-6`) but **dots** for OpenAI and Google (`gpt-5.3-codex`, `gemini-3.5-flash-lite`); an unqualified or mis-punctuated ID fails silently at invoke time.
+
+> **Defence-in-Depth Exception:** @team-member-ui-builder authors on Anthropic while its reviewers (@team-member-code-reviewer, @team-member-security-auditor) are also Anthropic, so front-end work does not get the cross-family audit described in §3.1. This is a deliberate trade-off — WCAG 2.2 AA / GOV.UK correctness was prioritised over family separation. Switch it to `opencode/gpt-5.3-codex` to restore full separation.
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
@@ -137,47 +140,65 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.4 Provider Architecture
 
-OpenCode routes all LLM requests through a single provider configured in `opencode.json`. The connection uses the AWS Zen Mantle (Stream Responses) endpoint exposed via an OpenAI-compatible API.
+OpenCode routes all LLM requests through **OpenCode Zen**, a curated multi-vendor AI gateway operated by the OpenCode team. Zen is a **built-in provider** — it requires **no** `provider` block in `opencode.json`. Declaring a custom provider for Zen (e.g. a fabricated `@ai-sdk/zen` npm package) breaks model resolution.
 
 #### Connection Details
 
 | Property | Value |
 |---|---|
-| Provider ID | `zen` |
-| Endpoint | `https://zen.eu-west-2.api.aws/v1` |
-| SDK Package | `@ai-sdk/openai-compatible` |
-| Auth Header | `Authorization: Bearer <api-key>` (OpenAI-compatible) |
-| API Key Source | `OPENAI_API_KEY` env var (loaded via direnv from `.env`) |
+| Provider ID | `opencode` |
+| Model reference format | `opencode/<model-id>` |
+| Endpoint (Anthropic family) | `https://opencode.ai/zen/v1/messages` — `@ai-sdk/anthropic` |
+| Endpoint (OpenAI family) | `https://opencode.ai/zen/v1/responses` — `@ai-sdk/openai` |
+| Endpoint (Google family) | `https://opencode.ai/zen/v1/models/<model-id>` — `@ai-sdk/google` |
+| Model catalogue | `https://opencode.ai/zen/v1/models` (authoritative, live) |
+| Auth | Zen API key from https://opencode.ai/auth, registered via `/connect` in the TUI |
+| Credential store | `~/.local/share/opencode/auth.json` under key `opencode` — **not** an env var, never in `.env` |
 
-#### Model ID Mapping
+Zen is billed pay-as-you-go per request against workspace credits. Endpoint and SDK package are selected automatically per model family; the table above documents them for out-of-band API use only.
 
-Agent configs reference models by short names (e.g., `claude-3-5-sonnet`). The provider config maps each short name to a concrete Mantle model ID via the `id` field:
+#### Model Resolution
 
-```json
-"claude-3-5-sonnet": {
-  "name": "OpenCode Zen V3.1",
-  "id": "zen.v3.1"
-}
+Agents reference models directly by fully qualified Zen ID in their `model:` frontmatter. There is no alias indirection layer:
+
+```yaml
+---
+description: Audits code for security, performance and Clean Code standards
+mode: subagent
+model: opencode/claude-sonnet-4-6
+temperature: 0.1
+---
 ```
 
-This decoupling means:
-- **Changing the underlying model** requires only a config edit in `opencode.json`, not every agent file.
-- **Display names** in the model picker are set via the `name` field.
-- **The API model ID** sent in requests is the `id` field value (e.g., `zen.v3.1`).
+Defaults are set in `.opencode/opencode.json`:
 
-#### Available Models
+```json
+"model": "opencode/claude-opus-5",
+"small_model": "opencode/gemini-3.5-flash-lite"
+```
 
-The Mantle marketplace exposes these models (subject to change):
+- `model` — default for primary agents and any subagent that omits `model:`.
+- `small_model` — used for session titles and summaries. Pointing this at a cheap model avoids spending flagship-tier tokens on housekeeping.
 
-| Short Name | Mantle Model ID | Use Case |
-|---|---|---|
-| claude-3-5-sonnet | zen.v3.1 | General purpose, coding, architecture |
-| claude-3-5-haiku | gpt-5.1 | Fast coding specialist |
-| claude-opus-5 | zen.v3.2 | Latest OpenCode Zen, complex reasoning |
-| gpt-5.2-codex | gpt-5.2-codex | General purpose, API testing |
-| gpt-5.2-codex | mistral.mistral-large-3-675b-instruct | Security audits, DB schema |
-| claude-sonnet-4.6 | nvidia.nemotron-super-3-120b | Code review, static analysis |
-| gpt-5.1 | google.gemma-3-27b-it | Fast throughput, performance tests |
+#### Allocated Models
+
+Three models cover the whole team. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output).
+
+| Model ID | Vendor | Price | Allocated To |
+|---|---|---|---|
+| `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
+| `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, UI Builder, Dave Farley, Kent Beck |
+| `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, both Testers, Performance Engineer |
+| `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only |
+
+#### Deprecation Watch
+
+Zen retires models on published dates (see the Deprecated models table at https://opencode.ai/docs/zen). Retired IDs stay listed in the catalogue for a period but must not be used. Already retired and explicitly avoided here:
+
+- `gpt-5.2-codex`, `gpt-5.1-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, `gpt-5-codex` — retired 2026-07-23
+- `claude-sonnet-4` — retired 2026-06-15; `claude-opus-4-1` — retires 2026-08-05
+
+Re-check this list before changing any agent's model.
 
 ---
 
@@ -240,7 +261,7 @@ The result: agents spend tokens on reasoning and code generation, not on re-disc
 | Local Development Guide | 29 | Setup guide, env vars, Maven Wrapper, JDK 21 install, project structure, doc references |
 | 3. Multi-Agent Architecture & Multi-Model Allocation Strategy | 29 | Agent model matrix, model ID mappings, provider config, agent responsibilities |
 | opencode-setup.md | 26 | AGENTS.md — Clean Architecture, Security by Design, project conventions, ADR references |
-| zen | 24 | Provider connectivity — MCP endpoint, auth, model definitions, env vars, ADR refs |
+| opencode (Zen) | 24 | Provider connectivity — Zen endpoints, auth, model allocation, ADR refs |
 | Non-Negotiable Rules | 19 | Defect tracking, DoD, deployment strategy, Gherkin BDD, acceptance criteria |
 | Local Development Guide | 19 | DB migrations, changelog conventions, environment variables, dev workflow |
 | atlassian | 18 | Jira MCP server config, env vars, changelog, versioning, ADR references |
@@ -378,10 +399,10 @@ source ~/.zshrc
 # 3. Copy and populate the env file
 cp .env.example .env   # if an example exists, or create manually
 # Edit .env with your credentials:
-#   OPENAI_API_KEY=...
-#   OPENAI_BASE_URL=https://zen.eu-west-2.api.aws/v1
 #   JIRA_URL=...
 #   JIRA_API_TOKEN=...
+# NOTE: the Zen API key does NOT go here — register it with `/connect` in the
+# TUI; OpenCode stores it in ~/.local/share/opencode/auth.json.
 
 # 4. Allow direnv for this project
 direnv allow
@@ -398,8 +419,6 @@ direnv allow
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | Zen Mantle API key (bearer token) |
-| `OPENAI_BASE_URL` | Mantle endpoint URL |
 | `JIRA_URL` | Atlassian instance URL |
 | `JIRA_API_TOKEN` | Jira API token |
 | `JIRA_USERNAME` | Jira bot user email |
@@ -486,10 +505,11 @@ Teams looking to build a similar system can customise this blueprint with three 
 Before running any prompt, ensure your local environment is set up:
 
 - [ ] **direnv installed** — `brew install direnv` + hook in `~/.zshrc`
-- [ ] **`.env` populated** — `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `JIRA_URL`, `JIRA_API_TOKEN`
+- [ ] **`.env` populated** — `JIRA_URL`, `JIRA_API_TOKEN`, `JIRA_USERNAME`, `GITHUB_TOKEN`
+- [ ] **Zen authenticated** — `/connect` → OpenCode Zen; key present in `~/.local/share/opencode/auth.json`
 - [ ] **direnv allowed** — `direnv allow` in the project root (run once per clone)
 - [ ] **OpenCode config installed** — `.opencode/opencode.json` and `.opencode/agents/` present
-- [ ] **Models verified** — `opencode models zen` lists all 7 models
+- [ ] **Models verified** — `opencode models | grep '^opencode/'` lists every ID used in `.opencode/agents/*.md` and `.opencode/opencode.json`
 - [ ] **Jira MCP connected** — `/connect` in the TUI with Atlassian credentials (optional, for issue tracking)
 
 See §7.6 for detailed setup instructions and [docs/devops/local-development.md](../devops/local-development.md) for the full guide.
@@ -550,7 +570,7 @@ Graphify generates a persistent AST-level knowledge graph of the entire codebase
 
 ### 12.2 VibeGuard — Secret Redaction (installed, active at next startup)
 
-Redacts configured sensitive strings before requests reach the LLM provider (Zen Mantle) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
+Redacts configured sensitive strings before requests reach the LLM provider (OpenCode Zen) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
 
 - **Package**: `opencode-vibeguard` (npm)
 - **Config**: `.opencode/vibeguard.config.json`
