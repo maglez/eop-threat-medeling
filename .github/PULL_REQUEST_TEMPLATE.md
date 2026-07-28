@@ -4,7 +4,7 @@
 
 ## Related Issue
 
-`[THREAT-NNN]`
+`[EOP-NNN]` — the Jira issue key (`EOP` is the project key, not a word)
 
 ## Type of Change
 

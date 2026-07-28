@@ -75,10 +75,10 @@ When generating UI code, always deliver:
 4. Accessibility justification detailing how the component meets WCAG 2.2 standards.
 
 # Git Commit Message Protocol
-- Every Git commit message MUST begin with the uppercase Jira issue key (e.g., `THREAT-101`).
+- Every Git commit message MUST begin with the uppercase Jira issue key (e.g., `EOP-101`).
 - Recommended Structure: `[JIRA-KEY] <type>: <short summary>`
 - Examples:
-  - `[THREAT-12] feat: implement card dealing animation`
-  - `[THREAT-45] fix: resolve WebSocket disconnect on turn timeout`
-  - `[THREAT-1] chore: configure Walking Skeleton GitHub Actions workflow`
+  - `[EOP-12] feat: implement card dealing animation`
+  - `[EOP-45] fix: resolve WebSocket disconnect on turn timeout`
+  - `[EOP-1] chore: configure Walking Skeleton GitHub Actions workflow`
 - NEVER make a commit without an active Jira ticket prefix.
