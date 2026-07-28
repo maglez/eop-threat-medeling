@@ -40,7 +40,7 @@ As the project grows beyond Walking Skeleton, add stages:
 
 | Stage | When | What |
 |---|---|---|
-| Static analysis | Next sprint | SpotBugs / PMD / Checkstyle |
+| Static analysis | Next story | SpotBugs / PMD / Checkstyle |
 | Security scan | Before release | OWASP dependency check |
 | Deployment | Before release | `aws-actions/configure-aws-credentials` + CDK/Terraform |
 | Mutation testing | Before release | PIT mutation coverage |
