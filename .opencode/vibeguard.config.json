@@ -1,17 +1,36 @@
 {
   "enabled": true,
   "debug": false,
-  "redact": {
-    "patterns": [
-      { "pattern": "OPENAI_API_KEY", "category": "api-key" },
-      { "pattern": "JIRA_API_TOKEN", "category": "jira-token" },
-      { "pattern": "GITHUB_TOKEN", "category": "github-token" },
-      { "pattern": "DATASOURCE_PASSWORD", "category": "db-password" },
-      { "pattern": "SUPERMEMORY_API_KEY", "category": "memory-key" },
-      { "pattern": "sk-[a-zA-Z0-9]{20,}", "category": "openai-key" },
-      { "pattern": "ghp_[a-zA-Z0-9]{36}", "category": "github-pat" },
-      { "pattern": "ATATT[A-Za-z0-9=]+", "category": "atlassian-token" }
+  "placeholder_prefix": "__VG_",
+  "session": {
+    "ttl": "1h",
+    "max_mappings": 100000
+  },
+  "patterns": {
+    "regex": [
+      {
+        "pattern": "(?i)(?<=(?:password|passwd|secret|api_?key|token|credential)[a-z0-9_]*[ \\t]*[:=][ \\t]*[\"']?)[^\\s\"']+",
+        "category": "ENV_SECRET"
+      },
+      { "pattern": "ATATT[A-Za-z0-9_=-]{20,}", "category": "JIRA_TOKEN" },
+      { "pattern": "(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}", "category": "GITHUB_TOKEN" },
+      { "pattern": "github_pat_[A-Za-z0-9_]{20,}", "category": "GITHUB_PAT" },
+      { "pattern": "sk-[A-Za-z0-9_-]{20,}", "category": "AI_PROVIDER_KEY" },
+      { "pattern": "sm_[A-Za-z0-9_-]{20,}", "category": "SUPERMEMORY_KEY" },
+      { "pattern": "ABSK[A-Za-z0-9+/=]{40,}", "category": "AWS_BEARER_TOKEN" },
+      { "pattern": "AKIA[0-9A-Z]{16}", "category": "AWS_ACCESS_KEY" },
+      { "pattern": "(?:eyJ[A-Za-z0-9_-]{10,}\\.){2}[A-Za-z0-9_-]{10,}", "category": "JWT" },
+      { "pattern": "-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----", "category": "PRIVATE_KEY" },
+      {
+        "pattern": "(?i)jdbc:[a-z0-9]+://[^\\s\"']*:[^\\s\"'@]+@[^\\s\"']+",
+        "category": "JDBC_CREDENTIALS"
+      }
     ],
-    "exclude": []
+    "exclude": [
+      "example.com",
+      "localhost",
+      "127.0.0.1",
+      "0.0.0.0"
+    ]
   }
 }
