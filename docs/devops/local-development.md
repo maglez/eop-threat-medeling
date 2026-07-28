@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - **Java 21** (JDK) — Install via [Homebrew](https://brew.sh): `brew install openjdk@21`
-- **Node.js 20+** — for the front-end (React + Vite). Install via [Homebrew](https://brew.sh): `brew install node`
+- **Node.js 20+** — for the OpenCode plugins in `.opencode/` (and the planned React front-end). Install via [Homebrew](https://brew.sh): `brew install node`
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** (optional, for MCP servers)
 - **GitHub PAT** with `repo` scope — for MCP integration
@@ -20,7 +20,7 @@ cd eop-threat-medeling
 direnv allow
 
 # 3. Verify env vars loaded
-echo $OPENAI_API_KEY
+echo $GITHUB_TOKEN
 
 # 4. Build and test
 ./mvnw compile
@@ -35,8 +35,6 @@ echo $OPENAI_API_KEY
 
 | Variable | Required | Source | Purpose |
 |---|---|---|---|
-| `OPENAI_API_KEY` | Yes | AWS Bedrock Mantle | AI provider auth |
-| `OPENAI_BASE_URL` | Yes | AWS Bedrock Mantle | Provider endpoint |
 | `JAVA_HOME` | Yes | JDK 21 install | Path to JDK 21 (e.g. `/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`) |
 | `GITHUB_TOKEN` | Yes | GitHub PAT | GitHub MCP auth |
 | `JIRA_URL` | For Jira | Atlassian | Jira instance URL |
@@ -47,6 +45,18 @@ echo $OPENAI_API_KEY
 | `DATASOURCE_PASSWORD` | For prod | PostgreSQL | DB password (default: empty for dev) |
 
 All vars go in `.env` (gitignored).
+
+### AI provider auth
+
+The AI provider needs **no environment variables**. OpenCode Zen is a built-in
+provider (id `opencode`); its key lives in `~/.local/share/opencode/auth.json`
+and is set once by running `/connect` inside the OpenCode TUI. Verify with:
+
+```bash
+opencode models | grep '^opencode/'
+```
+
+See Blueprint §3.4 for the model allocation and endpoints.
 
 ## Database
 
@@ -130,11 +140,14 @@ Each subsequent run adds data to InfluxDB — the Grafana dashboard accumulates 
 
 See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/config/options.js` for thresholds.
 
-## Front-End (React + TypeScript)
+## Front-End (React + TypeScript) — NOT YET SCAFFOLDED
 
-The front-end lives in `ui/` and uses React + TypeScript + Vite with GOV.UK Design System styling.
+> **Status: planned, not implemented.** There is no `ui/` directory in the
+> repository yet. ADR-009 selects React + TypeScript + Vite with GOV.UK Design
+> System styling, but no code has been written. The commands below describe the
+> intended layout and will not work until the front-end is scaffolded.
 
-### Quick start
+### Planned quick start
 
 ```bash
 cd ui
@@ -143,7 +156,7 @@ npm run dev
 # Opens at http://localhost:5173 — proxies /api/* to Spring Boot on :8080
 ```
 
-### Development workflow
+### Planned development workflow
 
 ```
 Terminal 1: ./mvnw spring-boot:run     # API on :8080
@@ -159,12 +172,17 @@ Terminal 2: cd ui && npm run dev        # Front-end on :5173
 | `./mvnw verify` | Full verification (including integration tests) |
 | `./mvnw spring-boot:run` | Start application on port 8080 |
 | `./mvnw clean` | Clean build artifacts |
-| `cd ui && npm run dev` | Start Vite dev server on port 5173 |
-| `cd ui && npm run build` | Production build to `ui/dist/` |
-| `cd ui && npm test` | Run Vitest + React Testing Library tests |
+
+Front-end commands (`npm run dev`, `npm run build`, `npm test` in `ui/`) are not
+available yet — see the front-end section above.
 
 ## Troubleshooting
 
 - **`direnv: error .envrc is blocked`** — Run `direnv allow`
-- **`Error: Missing authorization header`** — Check `OPENAI_API_KEY` in `.env`
+- **`Error: Missing authorization header` from the AI provider** — Zen auth is not
+  in `.env`. Re-run `/connect` in the OpenCode TUI to refresh
+  `~/.local/share/opencode/auth.json`
+- **`Model not found: <name>/.`** — the model ref is missing its provider prefix
+  or the model was retired. Refs must be fully qualified as `opencode/<id>`;
+  check the live list with `opencode models | grep '^opencode/'`
 - **Java version mismatch** — Run `java --version` and ensure it's 21. Install via Homebrew: `brew install openjdk@21`, set `JAVA_HOME` in `.env`

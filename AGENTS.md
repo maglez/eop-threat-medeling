@@ -28,7 +28,7 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
   - `./mvnw spring-boot:run` — start application on port 8080
 - Domain lives under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation rules
 - Tests mirror source at `src/test/java/org/maglez/eop/`
-- **Front-end:** React + TypeScript + Vite under `ui/`, GOV.UK Design System CSS
+- **Front-end:** *not scaffolded yet.* ADR-009 selects React + TypeScript + Vite under `ui/` with GOV.UK Design System CSS, but no `ui/` directory exists
 - **OpenCode plugins:** Graphify (knowledge graph), VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory) — see Blueprint §11
 
 ## OpenCode Agent System

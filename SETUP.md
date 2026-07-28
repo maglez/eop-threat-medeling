@@ -84,8 +84,10 @@ future audits without new evidence.
 - **`tiktoken`** (transitive via `@anthropic-ai/tokenizer`) — offline WASM
   tokenizer, makes no network calls. No drop-in replacement exists without
   forking upstream plugins.
-- **`@ai-sdk/openai-compatible`** — Vercel AI SDK; load-bearing custom
-  provider wired in `.opencode/opencode.json` (`OPENAI_BASE_URL` endpoint).
+- **`@ai-sdk/openai-compatible`** — **removed.** It existed only to back a
+  custom provider block in `.opencode/opencode.json`. That block was deleted
+  when the project moved to OpenCode Zen, which is a built-in provider
+  (id `opencode`) requiring no SDK dependency and no endpoint env var.
 - **`npm audit` residual: 5 high / 4 low** (ReDoS/DoS-class in
   `glob`/`minimatch`/`brace-expansion` via `@opentui/solid` →
   `babel-plugin-module-resolver`, plus advisories against
