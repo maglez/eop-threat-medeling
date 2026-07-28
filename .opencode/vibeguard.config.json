@@ -8,10 +8,6 @@
   },
   "patterns": {
     "regex": [
-      {
-        "pattern": "(?i)(?<=(?:password|passwd|secret|api_?key|token|credential)[a-z0-9_]*[ \\t]*[:=][ \\t]*[\"']?)[^\\s\"']+",
-        "category": "ENV_SECRET"
-      },
       { "pattern": "ATATT[A-Za-z0-9_=-]{20,}", "category": "JIRA_TOKEN" },
       { "pattern": "(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}", "category": "GITHUB_TOKEN" },
       { "pattern": "github_pat_[A-Za-z0-9_]{20,}", "category": "GITHUB_PAT" },
@@ -24,6 +20,10 @@
       {
         "pattern": "(?i)jdbc:[a-z0-9]+://[^\\s\"']*:[^\\s\"'@]+@[^\\s\"']+",
         "category": "JDBC_CREDENTIALS"
+      },
+      {
+        "pattern": "(?i)(?<=(?:password|passwd|secret|api_?key|token|credential)[a-z0-9_]*[ \\t]*[:=][ \\t]*[\"']?)(?!\\$\\{)[^\\s\"']{12,}",
+        "category": "ENV_SECRET"
       }
     ],
     "exclude": [
