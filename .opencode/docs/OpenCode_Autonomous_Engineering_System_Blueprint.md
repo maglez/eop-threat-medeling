@@ -98,7 +98,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @team-member-devops-engineer | Terraform, CDK & CI/CD | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
 | @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | `opencode/claude-opus-5` | Anthropic | Audit | 0.2 |
 | @team-member-db-designer | Schemas, DDL Migrations & Queries | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `opencode/claude-sonnet-4-6` | Anthropic | Author | 0.3 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.3 |
 | @team-member-tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
 | @team-member-tester-api | API Contract & Payload Verification | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
 | @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `opencode/claude-opus-5` | Anthropic | Audit | 0.0 |
@@ -112,7 +112,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 > **Model References:** The `Model` column is the exact value of each agent's `model:` frontmatter field in `.opencode/agents/*.md`, which is the single source of truth for model allocation. Zen model IDs are fully qualified as `opencode/<model-id>` — see §3.4. Note that Zen uses **dashes** in Claude version numbers (`claude-sonnet-4-6`) but **dots** for OpenAI and Google (`gpt-5.3-codex`, `gemini-3.5-flash-lite`); an unqualified or mis-punctuated ID fails silently at invoke time.
 
-> **Defence-in-Depth Exception:** @team-member-ui-builder authors on Anthropic while its reviewers (@team-member-code-reviewer, @team-member-security-auditor) are also Anthropic, so front-end work does not get the cross-family audit described in §3.1. This is a deliberate trade-off — WCAG 2.2 AA / GOV.UK correctness was prioritised over family separation. Switch it to `opencode/gpt-5.3-codex` to restore full separation.
+> **Separation Invariant:** Every agent that authors code or infrastructure runs on OpenAI (`gpt-5.3-codex`); every agent that audits it runs on Anthropic (`claude-opus-5` / `claude-sonnet-4-6`). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @team-member-product-owner is the one Anthropic-hosted "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee.**
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
@@ -187,8 +187,8 @@ Three models cover the whole team. All are non-deprecated as of 2026-07-27; pric
 | Model ID | Vendor | Price | Allocated To |
 |---|---|---|---|
 | `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
-| `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, UI Builder, Dave Farley, Kent Beck |
-| `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, both Testers, Performance Engineer |
+| `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
+| `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, UI Builder, both Testers, Performance Engineer |
 | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only |
 
 #### Deprecation Watch
