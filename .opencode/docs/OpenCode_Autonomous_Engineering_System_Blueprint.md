@@ -8,7 +8,7 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
 
 - [1. Introduction & Core Objective](#1-introduction--core-objective)
 - [2. Architectural Foundations & Delivery Paradigms](#2-architectural-foundations--delivery-paradigms)
-  - [2.1 Walking Skeleton First](#21-walking-skeleton-first)
+  - [2.1 Walking Skeleton First](#21-walking-skeleton-first-story-1)
   - [2.2 Trunk-Based Development](#22-trunk-based-development-over-gitflow)
   - [2.3 Continuous Deployment](#23-continuous-deployment-deploy-every-passing-commit)
   - [2.4 Feature Flags](#24-decoupling-deployment-from-release-feature-flags)
@@ -44,8 +44,8 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
   - [11.1 Sample First Prompt](#111-sample-first-prompt)
 - [12. Plugins](#12-plugins)
   - [12.1 Graphify](#121-graphify--knowledge-graph-installed-data-available)
-  - [12.2 VibeGuard](#122-vibeguard--secret-redaction-installed-active-at-next-startup)
-  - [12.3 DCP](#123-dynamic-context-pruning--dcp-installed-active-at-next-startup)
+  - [12.2 VibeGuard](#122-vibeguard--secret-redaction-active)
+  - [12.3 DCP](#123-dynamic-context-pruning--dcp-active)
   - [12.4 Supermemory](#124-supermemory--cross-session-memory-installed-requires-authentication)
   - [12.5 Type Inject](#125-type-inject--typescript-type-context-installed)
    - [12.6 Notificator — REMOVED](#126-notificator--desktop-notifications-removed-2026-07-27)
@@ -716,7 +716,7 @@ Graphify generates a persistent AST-level knowledge graph of the entire codebase
 - **Config**: None (auto-detects `graphify-out/graph.json`)
 - **Update**: `graphify update .` (incremental AST rebuild)
 
-### 12.2 VibeGuard — Secret Redaction (installed, active at next startup)
+### 12.2 VibeGuard — Secret Redaction (active)
 
 Redacts configured sensitive strings before requests reach the LLM provider (OpenCode Zen) and restores them after the model responds and before local tool execution. Provider never sees plaintext secrets.
 
@@ -725,7 +725,19 @@ Redacts configured sensitive strings before requests reach the LLM provider (Ope
 - **Data**: None persisted — operates invisibly on every request
 - **Placeholder format**: `__VG_<CATEGORY>_<hash12>__` (HMAC-SHA256, session-random secret, irreversible to provider)
 
-### 12.3 Dynamic Context Pruning — DCP (installed, active at next startup)
+#### Rule design — read before editing the patterns
+
+The config holds ten prefix-anchored rules (`ATATT`, `ghp_`, `sm_`, `AKIA`, JWT, PEM, JDBC-with-inline-credentials, and so on) plus **one generic keyword rule** that catches anything assigned to a variable whose name contains `password`, `secret`, `token`, `api_key` or `credential`. The generic rule is the fragile one, and three properties of it are deliberate:
+
+- **It is declared last.** The engine sorts matches and resolves ties to the earliest-declared rule, so a generic rule declared first would steal the category label from every specific rule — a real Jira token would be tagged `ENV_SECRET` instead of `JIRA_TOKEN`. Order affects labelling, not coverage.
+- **It requires at least 12 characters.** Without a floor the rule fires on ordinary prose: any sentence where one of those keywords precedes `:` or `=` had the following word replaced by a placeholder. This was not cosmetic — it corrupted diagnostic output mid-session and, worse, made `docker-compose.yml` appear to contain hardcoded credentials when every value there is a `${VAR}` reference, nearly triggering a false critical security finding.
+- **It skips `${...}` references** via a negative lookahead, for the same reason. A bare `$VAR` without braces is still redacted; that is accepted.
+
+> **The floor has no margin today.** The two credentials that *only* the generic rule protects — `GF_SECURITY_ADMIN_PASSWORD` and `INFLUXDB_PASSWORD` — are 12 and 14 characters. The shorter one sits exactly on the threshold. **If either is rotated to fewer than 12 characters it silently stops being redacted**: no error, no warning, no log line. Rotate both to 20+ characters and the problem disappears permanently.
+
+There is no minimum-length or confidence setting in the plugin — `normalizeConfig` passes `patterns` through untouched — so any such constraint must be encoded inside the regex itself. Verify changes by importing `engine.js`, `patterns.js` and `session.js` directly from `.opencode/node_modules/opencode-vibeguard/src/` and asserting **both** directions: real secrets still redacted, and known false positives left alone. A harness must live inside `.opencode/` (Node resolves modules from the script's own directory), and `loadConfig` is **async**. Config is read at process start, so a restart is required.
+
+### 12.3 Dynamic Context Pruning — DCP (active)
 
 Reduces token usage by compressing stale conversation spans, deduplicating repeated tool calls, and pruning errored tool inputs. Preserves protected tools (`task`, `skill`, `todowrite`, etc.) and patterns from compression.
 
