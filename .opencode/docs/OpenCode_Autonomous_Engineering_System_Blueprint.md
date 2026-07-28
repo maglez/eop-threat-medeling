@@ -414,24 +414,54 @@ Neither trap is visible by inspection. When adding rules, enumerate every `atlas
 
 ### 7.3 GitHub MCP Integration
 
-Source code management and pull requests are handled via the GitHub MCP plugin, configured alongside Atlassian in `opencode.json`:
+Repository, issue, pull request and Actions context is read through GitHub's **official remote MCP server**, configured alongside Atlassian in `opencode.json`:
 
 ```json
 "github": {
-  "type": "local",
-  "command": ["uvx", "@modelcontextprotocol/github"],
+  "type": "remote",
+  "url": "https://api.githubcopilot.com/mcp/",
   "enabled": true,
-  "environment": {
-    "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
-  }
+  "headers": {
+    "Authorization": "Bearer {env:GITHUB_TOKEN}",
+    "X-MCP-Readonly": "true",
+    "X-MCP-Toolsets": "repos,issues,pull_requests,actions"
+  },
+  "oauth": false,
+  "timeout": 15000
 }
 ```
 
+> **This server is read-only by design.** All GitHub *writes* — branches, commits, pushes, PR creation and merges — go through the `gh` CLI via `bash`, not through MCP. That keeps one audited path for mutations instead of two, and means a misconfigured toolset cannot silently grant merge rights.
+
+#### Why this shape
+
+- **Remote, not local.** The previously documented local server did not exist. `@modelcontextprotocol/github` was never a real package, and `uvx` is the Python runner, so it could not have launched an npm package under any name. The obvious repair is also wrong: `@modelcontextprotocol/server-github` was deprecated on 2025-04-08 with "package no longer supported", development having moved to `github/github-mcp-server`. The remote server is the maintained path and needs no Docker image or cold start.
+- **`X-MCP-Readonly: true`** restricts the exposed tools to reads.
+- **`X-MCP-Toolsets`** is deliberately narrow. The full server exposes 100+ tools across ~20 toolsets; loading `all` would consume a large share of every agent's context for capability nobody uses. Four toolsets cover the actual need. Note that unknown *toolset* names are silently ignored, whereas an invalid name in the alternative `X-MCP-Tools` header prevents the server from starting.
+- **`oauth: false`** disables OpenCode's OAuth auto-detection. Authentication is the PAT in `GITHUB_TOKEN`; without this the client may attempt a dynamic-registration flow that was never configured.
+- **`timeout: 15000`** overrides the 5 000 ms default, which is tight for a first remote handshake.
+
+#### Agent-Level GitHub Permissions
+
+Read-only at the server is the primary control; the permission rules are defence in depth. If a future toolset change or insiders flag reintroduces write tools, they would otherwise arrive pre-approved under the permissive default.
+
+| Profile | Agents | GitHub access |
+|---|---|---|
+| Experts | alex-xu, dave-farley, kent-beck, uncle-bob | `github_*: deny` — no repository access at all |
+| Everyone else | the 9 delivery agents, Product Owner, Tech Lead | reads allowed; write verbs denied |
+
+Denied write patterns in the global block: `github_create_*`, `github_update_*`, `github_delete_*`, `github_merge_*`, `github_push_*`, `github_add_*`, `github_fork_*`, `github_request_copilot_review`. The same last-match-wins glob semantics and the same two traps described in §7.2 apply here.
+
 #### GitHub Protection
 
-- **Fine-Grained PATs**: OpenCode authenticates using Fine-Grained Personal Access Tokens scoped exclusively to targeted repositories. Administration permissions are set to **No Access**.
-- **Branch Protection**: Direct commits to `main` are blocked. Mandatory Pull Requests, green CI status checks, and at least one human approval are required before merging.
-- **History Protection**: Force pushes and branch deletions are permanently disabled on protected branches.
+**Enabled on `main`** (verified against the live API, not aspirational):
+
+- **Pull requests required.** Direct pushes to `main` are rejected. `enforce_admins` is **true**, so the rule binds repository administrators and the agent token as well — without that, protection would not restrain the agents at all, since they authenticate with an `admin: true` credential.
+- **Green CI required.** The `build` status check must pass, in strict mode, so a branch must be up to date with `main` before merging.
+- **Force pushes and branch deletions blocked** for everyone.
+- **Approvals required: 0.** GitHub does not permit approving your own pull request, so on a single-maintainer repository any non-zero requirement would make every PR permanently unmergeable. The maintainer self-merges once `build` is green.
+
+> **Known gap — token scope.** Authentication currently uses a **classic** PAT (`ghp_`) with `repo`, `project` and `write:org`, which grants `admin: true` on this repository and full read/write across *all* the owner's repositories. Because it holds admin rights it can also edit the protection rules above; branch protection therefore converts a silent direct push into a deliberate, auditable act rather than an absolute boundary. Closing this properly means a **fine-grained PAT scoped to this repository with Administration: No Access**, which pairs naturally with the pending rotation of `GITHUB_TOKEN`. Until then, do not describe the token as least-privilege.
 
 ### 7.4 AWS Security & Passwordless OIDC
 

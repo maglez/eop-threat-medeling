@@ -5,7 +5,7 @@
 - **Node.js 20+** — for the OpenCode plugins in `.opencode/` (and the planned React front-end). Install via [Homebrew](https://brew.sh): `brew install node`
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** (optional, for MCP servers)
-- **GitHub PAT** with `repo` scope — for MCP integration
+- **GitHub PAT** with `repo` scope — used by both the read-only GitHub MCP server and the `gh` CLI
 - **Docker Desktop** — for the monitoring stack (InfluxDB + Grafana). [Download here](https://www.docker.com/products/docker-desktop/) or `brew install --cask docker`
 - **k6** — for load testing: `brew install k6`
 
@@ -36,7 +36,7 @@ echo $GITHUB_TOKEN
 | Variable | Required | Source | Purpose |
 |---|---|---|---|
 | `JAVA_HOME` | Yes | JDK 21 install | Path to JDK 21 (e.g. `/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`) |
-| `GITHUB_TOKEN` | Yes | GitHub PAT | GitHub MCP auth |
+| `GITHUB_TOKEN` | Yes | GitHub PAT | GitHub MCP auth (read-only) and `gh` CLI. Writes to `main` go via PR — branch protection blocks direct pushes for everyone, admins included |
 | `JIRA_URL` | For Jira | Atlassian | Jira instance URL |
 | `JIRA_USERNAME` | For Jira | Atlassian | Jira bot email |
 | `JIRA_API_TOKEN` | For Jira | Atlassian | Jira API auth |

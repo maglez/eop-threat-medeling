@@ -5,6 +5,7 @@ model: opencode/claude-opus-5
 temperature: 0.2
 permission:
   atlassian_jira_*: deny
+  github_*: deny
 ---
 
 # Expert Member: Robert C. Martin ("Uncle Bob")

@@ -29,12 +29,16 @@
       }
     },
     "github": {
-      "type": "local",
-      "command": ["uvx", "@modelcontextprotocol/github"],
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
       "enabled": true,
-      "environment": {
-        "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
-      }
+      "headers": {
+        "Authorization": "Bearer {env:GITHUB_TOKEN}",
+        "X-MCP-Readonly": "true",
+        "X-MCP-Toolsets": "repos,issues,pull_requests,actions"
+      },
+      "oauth": false,
+      "timeout": 15000
     }
   },
   "permission": {
@@ -51,7 +55,16 @@
     "atlassian_jira_remove_*": "ask",
     "atlassian_jira_move_*": "ask",
     "atlassian_jira_delete_issue": "deny",
-    "atlassian_jira_move_issue": "deny"
+    "atlassian_jira_move_issue": "deny",
+    "github_*": "allow",
+    "github_create_*": "deny",
+    "github_update_*": "deny",
+    "github_delete_*": "deny",
+    "github_merge_*": "deny",
+    "github_push_*": "deny",
+    "github_add_*": "deny",
+    "github_fork_*": "deny",
+    "github_request_copilot_review": "deny"
   },
   "model": "opencode/claude-opus-5",
   "small_model": "opencode/gemini-3.5-flash-lite",
