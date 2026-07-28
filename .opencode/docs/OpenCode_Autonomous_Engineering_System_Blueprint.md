@@ -333,12 +333,57 @@ Task tracking is integrated via the Atlassian MCP plugin:
 }
 ```
 
+#### Credential Setup (read this before minting a token)
+
+> **The API token must be created while signed in as the bot account itself — not as your administrator or personal account.** Atlassian Basic auth pairs `JIRA_USERNAME` with the token, and the token is only valid for the account that minted it. An administrator token will not work for the bot's email, no matter how much authority that administrator has. This is the single most common way to get the integration wrong, and it cost real time here.
+
+The failure is nastier than a plain rejection, because the mismatch does not announce itself:
+
+- `GET /rest/api/3/myself` returns **401**, but that endpoint is not what the tools call.
+- Ordinary reads such as `GET /rest/api/3/project/search` return **HTTP 200 with `total: 0`** — Jira silently falls back to *anonymous* access rather than refusing.
+
+So a wrong-owner token looks exactly like an empty or non-existent project. You will be told "no project could be found with key THREAT" and conclude the project is missing, when in fact you were never authenticated. Always confirm identity explicitly before diagnosing anything else:
+
+```bash
+set -a; . ./.env; set +a
+curl -s -u "$JIRA_USERNAME:$JIRA_API_TOKEN" \
+  -H "Accept: application/json" "$JIRA_URL/rest/api/3/myself" | jq '.accountId, .displayName, .emailAddress'
+```
+
+This must return the **bot's** account. If it returns your own name, the token belongs to you and the integration is misconfigured.
+
+Two further operational notes:
+
+- **Quote the credential inline.** Building `AUTH="-u $USER:$TOKEN"` and then running `curl $AUTH ...` sends the request *unauthenticated* — producing the same misleading `total: 0`. Always write `-u "$JIRA_USERNAME:$JIRA_API_TOKEN"` directly on the command.
+- **Restart OpenCode after changing `.env`.** `opencode.json` resolves `{env:JIRA_API_TOKEN}` when it spawns the `uvx mcp-atlassian` subprocess, so the value is baked in at start-up. Editing `.env` in place has no effect on a running session, and the MCP tools will keep using the old credential while your shell uses the new one.
+
 #### Jira Protection & Defect Lifecycle
 
 - **Dedicated Bot User**: OpenCode operates under a dedicated Jira service user with permissions restricted to Browse, Create, Edit, and Transition issues.
-- **Revoked Delete Rights**: Delete Issues, Delete Comments, and Delete Attachments permissions are explicitly revoked. Any delete attempt returns 403 Forbidden.
+- **Revoked Delete Rights**: Delete Issues, Delete Comments, and Delete Attachments permissions are explicitly revoked. Any delete attempt returns 403 Forbidden. Cleanup of test or obsolete tickets is therefore a human action in the Jira UI — deliberately, so the agents cannot destroy tracker history.
+- **Reporter Cannot Be Spoofed**: The bot lacks the Modify Reporter permission, so every issue it raises is unambiguously attributed to the bot. This is what makes the service account worth the setup cost over reusing a personal token.
 - **Rejection Workflow**: Obsolete stories receive an explanatory comment, a "Reject" transition, and resolution set to "Won't Do."
 - **Defect Tracking**: Pre-deployment defects are logged as Bug Sub-tasks under the parent User Story (blocking merge). Post-deployment defects are standalone Bug Issues linked via "caused by" for defect rate metrics.
+
+#### Project Shape Constraints
+
+The target project is **team-managed** (`style: next-gen`), which changes the available fields in ways that break otherwise-correct tool calls:
+
+- **There is no `Components` field.** Passing `components` to `jira_create_issue` fails. Team-managed projects drop it entirely.
+- **Epics are linked through `Parent`**, not the classic company-managed Epic Link custom field.
+- **Story points are `Story point estimate`.**
+- Issue types are `Epic`, `Subtask`, `Task`, `Story` — a Story requires only `project`, `issuetype` and `summary`.
+
+Confirm the shape rather than assuming it, since a company-managed project would behave differently:
+
+```bash
+curl -s -u "$JIRA_USERNAME:$JIRA_API_TOKEN" \
+  "$JIRA_URL/rest/api/3/project/$JIRA_PROJECT_KEY" | jq '.style, .projectTypeKey'
+```
+
+**Description formatting survives intact.** Markdown sent to `jira_create_issue` is stored as proper ADF: fenced ```` ```gherkin ```` blocks keep their language attribute, and `- [ ]` items become real interactive Jira checkboxes rather than plain bullets. The Product Owner's story template — Gherkin acceptance criteria plus a Definition of Done checklist — therefore renders correctly and needs no downgrading.
+
+> Note that `mcp-atlassian` echoes back a **wiki-markup** rendering of what you sent, which looks lossy (`{noformat}` blocks, bullets instead of checkboxes). That echo is not what Jira persisted. Verify against the stored ADF via `GET /rest/api/3/issue/<KEY>?fields=description` before concluding anything was lost — an agent reading only the echo will report false corruption.
 
 #### Agent-Level Jira Permissions (client-side layer)
 
@@ -430,6 +475,9 @@ cp .env.example .env   # if an example exists, or create manually
 #   JIRA_API_TOKEN=...
 # NOTE: the Zen API key does NOT go here — register it with `/connect` in the
 # TUI; OpenCode stores it in ~/.local/share/opencode/auth.json.
+# NOTE: the Jira token must be minted while signed in AS THE BOT ACCOUNT, not
+# as an administrator. It must match JIRA_USERNAME or Jira falls back to
+# anonymous access and reads return an empty result set. See §7.2.
 
 # 4. Allow direnv for this project
 direnv allow
@@ -447,9 +495,14 @@ direnv allow
 | Variable | Purpose |
 |---|---|
 | `JIRA_URL` | Atlassian instance URL |
-| `JIRA_API_TOKEN` | Jira API token |
-| `JIRA_USERNAME` | Jira bot user email |
+| `JIRA_USERNAME` | Jira **bot** user email — must be the account that owns the token |
+| `JIRA_API_TOKEN` | Jira API token, **minted while signed in as the bot**, not as an administrator (§7.2) |
+| `JIRA_PROJECT_KEY` | Target project key for ticket creation |
 | `GITHUB_TOKEN` | GitHub PAT (repo scope) |
+
+The Zen API key is deliberately absent: it lives in `~/.local/share/opencode/auth.json`, not here.
+
+After changing any of these, **restart OpenCode** — MCP subprocesses resolve `{env:...}` at spawn time, so a running session keeps the old values.
 
 #### Maven Wrapper
 
@@ -532,12 +585,12 @@ Teams looking to build a similar system can customise this blueprint with three 
 Before running any prompt, ensure your local environment is set up:
 
 - [ ] **direnv installed** — `brew install direnv` + hook in `~/.zshrc`
-- [ ] **`.env` populated** — `JIRA_URL`, `JIRA_API_TOKEN`, `JIRA_USERNAME`, `GITHUB_TOKEN`
+- [ ] **`.env` populated** — `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `GITHUB_TOKEN`
 - [ ] **Zen authenticated** — `/connect` → OpenCode Zen; key present in `~/.local/share/opencode/auth.json`
 - [ ] **direnv allowed** — `direnv allow` in the project root (run once per clone)
 - [ ] **OpenCode config installed** — `.opencode/opencode.json` and `.opencode/agents/` present
 - [ ] **Models verified** — `opencode models | grep '^opencode/'` lists every ID used in `.opencode/agents/*.md` and `.opencode/opencode.json`
-- [ ] **Jira MCP connected** — `/connect` in the TUI with Atlassian credentials (optional, for issue tracking)
+- [ ] **Jira identity verified** — `curl -s -u "$JIRA_USERNAME:$JIRA_API_TOKEN" "$JIRA_URL/rest/api/3/myself"` returns the **bot** account, not yours. Jira MCP needs no `/connect`; it is spawned from the `mcp` block in `.opencode/opencode.json` using the `.env` values (§7.2)
 
 See §7.6 for detailed setup instructions and [docs/devops/local-development.md](../devops/local-development.md) for the full guide.
 
