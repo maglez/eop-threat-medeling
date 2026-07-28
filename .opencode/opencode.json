@@ -37,6 +37,22 @@
       }
     }
   },
+  "permission": {
+    "atlassian_jira_*": "allow",
+    "atlassian_jira_create_*": "ask",
+    "atlassian_jira_batch_*": "ask",
+    "atlassian_jira_batch_get_changelogs": "allow",
+    "atlassian_jira_update_*": "ask",
+    "atlassian_jira_add_*": "ask",
+    "atlassian_jira_edit_comment": "ask",
+    "atlassian_jira_assign_issue": "ask",
+    "atlassian_jira_transition_issue": "ask",
+    "atlassian_jira_link_to_epic": "ask",
+    "atlassian_jira_remove_*": "ask",
+    "atlassian_jira_move_*": "ask",
+    "atlassian_jira_delete_issue": "deny",
+    "atlassian_jira_move_issue": "deny"
+  },
   "model": "opencode/claude-opus-5",
   "small_model": "opencode/gemini-3.5-flash-lite",
   "plugin": [

@@ -3,6 +3,8 @@ description: Expert Member - Software Craftsmanship, SOLID Principles, Clean Arc
 mode: subagent
 model: opencode/claude-opus-5
 temperature: 0.2
+permission:
+  atlassian_jira_*: deny
 ---
 
 # Expert Member: Robert C. Martin ("Uncle Bob")

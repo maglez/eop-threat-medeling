@@ -3,6 +3,8 @@ description: Expert Member - Ultra-High-Scale Distributed Systems, System Design
 mode: subagent
 model: opencode/claude-opus-5
 temperature: 0.2
+permission:
+  atlassian_jira_*: deny
 ---
 
 # Expert Member: Alex Xu (ByteByteGo)

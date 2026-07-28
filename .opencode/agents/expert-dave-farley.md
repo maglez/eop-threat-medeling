@@ -3,6 +3,8 @@ description: Expert Member - Continuous Delivery, High-Throughput Architecture, 
 mode: subagent
 model: opencode/claude-sonnet-4-6
 temperature: 0.1
+permission:
+  atlassian_jira_*: deny
 ---
 
 # Expert Member: Dave Farley

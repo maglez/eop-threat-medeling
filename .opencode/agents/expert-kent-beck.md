@@ -3,6 +3,8 @@ description: Expert Member - Test-Driven Development (TDD), Extreme Programming 
 mode: subagent
 model: opencode/claude-sonnet-4-6
 temperature: 0.2
+permission:
+  atlassian_jira_*: deny
 ---
 
 # Expert Member: Kent Beck

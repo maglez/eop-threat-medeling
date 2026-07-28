@@ -3,6 +3,20 @@ description: Audits full-stack security across Frontend, Backend, Cloud Infrastr
 mode: subagent
 model: opencode/claude-opus-5
 temperature: 0.0
+permission:
+  atlassian_jira_*: allow
+  atlassian_jira_create_*: deny
+  atlassian_jira_batch_*: deny
+  atlassian_jira_batch_get_changelogs: allow
+  atlassian_jira_update_*: deny
+  atlassian_jira_add_*: deny
+  atlassian_jira_edit_comment: deny
+  atlassian_jira_assign_issue: deny
+  atlassian_jira_transition_issue: deny
+  atlassian_jira_link_to_epic: deny
+  atlassian_jira_remove_*: deny
+  atlassian_jira_delete_issue: deny
+  atlassian_jira_move_*: deny
 ---
 
 # Security Auditor Agent
