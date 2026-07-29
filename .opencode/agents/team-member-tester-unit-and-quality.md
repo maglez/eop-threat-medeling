@@ -1,7 +1,7 @@
 ---
 description: Writes ultra-fast unit tests, analyzes code coverage gaps, and runs mutation testing to verify test suite strength.
 mode: subagent
-model: opencode/gpt-5.3-codex
+model: $MODEL_C
 temperature: 0.1
 permission:
   atlassian_jira_*: allow

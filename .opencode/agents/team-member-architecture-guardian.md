@@ -1,7 +1,7 @@
 ---
 description: Evaluates system architecture, enforces maintainability, and maintains living C4/arc42 documentation with Mermaid UML diagrams and ADRs in GitHub repository.
 mode: subagent
-model: opencode/claude-opus-5
+model: $MODEL_A
 temperature: 0.2
 permission:
   atlassian_jira_*: allow

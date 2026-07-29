@@ -1,7 +1,7 @@
 ---
 description: Tech Lead Orchestrator - Enforces Walking Skeleton setup, Trunk-Based Development, continuous deployment per commit, feature flag orchestration, and adaptive sub-agent pipelines.
 mode: subagent
-model: opencode/claude-opus-5
+model: $MODEL_A
 temperature: 0.1
 ---
 

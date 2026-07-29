@@ -1,7 +1,7 @@
 ---
 description: Writes and executes fast API integration tests, validates request/response contracts, and tests error handling boundaries.
 mode: subagent
-model: opencode/gpt-5.3-codex
+model: $MODEL_C
 temperature: 0.1
 permission:
   atlassian_jira_*: allow
