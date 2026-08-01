@@ -1,7 +1,6 @@
 ---
 description: Tech Lead Orchestrator - Enforces Walking Skeleton setup, Trunk-Based Development, continuous deployment per commit, feature flag orchestration, and adaptive sub-agent pipelines.
 mode: subagent
-model: $MODEL_A
 temperature: 0.1
 ---
 

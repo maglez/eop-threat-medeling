@@ -1,7 +1,6 @@
 ---
 description: Expert Member - Software Craftsmanship, SOLID Principles, Clean Architecture, & Professional Ethics.
 mode: subagent
-model: $MODEL_A
 temperature: 0.2
 permission:
   atlassian_jira_*: deny

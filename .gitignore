@@ -50,3 +50,8 @@ graphify-out/
 
 ### OpenCode Goal Plugin ###
 .opencode/goals/
+
+### OpenCode nested config guard ###
+# A nested .opencode/ dir is created when opencode runs with a cwd inside
+# .opencode/. Its node_modules/*.md files get registered as phantom agents.
+.opencode/**/.opencode/

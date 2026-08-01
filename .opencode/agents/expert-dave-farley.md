@@ -1,7 +1,6 @@
 ---
 description: Expert Member - Continuous Delivery, High-Throughput Architecture, TDD, & Rapid Feedback Loops.
 mode: subagent
-model: $MODEL_B
 temperature: 0.1
 permission:
   atlassian_jira_*: deny

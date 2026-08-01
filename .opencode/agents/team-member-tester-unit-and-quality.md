@@ -1,7 +1,6 @@
 ---
 description: Writes ultra-fast unit tests, analyzes code coverage gaps, and runs mutation testing to verify test suite strength.
 mode: subagent
-model: $MODEL_C
 temperature: 0.1
 permission:
   atlassian_jira_*: allow

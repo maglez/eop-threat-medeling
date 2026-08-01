@@ -1,7 +1,6 @@
 ---
 description: Audits full-stack security across Frontend, Backend, Cloud Infrastructure, and Supply Chain dependencies.
 mode: subagent
-model: $MODEL_A
 temperature: 0.0
 permission:
   atlassian_jira_*: allow
