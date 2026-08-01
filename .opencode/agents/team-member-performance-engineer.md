@@ -1,7 +1,7 @@
 ---
 description: Conducts benchmarks, runs load tests (k6/Locust), tracks historical performance trends, and alerts on latency/throughput regressions.
 mode: subagent
-model: opencode/gpt-5.3-codex
+model: $MODEL_C
 temperature: 0.2
 permission:
   atlassian_jira_*: allow

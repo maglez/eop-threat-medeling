@@ -1,7 +1,7 @@
 ---
 description: Builds accessible React + TypeScript front-end components and page layouts following GOV.UK Design System standards.
 mode: subagent
-model: opencode/gpt-5.3-codex
+model: $MODEL_E
 temperature: 0.3
 permission:
   atlassian_jira_*: allow

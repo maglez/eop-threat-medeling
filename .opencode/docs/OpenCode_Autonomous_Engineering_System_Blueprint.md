@@ -15,9 +15,11 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
   - [2.5 Continuous Flow over Timeboxes](#25-continuous-flow-over-timeboxes)
 - [3. Multi-Agent Architecture & Model Allocation](#3-multi-agent-architecture--multi-model-allocation-strategy)
   - [3.1 Defence-in-Depth Model Allocation](#31-defence-in-depth-model-allocation)
-  - [3.2 Agent Model Matrix](#32-agent-model-matrix)
-  - [3.3 Agent Responsibilities](#33-agent-responsibilities)
-  - [3.4 Provider Architecture](#34-provider-architecture)
+   - [3.2 Agent Model Matrix](#32-agent-model-matrix)
+   - [3.3 Agent Responsibilities](#33-agent-responsibilities)
+   - [3.4 Provider Architecture](#34-provider-architecture)
+     - [3.4.1 Amazon Bedrock Configuration](#341-amazon-bedrock-configuration)
+     - [3.4.2 Provider Switching](#342-provider-switching-via-abstract-model-names)
 - [4. Expert Advisory System](#4-expert-advisory-system--curation-strategy)
   - [4.1 Pruning Expert Noise](#41-pruning-expert-noise-why-less-is-more)
 - [5. Visual Knowledge Graph Overview](#5-visual-knowledge-graph-overview)
@@ -116,28 +118,28 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.2 Agent Model Matrix
 
-| Agent | Primary Role | Model | Family | Role | Temp |
-|---|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | `opencode/claude-sonnet-4-6` | Anthropic | Author | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | `opencode/claude-opus-5` | Anthropic | Planner | 0.1 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | `opencode/claude-opus-5` | Anthropic | Audit | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.3 |
-| @team-member-tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
-| @team-member-tester-api | API Contract & Payload Verification | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `opencode/claude-opus-5` | Anthropic | Audit | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | `opencode/claude-sonnet-4-6` | Anthropic | Audit | 0.1 |
-| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | `opencode/gpt-5.3-codex` | OpenAI | Author | 0.2 |
+| Agent | Primary Role | Model | Family (Zen) | Role | Temp |
+|---|---|---|---|---|---|---|
+| @team-member-product-owner | Requirement Discovery & BDD Criteria | `{env:MODEL_B}` | Anthropic | Author | 0.3 |
+| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | `{env:MODEL_A}` | Anthropic | Planner | 0.1 |
+| @team-member-devops-engineer | Terraform, CDK & CI/CD | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
+| @team-member-db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
+| @team-member-tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @team-member-tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
+| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
+| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
 | **Expert Advisors** | | | | | |
-| @expert-alex-xu | Distributed Systems & System Design | `opencode/claude-opus-5` | Anthropic | Advisory | 0.2 |
-| @expert-dave-farley | Continuous Delivery & TDD | `opencode/claude-sonnet-4-6` | Anthropic | Advisory | 0.1 |
-| @expert-kent-beck | TDD & XP | `opencode/claude-sonnet-4-6` | Anthropic | Advisory | 0.2 |
-| @expert-uncle-bod | SOLID & Clean Architecture | `opencode/claude-opus-5` | Anthropic | Advisory | 0.2 |
+| @expert-alex-xu | Distributed Systems & System Design | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
+| @expert-dave-farley | Continuous Delivery & TDD | `{env:MODEL_B}` | Anthropic | Advisory | 0.1 |
+| @expert-kent-beck | TDD & XP | `{env:MODEL_B}` | Anthropic | Advisory | 0.2 |
+| @expert-uncle-bod | SOLID & Clean Architecture | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 
-> **Model References:** The `Model` column is the exact value of each agent's `model:` frontmatter field in `.opencode/agents/*.md`, which is the single source of truth for model allocation. Zen model IDs are fully qualified as `opencode/<model-id>` — see §3.4. Note that Zen uses **dashes** in Claude version numbers (`claude-sonnet-4-6`) but **dots** for OpenAI and Google (`gpt-5.3-codex`, `gemini-3.5-flash-lite`); an unqualified or mis-punctuated ID fails silently at invoke time.
+> **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`) that each agent's `model:` frontmatter field references in `.opencode/agents/*.md`. The actual model ID is resolved at runtime from the corresponding variable in `.env` — see [Provider Switching](#342-provider-switching-via-abstract-model-names). The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 
-> **Separation Invariant:** Every agent that authors code or infrastructure runs on OpenAI (`gpt-5.3-codex`); every agent that audits it runs on Anthropic (`claude-opus-5` / `claude-sonnet-4-6`). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @team-member-product-owner is the one Anthropic-hosted "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee.**
+> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (OpenAI on Zen); every agent that audits it uses `MODEL_A` or `MODEL_B` (Anthropic on Zen). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @team-member-product-owner is the one Anthropic-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee when using OpenCode Zen. The guarantee weakens if using a provider that lacks distinct model families.**
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
@@ -165,7 +167,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 ### 3.4 Provider Architecture
 
-OpenCode routes all LLM requests through **OpenCode Zen**, a curated multi-vendor AI gateway operated by the OpenCode team. Zen is a **built-in provider** — it requires **no** `provider` block in `opencode.json`. Declaring a custom provider for Zen (e.g. a fabricated `@ai-sdk/zen` npm package) breaks model resolution.
+By default, OpenCode routes all LLM requests through **OpenCode Zen**, a curated multi-vendor AI gateway operated by the OpenCode team. Zen is a **built-in provider** — it requires **no** `provider` block in `opencode.json`. The system also supports **Amazon Bedrock** as a built-in alternative provider (see [Amazon Bedrock Configuration](#341-amazon-bedrock-configuration)). Switching between providers is controlled via environment variable mappings declared in `.env` — see [Provider Switching](#342-provider-switching-via-abstract-model-names).
 
 #### Connection Details
 
@@ -184,13 +186,13 @@ Zen is billed pay-as-you-go per request against workspace credits. Endpoint and 
 
 #### Model Resolution
 
-Agents reference models directly by fully qualified Zen ID in their `model:` frontmatter. There is no alias indirection layer:
+Agent frontmatter and the top-level config reference abstract environment variable names (`{env:MODEL_A}` through `{env:MODEL_D}`) rather than direct model IDs. The actual model ID is resolved at runtime from the corresponding variable in `.env`:
 
 ```yaml
 ---
 description: Audits code for security, performance and Clean Code standards
 mode: subagent
-model: opencode/claude-sonnet-4-6
+model: {env:MODEL_B}
 temperature: 0.1
 ---
 ```
@@ -198,23 +200,27 @@ temperature: 0.1
 Defaults are set in `.opencode/opencode.json`:
 
 ```json
-"model": "opencode/claude-opus-5",
-"small_model": "opencode/gemini-3.5-flash-lite"
+"model": "{env:MODEL_A}",
+"small_model": "{env:MODEL_D}"
 ```
 
-- `model` — default for primary agents and any subagent that omits `model:`.
-- `small_model` — used for session titles and summaries. Pointing this at a cheap model avoids spending flagship-tier tokens on housekeeping.
+- `MODEL_A` — default for primary agents and any subagent that omits `model:` (see [Provider Switching](#342-provider-switching-via-abstract-model-names)).
+- `MODEL_B` — mid-tier Anthropic reasoning, allocated to auditors and requirements.
+- `MODEL_C` — OpenAI codex family, allocated to builders.
+- `MODEL_D` — cheap model for session titles and summaries (`small_model`).
+
+This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the four `MODEL_*` values in `.env` — no agent file or config changes needed.
 
 #### Allocated Models
 
-Three models cover the whole team. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output).
+Four abstract model names map to the real provider-specific model IDs. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output) for the OpenCode Zen variant.
 
-| Model ID | Vendor | Price | Allocated To |
-|---|---|---|---|
-| `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
-| `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
-| `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, UI Builder, both Testers, Performance Engineer |
-| `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only |
+| Abstract | Model ID (Zen) | Vendor | Price | Allocated To |
+|---|---|---|---|---|
+| `MODEL_A` | `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
+| `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
+| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, UI Builder, both Testers, Performance Engineer |
+| `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only |
 
 #### Deprecation Watch
 
@@ -224,6 +230,76 @@ Zen retires models on published dates (see the Deprecated models table at https:
 - `claude-sonnet-4` — retired 2026-06-15; `claude-opus-4-1` — retires 2026-08-05
 
 Re-check this list before changing any agent's model.
+
+#### <span id="341-amazon-bedrock-configuration"></span> Amazon Bedrock Configuration
+
+Amazon Bedrock is a **built-in provider** in OpenCode — no npm package installation is required. It is declared in `.opencode/opencode.json` alongside the existing configuration:
+
+```json
+"provider": {
+  "amazon-bedrock": {
+    "options": {
+      "region": "{env:AWS_REGION}"
+    }
+  }
+}
+```
+
+##### Required Environment Variables (`.env`)
+
+| Variable | Purpose |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
+| `AWS_REGION` | AWS region (e.g. `eu-west-2`) |
+
+To use Bedrock, map the four abstract model names to Bedrock model IDs in `.env`:
+
+| Abstract | Example Bedrock ID |
+|---|---|
+| `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5-v1:0` |
+| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6-v1:0` |
+| `MODEL_C` | `amazon-bedrock/eu.amazon.nova-pro-v1:0` |
+| `MODEL_D` | `amazon-bedrock/eu.amazon.nova-lite-v1:0` |
+
+Bedrock model IDs follow the format `amazon-bedrock/<region>.<vendor>.<model-version>`. Available models depend on your AWS account's Bedrock access — verify with `aws bedrock list-foundation-models`.
+
+> **Limitation:** Unlike OpenCode Zen, Bedrock does not offer a `gpt-5.3-codex` equivalent. The mapping for `MODEL_C` above uses Amazon Nova Pro as a substitute. If your use case requires OpenAI codex-specific behaviour, keep `MODEL_C` pointed at `opencode/gpt-5.3-codex` while switching the other three to Bedrock.
+
+#### <span id="342-provider-switching-via-abstract-model-names"></span> Provider Switching via Abstract Model Names
+
+The mapping from abstract names to real model IDs lives entirely in `.env` (gitignored):
+
+```bash
+# OpenCode Zen (default — no AWS credentials needed)
+MODEL_A=opencode/claude-opus-5
+MODEL_B=opencode/claude-sonnet-4-6
+MODEL_C=opencode/gpt-5.3-codex
+MODEL_D=opencode/gemini-3.5-flash-lite
+
+# Or AWS Bedrock (uncomment the block below, fill AWS credentials)
+# MODEL_A=amazon-bedrock/eu.anthropic.claude-opus-5-v1:0
+# MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6-v1:0
+# MODEL_C=amazon-bedrock/eu.amazon.nova-pro-v1:0
+# MODEL_D=amazon-bedrock/eu.amazon.nova-lite-v1:0
+```
+
+##### To Switch Providers
+
+1. Edit `.env` — comment the active block, uncomment the target block.
+2. Fill in any required credentials (OpenCode Zen needs none; Bedrock needs `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`).
+3. **Restart opencode** — config is read at startup only.
+
+##### Agent-to-Abstract Mapping
+
+| Abstract | Used By |
+|---|---|
+| `MODEL_A` (best) | Main model, @team-member-tech-lead, @team-member-architecture-guardian, @team-member-security-auditor, @expert-alex-xu, @expert-uncle-bod |
+| `MODEL_B` (mid) | @team-member-code-reviewer, @expert-kent-beck, @expert-dave-farley, @team-member-product-owner |
+| `MODEL_C` (coder) | @team-member-devops-engineer, @team-member-db-designer, @team-member-performance-engineer, @team-member-tester-api, @team-member-tester-unit-and-quality, @team-member-ui-builder |
+| `MODEL_D` (small) | `small_model` — titles and summaries |
+
+> **Migration note:** Previously each agent referenced a hardcoded model ID (e.g. `opencode/claude-sonnet-4-6`) in its `model:` frontmatter. These were replaced with `{env:MODEL_B}` etc. in a single batch update — no per-agent changes are needed to switch providers going forward.
 
 ---
 
