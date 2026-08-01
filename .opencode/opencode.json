@@ -76,7 +76,6 @@
     }
   },
   "plugin": [
-    ".opencode/plugins/graphify.js",
     "opencode-vibeguard",
     "@tarquinen/opencode-dcp",
     "opencode-supermemory",
