@@ -23,9 +23,9 @@
       "command": ["uvx", "mcp-atlassian"],
       "enabled": true,
       "environment": {
-        "JIRA_URL": "$JIRA_URL",
-        "JIRA_USERNAME": "$JIRA_USERNAME",
-        "JIRA_API_TOKEN": "$JIRA_API_TOKEN"
+        "JIRA_URL": "{env:JIRA_URL}",
+        "JIRA_USERNAME": "{env:JIRA_USERNAME}",
+        "JIRA_API_TOKEN": "{env:JIRA_API_TOKEN}"
       }
     },
     "github": {
@@ -33,7 +33,7 @@
       "url": "https://api.githubcopilot.com/mcp/",
       "enabled": true,
       "headers": {
-        "Authorization": "Bearer $GITHUB_TOKEN",
+        "Authorization": "Bearer {env:GITHUB_TOKEN}",
         "X-MCP-Readonly": "true",
         "X-MCP-Toolsets": "repos,issues,pull_requests,actions"
       },
@@ -66,12 +66,12 @@
     "github_fork_*": "deny",
     "github_request_copilot_review": "deny"
   },
-  "model": "$MODEL_A",
-  "small_model": "$MODEL_D",
+  "model": "{env:MODEL_A}",
+  "small_model": "{env:MODEL_D}",
   "provider": {
     "amazon-bedrock": {
       "options": {
-        "region": "$AWS_REGION"
+        "region": "{env:AWS_REGION}"
       }
     }
   },
@@ -96,8 +96,25 @@
   "command": {
     "goal": {
       "description": "Set a session-scoped goal and auto-continue until complete.",
-      "template": "$ARGUMENTS",
+      "template": "{env:ARGUMENTS}",
       "agent": "team-member-tech-lead"
     }
+  },
+  "agent": {
+    "expert-alex-xu": { "model": "{env:MODEL_A}" },
+    "expert-uncle-bod": { "model": "{env:MODEL_A}" },
+    "team-member-architecture-guardian": { "model": "{env:MODEL_A}" },
+    "team-member-security-auditor": { "model": "{env:MODEL_A}" },
+    "team-member-tech-lead": { "model": "{env:MODEL_A}" },
+    "expert-dave-farley": { "model": "{env:MODEL_B}" },
+    "expert-kent-beck": { "model": "{env:MODEL_B}" },
+    "team-member-code-reviewer": { "model": "{env:MODEL_B}" },
+    "team-member-product-owner": { "model": "{env:MODEL_B}" },
+    "team-member-db-designer": { "model": "{env:MODEL_C}" },
+    "team-member-devops-engineer": { "model": "{env:MODEL_C}" },
+    "team-member-performance-engineer": { "model": "{env:MODEL_C}" },
+    "team-member-tester-api": { "model": "{env:MODEL_C}" },
+    "team-member-tester-unit-and-quality": { "model": "{env:MODEL_C}" },
+    "team-member-ui-builder": { "model": "{env:MODEL_E}" }
   }
 }

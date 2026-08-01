@@ -1,7 +1,6 @@
 ---
 description: Audits code for security, performance, type safety, and adherence to language-specific Clean Code standards (Java, TS/JS, Python, Ruby).
 mode: subagent
-model: $MODEL_B
 temperature: 0.1
 permission:
   atlassian_jira_*: allow

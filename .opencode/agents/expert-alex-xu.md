@@ -1,7 +1,6 @@
 ---
 description: Expert Member - Ultra-High-Scale Distributed Systems, System Design Interview Standards, & Large-Scale Storage.
 mode: subagent
-model: $MODEL_A
 temperature: 0.2
 permission:
   atlassian_jira_*: deny

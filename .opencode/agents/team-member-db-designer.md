@@ -1,7 +1,6 @@
 ---
 description: Handles database schema design, migrations, query performance optimization, and execution plan (EXPLAIN ANALYZE) verification.
 mode: subagent
-model: $MODEL_C
 temperature: 0.1
 permission:
   atlassian_jira_*: allow

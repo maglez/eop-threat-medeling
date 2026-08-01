@@ -1,7 +1,6 @@
 ---
 description: Interactive Product Owner - Drives user discovery, mandates Walking Skeleton as Story #1, designs Feature-Flagged INVEST stories, manages Jira backlogs, and tracks pre-merge vs escaped defects.
 mode: subagent
-model: $MODEL_B
 temperature: 0.3
 ---
 
