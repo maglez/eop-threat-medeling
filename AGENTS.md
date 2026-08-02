@@ -2,7 +2,7 @@
 
 ## Default Architecture: Clean Architecture
 
-All code must follow Clean Architecture — dependencies point inward. Cross-boundary data uses DTOs, not entities. See `~/.agents/skills/clean-architecture/references/` for details.
+All code must follow Clean Architecture — dependencies point inward. Cross-boundary data uses DTOs, not entities. See `.opencode/rules/clean-architecture.md` for the full rule set.
 
 Layers: Entities → Use Cases → Interface Adapters → Frameworks & Drivers
 
@@ -28,13 +28,14 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
   - `./mvnw spring-boot:run` — start application on port 8080
 - Domain lives under `org.maglez.eop.*` — STRIDE categories, threat cards, privilege escalation rules
 - Tests mirror source at `src/test/java/org/maglez/eop/`
+- **Commits:** every message MUST start with the uppercase Jira key `[EOP-NNN]`, then `<type>: <summary>` — see `.opencode/rules/git-commits.md`
 - **Front-end:** *not scaffolded yet.* ADR-009 selects React + TypeScript + Vite under `ui/` with GOV.UK Design System CSS, but no `ui/` directory exists
-- **OpenCode plugins:** Graphify (knowledge graph), VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory) — see Blueprint §11
+- **OpenCode plugins** (pinned in `.opencode/opencode.json`): VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory), type-inject (TypeScript types), scheduler (cron jobs), goal-plugin (`/goal` auto-continue) — see Blueprint §12. Graphify (knowledge graph) is a local plugin in `.opencode/plugins/`, not an npm entry.
 - **MCP prerequisite:** `uv` must be installed (`brew install uv`). The Atlassian MCP server is launched as `uvx mcp-atlassian`; without `uvx` on `PATH` it silently fails and no `atlassian_jira_*` tools are available. MCP servers are registered only at session start, so restart OpenCode after installing.
 
 ## OpenCode Agent System
 
-This project uses a multi-agent team defined in `.opencode/agents/`. Agents include:
+This project uses a multi-agent team defined in `.opencode/agents/`. Eleven delivery agents:
 - `@team-member-product-owner` — requirements discovery and backlog management
 - `@team-member-tech-lead` — engineering orchestration and enforcement
 - `@team-member-architecture-guardian` — C4 models and ADRs
@@ -46,6 +47,12 @@ This project uses a multi-agent team defined in `.opencode/agents/`. Agents incl
 - `@team-member-security-auditor` — security and vulnerability audits
 - `@team-member-code-reviewer` — static code review and SOLID compliance
 - `@team-member-performance-engineer` — benchmarks and load testing
+
+Plus four advisory experts, with no Jira or GitHub access — invoke them by name for a second opinion:
+- `@expert-uncle-bod` — software craftsmanship, SOLID, Clean Architecture
+- `@expert-dave-farley` — continuous delivery, TDD, fast feedback
+- `@expert-kent-beck` — TDD, XP, incremental refactoring
+- `@expert-alex-xu` — ultra-high-scale distributed systems and storage
 
 All agents are `mode: subagent` except `team-member-tech-lead`, which is `mode: all` — it is
 selectable in the **Tab** primary-agent cycle *and* still dispatchable via `@` / the Task tool.

@@ -9,11 +9,15 @@ All DDL and reference data DML must go through **Liquibase changelogs**. Direct 
 ### File naming
 
 ```
-src/main/resources/db/changelog/changes/
-  YYYY-MM-DD--<description>.xml
+src/main/resources/db/changelog/
+  db.changelog-master.xml          # aggregator — <includeAll> only, never a changeset
+  changes/
+    YYYY-MM-DD--<description>.xml
 ```
 
 Example: `2026-07-26--create-threat-card-table.xml`
+
+The master changelog is `src/main/resources/db/changelog/db.changelog-master.xml`, referenced from `application.yml` as `spring.liquibase.change-log`. It uses `<includeAll path="classpath:db/changelog/changes/"/>`, so a new changeset is discovered by dropping the file into `changes/` — never edit the master to register one.
 
 Use the date of authorship. If multiple changesets exist for the same date, append a discriminator (`-a`, `-b`).
 

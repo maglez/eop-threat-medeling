@@ -1,0 +1,6 @@
+- Semantic Versioning 2.0.0 — `MAJOR.MINOR.PATCH`, with a `-SNAPSHOT` suffix while a version is in development
+- `pom.xml` `<version>` is the single source of truth; git tags mirror it without the suffix (`1.2.0-SNAPSHOT` → tag `v1.2.0`)
+- MAJOR for breaking API changes, MINOR for backwards-compatible features, PATCH for backwards-compatible fixes
+- `CHANGELOG.md` follows Keep a Changelog format — every merged change lands under `## [Unreleased]` in `Added`/`Changed`/`Fixed`/`Removed`
+- GitHub Releases are created from tags — see ADR-007 for the full versioning strategy
+- NEVER bump the version and the changelog in separate commits — they move together

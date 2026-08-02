@@ -1,6 +1,6 @@
 - Externalize all environment-specific config to `application-{profile}.yml` files
 - Use `@ConfigurationProperties` with `@Validated` for type-safe config binding — never raw `@Value`
-- Prefix all custom properties with the domain (e.g. `eop.game.max-players`)
+- Prefix all custom properties with the `eop.*` root namespace (e.g. `eop.game.max-players`) — never invent a second root
 - Validate config at startup via `@PostConstruct` validation in `@ConfigurationProperties` classes
 - Profile convention: `dev` (local), `test` (CI), `prod` (production)
 - `application.yml` holds defaults; profile overrides go in `application-{profile}.yml`

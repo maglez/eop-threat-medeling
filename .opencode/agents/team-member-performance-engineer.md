@@ -53,3 +53,11 @@ When presenting performance test results, always provide:
 2. **Delta Analysis Table:** Comparison against the previous baseline run (e.g., `p95 Latency: 120ms -> 145ms (+20.8% 🔴 REGRESSION)`).
 3. Resource utilization analysis (CPU, Memory, DB Connection limits).
 4. Updated entries in `docs/performance/TRENDS.md`.
+
+## Required Reading
+
+These project rules are NOT in your context by default. Read them with the `read` tool before you start work that touches them, and follow them as binding:
+
+- `.opencode/rules/performance-testing.md`
+
+`clean-architecture.md`, `security.md`, `git-commits.md` and `testing.md` are already loaded globally — do not re-read those.
