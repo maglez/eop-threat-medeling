@@ -30,6 +30,7 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
 - Tests mirror source at `src/test/java/org/maglez/eop/`
 - **Front-end:** *not scaffolded yet.* ADR-009 selects React + TypeScript + Vite under `ui/` with GOV.UK Design System CSS, but no `ui/` directory exists
 - **OpenCode plugins:** Graphify (knowledge graph), VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory) — see Blueprint §11
+- **MCP prerequisite:** `uv` must be installed (`brew install uv`). The Atlassian MCP server is launched as `uvx mcp-atlassian`; without `uvx` on `PATH` it silently fails and no `atlassian_jira_*` tools are available. MCP servers are registered only at session start, so restart OpenCode after installing.
 
 ## OpenCode Agent System
 
