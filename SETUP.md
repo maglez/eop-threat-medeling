@@ -88,11 +88,12 @@ future audits without new evidence.
   custom provider block in `.opencode/opencode.json`. That block was deleted
   when the project moved to OpenCode Zen, which is a built-in provider
   (id `opencode`) requiring no SDK dependency and no endpoint env var.
-- **`npm audit` residual: 5 high / 4 low** (ReDoS/DoS-class in
-  `glob`/`minimatch`/`brace-expansion` via `@opentui/solid` →
+- **`npm audit` residual: 5 high / 4 low** — *historical snapshot, taken
+  2026-07-27 against the plugin versions current on that date.* ReDoS/DoS-class
+  in `glob`/`minimatch`/`brace-expansion` via `@opentui/solid` →
   `babel-plugin-module-resolver`, plus advisories against
   `@opencode-ai/plugin`, `@tarquinen/opencode-dcp`, `@babel/core`,
-  `opencode-goal-plugin`). Accepted because:
+  `opencode-goal-plugin`. Accepted because:
   1. No patched versions exist for the flagged packages — npm's only
      automated fix downgrades `@opencode-ai/plugin` 1.18.5 → 1.3.3 and
      peers, breaking every local plugin (Graphify, DCP, goal).
@@ -100,5 +101,23 @@ future audits without new evidence.
      (`glob` 9→13) deep in the TUI build chain — same breakage risk.
   3. Exploitation requires crafted glob patterns; all patterns here come
      from plugin source code, never untrusted input.
-- **Re-check** `cd .opencode && npm audit` whenever plugin versions are
-  bumped; drop this entry when upstream patches land.
+
+> **The `cd .opencode && npm audit` re-check is not runnable, and the figures
+> above must not be treated as current.** There is no JavaScript runtime on
+> `PATH` — no `bun`, `bunx`, `node`, `npm` or `npx` — because OpenCode ships as
+> a standalone binary with bun embedded privately and does not expose it. The
+> re-check trigger therefore fired twice without being honoured when
+> `opencode-supermemory` went 2.0.10 → 2.0.11 and `opencode-goal-plugin` went
+> 0.6.5 → 0.6.7. Worse, `.opencode/package.json` and `.opencode/package-lock.json`
+> were never updated by those bumps and still declare `^2.0.10` / `^0.6.5`, so
+> even with npm installed an audit would report on versions that are not
+> loaded. Both manifests are **untracked** as of this change (the intent was
+> already recorded in `.opencode/.gitignore`, but never took effect because
+> `.gitignore` does not apply to already-tracked files); they are inert for
+> plugin loading, since OpenCode resolves plugins through `Npm.add()` into
+> `~/.cache/opencode/packages/<spec>/`. **The authoritative plugin versions are
+> the exact pins in the `plugin` array of `.opencode/opencode.json`, and
+> nowhere else.** To reinstate this audit: install Node (`brew install node`),
+> regenerate `.opencode/package-lock.json` from those exact pinned specs, re-run
+> `npm audit`, and replace this warning with the fresh findings. Drop the entry
+> entirely once upstream patches land.

@@ -226,3 +226,13 @@ available yet — see the front-end section above.
 - **`/goal <subcommand>` is ignored and no `*_goal` tools are listed** — the goal
   plugin is running a release older than `0.6.7`, whose tools never register on
   OpenCode 1.18.x. Check the pin in `.opencode/opencode.json` and restart
+- **`~/.cache/opencode/packages/` has grown to hundreds of MB** — expected, and
+  safe to prune. OpenCode keys that cache on the literal plugin spec, and rewrites
+  a bare name to `<name>@latest`, so every plugin can accumulate three directories:
+  `<name>`, `<name>@latest`, and each pinned version it has ever had. Only the six
+  specs currently listed in `.opencode/opencode.json` are referenced; the rest are
+  orphans (this cleanup reclaimed 651 MB of 983 MB). Delete the unreferenced
+  directories and restart — OpenCode reinstalls anything it still needs. Note the
+  cache is **user-global**: removing a `<name>@latest` directory makes any *other*
+  OpenCode project that leaves that plugin unpinned re-resolve `latest`, which can
+  move it to a newer version
