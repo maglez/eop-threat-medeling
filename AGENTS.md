@@ -45,3 +45,13 @@ This project uses a multi-agent team defined in `.opencode/agents/`. Agents incl
 - `@team-member-security-auditor` — security and vulnerability audits
 - `@team-member-code-reviewer` — static code review and SOLID compliance
 - `@team-member-performance-engineer` — benchmarks and load testing
+
+All agents are `mode: subagent` except `team-member-tech-lead`, which is `mode: all` — it is
+selectable in the **Tab** primary-agent cycle *and* still dispatchable via `@` / the Task tool.
+
+**Always launch `opencode` from the repository root.** OpenCode scans `.opencode/agents/`
+recursively for `*.md`, and plugin bootstrap creates a nested `.opencode/` in the current working
+directory. Starting OpenCode from inside `.opencode/` therefore registers ~30 dependency
+`README.md`/`CHANGELOG.md` files as phantom agents that pollute the Tab cycle. The
+`.opencode/**/.opencode/` rule in `.gitignore` only keeps `git status` clean — it does not stop the
+phantom registration.
