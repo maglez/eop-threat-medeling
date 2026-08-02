@@ -1,1 +1,3 @@
-graphify-out/graph.json merge=graphify
+# Requires: git config merge.graphify.driver ... (NOT configured in this repo, so this
+# attribute is currently inert and git falls back to the default merge).
+.graphify/graph.json merge=graphify

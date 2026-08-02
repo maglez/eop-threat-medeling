@@ -30,7 +30,7 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
 - Tests mirror source at `src/test/java/org/maglez/eop/`
 - **Commits:** every message MUST start with the uppercase Jira key `[EOP-NNN]`, then `<type>: <summary>` — see `.opencode/rules/git-commits.md`
 - **Front-end:** *not scaffolded yet.* ADR-009 selects React + TypeScript + Vite under `ui/` with GOV.UK Design System CSS, but no `ui/` directory exists
-- **OpenCode plugins** (pinned in `.opencode/opencode.json`): VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory), type-inject (TypeScript types), scheduler (cron jobs), goal-plugin (`/goal` auto-continue) — see Blueprint §12. Graphify (knowledge graph) is a local plugin in `.opencode/plugins/`, not an npm entry.
+- **OpenCode plugins** (pinned in `.opencode/opencode.json`): VibeGuard (secret redaction), DCP (context pruning), Supermemory (cross-session memory), type-inject (TypeScript types), scheduler (cron jobs), goal-plugin (`/goal` auto-continue) — see Blueprint §12. Graphify (knowledge graph) is not an npm plugin entry — the CLI is pinned repo-locally in `tools/graphify/` and placed on `PATH` by `.envrc`, and `.opencode/plugins/graphify.js` is a directory-loaded local plugin. Requires Node ≥ 20; see Blueprint §5.
 - **MCP prerequisite:** `uv` must be installed (`brew install uv`). The Atlassian MCP server is launched as `uvx mcp-atlassian`; without `uvx` on `PATH` it silently fails and no `atlassian_jira_*` tools are available. MCP servers are registered only at session start, so restart OpenCode after installing.
 
 ## OpenCode Agent System
