@@ -2,9 +2,9 @@
 
 ## Prerequisites
 - **Java 21** (JDK) — Install via [Homebrew](https://brew.sh): `brew install openjdk@21`
-- **Node.js 20+** — for the OpenCode plugins in `.opencode/` (and the planned React front-end). Install via [Homebrew](https://brew.sh): `brew install node`
+- **Node.js 20+** — for the planned React front-end only. Install via [Homebrew](https://brew.sh): `brew install node`. The OpenCode plugins in `.opencode/` do **not** need it — OpenCode ships an embedded runtime and installs their `node_modules` itself.
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
-- **uv** (optional, for MCP servers)
+- **uv** — **required** for the Atlassian MCP server, which OpenCode launches as `uvx mcp-atlassian`. Install via [Homebrew](https://brew.sh): `brew install uv`. Without `uvx` on `PATH` the server silently fails to start and no `atlassian_jira_*` tools appear.
 - **GitHub PAT** with `repo` scope — used by both the read-only GitHub MCP server and the `gh` CLI
 - **Docker Desktop** — for the monitoring stack (InfluxDB + Grafana). [Download here](https://www.docker.com/products/docker-desktop/) or `brew install --cask docker`
 - **k6** — for load testing: `brew install k6`
@@ -186,3 +186,6 @@ available yet — see the front-end section above.
   or the model was retired. Refs must be fully qualified as `opencode/<id>`;
   check the live list with `opencode models | grep '^opencode/'`
 - **Java version mismatch** — Run `java --version` and ensure it's 21. Install via Homebrew: `brew install openjdk@21`, set `JAVA_HOME` in `.env`
+- **No `atlassian_jira_*` tools available** — `uvx` is not on `PATH`, so
+  `uvx mcp-atlassian` never starts. Run `brew install uv`, then restart OpenCode.
+  MCP servers are only registered at session start
