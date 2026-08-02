@@ -10,11 +10,22 @@
 ### 1. Create `.env`
 ```bash
 cp .env.example .env
+chmod 600 .env
 ```
 If `.env` already exists, append only missing variables:
 ```bash
 grep -v '^#' .env.example >> .env   # then remove duplicates manually
 ```
+
+> **`chmod 600 .env` is not optional.** `cp` gives the new file your umask
+> default, which on macOS is `0644` — group- and world-readable. `.env` holds
+> live credentials (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `SUPERMEMORY_API_KEY`,
+> `AWS_BEARER_TOKEN_BEDROCK`, and the Grafana/InfluxDB admin passwords), so any
+> local process under any account on the machine could read them. It sat at
+> `0644` from creation until the 2026-08-02 audit caught it. For comparison,
+> OpenCode's own credential store `~/.local/share/opencode/auth.json` is `0600`
+> and `.opencode/goals/` is `0700` — `.env` was the outlier. Verify with
+> `ls -l .env` and expect `-rw-------`.
 
 ### 2. Fill in `.env` values
 You **choose** these values yourself — they seed accounts on first boot:

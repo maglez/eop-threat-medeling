@@ -3,6 +3,7 @@ description: Expert Member - Software Craftsmanship, SOLID Principles, Clean Arc
 mode: subagent
 temperature: 0.2
 permission:
+  edit: deny
   task: deny
   atlassian_jira_*: deny
   github_*: deny

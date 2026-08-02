@@ -9,7 +9,7 @@
   "mcp": {
     "atlassian": {
       "type": "local",
-      "command": ["uvx", "mcp-atlassian"],
+      "command": ["uvx", "mcp-atlassian==0.23.0"],
       "enabled": true,
       "environment": {
         "JIRA_URL": "{env:JIRA_URL}",
@@ -31,6 +31,22 @@
     }
   },
   "permission": {
+    "bash": {
+      "*": "allow",
+      "sudo *": "ask",
+      "rm -rf *": "ask",
+      "rm -fr *": "ask",
+      "chmod 777 *": "ask",
+      "git push --force*": "ask",
+      "git push -f *": "ask",
+      "git reset --hard*": "ask",
+      "git clean -fd*": "ask",
+      "* | sh": "ask",
+      "* | bash": "ask",
+      "* | zsh": "ask",
+      "curl * | *": "ask",
+      "wget * | *": "ask"
+    },
     "atlassian_jira_*": "allow",
     "atlassian_jira_create_*": "ask",
     "atlassian_jira_batch_*": "ask",
@@ -42,18 +58,15 @@
     "atlassian_jira_transition_issue": "ask",
     "atlassian_jira_link_to_epic": "ask",
     "atlassian_jira_remove_*": "ask",
-    "atlassian_jira_move_*": "ask",
-    "atlassian_jira_delete_issue": "deny",
-    "atlassian_jira_move_issue": "deny",
-    "github_*": "allow",
-    "github_create_*": "deny",
-    "github_update_*": "deny",
-    "github_delete_*": "deny",
-    "github_merge_*": "deny",
-    "github_push_*": "deny",
-    "github_add_*": "deny",
-    "github_fork_*": "deny",
-    "github_request_copilot_review": "deny"
+    "atlassian_jira_move_*": "deny",
+    "github_*": "deny",
+    "github_get_*": "allow",
+    "github_list_*": "allow",
+    "github_search_*": "allow",
+    "github_issue_read": "allow",
+    "github_pull_request_read": "allow",
+    "github_actions_*": "allow",
+    "github_*_write": "deny"
   },
   "model": "{env:MODEL_A}",
   "small_model": "{env:MODEL_D}",

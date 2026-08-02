@@ -3,6 +3,7 @@ description: Audits code for security, performance, type safety, and adherence t
 mode: subagent
 temperature: 0.1
 permission:
+  edit: deny
   task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny

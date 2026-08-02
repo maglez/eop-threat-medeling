@@ -39,6 +39,7 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
   - [7.5 Mandatory Git Commit Ticket Prefix](#75-mandatory-git-commit-ticket-prefix)
   - [7.6 Local Development Environment](#76-local-development-environment)
   - [7.7 Custom Commands](#77-custom-commands)
+  - [7.8 Local Tool Permissions](#78-local-tool-permissions--bash-and-edit)
 - [8. End-to-End Operational Workflow](#8-end-to-end-operational-workflow)
 - [9. How to Adapt This Blueprint](#9-how-to-adapt-this-blueprint)
 - [10. Prerequisites](#10-prerequisites)
@@ -524,7 +525,7 @@ Rationale: the backlog is a shared source of truth, so *narrating* work into it 
 
 Keys are glob patterns (`*` = zero or more characters) matched against tool names, and **the last matching rule wins** — so the broad catch-all goes first and exceptions come after. Two traps, both of which bit us during implementation:
 
-- **Exact names silently under-match.** `atlassian_jira_move_issue` does not cover `atlassian_jira_move_issues_to_backlog`, which fell through to the `allow` catch-all — a real write leak. Prefer `atlassian_jira_move_*`. Note that `*_delete_issue` and `*_move_issue` are still pinned to `deny` *after* the wildcard, so destructive moves stay hard-blocked.
+- **Exact names silently under-match.** `atlassian_jira_move_issue` does not cover `atlassian_jira_move_issues_to_backlog` — and `atlassian_jira_delete_issue` names no tool at all, because this MCP server exposes no delete verb. Both keys were pinned to `deny`, and both matched nothing: the config *read* as though destructive moves and deletions were hard-blocked while the only real move tool fell through to `atlassian_jira_move_*: ask`. Fixed on 2026-08-02 — the two dead keys were deleted outright and `atlassian_jira_move_*` now carries `deny`. Prefer a glob over an exact name whenever the tool family might grow, and remember that a `deny` on a non-existent tool is indistinguishable from a working control by inspection.
 - **Broad patterns over-match reads.** `atlassian_jira_batch_*` wrongly caught the read-only `atlassian_jira_batch_get_changelogs`, which now carries an explicit `allow` after it.
 
 Neither trap is visible by inspection. When adding rules, enumerate every `atlassian_jira_*` tool, resolve each against the rule list with last-match-wins semantics, and confirm that reads and writes land where intended. Verify at runtime with a fresh `opencode run` process — permission config is read at process start, so an already-running session will not pick up changes.
@@ -577,9 +578,24 @@ Read-only at the server is the primary control; the permission rules are defence
 | Profile | Agents | GitHub access |
 |---|---|---|
 | Experts | alex-xu, dave-farley, kent-beck, uncle-bob | `github_*: deny` — no repository access at all |
-| Everyone else | the 9 delivery agents, Product Owner, Tech Lead | reads allowed; write verbs denied |
+| Everyone else | the 9 delivery agents, Product Owner, Tech Lead | the named read tools allowed; everything else denied |
 
-Denied write patterns in the global block: `github_create_*`, `github_update_*`, `github_delete_*`, `github_merge_*`, `github_push_*`, `github_add_*`, `github_fork_*`, `github_request_copilot_review`. The same last-match-wins glob semantics and the same two traps described in §7.2 apply here.
+The global block is an **allow-list**: `github_*` is denied first, the specific read families are allowed after it, and a trailing `_write` deny closes the loop.
+
+```jsonc
+"github_*": "deny",
+"github_get_*": "allow",
+"github_list_*": "allow",
+"github_search_*": "allow",
+"github_issue_read": "allow",
+"github_pull_request_read": "allow",
+"github_actions_*": "allow",
+"github_*_write": "deny"
+```
+
+`github_actions_*` needs its own line because `github_actions_get` and `github_actions_list` lead with the toolset name rather than the verb, so neither prefix rule reaches them. The same last-match-wins glob semantics described in §7.2 apply here.
+
+> **Known gap — closed 2026-08-02: the deny-list matched no write tool.** The previous block denied `github_create_*`, `github_update_*`, `github_delete_*`, `github_merge_*`, `github_push_*`, `github_add_*`, `github_fork_*` and `github_request_copilot_review` — eight **verb-prefix** globs. But this server names its mutating tools with a `_write` **suffix**: `github_issue_write`, `github_pull_request_review_write`, `github_label_write`, `github_sub_issue_write`. None of the four matched any deny, so all four fell through to `github_*: allow`, and the only thing actually preventing agent writes was the remote `X-MCP-Readonly: true` header — a single gate, evaluated on someone else's server, in a configuration whose stated principle is defence in depth. Inverting to an allow-list changes the failure mode from "a new write tool is permitted until somebody notices" to "a new read tool is refused until somebody lists it", which is the direction a security default should fail in.
 
 #### GitHub Protection
 
@@ -704,6 +720,38 @@ These complement the `/goal` command (see §12.8) for when you want to poll mult
 > **The directory is `commands/`, plural.** It was `command/` (singular) until 2026-08-02, which is almost certainly why these three never appeared in the slash-command list — OpenCode loads project commands from `.opencode/commands/` only. `/goal` was unaffected because it is declared in the `command` object of `.opencode/opencode.json` (that JSON key *is* singular), but its `template` was `{env:ARGUMENTS}` — config-load-time environment substitution against an unset variable — so it dispatched the tech lead with an empty prompt. The correct placeholder is `$ARGUMENTS`, resolved at invocation.
 
 ---
+
+### 7.8 Local Tool Permissions — bash and edit
+
+§7.2 and §7.3 gate the two MCP servers. This section covers the tools that act on **this machine**, which until 2026-08-02 were gated by nothing whatsoever: OpenCode defaults an unspecified permission to `allow`, and the `permission` block named only `atlassian_jira_*` and `github_*` patterns. Every one of the 15 agents therefore held unrestricted shell and unrestricted file writes — while the same file's own instructions demanded least privilege and default-deny.
+
+The complete key set is `read`, `edit`, `glob`, `grep`, `list`, `bash`, `task`, `external_directory`, `todowrite`, `webfetch`, `websearch`, `lsp`, `skill`, `question`, `doom_loop`. `task` is covered in §3.3 (*Orchestration Topology*).
+
+> **There is no `write` permission key.** `edit` gates `write`, `edit` and `apply_patch` together. A rule spelled `"write": "deny"` is accepted by the config, matches nothing, and silently does nothing — the same class of defect as the dead Jira and GitHub rules above.
+
+#### bash — friction on the irreversible
+
+`"*": "allow"` is deliberately retained; only commands whose damage cannot be undone by re-running them are raised to `ask`:
+
+`sudo *`, `rm -rf *`, `rm -fr *`, `chmod 777 *`, `git push --force*`, `git push -f *`, `git reset --hard*`, `git clean -fd*`, `* | sh`, `* | bash`, `* | zsh`, `curl * | *`, `wget * | *`.
+
+The wildcard is listed **first** because the last matching rule wins.
+
+> **This is a speed bump, not a control — do not describe it as one.** It matches on command text, so it misses `find … -delete`, `rm -r -f`, a `$HOME` variable that expands to something unexpected, and any script that performs the deletion internally. Worse, `.opencode/plugins/graphify.js` mutates `output.args.command` inside `tool.execute.before`, which proves the executed string is not necessarily the reviewed one; whether OpenCode evaluates permissions before or after that hook is undocumented, and until it is confirmed upstream these globs cannot be relied on as a boundary. The reason to keep them anyway is that they cost nothing and they turn the most common catastrophic typo into a question. The reason the alternative — `"bash": {"*": "ask"}` — was rejected is that a control which makes ordinary work unbearable gets switched off within a day, and a control that is switched off protects nothing.
+
+#### edit — deny for the agents that only audit
+
+Six agents exist to produce findings, not changes. A reviewer that can silently rewrite the code it reviews defeats the review, so they carry `edit: deny` in frontmatter:
+
+| Agent | Why |
+|---|---|
+| `team-member-code-reviewer` | audits code; must not fix what it flags |
+| `team-member-security-auditor` | audits security; same reasoning |
+| the 4 `expert-*` advisers | advisory by definition — they answer questions, they do not touch the repository |
+
+Every other agent keeps `edit`, because writing is their job: the Performance Engineer maintains `docs/performance/TRENDS.md`, the Architecture Guardian writes `docs/`, the DevOps Engineer authors workflows, the Product Owner writes PRDs, and the testers, DB Designer and UI Builder all produce code.
+
+Permission configuration is read at **process start**. A running session will not pick up a change to `.opencode/opencode.json` or to any agent's frontmatter; restart OpenCode and re-verify behaviourally.
 
 ## 8. End-to-End Operational Workflow
 
