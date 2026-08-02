@@ -217,3 +217,12 @@ available yet — see the front-end section above.
 - **`BadResource: FileSystem.readFile (.../.opencode/agents/.opencode/opencode.json)`**
   — you launched OpenCode from inside `.opencode/agents/`. This is the sentinel
   guard working as intended. `cd` to the repository root and retry
+- **`ERROR goal persistence is already owned by pid <n>`** — a second OpenCode
+  instance was started from this directory and lost the race for the goal
+  plugin's persistence lease. Only one instance per `stateFilePath` may hold it.
+  Either close the other instance, or give this one its own state root:
+  `OPENCODE_GOAL_STATE_PATH=/tmp/goals-2/state.json opencode`. Fixed upstream in
+  goal-plugin `0.6.8`, which is not published to npm yet — see Blueprint §12.8
+- **`/goal <subcommand>` is ignored and no `*_goal` tools are listed** — the goal
+  plugin is running a release older than `0.6.7`, whose tools never register on
+  OpenCode 1.18.x. Check the pin in `.opencode/opencode.json` and restart
