@@ -109,15 +109,18 @@ future audits without new evidence.
 > re-check trigger therefore fired twice without being honoured when
 > `opencode-supermemory` went 2.0.10 → 2.0.11 and `opencode-goal-plugin` went
 > 0.6.5 → 0.6.7. Worse, `.opencode/package.json` and `.opencode/package-lock.json`
-> were never updated by those bumps and still declare `^2.0.10` / `^0.6.5`, so
-> even with npm installed an audit would report on versions that are not
-> loaded. Both manifests are **untracked** as of this change (the intent was
-> already recorded in `.opencode/.gitignore`, but never took effect because
-> `.gitignore` does not apply to already-tracked files); they are inert for
-> plugin loading, since OpenCode resolves plugins through `Npm.add()` into
-> `~/.cache/opencode/packages/<spec>/`. **The authoritative plugin versions are
-> the exact pins in the `plugin` array of `.opencode/opencode.json`, and
-> nowhere else.** To reinstate this audit: install Node (`brew install node`),
-> regenerate `.opencode/package-lock.json` from those exact pinned specs, re-run
+> were never updated by those bumps and declared `^2.0.10` / `^0.6.5`, so
+> even with npm installed an audit would have reported on versions that are not
+> loaded. Both manifests have been **removed**: `git rm --cached` untracked them
+> (the intent was already recorded in `.opencode/.gitignore`, but never took
+> effect because `.gitignore` does not apply to already-tracked files), and
+> because they had been committed, git also deleted the working-tree copies on
+> the next checkout past that deletion — so they no longer exist on disk. They
+> were inert for plugin loading anyway, since OpenCode resolves plugins through
+> `Npm.add()` into `~/.cache/opencode/packages/<spec>/`. **The authoritative
+> plugin versions are the exact pins in the `plugin` array of
+> `.opencode/opencode.json`, and nowhere else.** To reinstate this audit: install
+> Node (`brew install node`), generate a fresh `.opencode/package.json` and
+> `package-lock.json` from those exact pinned specs, re-run
 > `npm audit`, and replace this warning with the fresh findings. Drop the entry
 > entirely once upstream patches land.
