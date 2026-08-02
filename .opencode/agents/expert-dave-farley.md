@@ -3,6 +3,7 @@ description: Expert Member - Continuous Delivery, High-Throughput Architecture, 
 mode: subagent
 temperature: 0.1
 permission:
+  task: deny
   atlassian_jira_*: deny
   github_*: deny
 ---
