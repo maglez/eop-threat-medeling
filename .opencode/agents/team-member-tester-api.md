@@ -3,6 +3,7 @@ description: Writes and executes fast API integration tests, validates request/r
 mode: subagent
 temperature: 0.1
 permission:
+  task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny
   atlassian_jira_batch_*: deny

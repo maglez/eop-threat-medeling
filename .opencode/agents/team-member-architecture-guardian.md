@@ -3,6 +3,7 @@ description: Evaluates system architecture, enforces maintainability, and mainta
 mode: subagent
 temperature: 0.2
 permission:
+  task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny
   atlassian_jira_batch_*: deny

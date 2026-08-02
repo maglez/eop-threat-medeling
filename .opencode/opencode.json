@@ -98,15 +98,7 @@
     "expert-dave-farley": { "model": "{env:MODEL_B}" },
     "expert-kent-beck": { "model": "{env:MODEL_B}" },
     "team-member-code-reviewer": { "model": "{env:MODEL_B}" },
-    "team-member-product-owner": {
-      "model": "{env:MODEL_B}",
-      "permission": {
-        "atlassian_jira_create_issue": "allow",
-        "atlassian_jira_batch_create_issues": "allow",
-        "atlassian_jira_create_issue_link": "allow",
-        "atlassian_jira_link_to_epic": "allow"
-      }
-    },
+    "team-member-product-owner": { "model": "{env:MODEL_B}" },
     "team-member-db-designer": { "model": "{env:MODEL_C}" },
     "team-member-devops-engineer": { "model": "{env:MODEL_C}" },
     "team-member-performance-engineer": { "model": "{env:MODEL_C}" },

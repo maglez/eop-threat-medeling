@@ -3,6 +3,7 @@ description: Builds accessible React + TypeScript front-end components and page 
 mode: subagent
 temperature: 0.3
 permission:
+  task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny
   atlassian_jira_batch_*: deny
