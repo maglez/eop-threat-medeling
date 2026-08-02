@@ -31,6 +31,26 @@ echo $GITHUB_TOKEN
 # Verify: curl http://localhost:8080/health
 ```
 
+### OpenCode shell wrapper (recommended, one-off per developer)
+
+OpenCode must always be launched from the repository root — see the "OpenCode Agent
+System" section of `AGENTS.md` for why. Add this to your `~/.zshrc` so it happens
+automatically. The `cd` runs in a subshell, so your own working directory is
+unchanged, and invocations outside a git repository pass straight through.
+
+```zsh
+opencode() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null)
+  if [[ -n "$root" && "$PWD" != "$root" ]]; then
+    print -u2 "opencode: launching from repository root ($root)"
+    ( cd "$root" && command opencode "$@" )
+  else
+    command opencode "$@"
+  fi
+}
+```
+
 ## Environment Variables
 
 | Variable | Required | Source | Purpose |
@@ -189,3 +209,11 @@ available yet — see the front-end section above.
 - **No `atlassian_jira_*` tools available** — `uvx` is not on `PATH`, so
   `uvx mcp-atlassian` never starts. Run `brew install uv`, then restart OpenCode.
   MCP servers are only registered at session start
+- **Dozens of unexpected agents in the Tab cycle** (named after `node_modules`
+  packages) — OpenCode was launched with a working directory inside `.opencode/`,
+  so its plugin tree landed inside the recursive `.opencode/agents/` scan. Launch
+  from the repository root instead; the `opencode()` wrapper in `~/.zshrc` does
+  this automatically. The phantoms stay registered until you restart OpenCode
+- **`BadResource: FileSystem.readFile (.../.opencode/agents/.opencode/opencode.json)`**
+  — you launched OpenCode from inside `.opencode/agents/`. This is the sentinel
+  guard working as intended. `cd` to the repository root and retry

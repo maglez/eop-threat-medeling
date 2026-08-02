@@ -1,0 +1,15 @@
+This is a REGULAR FILE on purpose. Do not delete it. Do not make it a directory.
+
+OpenCode scans this directory (.opencode/agents/) recursively for *.md files and
+registers each one as an agent. It separately bootstraps its plugins and goal
+state into $PWD/.opencode/. If OpenCode is launched with a working directory of
+.opencode/agents/, those two paths collide: the plugin dependency tree lands
+inside the agent scan path and ~30 node_modules README.md / CHANGELOG.md files
+get registered as phantom agents, polluting the Tab cycle.
+
+Because this path is occupied by a regular file, that nested directory can no
+longer be created. Launching OpenCode from the wrong directory now fails fast
+with a BadResource error naming this path, instead of silently misbehaving.
+
+The real fix is to always launch opencode from the repository root. See the
+"OpenCode Agent System" section of AGENTS.md.

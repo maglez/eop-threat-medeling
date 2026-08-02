@@ -51,8 +51,21 @@ All agents are `mode: subagent` except `team-member-tech-lead`, which is `mode: 
 selectable in the **Tab** primary-agent cycle *and* still dispatchable via `@` / the Task tool.
 
 **Always launch `opencode` from the repository root.** OpenCode scans `.opencode/agents/`
-recursively for `*.md`, and plugin bootstrap creates a nested `.opencode/` in the current working
-directory. Starting OpenCode from inside `.opencode/` therefore registers ~30 dependency
-`README.md`/`CHANGELOG.md` files as phantom agents that pollute the Tab cycle. The
-`.opencode/**/.opencode/` rule in `.gitignore` only keeps `git status` clean — it does not stop the
-phantom registration.
+recursively for `*.md`, but bootstraps its plugins and goal state into `$PWD/.opencode/`. Starting
+OpenCode from inside `.opencode/` makes those two paths collide, so ~30 dependency
+`README.md`/`CHANGELOG.md` files get registered as phantom agents and pollute the Tab cycle.
+
+Two guards enforce this, because documentation alone did not prevent a recurrence:
+
+1. **`opencode()` shell wrapper** (in `~/.zshrc`, per-developer, not in the repo) resolves
+   `git rev-parse --show-toplevel` and launches OpenCode from there via a subshell `cd`, so the
+   calling shell's working directory is unchanged. Outside a git repo it passes through untouched.
+   Note the `opencode [project]` positional argument only works for the default TUI command, not
+   for subcommands like `run`, which is why the wrapper uses `cd`.
+2. **`.opencode/agents/.opencode` sentinel** — a committed *regular file*, not a directory. It
+   makes the nested tree physically impossible to create: launching from the wrong directory now
+   fails fast with `BadResource: FileSystem.readFile (.../.opencode/agents/.opencode/opencode.json)`
+   instead of silently registering phantoms. Do not delete it and do not turn it into a directory.
+
+The `.opencode/**/.opencode/` rule in `.gitignore` only keeps `git status` clean — it does not stop
+phantom registration, and its trailing slash means it does not match the sentinel file.
