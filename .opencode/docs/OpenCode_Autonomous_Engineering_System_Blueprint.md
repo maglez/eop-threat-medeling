@@ -48,7 +48,7 @@ Architectural Blueprint, Decision Rationale, Multi-Model Diversity, and Operatio
   - [12.1 Graphify](#121-graphify--knowledge-graph-installed-data-available)
   - [12.2 VibeGuard](#122-vibeguard--secret-redaction-active)
   - [12.3 DCP](#123-dynamic-context-pruning--dcp-active)
-  - [12.4 Supermemory](#124-supermemory--cross-session-memory-installed-requires-authentication)
+  - [12.4 Supermemory](#124-supermemory--cross-session-memory-active)
   - [12.5 Type Inject](#125-type-inject--typescript-type-context-installed)
    - [12.6 Notificator — REMOVED](#126-notificator--desktop-notifications-removed-2026-07-27)
   - [12.7 Scheduler](#127-scheduler--recurring-agent-jobs-installed)
@@ -845,15 +845,21 @@ Reduces token usage by compressing stale conversation spans, deduplicating repea
 - **Data**: Run `/dcp` in the TUI to view stats; `/dcp-compress [focus]` to trigger manually
 - **Notable**: 3.8k ★, AGPL-3.0, subagent support enabled via `experimental.allowSubAgents: true`
 
-### 12.4 Supermemory — Cross-Session Memory (installed, requires authentication)
+### 12.4 Supermemory — Cross-Session Memory (active)
 
 Persists project knowledge, user preferences, and session summaries across OpenCode sessions and even across tools (Claude Code, Codex). Injects relevant memories on first message and auto-saves on keywords ("remember...", "save this").
 
-- **Package**: `opencode-supermemory` (npm)
-- **Auth**: `bunx opencode-supermemory@latest login` (browser OAuth); or set `SUPERMEMORY_API_KEY` in `.env`
-- **Config**: `~/.config/opencode/supermemory.jsonc`
-- **Data**: Run `/supermemory-init` to seed codebase memory; memories accumulate naturally through use
+- **Package**: `opencode-supermemory`, pinned at `2.0.11` in `.opencode/opencode.json`
+- **Auth**: set `SUPERMEMORY_API_KEY` in `.env` (template in `.env.example`). This is the **only** usable path on this setup — see the runtime warning below
+- **Config**: optional. Read from `~/.config/opencode/supermemory.jsonc`, then `~/.config/opencode/supermemory.json`. Neither exists here, so built-in defaults apply
+- **Data**: memories accumulate through use; recall is injected per-message via a `<supermemory-recall>` directive (added in 2.0.11). Query and write explicitly with the `supermemory` tool — `mode: search | add | list | profile | forget | help`
 - **Notable**: 1.5k ★, MIT, privacy via `<private>` tags
+
+> **The browser-OAuth flow is not runnable here, and neither is `/supermemory-init`.** Earlier revisions of this section prescribed `bunx opencode-supermemory@latest login` and a `/supermemory-init` command. Both are wrong. There is **no JavaScript runtime on `PATH`** — no `bun`, `bunx`, `node`, `npm` or `npx`, and no `~/.bun`; OpenCode ships its own bun *embedded privately inside the 138 MB binary* and exposes no passthrough to run arbitrary scripts. So any `bunx`/`npx` instruction in this document is unexecutable as written. The plugin's CLI (`dist/cli.js`, subcommands `login`, `logout`, `status`, `help`) would store credentials at `~/.supermemory-opencode/credentials.json`, but it cannot be invoked without installing a runtime. `/supermemory-init` does not exist at all — `2.0.11` has no `init` subcommand and registers no such command. Authenticate with the environment variable instead.
+
+> **Ignore the "Supermemory update available: v2.0.10 -> v2.0.11" notice.** It is an upstream bug, not a misconfiguration, and it cannot be silenced from our side. Release `2.0.11` ships with `PLUGIN_VERSION = "2.0.10"` still hardcoded in `dist/index.js`, and compares that constant against the registry — so it reports an update to the version you are already running, forever. Verify what is actually loaded by *behaviour*, not by the banner: the `<supermemory-recall>` directive text containing "Cadence is per-message" exists only in `2.0.11`.
+
+> **A stale `2.0.10` copy is vendored at `.opencode/node_modules/opencode-supermemory` and is NOT what loads.** OpenCode resolves npm plugins through `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, ignoring `.opencode/node_modules` (190 MB, gitignored, left over from a manual install). Note also that the tracked `.opencode/package.json` still declares caret ranges (`opencode-supermemory: ^2.0.10`), which duplicate and contradict the exact pins in `.opencode/opencode.json`; the caret ranges are inert for plugin loading. Do not trust either as evidence of the running version.
 
 ### 12.5 Type Inject — TypeScript Type Context (installed)
 
