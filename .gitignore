@@ -46,7 +46,13 @@ build/
 *.jks
 
 ### Graphify ###
+# Knowledge-graph state. Regenerate with: graphify update .
+.graphify/
+# Pre-0.17 layout, kept so an unmigrated tree stays ignored (see graphify migrate-state)
 graphify-out/
+# Installed CLI. The pin and lockfile ARE tracked; restore with:
+#   cd tools/graphify && npm install --ignore-scripts
+tools/graphify/node_modules/
 
 ### OpenCode Goal Plugin ###
 .opencode/goals/

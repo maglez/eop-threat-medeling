@@ -1,0 +1,10 @@
+{
+  "name": "eop-graphify-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Repo-local pin for the Graphify knowledge-graph CLI. Developer tooling only - not part of the Java build or the shipped artifact.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@sentropic/graphify": "0.17.1"
+  }
+}
