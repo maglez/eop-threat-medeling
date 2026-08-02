@@ -3,6 +3,7 @@ description: Expert Member - Test-Driven Development (TDD), Extreme Programming 
 mode: subagent
 temperature: 0.2
 permission:
+  edit: deny
   task: deny
   atlassian_jira_*: deny
   github_*: deny

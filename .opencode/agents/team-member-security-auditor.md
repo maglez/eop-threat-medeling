@@ -3,6 +3,7 @@ description: Audits full-stack security across Frontend, Backend, Cloud Infrastr
 mode: subagent
 temperature: 0.0
 permission:
+  edit: deny
   task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny
