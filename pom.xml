@@ -24,7 +24,6 @@
         <spotbugs.version>4.9.3.0</spotbugs.version>
         <jacoco.version>0.8.13</jacoco.version>
         <jacoco.min.instruction>0.80</jacoco.min.instruction>
-        <jacoco.min.branch>0.70</jacoco.min.branch>
     </properties>
 
     <dependencyManagement>
@@ -128,11 +127,6 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
-                <configuration>
-                    <excludes>
-                        <exclude>org/maglez/Main.class</exclude>
-                    </excludes>
-                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
@@ -156,11 +150,6 @@
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${jacoco.min.instruction}</minimum>
-                                        </limit>
-                                        <limit>
-                                            <counter>BRANCH</counter>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>${jacoco.min.branch}</minimum>
                                         </limit>
                                     </limits>
                                 </rule>

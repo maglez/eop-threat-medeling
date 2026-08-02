@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub MCP integration for agent-based PR/repo management (ADR-003)
 - API contract-first with OpenAPI 3.1 + springdoc (ADR-004)
 - Error handling with RFC 9457 Problem Details (ADR-005)
-- Build quality gates: Checkstyle, SpotBugs, JaCoCo 80/70, Enforcer (ADR-006)
+- Build quality gates: Checkstyle, SpotBugs, JaCoCo 80% instruction, Enforcer (ADR-006)
 - Configuration management rules (`@ConfigurationProperties` + `@Validated`)
 - Resilience patterns: Resilience4j (retry, circuit-breaker, time-limiter)
 - Multi-agent system: 17 agents defined in `.opencode/agents/`

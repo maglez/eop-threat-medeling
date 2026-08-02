@@ -1,7 +1,7 @@
 - Build MUST pass before any PR merge (`mvn verify` in CI)
-- Code style enforced by `checkstyle` (Google Java Style) — violations fail the build
+- Code style enforced by `checkstyle` against the repo's own `checkstyle.xml` (4-space indent, 140-char line limit — NOT Google Java Style) — violations fail the build
 - Static analysis via `spotbugs` — high/medium severity findings fail the build
-- Code coverage via `jacoco` — minimum 80% instruction coverage, 70% branch coverage
+- Code coverage via `jacoco` — minimum 80% instruction coverage over every production class, no exclusions; there is deliberately no branch minimum until the code has branches — see ADR-006
 - `maven-enforcer-plugin` enforces: JDK >= 21, dependency convergence (no version conflicts), no banned dependencies
 - All new code must meet quality gates before CI passes
 - Run quality checks locally with `./mvnw verify` before pushing
