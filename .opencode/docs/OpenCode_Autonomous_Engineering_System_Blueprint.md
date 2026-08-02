@@ -666,17 +666,26 @@ Every push/PR to `main` triggers `.github/workflows/ci.yml` — runs `mvn verify
 
 #### Rules Directory
 
-The `.opencode/rules/` directory contains reusable instruction snippets that agents can load on demand: clean architecture, git commits, testing standards, and security rules. These complement the base instructions in `opencode.json`.
+The `.opencode/rules/` directory contains 15 reusable instruction snippets. They reach a model by exactly two routes, and nothing else:
+
+1. **Always loaded** — the four cross-cutting rules listed in the `instructions` array of `.opencode/opencode.json`: `clean-architecture.md`, `security.md`, `git-commits.md`, `testing.md`. OpenCode resolves `instructions` entries as **file globs**, and combines them with `AGENTS.md` (which loads automatically and must not be listed again).
+2. **Read on demand** — the remaining eleven are named in a `## Required Reading` section at the end of the agent prompts that need them, and that agent reads them with the `read` tool when it starts relevant work. The routing is: `api-design` + `error-handling` → tester-api, code-reviewer, architecture-guardian; `database` + `configuration` → db-designer; `build-quality` + `observability` → devops-engineer, tester-unit-and-quality, code-reviewer; `performance-testing` → performance-engineer; `resilience` + `caching` → architecture-guardian, code-reviewer; `feature-flags` → tech-lead, product-owner, devops-engineer; `versioning` → devops-engineer, tech-lead.
+
+This keeps the always-on instruction budget at roughly 1.6 KB instead of the ~12 KB it would cost to load all fifteen into every session and every subagent.
+
+> **Known gap — the `instructions` array was inert until 2026-08-02.** It previously held fifteen inline prose Markdown *strings* rather than paths. OpenCode glob-resolves each entry against the filesystem and silently discards anything that matches no file — with no warning and no literal-text fallback — so roughly 10 KB of engineering standards reached no model at all, and every `.opencode/rules/*.md` file was orphaned. If you add a rule, add its **path** here; never paste its contents. Verify a change took effect behaviourally: after restarting OpenCode, a phrase unique to the rule file should be visible in the agent's context.
 
 ### 7.7 Custom Commands
 
-The `.opencode/command/` directory provides three ad-hoc multi-agent orchestration commands:
+The `.opencode/commands/` directory provides three ad-hoc multi-agent orchestration commands:
 
 - **`ask-all-experts`** — Triggers all expert sub-agents in parallel and synthesises their responses into a comparison matrix.
 - **`ask-all-team-members`** — Triggers all team-member sub-agents in parallel and synthesises their responses.
 - **`multi`** — Triggers specific `@agent` mentions from the prompt in parallel and synthesises their responses.
 
 These complement the `/goal` command (see §12.8) for when you want to poll multiple agents at once without setting a persistent goal.
+
+> **The directory is `commands/`, plural.** It was `command/` (singular) until 2026-08-02, which is almost certainly why these three never appeared in the slash-command list — OpenCode loads project commands from `.opencode/commands/` only. `/goal` was unaffected because it is declared in the `command` object of `.opencode/opencode.json` (that JSON key *is* singular), but its `template` was `{env:ARGUMENTS}` — config-load-time environment substitution against an unset variable — so it dispatched the tech lead with an empty prompt. The correct placeholder is `$ARGUMENTS`, resolved at invocation.
 
 ---
 

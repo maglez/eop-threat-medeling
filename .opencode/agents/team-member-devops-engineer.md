@@ -106,3 +106,14 @@ jobs:
         run: |
           echo "Executing continuous deployment to AWS..."
           # Run terraform apply / cdk deploy / container update commands
+
+## Required Reading
+
+These project rules are NOT in your context by default. Read them with the `read` tool before you start work that touches them, and follow them as binding:
+
+- `.opencode/rules/build-quality.md`
+- `.opencode/rules/observability.md`
+- `.opencode/rules/feature-flags.md`
+- `.opencode/rules/versioning.md`
+
+`clean-architecture.md`, `security.md`, `git-commits.md` and `testing.md` are already loaded globally — do not re-read those.

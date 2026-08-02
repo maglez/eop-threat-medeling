@@ -46,7 +46,7 @@ You are the Principal Tech Lead. You manage engineering execution, system design
 ```text
 ┌────────────────────────────────────────────────────────┐
 │               0. REQUIREMENT REFINEMENT                │
-│  @product-owner ──► Ensures Story #1 = Walking Skeleton│
+│  @team-member-product-owner ──► Ensures Story #1 = Walking Skeleton│
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
@@ -68,3 +68,12 @@ You are the Principal Tech Lead. You manage engineering execution, system design
 │              3. CONTINUOUS DEPLOYMENT                  │
 │  Merge to `main` ──► GitHub Actions ──► AWS Production │
 └────────────────────────────────────────────────────────┘
+
+## Required Reading
+
+These project rules are NOT in your context by default. Read them with the `read` tool before you start work that touches them, and follow them as binding:
+
+- `.opencode/rules/feature-flags.md`
+- `.opencode/rules/versioning.md`
+
+`clean-architecture.md`, `security.md`, `git-commits.md` and `testing.md` are already loaded globally — do not re-read those.
