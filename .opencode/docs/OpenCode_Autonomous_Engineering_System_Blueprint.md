@@ -633,6 +633,27 @@ The global block is an **allow-list**: `github_*` is denied first, the specific 
 "github_*_write": "deny"
 ```
 
+The `graphify` MCP server is governed the same way — wildcard denied, then each of the eleven read tools allowed by name:
+
+```jsonc
+"graphify_*": "deny",
+"graphify_first_hop_summary": "allow",
+"graphify_graph_stats": "allow",
+"graphify_query_graph": "allow",
+"graphify_get_node": "allow",
+"graphify_get_neighbors": "allow",
+"graphify_get_community": "allow",
+"graphify_god_nodes": "allow",
+"graphify_shortest_path": "allow",
+"graphify_review_delta": "allow",
+"graphify_review_analysis": "allow",
+"graphify_recommend_commits": "allow"
+```
+
+> **This changes nothing today, on purpose.** All eleven tools in Graphify 0.17.1 are read-only, and `graphify_recommend_commits` documents that it "never stages, commits, or mutates branches". Before this block they fell through to OpenCode's default `allow`; the point is that a mutating tool introduced by a future version is denied until somebody reviews and lists it, rather than granted on upgrade. Unlike `github_*`, no trailing `_write` deny is needed because upstream uses no such suffix convention — the wildcard deny is the only backstop, which is why new tool names must be added deliberately.
+
+> **The four experts keep `graphify_*` while being denied `github_*`, deliberately.** Their frontmatter denies `edit`, `task` and `github_*`; graph access is left open. The asymmetry is the point: the graph is derived from a repository they are already reading, so it grants no new reach, whereas GitHub is a live external system with side effects and rate limits. Recorded in [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md) so it reads as a decision rather than an omission.
+
 `github_actions_*` needs its own line because `github_actions_get` and `github_actions_list` lead with the toolset name rather than the verb, so neither prefix rule reaches them. The same last-match-wins glob semantics described in §7.2 apply here.
 
 > **Known gap — closed 2026-08-02: the deny-list matched no write tool.** The previous block denied `github_create_*`, `github_update_*`, `github_delete_*`, `github_merge_*`, `github_push_*`, `github_add_*`, `github_fork_*` and `github_request_copilot_review` — eight **verb-prefix** globs. But this server names its mutating tools with a `_write` **suffix**: `github_issue_write`, `github_pull_request_review_write`, `github_label_write`, `github_sub_issue_write`. None of the four matched any deny, so all four fell through to `github_*: allow`, and the only thing actually preventing agent writes was the remote `X-MCP-Readonly: true` header — a single gate, evaluated on someone else's server, in a configuration whose stated principle is defence in depth. Inverting to an allow-list changes the failure mode from "a new write tool is permitted until somebody notices" to "a new read tool is refused until somebody lists it", which is the direction a security default should fail in.
