@@ -51,7 +51,7 @@ All visual diagrams **must** be written strictly using valid **Mermaid.js** synt
 
 # Context Optimization Rule (Graphify)
 - Before grepping or dumping raw files to understand system architecture or dependencies:
-  1. Execute `graphify query "your question or module name"` or inspect `.graphify/GRAPH_REPORT.md`.
+  1. Prefer the graphify MCP tools over shelling out: `graphify_first_hop_summary` for orientation, `graphify_query_graph` with your question for a scoped subgraph, `graphify_get_neighbors` / `graphify_shortest_path` to trace relationships, and `graphify_review_analysis` with the changed files for blast radius and likely test gaps. Read `.graphify/GRAPH_REPORT.md` only for broad context.
   2. Traversal paths will return exact module dependencies.
   3. Only read the specific source files identified along the traversal path.
 

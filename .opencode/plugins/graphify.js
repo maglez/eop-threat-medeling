@@ -21,7 +21,7 @@ export const GraphifyPlugin = async ({ directory }) => {
         // ';' not '&&' — Windows PowerShell 5.1 rejects '&&' as a statement
         // separator, breaking the first bash command of the session (#1646).
         output.args.command =
-          'echo "[graphify] knowledge graph at .graphify/. For focused questions, run graphify query with your question (scoped subgraph, usually much smaller than GRAPH_REPORT.md) instead of grepping raw files. Read .graphify/GRAPH_REPORT.md only for broad architecture context." ; ' +
+          'echo "[graphify] knowledge graph at .graphify/. Prefer the graphify MCP tools (query_graph, first_hop_summary, get_neighbors, review_analysis) over grepping raw files. Read .graphify/GRAPH_REPORT.md only for broad architecture context." ; ' +
           output.args.command;
         reminded = true;
       }
