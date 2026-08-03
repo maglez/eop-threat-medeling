@@ -393,7 +393,7 @@ The only global prerequisite is **Node ≥ 20** (`brew install node`). After a f
 
 | Command | Use |
 |---|---|
-| `graphify update .` | rebuild the code graph — the one command to run after significant changes |
+| `graphify update . --description-lang en --label-lang en` | rebuild the code graph — the one command to run after significant changes. **Always pass the two language flags**; see the note below |
 | `graphify check-update` | report whether the graph is stale, without rebuilding |
 | `graphify query "<question>"` | scoped subgraph for a question — the cheap alternative to grepping |
 | `graphify summary` | compact first-hop orientation for a fresh session |
@@ -404,7 +404,14 @@ The only global prerequisite is **Node ≥ 20** (`brew install node`). After a f
 | `graphify serve` | stdio MCP server over `graph.json` — **wired as the `graphify` MCP server**; see §5.5 |
 | `graphify migrate-state` | convert a pre-0.17 `graphify-out/` tree |
 
-> **Enrichment is unfilled, and that is a choice.** `--description-mode` and `--label-mode` default to `assistant`, which makes **zero API calls**: instead of calling a model, Graphify writes prompt files under `.graphify/label-instructions/` and `.graphify/description-instructions/` for an assistant to answer, then re-ingests them on the next `graphify update`. Until somebody fills them, communities keep generic `Community N` names and nodes have empty descriptions. The graph is fully queryable regardless — this is polish, not a prerequisite. Switching to `--label-mode direct` would call a model and cost tokens.
+> **Enrichment is filled, at zero API cost.** `--description-mode` and `--label-mode` default to `assistant`, which makes **zero API calls**: instead of calling a model, Graphify writes prompt files under `.graphify/label-instructions/` and `.graphify/description-instructions/` for the assistant already in session to answer, then re-ingests them on the next `graphify update`. Those files were answered on 2026-08-03: all nine communities carry real names and coverage is **26/26 describable nodes, skipped 0**. `graphify check-update` reports "Graph state looks current" and `.graphify_describe_pending` is gone. Switching to `--label-mode direct` would call a model and cost tokens for no better result. Use `--fill-missing` to describe only new nodes as the domain grows — it is idempotent, so enrichment never has to be redone wholesale. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
+
+> **Always pin the language: `--description-lang en --label-lang en`.** Both flags default to `auto`, meaning "detect per source", and detection misread this repository's English Java and k6 files as Portuguese — stamping `lang=pt` on the batch prompts and inviting Portuguese descriptions into an English codebase. Pinning removes the markers at source. A rebuild without the flags reintroduces them.
+
+> **Two `check-update` messages are wrong, harmlessly.** It attributes a label-less rebuild to "the fast git hook" although no git hook is installed here (§6.2), and it advises "Run the graphify skill with --update" although no such skill exists under `.opencode/`. The correct action is always `graphify update .` with the language flags above.
+
+> **Only grounded nodes are describable.** Graphify refuses to describe entity nodes that carry no citations or evidence — an anti-hallucination policy, not a failure. In practice that excludes the ~125 commit and branch nodes, whose descriptions could only have restated their own titles. Three of the four generated description batches consisted almost entirely of those, so the set Graphify is willing to describe and the set worth describing are the same set.
+
 
 ### 5.5 How Agents Reach the Graph
 
@@ -430,7 +437,12 @@ Three routes, in order of directness:
 2. **`.opencode/plugins/graphify.js`** — a local plugin loaded by directory convention (it is *not* an entry in the `plugin` array of `.opencode/opencode.json`). It hooks `tool.execute.before`, and once per session, if `.graphify/graph.json` exists, prepends a one-line reminder to the first `bash` command pointing at the MCP tools and the report.
 3. **Three agent prompts** — `team-member-architecture-guardian`, `team-member-code-reviewer` and `team-member-tech-lead` each name the specific tools to prefer over reading raw files.
 
-> **Known gap — closed 2026-08-02: the graph is now callable.** Until this change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. Two consequences worth stating: the tool names above are the MCP server's own names (confirmed by handshake) prefixed with the server key `graphify`, which follows the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention but is an inference until the tool list is read after a restart; and the plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one.
+> **Known gap — closed 2026-08-02: the graph is now callable.** Until that change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. All eleven tool names in the table above were **confirmed by direct invocation on 2026-08-03** — they are the MCP server's own names prefixed with the server key `graphify`, following the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention. The plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one; it is rejected because it writes into reviewed configuration out of band. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
+
+> **Prefer `grep` and direct file reads while the domain is this small.** Measured on 2026-08-03: 513 of 534 edges (96%) are git metadata — `ON_BRANCH` (360), `PARENT_OF` (140), `MODIFIES` (13) — against just 21 code edges: `method` (10), `contains` (9), `imports` (2). `graphify_query_graph("health endpoint", depth=2)` returns **138 of 151 nodes**, burying `.health()` and `Main` under twenty merge commits. `GRAPH_REPORT.md` opens by saying the corpus fits in a single context window and "you may not need a graph". The wiring is worth having in place for when `org.maglez.eop.*` grows; the retrieval value is not there yet, and an agent that trusts a broad `query_graph` result today will be reading commit titles.
+
+> **Descriptions do not reach agents in 0.17.1.** `graph.json` carries a `description` on all 26 enriched nodes, but neither `graphify_get_node` nor `graphify_query_graph` renders it — both emit ID, source, type, community and degree only. Community *names* do come through. So the enrichment currently benefits humans reading `GRAPH_REPORT.md` rather than the agents it was written for; re-check on the next Graphify upgrade.
+
 
 > **Do not put backticks or `$(...)` in the plugin's reminder string.** It is interpolated into a double-quoted `echo`, so shell substitution applies — an earlier version corrupted tool output and silently executed the very command it meant to suggest. The commands are joined with `;` rather than `&&` because PowerShell 5.1 rejects `&&`, which would break the first `bash` call of every session on Windows.
 
@@ -854,6 +866,7 @@ Key ADRs:
 - [ADR-008: Database Migration Strategy](../../docs/adr/ADR-008-database-migration-liquibase.md) — documents Liquibase with XML changelogs for all schema changes
 - [ADR-009: Front-End Technology Stack](../../docs/adr/ADR-009-frontend-react-typescript.md) — documents React + TypeScript + Vite + GOV.UK Frontend CSS decision
 - [ADR-010: Continuous Flow over Sprint Timeboxes](../../docs/adr/ADR-010-continuous-flow-over-sprints.md) — documents why sprints are disabled, the WIP limit, the machine-checkable DoD, and event-driven retrospectives
+- [ADR-011: Graphify Knowledge Graph via Repo-Local MCP Server](../../docs/adr/ADR-011-graphify-knowledge-graph.md) — documents the repo-local version pin, `graphify serve` over a hand-rolled plugin, English-pinned assistant-mode enrichment, the `graphify_*` allow-list, and why the `post-commit` rebuild hook is not installed
 
 ---
 
