@@ -1,0 +1,15 @@
+# Build context is default-denied, then explicitly allowed — the same
+# allow-list posture the repository applies to tool permissions.
+#
+# This file is load-bearing, not cosmetic. Without it `docker build .` uploads
+# ~28,000 ignored files to the daemon (24,194 under tools/graphify/ and 3,652
+# under .opencode/node_modules/) plus target/, .git/ and .graphify/, to build a
+# jar from four source files.
+*
+
+# Everything the image build actually reads.
+!pom.xml
+!checkstyle.xml
+!mvnw
+!.mvn
+!src

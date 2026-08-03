@@ -16,7 +16,10 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.xml
 
 server:
-  address: 127.0.0.1
+  # The deployment unit is a container, so binding to loopback would provide no
+  # isolation — only unreachability from outside the container. Isolation comes
+  # from the security group and from which ports are published to the host.
+  address: 0.0.0.0
   error:
     include-exception: false
     include-stacktrace: never

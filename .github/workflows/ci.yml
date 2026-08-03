@@ -6,8 +6,18 @@ on:
   pull_request:
     branches: [ main ]
 
+# Least privilege, stated explicitly. The repository default is already
+# `read`, so this changes nothing today - but it means a job added later
+# cannot quietly inherit more than it needs, and it makes the one job that
+# does need write scope declare it locally.
+permissions:
+  contents: read
+
 jobs:
+  # The only required status check on `main`. Keep it fast and keep it
+  # about the code.
   build:
+    name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,11 +28,114 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # The Maven Wrapper, not a system `mvn`. The wrapper pins the Maven
+      # version; `mvn` is whatever the runner image happens to ship.
       - name: Build and test
-        run: mvn verify --batch-mode
+        run: ./mvnw verify --batch-mode
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
           path: target/*.jar
+
+  # Deliberately NOT a required status check yet. It lands as an ordinary
+  # job so its reliability can be observed over a few runs; promoting it
+  # to required is a separate, deliberate branch-protection change.
+  image:
+    name: image
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed only to publish to GHCR, and only by this job. No
+      # repository secret is involved: the built-in GITHUB_TOKEN is
+      # enough, which is why this repository still has zero secrets.
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # linux/amd64 explicitly. The instance is t3.small, which is x86_64,
+      # and a developer laptop on Apple Silicon would otherwise produce an
+      # arm64 image that cannot run there. Only CI publishes the image that
+      # gets deployed.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: eop-threat-medeling:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Nothing before this point proves the artifact starts. `mvn verify`
+      # proves the code compiles and the tests pass; the build proves the
+      # image assembles. This proves the application boots, runs Liquibase
+      # against a real PostgreSQL and serves traffic - which is what makes
+      # the walking skeleton honest.
+      - name: Smoke test
+        env:
+          APP_IMAGE: eop-threat-medeling:ci
+          POSTGRES_DB: eop
+          POSTGRES_USER: eop
+          # Ephemeral, lives for the duration of one job, reachable only
+          # from inside the Compose network. Not a secret.
+          POSTGRES_PASSWORD: smoke-test-throwaway
+        run: |
+          set -euo pipefail
+
+          docker compose -f compose.app.yml up -d
+
+          healthy=false
+          for _ in $(seq 1 60); do
+            if [ "$(curl -fsS http://127.0.0.1:8080/health 2>/dev/null || true)" = "OK" ]; then
+              healthy=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" != true ]; then
+            echo "::error::The container never served OK on /health"
+            docker compose -f compose.app.yml ps
+            docker compose -f compose.app.yml logs --no-color
+            exit 1
+          fi
+
+          echo "GET /health returned OK"
+          docker compose -f compose.app.yml down --volumes
+
+      # Publish only from `main`. A pull request builds and smoke tests the
+      # image but never publishes one, so an unreviewed change can never
+      # become a deployable tag.
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+
+          # GHCR rejects uppercase in a repository path. This one is
+          # already lowercase; the guard costs nothing and survives a
+          # rename.
+          repo="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+
+          # The commit SHA is the immutable, deployable reference - it is
+          # what `app_image` in infra/terraform.tfvars should point at.
+          # `latest` is a convenience for humans and moves under you.
+          for tag in "${{ github.sha }}" latest; do
+            docker tag eop-threat-medeling:ci "$repo:$tag"
+            docker push "$repo:$tag"
+          done
+
+          echo "Published $repo:${{ github.sha }}"

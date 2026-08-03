@@ -10,7 +10,9 @@ A threat modeling card game based on the STRIDE framework (Spoofing, Tampering, 
 | Framework | Spring Boot 4.1.0 |
 | Build | Maven Wrapper (`./mvnw`) |
 | Tests | JUnit 5 |
-| CI | GitHub Actions (`mvn verify`) — no deployment stage yet |
+| CI | GitHub Actions — `./mvnw verify`, then build, smoke test and publish the image to GHCR |
+| Container | Multi-stage `Dockerfile`, `compose.app.yml` with PostgreSQL |
+| Infrastructure | Terraform (`infra/`) — single EC2 instance, not yet applied ([ADR-012](docs/adr/ADR-012-deployment-target.md)) |
 | AI Agents | OpenCode multi-agent system |
 
 ## Quick Start

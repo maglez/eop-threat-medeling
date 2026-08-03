@@ -12,7 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Working code and tooling that exists in the repository today.
 
 - Walking Skeleton: Spring Boot 4.1.0 + Java 21 + `GET /health` (ADR-002)
-- Continuous integration: GitHub Actions running `mvn verify` on push and PR, and uploading the built artifact. There is no deployment stage yet
+- Continuous integration: GitHub Actions running `./mvnw verify` on push and PR, uploading the built artifact, then building the container image, smoke testing it against a real PostgreSQL and publishing it to GHCR on `main`
+- Container image: multi-stage `Dockerfile` producing a non-root JRE image, `compose.app.yml` running it alongside containerised PostgreSQL, published to `ghcr.io` by CI with no repository secrets (ADR-012)
+- Deployment infrastructure: Terraform under `infra/` describing a single `t3.small` EC2 instance in a dedicated VPC with an Elastic IP and a separate encrypted EBS data volume (ADR-012). Validated with `terraform validate`; no `apply` has run yet because no AWS account has been provisioned
 - Build quality gates: Checkstyle (`checkstyle.xml`), SpotBugs, JaCoCo 80% instruction coverage, Enforcer (ADR-006)
 - Database migration wiring: Liquibase with a master XML changelog, H2 in dev, PostgreSQL in prod (ADR-008). No migrations have been written yet — `db/changelog/changes/` is empty
 - Load testing: k6 with an InfluxDB + Grafana stack (Docker Compose), auto-provisioned dashboard, SLO thresholds (p95 < 200ms)
@@ -34,6 +36,6 @@ has an accepted ADR or rule file but no implementation in `src/` or `pom.xml`.
 - Configuration management via `@ConfigurationProperties` + `@Validated` — rule only, no such class exists
 - Resilience patterns: Resilience4j retry, circuit-breaker and time-limiter — `.opencode/rules/resilience.md` records the intent, but the dependency is absent from `pom.xml`
 - Front-end stack: React + TypeScript + Vite + GOV.UK Design System CSS (ADR-009) — no `ui/` directory exists
-- Deployment: no target, mechanism or infrastructure-as-code has been decided or built
+- Automated deployment: the pipeline publishes a deployable image but does not deploy it. Rolling the new tag onto the instance is a manual pull-and-restart over SSH (ADR-012 records why CI-driven SSH deployment is deliberately avoided)
 
 [1.0.0-SNAPSHOT]: https://github.com/maglez/eop-threat-medeling/releases/tag/v1.0.0-SNAPSHOT
