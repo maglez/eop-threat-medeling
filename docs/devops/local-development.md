@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - **Java 21** (JDK) — Install via [Homebrew](https://brew.sh): `brew install openjdk@21`
-- **Node.js 20+** — for the planned React front-end only. Install via [Homebrew](https://brew.sh): `brew install node`. The OpenCode plugins in `.opencode/` do **not** need it — OpenCode ships an embedded runtime and installs their `node_modules` itself.
+- **Node.js 20+** — **required** for the Graphify knowledge graph, whose CLI OpenCode launches as a separate Node process from `mcp.graphify.command` in `.opencode/opencode.json`. Install via [Homebrew](https://brew.sh): `brew install node`. Below Node 20 the MCP server silently fails to start and no `graphify_*` tools appear. OpenCode's own plugins under `.opencode/` do **not** need it — they run on OpenCode's embedded runtime, which installs their `node_modules` itself. Also required later for the React front-end (ADR-009), which is not scaffolded yet.
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** — **required** for the Atlassian MCP server, which OpenCode launches as `uvx mcp-atlassian`. Install via [Homebrew](https://brew.sh): `brew install uv`. Without `uvx` on `PATH` the server silently fails to start and no `atlassian_jira_*` tools appear.
 - **GitHub PAT** with `repo` scope — used by both the read-only GitHub MCP server and the `gh` CLI
@@ -22,14 +22,26 @@ direnv allow
 # 3. Verify env vars loaded
 echo $GITHUB_TOKEN
 
-# 4. Build and test
+# 4. Install the pinned Graphify CLI (required for the graphify MCP server)
+cd tools/graphify && npm install --ignore-scripts && cd -
+graphify --version   # must print 0.17.1
+
+# 5. Activate the committed git hooks (enforces the [EOP-NNN] commit prefix)
+git config core.hooksPath .githooks
+
+# 6. Build and test
 ./mvnw compile
 ./mvnw test
 
-# 5. Run the application
+# 7. Run the application
 ./mvnw spring-boot:run
 # Verify: curl http://localhost:8080/health
 ```
+
+> **Steps 4 and 5 are per-clone and cannot be committed.** Skipping step 4 leaves you
+> with no `graphify_*` tools; skipping step 5 leaves `.githooks/commit-msg` present but
+> inert. Both fail silently, so verify them rather than assuming. `--ignore-scripts` is
+> deliberate — see Blueprint §5.2.
 
 ### OpenCode shell wrapper (recommended, one-off per developer)
 
@@ -56,7 +68,7 @@ opencode() {
 | Variable | Required | Source | Purpose |
 |---|---|---|---|
 | `JAVA_HOME` | Yes | JDK 21 install | Path to JDK 21 (e.g. `/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`) |
-| `GITHUB_TOKEN` | Yes | GitHub PAT | GitHub MCP auth (read-only) and `gh` CLI. Writes to `main` go via PR — branch protection blocks direct pushes for everyone, admins included |
+| `GITHUB_TOKEN` | Yes | GitHub PAT | Auth for the GitHub MCP server and the `gh` CLI. The **server** is read-only (`X-MCP-Readonly: true`); the **token itself is not** — it is a classic PAT with admin rights on this repository, see the known gap in Blueprint §7.3. Writes to `main` go via PR — branch protection blocks direct pushes for everyone, admins included |
 | `JIRA_URL` | For Jira | Atlassian | Jira instance URL |
 | `JIRA_USERNAME` | For Jira | Atlassian | Jira bot email |
 | `JIRA_API_TOKEN` | For Jira | Atlassian | Jira API auth |

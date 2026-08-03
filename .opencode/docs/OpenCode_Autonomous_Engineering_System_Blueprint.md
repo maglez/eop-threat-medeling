@@ -350,7 +350,7 @@ Graphify turns the repository into a queryable graph, so an agent can ask a targ
 graphify reduces token consumption and drives down operational costs by replacing expensive LLM re-reading of source files with cheap, deterministic local computation. Graphify's creator (Safi Shamsi) reports a 71.5× token reduction (~98.6% reduction) — distilling a typical 100,000-token codebase into roughly 1,400 tokens of graph structure. By injecting far less content into every prompt, the AI takes substantially longer to hallucinate, producing more reliable and focused reasoning, and a massive cost reduction on token usage.
 
 - **AST Extraction is Free**: Code structure — classes, functions, imports, dependencies — is parsed locally using tree-sitter parsers. This runs at zero token cost, producing structured nodes and edges without any LLM call.
-- **Cached Semantic Extraction**: Once entities and relationships are extracted from documentation or images, the results are cached on disk. Incremental updates (`graphify update .`) only re-process changed files, avoiding redundant API calls.
+- **No Semantic Extraction At All In This Repository**: The figures above describe Graphify's full capability. This repository realises only the free half of it. Documentation, images and other non-code sources are extracted by a semantic pass through a platform model, and no model backend is configured here — so the 52 tracked Markdown files, this Blueprint and every ADR among them, contribute **zero nodes**. The graph is built purely from the tree-sitter pass over code plus git history. Of the two assistant-mode artefacts that partially substitute for that pass, only community labels are cached across a rebuild (`.graphify/.graphify_labels.json`); node descriptions are discarded every time, which is why they are not maintained. See ADR-011.
 - **Subgraph Queries Over Full Files**: When an agent needs to understand a specific part of the system, it queries the graph for a scoped subgraph instead of loading every source file into context. This dramatically reduces the token footprint per session.
 - **Community-Directed Navigation**: Community detection groups related code into clusters. Agents can jump directly to the relevant community rather than scanning the entire codebase, keeping context windows small and focused.
 
@@ -393,7 +393,7 @@ The only global prerequisite is **Node ≥ 20** (`brew install node`). After a f
 
 | Command | Use |
 |---|---|
-| `graphify update .` | rebuild the code graph — the one command to run after significant changes |
+| `graphify update . --description-lang en --label-lang en` | rebuild the code graph — the one command to run after significant changes. **Always pass the two language flags**; see the note below |
 | `graphify check-update` | report whether the graph is stale, without rebuilding |
 | `graphify query "<question>"` | scoped subgraph for a question — the cheap alternative to grepping |
 | `graphify summary` | compact first-hop orientation for a fresh session |
@@ -404,7 +404,22 @@ The only global prerequisite is **Node ≥ 20** (`brew install node`). After a f
 | `graphify serve` | stdio MCP server over `graph.json` — **wired as the `graphify` MCP server**; see §5.5 |
 | `graphify migrate-state` | convert a pre-0.17 `graphify-out/` tree |
 
-> **Enrichment is unfilled, and that is a choice.** `--description-mode` and `--label-mode` default to `assistant`, which makes **zero API calls**: instead of calling a model, Graphify writes prompt files under `.graphify/label-instructions/` and `.graphify/description-instructions/` for an assistant to answer, then re-ingests them on the next `graphify update`. Until somebody fills them, communities keep generic `Community N` names and nodes have empty descriptions. The graph is fully queryable regardless — this is polish, not a prerequisite. Switching to `--label-mode direct` would call a model and cost tokens.
+> **Communities are named; node descriptions are deliberately left empty.** `--description-mode` and `--label-mode` default to `assistant`, which makes **zero API calls**: Graphify writes prompt files under `.graphify/label-instructions/` and `.graphify/description-instructions/` for the assistant already in session to answer, then re-ingests them on the next `graphify update`. The two artefacts differ in durability, which decides how each is treated:
+>
+> - **Community names persist.** They are cached in `.graphify/.graphify_labels.json` and reapplied to every node on each rebuild. All nine are named — "Spring Boot Walking Skeleton", "k6 Load Test Configuration", and so on — and the names *do* reach agents in `get_node` / `get_community` output.
+> - **Node descriptions do not persist.** `graphify update` **deletes the `batch-NNN.json` answer files and drops every description from `graph.json`.** This was measured, not assumed: a filled run reached 26/26 describable nodes with `check-update` reporting "Graph state looks current", and the next rebuild — caused by four ordinary commits — left 0 of 155 nodes described. The old graph is backed up under `.graphify/<date>/` but never reapplied.
+>
+> Because every commit adds nodes and so requires a rebuild, maintaining descriptions means re-answering four batches after every commit — for text that no MCP tool renders anyway (§5.5). Not worth it. `--fill-missing` is the right primitive if that ever changes. Switching to `--label-mode direct` would call a model and cost tokens for a result the free path already achieves. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
+
+> **Expect `check-update` to say "Pending semantic updates". That is the steady state.** It fires because the description batches are deliberately unanswered, so it is not a defect to chase — treating it as one is how a team learns to ignore the tool. The line worth reading is `graph.json built from <sha> but HEAD is <sha>`, which means the **topology** is stale and a rebuild is genuinely due.
+
+> **Always pin the language: `--description-lang en --label-lang en`.** Both flags default to `auto`, meaning "detect per source", and detection misread this repository's English Java and k6 files as Portuguese — stamping `lang=pt` on the batch prompts and inviting Portuguese text into an English codebase. Pinning removes the markers at source. A rebuild without the flags reintroduces them.
+
+> **Two `check-update` messages are wrong, harmlessly.** It attributes the label-less rebuild to "the fast git hook" although no git hook is installed here (§6.2 — the rebuild was a plain manual `graphify update`), and it advises "Run the graphify skill with --update" although no such skill exists under `.opencode/`. The correct action is always `graphify update .` with the language flags above.
+
+> **Only grounded nodes are describable at all.** Graphify refuses to describe entity nodes that carry no citations or evidence — an anti-hallucination policy, not a failure. That excludes the ~125 commit and branch nodes, whose descriptions could only have restated their own titles.
+
+
 
 ### 5.5 How Agents Reach the Graph
 
@@ -430,7 +445,12 @@ Three routes, in order of directness:
 2. **`.opencode/plugins/graphify.js`** — a local plugin loaded by directory convention (it is *not* an entry in the `plugin` array of `.opencode/opencode.json`). It hooks `tool.execute.before`, and once per session, if `.graphify/graph.json` exists, prepends a one-line reminder to the first `bash` command pointing at the MCP tools and the report.
 3. **Three agent prompts** — `team-member-architecture-guardian`, `team-member-code-reviewer` and `team-member-tech-lead` each name the specific tools to prefer over reading raw files.
 
-> **Known gap — closed 2026-08-02: the graph is now callable.** Until this change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. Two consequences worth stating: the tool names above are the MCP server's own names (confirmed by handshake) prefixed with the server key `graphify`, which follows the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention but is an inference until the tool list is read after a restart; and the plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one.
+> **Known gap — closed 2026-08-02: the graph is now callable.** Until that change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. All eleven tool names in the table above were **confirmed by direct invocation on 2026-08-03** — they are the MCP server's own names prefixed with the server key `graphify`, following the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention. The plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one; it is rejected because it writes into reviewed configuration out of band. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
+
+> **Prefer `grep` and direct file reads while the domain is this small.** Measured on 2026-08-03: 96% of edges are git metadata (`ON_BRANCH`, `PARENT_OF`, `MODIFIES`) against just 21 code edges: `method` (10), `contains` (9), `imports` (2). `graphify_query_graph("health endpoint", depth=2)` returned **138 of 151 nodes** (91% of the graph), burying `.health()` and `Main` under twenty merge commits. `GRAPH_REPORT.md` opens by saying the corpus fits in a single context window and "you may not need a graph". The wiring is worth having in place for when `org.maglez.eop.*` grows; the retrieval value is not there yet, and an agent that trusts a broad `query_graph` result today will be reading commit titles.
+
+> **Descriptions do not reach agents in 0.17.1, and do not survive a rebuild.** While descriptions existed, `graph.json` carried them but neither `graphify_get_node` nor `graphify_query_graph` rendered them — both emit ID, source, type, community and degree only. Community *names* do come through. Together with the wipe-on-rebuild behaviour in §5.4, that is why descriptions are no longer maintained; re-check both on the next Graphify upgrade.
+
 
 > **Do not put backticks or `$(...)` in the plugin's reminder string.** It is interpolated into a double-quoted `echo`, so shell substitution applies — an earlier version corrupted tool output and silently executed the very command it meant to suggest. The commands are joined with `;` rather than `&&` because PowerShell 5.1 rejects `&&`, which would break the first `bash` call of every session on Windows.
 
@@ -447,7 +467,9 @@ Three routes, in order of directness:
 - **Output Files**: Stores assets in `.graphify/` (`graph.json`, `GRAPH_REPORT.md`, plus caches and build provenance) — see §5.3.
 - **Rebuilding**: Run `graphify update .` after significant changes; `graphify check-update` reports staleness without rebuilding. Rebuilds are incremental, using the AST cache.
 
-> **Known gap — rebuilds are manual.** `graphify hook install` would add a `post-commit` hook that regenerates the graph on every commit, and it has deliberately **not** been run. This repository has no git hook infrastructure at all: `.git/hooks/` holds only the stock `*.sample` files and `core.hooksPath` is unset, so the `commit-msg` hook documented in §7.5 is also uninstalled. Hook management deserves one deliberate decision covering both, rather than two tools each installing their own. Until then a stale graph is possible — check with `graphify check-update` when the answers look wrong.
+> **Graph rebuilds are manual, by decision.** `graphify hook install` would add a `post-commit` hook that regenerates the graph on every commit, and it is deliberately **not** installed: that hook takes the fast path, rebuilding topology *without* descriptions or community labels, so it would silently discard the enrichment described in §5.4 on every single commit. A stale graph announces itself through `graphify check-update`; a silently de-enriched one does not. Refresh explicitly with `graphify update . --description-lang en --label-lang en`.
+>
+> Git hook infrastructure now exists for the other half of the question: `.githooks/commit-msg` enforces the `[EOP-NNN]` convention of §7.5, activated per clone with `git config core.hooksPath .githooks`. Because `core.hooksPath` is local config it cannot be committed, so a clone that skips it has the hook present but inert — hence the verification step in SETUP.md. Adding Graphify's hook later would mean giving up the single `core.hooksPath` directory to a tool that manages `.git/hooks/` itself; another reason the decision above stands. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
 
 ---
 
@@ -621,6 +643,27 @@ The global block is an **allow-list**: `github_*` is denied first, the specific 
 "github_*_write": "deny"
 ```
 
+The `graphify` MCP server is governed the same way — wildcard denied, then each of the eleven read tools allowed by name:
+
+```jsonc
+"graphify_*": "deny",
+"graphify_first_hop_summary": "allow",
+"graphify_graph_stats": "allow",
+"graphify_query_graph": "allow",
+"graphify_get_node": "allow",
+"graphify_get_neighbors": "allow",
+"graphify_get_community": "allow",
+"graphify_god_nodes": "allow",
+"graphify_shortest_path": "allow",
+"graphify_review_delta": "allow",
+"graphify_review_analysis": "allow",
+"graphify_recommend_commits": "allow"
+```
+
+> **This changes nothing today, on purpose.** All eleven tools in Graphify 0.17.1 are read-only, and `graphify_recommend_commits` documents that it "never stages, commits, or mutates branches". Before this block they fell through to OpenCode's default `allow`; the point is that a mutating tool introduced by a future version is denied until somebody reviews and lists it, rather than granted on upgrade. Unlike `github_*`, no trailing `_write` deny is needed because upstream uses no such suffix convention — the wildcard deny is the only backstop, which is why new tool names must be added deliberately.
+
+> **The four experts keep `graphify_*` while being denied `github_*`, deliberately.** Their frontmatter denies `edit`, `task` and `github_*`; graph access is left open. The asymmetry is the point: the graph is derived from a repository they are already reading, so it grants no new reach, whereas GitHub is a live external system with side effects and rate limits. Recorded in [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md) so it reads as a decision rather than an omission.
+
 `github_actions_*` needs its own line because `github_actions_get` and `github_actions_list` lead with the toolset name rather than the verb, so neither prefix rule reaches them. The same last-match-wins glob semantics described in §7.2 apply here.
 
 > **Known gap — closed 2026-08-02: the deny-list matched no write tool.** The previous block denied `github_create_*`, `github_update_*`, `github_delete_*`, `github_merge_*`, `github_push_*`, `github_add_*`, `github_fork_*` and `github_request_copilot_review` — eight **verb-prefix** globs. But this server names its mutating tools with a `_write` **suffix**: `github_issue_write`, `github_pull_request_review_write`, `github_label_write`, `github_sub_issue_write`. None of the four matched any deny, so all four fell through to `github_*: allow`, and the only thing actually preventing agent writes was the remote `X-MCP-Readonly: true` header — a single gate, evaluated on someone else's server, in a configuration whose stated principle is defence in depth. Inverting to an allow-list changes the failure mode from "a new write tool is permitted until somebody notices" to "a new read tool is refused until somebody lists it", which is the direction a security default should fail in.
@@ -646,14 +689,19 @@ The global block is an **allow-list**: `github_*` is denied first, the specific 
 
 Every commit generated by any agent MUST be prefixed with the active Jira ticket key:
 
-```sh
-#!/bin/sh
-JIRA_REGEX="\[([A-Z]{2,10}-[0-9]+)\]"
-if ! grep -qE "$JIRA_REGEX" "$1"; then
-  echo "ERROR: Commit rejected! Message must include a valid Jira key (e.g., [EOP-123] feat: ...)"
-  exit 1
-fi
 ```
+[EOP-NNN] <type>: <short summary>
+```
+
+Types are `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf` — see [.opencode/rules/git-commits.md](../rules/git-commits.md).
+
+This is **machine-enforced** by [`.githooks/commit-msg`](../../.githooks/commit-msg), activated per clone with `git config core.hooksPath .githooks` (§7.6, SETUP.md). The hook is stricter than the illustrative snippet this section used to carry, which matched a bare `\[([A-Z]{2,10}-[0-9]+)\]` anywhere in the message:
+
+- the key is **anchored to the start** of the subject, so a key buried in the body no longer satisfies it
+- the **type is validated** against the seven allowed values, and a non-empty summary is required
+- merge commits are exempt via `MERGE_HEAD`, and `fixup!` / `squash!` / `amend!` / `Revert "…"` subjects pass through, since git rewrites or generates all of those
+
+`--no-verify` bypasses it, which is why the convention remains a rule agents follow rather than only a gate they hit.
 
 ### 7.6 Local Development Environment
 
@@ -854,6 +902,7 @@ Key ADRs:
 - [ADR-008: Database Migration Strategy](../../docs/adr/ADR-008-database-migration-liquibase.md) — documents Liquibase with XML changelogs for all schema changes
 - [ADR-009: Front-End Technology Stack](../../docs/adr/ADR-009-frontend-react-typescript.md) — documents React + TypeScript + Vite + GOV.UK Frontend CSS decision
 - [ADR-010: Continuous Flow over Sprint Timeboxes](../../docs/adr/ADR-010-continuous-flow-over-sprints.md) — documents why sprints are disabled, the WIP limit, the machine-checkable DoD, and event-driven retrospectives
+- [ADR-011: Graphify Knowledge Graph via Repo-Local MCP Server](../../docs/adr/ADR-011-graphify-knowledge-graph.md) — documents the repo-local version pin, `graphify serve` over a hand-rolled plugin, English-pinned assistant-mode enrichment, the `graphify_*` allow-list, and why the `post-commit` rebuild hook is not installed
 
 ---
 
