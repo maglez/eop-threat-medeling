@@ -892,8 +892,8 @@ Before running any prompt, ensure your local environment is set up:
 
 See §7.6 for detailed setup instructions and [docs/devops/local-development.md](../../docs/devops/local-development.md) for the full guide.
 
-Key ADRs:
-- [ADR-002: Spring Boot Walking Skeleton](../../docs/adr/ADR-002-spring-boot-bootstrap.md) — documents the Spring Boot 3.4.4, Java 21, and Maven Wrapper decisions
+Key ADRs (see [docs/adr/README.md](../../docs/adr/README.md) for the full index and per-ADR implementation status):
+- [ADR-002: Spring Boot Walking Skeleton](../../docs/adr/ADR-002-spring-boot-bootstrap.md) — documents the Spring Boot, Java 21, and Maven Wrapper decisions. It records 3.4.4 as chosen on 2026-07-26; the framework was moved to 4.1.0 the following day, so `pom.xml` is the authority on the current version
 - [ADR-003: GitHub MCP Integration](../../docs/adr/ADR-003-github-mcp-integration.md) — documents the GitHub MCP server rationale and configuration
 - [ADR-004: API Contract-First](../../docs/adr/ADR-004-api-contract-first.md) — documents OpenAPI 3.1, springdoc, and contract-first conventions
 - [ADR-005: Error Handling Strategy](../../docs/adr/ADR-005-error-handling-strategy.md) — documents RFC 9457 Problem Details and the exception hierarchy
