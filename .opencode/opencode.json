@@ -34,8 +34,7 @@
     "bash": {
       "*": "allow",
       "sudo *": "ask",
-      "rm -rf *": "ask",
-      "rm -fr *": "ask",
+      "rm *": "ask",
       "chmod 777 *": "ask",
       "git push --force*": "ask",
       "git push -f *": "ask",
@@ -45,7 +44,10 @@
       "* | bash": "ask",
       "* | zsh": "ask",
       "curl * | *": "ask",
-      "wget * | *": "ask"
+      "wget * | *": "ask",
+      "bash -c *": "ask",
+      "sh -c *": "ask",
+      "zsh -c *": "ask"
     },
     "atlassian_jira_*": "allow",
     "atlassian_jira_create_*": "ask",
