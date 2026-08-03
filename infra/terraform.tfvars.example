@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# Only two values have no usable default, both deliberately: opening SSH and
+# authorising a key are decisions that must be made consciously.
+
+# Who may reach SSH. Find your address with: curl -s https://checkip.amazonaws.com
+# A single /32 is the right answer. Terraform refuses 0.0.0.0/0 outright.
+ssh_ingress_cidrs = ["203.0.113.4/32"]
+
+# Contents of the public half of a key pair you generated, for example with:
+#   ssh-keygen -t ed25519 -f ~/.ssh/eop-poc -C eop-poc
+# A public key is not a secret.
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleExam eop-poc"
+
+# ---------------------------------------------------------------------------
+# Everything below has a working default. Uncomment only to override.
+# ---------------------------------------------------------------------------
+
+# Named profile from ~/.aws/credentials. Leave commented to use AWS_PROFILE.
+# aws_profile = "eop-personal"
+
+# aws_region    = "eu-west-2"
+# instance_type = "t3.small"
+
+# Prefer an immutable tag over :latest once CI is publishing per-commit tags.
+# app_image = "ghcr.io/maglez/eop-threat-medeling:sha-0123456"
+
+# Restrict who can see the demo, if you would rather it were not public.
+# app_ingress_cidrs = ["203.0.113.4/32"]

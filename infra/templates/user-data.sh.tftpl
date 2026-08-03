@@ -1,0 +1,102 @@
+#!/bin/bash
+# Instance bootstrap. Rendered by Terraform's templatefile(), so a doubled
+# dollar sign marks a shell variable and a single one marks a Terraform value.
+#
+# Output lands in /var/log/cloud-init-output.log on the instance. If the demo
+# URL does not answer, that file is the first place to look.
+set -euxo pipefail
+
+DATA_DEVICE="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${data_volume_serial}"
+MOUNT_POINT="${data_mount_point}"
+APP_DIR="${app_dir}"
+
+# ---------------------------------------------------------------------------
+# Docker engine and the pinned Compose plugin
+# ---------------------------------------------------------------------------
+# Amazon Linux 2023 packages the engine but not the Compose v2 plugin, which is
+# fetched from GitHub releases at a pinned version so that a replacement
+# instance behaves identically to the one it replaced.
+dnf install -y docker
+install -d -m 0755 /usr/local/lib/docker/cli-plugins
+curl -fsSL \
+  "https://github.com/docker/compose/releases/download/${docker_compose_version}/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# ---------------------------------------------------------------------------
+# Data volume
+# ---------------------------------------------------------------------------
+# The attachment is a separate API call from the instance launch, so the device
+# may not exist yet. Wait rather than race.
+for _ in $(seq 1 60); do
+  [ -e "$${DATA_DEVICE}" ] && break
+  sleep 5
+done
+
+if [ ! -e "$${DATA_DEVICE}" ]; then
+  echo "Data volume never appeared at $${DATA_DEVICE} — refusing to continue" >&2
+  exit 1
+fi
+
+# Only format a genuinely blank device. blkid exits non-zero when it finds no
+# filesystem, which is the one case where mkfs is safe: on every subsequent
+# boot, and after any instance replacement, the volume already carries data.
+if ! blkid "$${DATA_DEVICE}" >/dev/null 2>&1; then
+  mkfs.xfs -L eop-data "$${DATA_DEVICE}"
+fi
+
+install -d -m 0755 "$${MOUNT_POINT}"
+
+# Mount by UUID, not by device path, because kernel device names are not
+# stable. nofail keeps a missing volume from blocking boot into a state where
+# SSH still works and the problem can be diagnosed.
+DATA_UUID="$(blkid -s UUID -o value "$${DATA_DEVICE}")"
+if ! grep -q "$${DATA_UUID}" /etc/fstab; then
+  echo "UUID=$${DATA_UUID} $${MOUNT_POINT} xfs defaults,nofail 0 2" >> /etc/fstab
+fi
+mount -a
+mountpoint -q "$${MOUNT_POINT}"
+
+install -d -m 0700 "${postgres_data_dir}"
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+install -d -m 0755 "$${APP_DIR}"
+
+# Compose reads .env from the project directory, exactly as it does locally, so
+# the committed compose file is used verbatim with no instance-specific edits.
+cat > "$${APP_DIR}/.env" <<ENVFILE
+APP_IMAGE=${app_image}
+APP_BIND=0.0.0.0
+POSTGRES_IMAGE=${postgres_image}
+POSTGRES_DB=${postgres_db}
+POSTGRES_USER=${postgres_user}
+POSTGRES_PASSWORD=${postgres_password}
+POSTGRES_DATA_DIR=${postgres_data_dir}
+ENVFILE
+chmod 0600 "$${APP_DIR}/.env"
+chown root:root "$${APP_DIR}/.env"
+
+cat > "$${APP_DIR}/compose.app.yml" <<'COMPOSEFILE'
+${compose_file}
+COMPOSEFILE
+
+cd "$${APP_DIR}"
+docker compose -f compose.app.yml pull
+docker compose -f compose.app.yml up -d
+
+# ---------------------------------------------------------------------------
+# Reboots are handled by the containers' own `restart: unless-stopped` policy
+# together with an enabled docker.service, so no extra systemd unit is needed.
+# Caveat worth knowing: the fstab entry uses nofail, so if the data volume ever
+# failed to mount, PostgreSQL would initialise an empty database on the root
+# volume instead. Nothing is lost — the real data is still on the EBS volume —
+# but the symptom looks like data loss. Check `mountpoint /var/lib/eop` first.
+# ---------------------------------------------------------------------------
+
+echo "Bootstrap complete. Application should answer on port ${app_port}."
+

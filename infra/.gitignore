@@ -1,0 +1,15 @@
+# Local state, provider plugins and any real variable values stay out of git.
+# See ADR-012 for why state is local for now and what triggers a move to S3.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Real values may contain a narrow home IP address; the example does not.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Plan files are opaque blobs that can contain sensitive values.
+*.tfplan
