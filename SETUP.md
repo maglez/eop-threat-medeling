@@ -4,6 +4,23 @@
 - Java 21 (Maven Wrapper included — no global Maven needed)
 - Docker + Docker Compose (for monitoring stack)
 - **direnv** — required to load `.env` into the Spring app (see below)
+- **Node.js 20+** (`brew install node`) — required by the Graphify knowledge graph, whose CLI OpenCode launches as a separate process. Below Node 20 the `graphify` MCP server silently fails to start and no `graphify_*` tools appear
+- **uv** (`brew install uv`) — required by the Atlassian MCP server, launched as `uvx mcp-atlassian`. Without `uvx` on `PATH` it silently fails and no `atlassian_jira_*` tools appear
+
+### Per-clone setup that cannot be committed
+Two steps live outside version control. Both fail **silently**, so verify each one:
+
+```bash
+# Install the pinned Graphify CLI (see Blueprint §5.2 for why --ignore-scripts)
+cd tools/graphify && npm install --ignore-scripts && cd -
+graphify --version            # must print 0.17.1
+
+# Activate the committed git hooks — enforces the [EOP-NNN] commit prefix
+git config core.hooksPath .githooks
+git config --get core.hooksPath   # must print .githooks
+```
+
+MCP servers are registered only at session start, so restart OpenCode afterwards.
 
 ## Environment Configuration
 
@@ -113,25 +130,26 @@ future audits without new evidence.
   3. Exploitation requires crafted glob patterns; all patterns here come
      from plugin source code, never untrusted input.
 
-> **The `cd .opencode && npm audit` re-check is not runnable, and the figures
-> above must not be treated as current.** There is no JavaScript runtime on
-> `PATH` — no `bun`, `bunx`, `node`, `npm` or `npx` — because OpenCode ships as
-> a standalone binary with bun embedded privately and does not expose it. The
-> re-check trigger therefore fired twice without being honoured when
+> **The `npm audit` figures above are a 2026-07-27 snapshot and must not be
+> treated as current.** They were unverifiable for a period because no JavaScript
+> runtime was on `PATH` — OpenCode ships as a standalone binary with bun embedded
+> privately and does not expose it. **That is no longer true:** Node is now a
+> prerequisite of this project (Graphify's CLI needs it), so `node` and `npm` are
+> on `PATH` and the re-check is once again runnable. The trigger fired twice
+> without being honoured while the runtime was missing, when
 > `opencode-supermemory` went 2.0.10 → 2.0.11 and `opencode-goal-plugin` went
-> 0.6.5 → 0.6.7. Worse, `.opencode/package.json` and `.opencode/package-lock.json`
-> were never updated by those bumps and declared `^2.0.10` / `^0.6.5`, so
-> even with npm installed an audit would have reported on versions that are not
-> loaded. Both manifests have been **removed**: `git rm --cached` untracked them
-> (the intent was already recorded in `.opencode/.gitignore`, but never took
-> effect because `.gitignore` does not apply to already-tracked files), and
-> because they had been committed, git also deleted the working-tree copies on
-> the next checkout past that deletion — so they no longer exist on disk. They
+> 0.6.5 → 0.6.7. What still blocks a re-run is the **manifests**:
+> `.opencode/package.json` and `.opencode/package-lock.json` have been
+> **removed**. `git rm --cached` untracked them (the intent was already recorded
+> in `.opencode/.gitignore`, but never took effect because `.gitignore` does not
+> apply to already-tracked files), and because they had been committed, git also
+> deleted the working-tree copies on the next checkout past that deletion. They
 > were inert for plugin loading anyway, since OpenCode resolves plugins through
-> `Npm.add()` into `~/.cache/opencode/packages/<spec>/`. **The authoritative
-> plugin versions are the exact pins in the `plugin` array of
-> `.opencode/opencode.json`, and nowhere else.** To reinstate this audit: install
-> Node (`brew install node`), generate a fresh `.opencode/package.json` and
-> `package-lock.json` from those exact pinned specs, re-run
-> `npm audit`, and replace this warning with the fresh findings. Drop the entry
-> entirely once upstream patches land.
+> `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, and they had drifted —
+> declaring `^2.0.10` / `^0.6.5`, so even with npm installed an audit would have
+> reported on versions that are not loaded. **The authoritative plugin versions
+> are the exact pins in the `plugin` array of `.opencode/opencode.json`, and
+> nowhere else.** To reinstate this audit: generate a fresh
+> `.opencode/package.json` and `package-lock.json` from those exact pinned specs,
+> run `npm audit` in `.opencode/`, and replace this warning with the fresh
+> findings. Drop the entry entirely once upstream patches land.
