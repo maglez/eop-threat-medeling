@@ -401,19 +401,36 @@ The only global prerequisite is **Node ≥ 20** (`brew install node`). After a f
 | `graphify review-analysis` | blast radius, bridges and test gaps for a change |
 | `graphify studio` | static visual export, the replacement for the old `graph.html` |
 | `graphify export` | wiki, Obsidian, SVG, GraphML, Neo4j Cypher |
-| `graphify serve` | stdio MCP server over `graph.json` (not currently wired — see §5.5) |
+| `graphify serve` | stdio MCP server over `graph.json` — **wired as the `graphify` MCP server**; see §5.5 |
 | `graphify migrate-state` | convert a pre-0.17 `graphify-out/` tree |
 
 > **Enrichment is unfilled, and that is a choice.** `--description-mode` and `--label-mode` default to `assistant`, which makes **zero API calls**: instead of calling a model, Graphify writes prompt files under `.graphify/label-instructions/` and `.graphify/description-instructions/` for an assistant to answer, then re-ingests them on the next `graphify update`. Until somebody fills them, communities keep generic `Community N` names and nodes have empty descriptions. The graph is fully queryable regardless — this is polish, not a prerequisite. Switching to `--label-mode direct` would call a model and cost tokens.
 
 ### 5.5 How Agents Reach the Graph
 
-Two routes, both deliberately low-tech:
+Three routes, in order of directness:
 
-1. **`.opencode/plugins/graphify.js`** — a local plugin loaded by directory convention (it is *not* an entry in the `plugin` array of `.opencode/opencode.json`). It hooks `tool.execute.before`, and once per session, if `.graphify/graph.json` exists, prepends a one-line reminder to the first `bash` command pointing at `graphify query` and the report.
-2. **Three agent prompts** — `team-member-architecture-guardian`, `team-member-code-reviewer` and `team-member-tech-lead` each instruct the agent to run `graphify query` or read `.graphify/GRAPH_REPORT.md` before reading raw files.
+1. **The `graphify` MCP server** — declared in the `mcp` block of `.opencode/opencode.json` as `["tools/graphify/node_modules/.bin/graphify", "serve"]`. This is the primary route: it turns the graph into callable tools with the same standing as `atlassian_jira_search`, so an agent does not have to remember to shell out. Eleven read-only tools, confirmed by an MCP `tools/list` handshake against the running server rather than from the help text:
 
-> **Known gap — the plugin registers no tools.** It emits a *reminder*, which a model may ignore, and it mutates the first `bash` command in order to do so. Two better options exist and are not yet taken: `graphify serve` would expose the graph as a real MCP server in the `mcp` block, giving agents callable tools; `graphify opencode install` would generate the vendor's own AGENTS.md section plus `tool.execute.before` plugin, replacing the hand-rolled one. Either is a deliberate decision rather than a cleanup — revisit when the reminder proves insufficient.
+| Tool | Required arguments | What it answers |
+|---|---|---|
+| `graphify_first_hop_summary` | — | Orientation: graph size, density, top hubs, key communities, suggested next action |
+| `graphify_graph_stats` | — | Node/edge/community counts and confidence breakdown |
+| `graphify_query_graph` | `question` | BFS/DFS traversal returning a scoped subgraph as text — the workhorse |
+| `graphify_get_node` | `label` | Full detail for one node |
+| `graphify_get_neighbors` | `label` | Direct neighbours with edge detail, optionally filtered by relation |
+| `graphify_get_community` | `community_id` | Every node in a community |
+| `graphify_god_nodes` | — | The most connected nodes, i.e. the core abstractions |
+| `graphify_shortest_path` | `source`, `target` | How two concepts connect |
+| `graphify_review_delta` | `changed_files` | Impacted files, hubs, bridges, likely test gaps, high-risk chains |
+| `graphify_review_analysis` | `changed_files` | Blast radius, impacted communities, bridge nodes, test gaps |
+| `graphify_recommend_commits` | `changed_files` | Advisory commit grouping — never stages, commits or mutates branches |
+
+   The command is the **repo-relative binary path**, not the bare `graphify`, so the server does not depend on direnv having exported `PATH` into OpenCode's own process environment.
+2. **`.opencode/plugins/graphify.js`** — a local plugin loaded by directory convention (it is *not* an entry in the `plugin` array of `.opencode/opencode.json`). It hooks `tool.execute.before`, and once per session, if `.graphify/graph.json` exists, prepends a one-line reminder to the first `bash` command pointing at the MCP tools and the report.
+3. **Three agent prompts** — `team-member-architecture-guardian`, `team-member-code-reviewer` and `team-member-tech-lead` each name the specific tools to prefer over reading raw files.
+
+> **Known gap — closed 2026-08-02: the graph is now callable.** Until this change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. Two consequences worth stating: the tool names above are the MCP server's own names (confirmed by handshake) prefixed with the server key `graphify`, which follows the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention but is an inference until the tool list is read after a restart; and the plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one.
 
 > **Do not put backticks or `$(...)` in the plugin's reminder string.** It is interpolated into a double-quoted `echo`, so shell substitution applies — an earlier version corrupted tool output and silently executed the very command it meant to suggest. The commands are joined with `;` rather than `&&` because PowerShell 5.1 rejects `&&`, which would break the first `bash` call of every session on Windows.
 
@@ -879,7 +896,8 @@ Graphify generates a persistent AST-level knowledge graph of the entire codebase
 
 - **CLI**: `@sentropic/graphify`, pinned repo-locally in `tools/graphify/` and placed on `PATH` by `.envrc` — not an npm plugin entry (§5.2)
 - **Plugin file**: `.opencode/plugins/graphify.js`, loaded by directory convention, absent from the `plugin` array
-- **Hook**: `tool.execute.before` — prepends a one-shot knowledge-graph reminder to the first `bash` call of a session; registers no tools (§5.5)
+- **Tools**: the `graphify` MCP server (`graphify serve`, declared in the `mcp` block) exposes eleven read-only graph tools — see the table in §5.5
+- **Hook**: `tool.execute.before` — prepends a one-shot knowledge-graph reminder to the first `bash` call of a session; the hook itself registers no tools, and is now arguably redundant given the MCP server (§5.5)
 - **Config**: none — the plugin checks for `.graphify/graph.json` and stays silent if it is missing
 - **Update**: `graphify update .` (incremental AST rebuild)
 

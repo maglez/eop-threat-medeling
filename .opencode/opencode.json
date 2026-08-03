@@ -28,6 +28,11 @@
       },
       "oauth": false,
       "timeout": 15000
+    },
+    "graphify": {
+      "type": "local",
+      "command": ["tools/graphify/node_modules/.bin/graphify", "serve"],
+      "enabled": true
     }
   },
   "permission": {
