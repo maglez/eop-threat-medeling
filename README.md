@@ -7,10 +7,10 @@ A threat modeling card game based on the STRIDE framework (Spoofing, Tampering, 
 | Layer | Technology |
 |---|---|
 | Language | Java 21 |
-| Framework | Spring Boot 3.4.4 |
+| Framework | Spring Boot 4.1.0 |
 | Build | Maven Wrapper (`./mvnw`) |
 | Tests | JUnit 5 |
-| CI/CD | GitHub Actions |
+| CI | GitHub Actions (`mvn verify`) — no deployment stage yet |
 | AI Agents | OpenCode multi-agent system |
 
 ## Quick Start
@@ -43,7 +43,7 @@ src/test/java/org/maglez/
 ## Documentation
 
 - [Architecture Blueprint](.opencode/docs/OpenCode_Autonomous_Engineering_System_Blueprint.md)
-- [ADRs](docs/adr/)
+- [ADRs](docs/adr/README.md) — indexed, with implementation status
 - [DevOps Guide](docs/devops/local-development.md)
 - [CI/CD Pipeline](docs/devops/ci-cd-pipeline.md)
 
