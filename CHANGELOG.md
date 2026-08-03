@@ -23,6 +23,7 @@ Working code and tooling that exists in the repository today.
 - Multi-agent system: 15 agents in `.opencode/agents/` — 11 delivery agents and 4 advisory experts
 - Continuous flow over fixed sprints as the delivery model (ADR-010)
 - `AGENTS.md` plus `.opencode/rules/` covering Clean Architecture, Security by Design and project conventions
+- Product requirements: `docs/requirements/PRD-eop-card-game.md` defines the game, its scope, its domain concepts, nine open risks and six labelled assumptions, and is backed by epic EOP-5 with eight ordered stories
 - Commit convention enforcement: `.githooks/commit-msg` requires `[EOP-NNN] <type>: <summary>`, activated per clone via `core.hooksPath`
 - Tool governance: explicit deny-then-allow-lists for `github_*` and `graphify_*` in `.opencode/opencode.json`
 
