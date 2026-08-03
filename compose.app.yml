@@ -1,0 +1,71 @@
+# Application + PostgreSQL.
+#
+# Deliberately separate from docker-compose.yml, which runs the k6 / InfluxDB /
+# Grafana load-testing stack. The two stacks are independent and either can run
+# alone:
+#
+#   docker compose -f compose.app.yml up -d
+#
+# The SAME file runs on the EC2 instance. Only environment variables differ, so
+# local behaviour predicts deployed behaviour. See
+# docs/adr/ADR-012-deployment-target.md.
+#
+# There is no `build:` section on purpose. The deployment artifact is the image,
+# not this directory. Locally, build it first:
+#
+#   docker build -t eop-threat-medeling:local .
+#
+# On the instance, APP_IMAGE points at an immutable GHCR tag and nothing is
+# built at all.
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    container_name: eop-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    # No `ports:` — nothing outside this Compose network can reach the database,
+    # not even the host. The application connects over the service name. To
+    # inspect it, exec into the container rather than publishing a port.
+    volumes:
+      # Resolves to a named Docker volume locally, and to an absolute path on
+      # the EC2 instance where POSTGRES_DATA_DIR points at a mount backed by a
+      # dedicated EBS volume. Keeping the data off the root volume is what makes
+      # instance replacement survivable and makes a volume snapshot a complete
+      # migration path to another AWS account.
+      - ${POSTGRES_DATA_DIR:-eop_postgres_data}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  app:
+    image: ${APP_IMAGE:-eop-threat-medeling:local}
+    container_name: eop-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # Liquibase runs at startup and `ddl-auto: validate` checks the schema,
+        # so the application must never race the database to readiness.
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # These OVERRIDE any DATASOURCE_URL in .env, which points at localhost —
+      # and inside this container localhost is the container itself, not the
+      # database. The host part must be the Compose service name.
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DATASOURCE_USER: ${POSTGRES_USER}
+      DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # 127.0.0.1 locally, following the InfluxDB precedent in
+      # docker-compose.yml. On the EC2 instance APP_BIND is 0.0.0.0, because the
+      # demo has to be reachable; the security group is what limits access.
+      - "${APP_BIND:-127.0.0.1}:8080:8080"
+
+volumes:
+  eop_postgres_data:
