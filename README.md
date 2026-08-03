@@ -44,6 +44,7 @@ src/test/java/org/maglez/
 
 ## Documentation
 
+- [Product Requirements](docs/requirements/PRD-eop-card-game.md) — what the game is, and what it is not
 - [Architecture Blueprint](.opencode/docs/OpenCode_Autonomous_Engineering_System_Blueprint.md)
 - [ADRs](docs/adr/README.md) — indexed, with implementation status
 - [DevOps Guide](docs/devops/local-development.md)
