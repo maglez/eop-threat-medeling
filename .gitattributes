@@ -1,3 +1,10 @@
 # Requires: git config merge.graphify.driver ... (NOT configured in this repo, so this
 # attribute is currently inert and git falls back to the default merge).
 .graphify/graph.json merge=graphify
+
+# Binary assets. Without this git auto-detects, and it classified one of the deck PDFs as
+# text, which risks end-of-line normalisation corrupting the bytes. "binary" is the macro
+# for "-diff -merge -text", so these are stored and checked out verbatim.
+*.pdf binary
+*.zip binary
+*.png binary

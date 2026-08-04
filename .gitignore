@@ -61,3 +61,10 @@ tools/graphify/node_modules/
 # A nested .opencode/ dir is created when opencode runs with a cwd inside
 # .opencode/. Its node_modules/*.md files get registered as phantom agents.
 .opencode/**/.opencode/
+### Elevation of Privilege deck sources ###
+# The Illustrator/InDesign native sources for the printed cards and box are ~86 MB
+# and are never used to build anything here — the deck content comes from cards.yaml.
+# The PDFs in docs/EoP_Microsoft_Docs/ ARE tracked; this one archive is not, so the
+# clone stays small. Re-download from Microsoft if the artwork is ever needed:
+#   https://www.microsoft.com/en-us/download/details.aspx?id=20303
+docs/EoP_Microsoft_Docs/EoP_Cards_Box_Native_files.zip
