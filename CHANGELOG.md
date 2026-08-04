@@ -21,6 +21,7 @@ Working code and tooling that exists in the repository today.
 - API contract: the hand-authored OpenAPI 3.1 specification at `docs/api/openapi.yml` (ADR-004), written before the controllers that implement it
 - Error handling: a single `@RestControllerAdvice` rendering RFC 9457 problem details, with a unit test for every mapped exception (ADR-005)
 - Feature flags: decided as Spring configuration properties under `eop.features.*` (ADR-013). No flag exists yet — the first arrives with the first live deployment
+- Real-time transport and player identity: decided from a time-boxed spike that ran a real server-sent-events endpoint against the application (EOP-8). Server-sent events carry state to every connected player (ADR-014); a server-issued opaque token in per-tab session storage identifies a player (ADR-015). Both are decisions only — the spike code was deleted and no production code graduated from it
 - Load testing: k6 with an InfluxDB + Grafana stack (Docker Compose), auto-provisioned dashboard, SLO thresholds (p95 < 200ms)
 - GitHub MCP integration for agent-based PR and repository management, read-only at the server (ADR-003)
 - Graphify knowledge graph exposed as a repo-local MCP server (ADR-011)
