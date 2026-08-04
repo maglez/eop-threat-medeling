@@ -62,6 +62,17 @@
             <groupId>org.liquibase</groupId>
             <artifactId>liquibase-core</artifactId>
         </dependency>
+        <!-- Spring Boot 4 moved LiquibaseAutoConfiguration out of the monolithic
+             autoconfigure jar into this module. Without it liquibase-core sits on
+             the classpath doing nothing and every spring.liquibase.* property is
+             inert, which is exactly the state this project was in: the changelog
+             was configured, enabled, and never read. Nothing failed, because an
+             unread changelog and an empty one are indistinguishable until the
+             first migration exists. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-liquibase</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
@@ -75,6 +86,16 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Spring Boot 4 split the test slices out of spring-boot-test-autoconfigure.
+             MockMvc support, and with it @AutoConfigureMockMvc, now lives in its own
+             module and is no longer pulled in by spring-boot-starter-test. Without it
+             the API contract could only be tested by starting a real servlet container
+             on a port, which is slower and proves less about the web layer. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
