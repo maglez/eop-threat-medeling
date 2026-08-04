@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  First migration in the project. Until this file existed there were zero
+  entity classes, which is the only reason the application started at all:
+  Hibernate runs with ddl-auto=validate, so an entity without a matching table
+  fails startup. The changeset therefore lands with, and before, the entity.
+
+  Changesets are immutable once merged. EOP-13 replaces the placeholder deck
+  with the real Microsoft cards by ADDING a later changeset, never by editing
+  this one.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001-create-card-table" author="eop">
+    <comment>Create the threat card table. Reference data: seeded here, never mutated through the API.</comment>
+
+    <createTable tableName="card">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_card" nullable="false"/>
+      </column>
+      <!-- The STRIDE category. Stored as the enum constant name so the value is
+           readable in the database and survives reordering of the Java enum. -->
+      <column name="suit" type="VARCHAR(32)">
+        <constraints nullable="false"/>
+      </column>
+      <!-- The suit's position in the STRIDE acronym, 1 through 6. Present so the
+           database can return the deck in its canonical order: sorting the suit
+           name alphabetically would put denial of service before spoofing, which
+           is not how the acronym reads or how a player expects the deck to look.
+           Sorting must happen in SQL, not in memory, or pagination is incorrect.
+           A test asserts every row matches the enum, so the two cannot drift. -->
+      <column name="suit_order" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Numeric rank, 2 through 14 with the ace high. Stored numerically so
+           that ORDER BY is the real game ordering rather than alphabetical.
+           Named card_rank because rank is a reserved word in SQL:2003. -->
+      <column name="card_rank" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="threat_prompt" type="VARCHAR(500)">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <!-- A physical deck holds each suit-and-rank combination exactly once.
+         The database enforces that rather than trusting the seed data. -->
+    <addUniqueConstraint
+      tableName="card"
+      columnNames="suit, card_rank"
+      constraintName="uq_card_suit_rank"/>
+
+    <!-- Supports the canonical ordering used by every list query. -->
+    <createIndex tableName="card" indexName="idx_card_deck_order">
+      <column name="suit_order"/>
+      <column name="card_rank"/>
+    </createIndex>
+
+    <rollback>
+      <dropTable tableName="card"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="002-seed-placeholder-deck" author="eop">
+    <comment>
+      Six placeholder cards, one per STRIDE category, with prompts written for
+      this project. They stand in until EOP-13 seeds the real 78-card Microsoft
+      deck, so that no engineering work waits on a licensing question.
+      Identifiers are fixed literals: tests reference them, and a regenerated
+      identifier would be a breaking change to anyone who bookmarked a card.
+    </comment>
+
+    <insert tableName="card">
+      <column name="id" value="11111111-1111-4111-8111-111111111111"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="An attacker could pretend to be a legitimate user because the system does not verify who is making the request."/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="22222222-2222-4222-8222-222222222222"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker could change data in transit because the channel carrying it is not integrity protected."/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="33333333-3333-4333-8333-333333333333"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="A user could deny having performed an action because the system keeps no trustworthy record of who did what."/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="44444444-4444-4444-8444-444444444444"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="An attacker could read data they are not entitled to because an error response reveals more than it should."/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="55555555-5555-4555-8555-555555555555"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker could exhaust a shared resource because nothing bounds how much of it a single caller may consume."/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="66666666-6666-4666-8666-666666666666"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="An attacker could gain rights they were never granted because authorisation is checked in one place but not another."/>
+    </insert>
+
+    <rollback>
+      <delete tableName="card"/>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

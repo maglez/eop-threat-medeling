@@ -43,4 +43,29 @@ class StrideCategoryTest {
     void shouldContainDenialOfService() {
         assertNotNull(StrideCategory.valueOf("DENIAL_OF_SERVICE"));
     }
+
+    @Test
+    @DisplayName("declaration order is the STRIDE acronym order, because deckOrder derives from it")
+    void shouldDeclareCategoriesInAcronymOrder() {
+        assertArrayEquals(
+                new StrideCategory[] {
+                    StrideCategory.SPOOFING,
+                    StrideCategory.TAMPERING,
+                    StrideCategory.REPUDIATION,
+                    StrideCategory.INFORMATION_DISCLOSURE,
+                    StrideCategory.DENIAL_OF_SERVICE,
+                    StrideCategory.ELEVATION_OF_PRIVILEGE,
+                },
+                StrideCategory.values());
+    }
+
+    @Test
+    @DisplayName("deckOrder is one-based so a missing value cannot masquerade as the first suit")
+    void shouldNumberDeckOrderFromOne() {
+        assertEquals(1, StrideCategory.SPOOFING.deckOrder());
+        assertEquals(6, StrideCategory.ELEVATION_OF_PRIVILEGE.deckOrder());
+        for (StrideCategory category : StrideCategory.values()) {
+            assertEquals(category.ordinal() + 1, category.deckOrder());
+        }
+    }
 }

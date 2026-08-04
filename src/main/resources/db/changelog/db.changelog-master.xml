@@ -5,6 +5,15 @@
   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-  <includeAll path="classpath:db/changelog/changes/"/>
+  <!-- relativeToChangelogFile is load bearing. With an absolute "classpath:"
+       path this includeAll silently resolved to zero changesets, which nobody
+       noticed while the directory held only a .gitkeep: an empty changelog and a
+       changelog that cannot be read look identical until the first migration
+       exists. Resolving relative to this file enumerates the directory reliably. -->
+  <!-- endsWithFilter keeps Liquibase to the files it can actually parse. Before
+       this story the directory held only a .gitkeep, and once the changelog was
+       genuinely being read that placeholder crashed startup: Liquibase treats
+       every file it finds as a changelog and has no parser for an empty marker. -->
+  <includeAll path="changes/" relativeToChangelogFile="true" endsWithFilter=".xml"/>
 
 </databaseChangeLog>

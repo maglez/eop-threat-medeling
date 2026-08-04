@@ -20,6 +20,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
 | [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted | Partly — image, Compose and Terraform exist; no `apply` has run |
+| [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Not yet — decided ahead of need; first flag arrives with EOP-7 |
 
 The "Implemented?" column exists because an accepted ADR is a decision, not a
 delivery. `CHANGELOG.md` separates the same two things for the same reason.
