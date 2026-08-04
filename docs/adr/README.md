@@ -21,6 +21,8 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
 | [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted | Partly — image, Compose and Terraform exist; no `apply` has run |
 | [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Not yet — decided ahead of need; first flag arrives with EOP-7 |
+| [014](ADR-014-realtime-transport.md) | Real-time transport via server-sent events | Accepted | Not yet — decided from a measured spike; first emitter arrives with EOP-10 |
+| [015](ADR-015-player-identity.md) | Player identity via a server-issued opaque token in session storage | Accepted | Not yet — decided from a measured spike; first token issued by EOP-10 |
 
 The "Implemented?" column exists because an accepted ADR is a decision, not a
 delivery. `CHANGELOG.md` separates the same two things for the same reason.
