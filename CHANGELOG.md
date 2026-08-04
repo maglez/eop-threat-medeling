@@ -16,7 +16,11 @@ Working code and tooling that exists in the repository today.
 - Container image: multi-stage `Dockerfile` producing a non-root JRE image, `compose.app.yml` running it alongside containerised PostgreSQL, published to `ghcr.io` by CI with no repository secrets (ADR-012)
 - Deployment infrastructure: Terraform under `infra/` describing a single `t3.small` EC2 instance in a dedicated VPC with an Elastic IP and a separate encrypted EBS data volume (ADR-012). Validated with `terraform validate`; no `apply` has run yet because no AWS account has been provisioned
 - Build quality gates: Checkstyle (`checkstyle.xml`), SpotBugs, JaCoCo 80% instruction coverage, Enforcer (ADR-006)
-- Database migration wiring: Liquibase with a master XML changelog, H2 in dev, PostgreSQL in prod (ADR-008). No migrations have been written yet — `db/changelog/changes/` is empty
+- Database migrations: Liquibase with a master XML changelog, H2 in dev, PostgreSQL in prod (ADR-008). The first migration creates the `card` table and seeds the placeholder deck
+- Card catalogue: `GET /api/v1/cards` and `GET /api/v1/cards/{cardId}` serve a six-card placeholder deck, one card per STRIDE category, as read-only reference data (EOP-6)
+- API contract: the hand-authored OpenAPI 3.1 specification at `docs/api/openapi.yml` (ADR-004), written before the controllers that implement it
+- Error handling: a single `@RestControllerAdvice` rendering RFC 9457 problem details, with a unit test for every mapped exception (ADR-005)
+- Feature flags: decided as Spring configuration properties under `eop.features.*` (ADR-013). No flag exists yet — the first arrives with the first live deployment
 - Load testing: k6 with an InfluxDB + Grafana stack (Docker Compose), auto-provisioned dashboard, SLO thresholds (p95 < 200ms)
 - GitHub MCP integration for agent-based PR and repository management, read-only at the server (ADR-003)
 - Graphify knowledge graph exposed as a repo-local MCP server (ADR-011)
@@ -27,13 +31,16 @@ Working code and tooling that exists in the repository today.
 - Commit convention enforcement: `.githooks/commit-msg` requires `[EOP-NNN] <type>: <summary>`, activated per clone via `core.hooksPath`
 - Tool governance: explicit deny-then-allow-lists for `github_*` and `graphify_*` in `.opencode/opencode.json`
 
+### Fixed
+
+- **Liquibase had never run.** `liquibase-core` was on the classpath and `spring.liquibase.*` was configured, but Spring Boot 4 moved `LiquibaseAutoConfiguration` into a separate `spring-boot-liquibase` module that was never added. Every migration property was inert. Nothing failed, because an unread changelog and an empty one are indistinguishable until the first migration exists — which is exactly when this surfaced
+- **The master changelog matched no files.** `includeAll` used an absolute `classpath:` path that silently resolved to zero changesets; it now resolves relative to the changelog file and is filtered to `.xml`, so the `.gitkeep` placeholder that previously sat in `changes/` cannot crash startup once the directory is genuinely read
+
 ### Decided, not yet implemented
 
 Recorded here so that a decision is never mistaken for working code. Each of these
 has an accepted ADR or rule file but no implementation in `src/` or `pom.xml`.
 
-- API contract-first with OpenAPI 3.1 (ADR-004) — `springdoc` is on the classpath, but the hand-authored source-of-truth spec at `docs/api/openapi.yml` does not exist yet
-- Error handling with RFC 9457 Problem Details (ADR-005) — no `@ControllerAdvice` or `ProblemDetail` handler exists
 - Configuration management via `@ConfigurationProperties` + `@Validated` — rule only, no such class exists
 - Resilience patterns: Resilience4j retry, circuit-breaker and time-limiter — `.opencode/rules/resilience.md` records the intent, but the dependency is absent from `pom.xml`
 - Front-end stack: React + TypeScript + Vite + GOV.UK Design System CSS (ADR-009) — no `ui/` directory exists

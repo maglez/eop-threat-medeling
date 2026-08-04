@@ -32,15 +32,40 @@ curl http://localhost:8080/health
 
 ```
 src/main/java/org/maglez/
-├── Main.java              # Spring Boot entry point + /health endpoint
+├── Main.java                        # Spring Boot entry point + /health endpoint
 └── eop/
-    └── entity/
-        └── StrideCategory.java   # STRIDE enum
-src/test/java/org/maglez/
-├── ApplicationContextTest.java   # Spring Boot context test
-└── eop/entity/
-    └── StrideCategoryTest.java   # Enum tests
+    ├── entity/                      # Domain. Zero Spring, zero Jakarta imports.
+    │   ├── Card.java                #   Immutable threat card
+    │   ├── CardNotFoundException.java
+    │   ├── Rank.java                #   Two through ace, ace high
+    │   └── StrideCategory.java       #   The six suits; declaration order is load bearing
+    ├── usecase/                     # Application. Ports and use cases, no framework.
+    │   ├── CardRepository.java       #   Port, implemented outward
+    │   ├── GetCardUseCase.java
+    │   ├── ListCardsUseCase.java
+    │   ├── PageQuery.java
+    │   └── PageResult.java
+    ├── adapter/
+    │   ├── persistence/             # JPA lives here and nowhere else
+    │   │   ├── CardJpaEntity.java
+    │   │   ├── CardJpaRepository.java
+    │   │   └── CardRepositoryAdapter.java
+    │   └── web/                     # HTTP lives here and nowhere else
+    │       ├── CardController.java
+    │       ├── CardDto.java
+    │       ├── GlobalExceptionHandler.java   # RFC 9457, one handler for the whole API
+    │       └── PagedResponse.java
+    └── config/
+        └── UseCaseConfiguration.java # Bean definitions, so use cases stay framework-free
+
+src/main/resources/db/changelog/      # Liquibase. Changesets are immutable once merged.
+docs/api/openapi.yml                  # The API contract. Hand authored, ahead of the code.
 ```
+
+The layering is not decoration. `entity` and `usecase` compile without Spring or
+Jakarta on the classpath; everything framework-shaped is under `adapter` or
+`config`. A dependency pointing the other way is a review failure, not a style
+preference — see [`.opencode/rules/clean-architecture.md`](.opencode/rules/clean-architecture.md).
 
 ## Documentation
 
