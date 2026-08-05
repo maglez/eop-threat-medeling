@@ -4,7 +4,7 @@
 where confirmed by primary sources. Assumptions about architecture and infrastructure remain open.
 **Date:** 2026-08-03 (rules correction: 2026-08-04)
 **Epic:** [EOP-5](https://maglez.atlassian.net/browse/EOP-5)
-**Author:** `@team-member-product-owner`, reviewed and corrected by `@team-member-tech-lead`
+**Author:** `@product-owner`, reviewed and corrected by `@tech-lead`
 
 This document is the source of truth for what the application is meant to do. Where it
 disagrees with a Jira story, this document wins and the story is wrong. Where it records an

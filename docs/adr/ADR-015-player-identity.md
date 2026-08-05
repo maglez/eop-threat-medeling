@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-04
-**Deciders:** @team-member-tech-lead, @team-member-security-auditor
+**Deciders:** @tech-lead, @security-auditor
 
 ## Context
 

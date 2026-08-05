@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-05
-**Deciders:** @team-member-tech-lead, @team-member-devops-engineer
+**Deciders:** @tech-lead, @devops-engineer
 
 ## Context
 

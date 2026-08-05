@@ -36,17 +36,17 @@ Security is a first-class architectural constraint, not an afterthought. Apply:
 ## OpenCode Agent System
 
 This project uses a multi-agent team defined in `.opencode/agents/`. Eleven delivery agents:
-- `@team-member-product-owner` — requirements discovery and backlog management
-- `@team-member-tech-lead` — engineering orchestration and enforcement
-- `@team-member-architecture-guardian` — C4 models and ADRs
-- `@team-member-devops-engineer` — infrastructure and CI/CD
-- `@team-member-db-designer` — database schemas and migrations
-- `@team-member-ui-builder` — accessible front-end components
-- `@team-member-tester-unit-and-quality` — unit test automation
-- `@team-member-tester-api` — API integration tests
-- `@team-member-security-auditor` — security and vulnerability audits
-- `@team-member-code-reviewer` — static code review and SOLID compliance
-- `@team-member-performance-engineer` — benchmarks and load testing
+- `@product-owner` — requirements discovery and backlog management
+- `@tech-lead` — engineering orchestration and enforcement
+- `@architecture-guardian` — C4 models and ADRs
+- `@devops-engineer` — infrastructure and CI/CD
+- `@db-designer` — database schemas and migrations
+- `@ui-builder` — accessible front-end components
+- `@tester-unit-and-quality` — unit test automation
+- `@tester-api` — API integration tests
+- `@security-auditor` — security and vulnerability audits
+- `@code-reviewer` — static code review and SOLID compliance
+- `@performance-engineer` — benchmarks and load testing
 
 Plus four advisory experts, with no Jira or GitHub access — invoke them by name for a second opinion:
 - `@expert-uncle-bod` — software craftsmanship, SOLID, Clean Architecture
@@ -54,8 +54,21 @@ Plus four advisory experts, with no Jira or GitHub access — invoke them by nam
 - `@expert-kent-beck` — TDD, XP, incremental refactoring
 - `@expert-alex-xu` — ultra-high-scale distributed systems and storage
 
-All agents are `mode: subagent` except `team-member-tech-lead`, which is `mode: all` — it is
-selectable in the **Tab** primary-agent cycle *and* still dispatchable via `@` / the Task tool.
+All agents are `mode: subagent` except `tech-lead` and `product-owner`,
+which are `mode: all` — they are selectable in the **Tab** primary-agent cycle *and* still
+dispatchable via `@` / the Task tool.
+
+**Tab, not `@`, for a conversation.** Tab replaces the agent you are talking to while keeping the
+whole message history, so the new agent sees everything that came before. `@agent-name` dispatches
+a *one-shot subagent* in a child session: one prompt in, one message out, no way for it to ask you
+a question and hear the answer. The Product Owner's discovery interview and the Tech Lead's
+orchestration of a whole story therefore only work via **Tab**; `@` is for bounded, self-contained
+work such as a review or an audit. `mode: all` rather than `primary` is deliberate for both, so the
+Tech Lead can still dispatch the Product Owner for stage 0 of its own pipeline.
+
+Intended flow for a new piece of work: **Tab to Product Owner** and be interviewed until
+requirements are frozen and stories are filed → **Tab to Tech Lead**, which sees the whole
+interview, to run delivery → **Tab back to `build`** for tooling, configuration and meta-work.
 
 **Always launch `opencode` from the repository root.** OpenCode scans `.opencode/agents/`
 recursively for `*.md`, but bootstraps its plugins and goal state into `$PWD/.opencode/`. Starting

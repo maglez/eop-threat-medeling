@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-26
-**Deciders:** @team-member-tech-lead, @team-member-product-owner
+**Deciders:** @tech-lead, @product-owner
 
 ## Context
 

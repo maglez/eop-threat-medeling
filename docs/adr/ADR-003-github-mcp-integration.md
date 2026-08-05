@@ -2,7 +2,7 @@
 
 **Status:** Accepted (amended 2026-07-28 — original decision was never executable)  
 **Date:** 2026-07-26  
-**Deciders:** @team-member-tech-lead  
+**Deciders:** @tech-lead  
 
 ## Context
 The agent system discusses PRs, code reviews, and GitHub Actions but had no native GitHub access. The Atlassian MCP was already configured for Jira, leaving a gap for GitHub interactions.

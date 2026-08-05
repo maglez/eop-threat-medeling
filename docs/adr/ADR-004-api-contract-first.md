@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-26
-**Deciders:** @team-member-tech-lead, @team-member-architecture-guardian
+**Deciders:** @tech-lead, @architecture-guardian
 
 ## Context
 
@@ -32,7 +32,7 @@ Without a contract-first approach, each agent works from implicit assumptions, l
 - **Negative:**
   - Spec drift if engineers forget to update `docs/api/openapi.yml` before implementation
   - `springdoc-openapi` adds ~2MB to the artifact
-- **Mitigation:** API test agents (`@team-member-tester-api`) must validate that responses conform to the OpenAPI spec before marking stories as done
+- **Mitigation:** API test agents (`@tester-api`) must validate that responses conform to the OpenAPI spec before marking stories as done
 
 ## Related
 

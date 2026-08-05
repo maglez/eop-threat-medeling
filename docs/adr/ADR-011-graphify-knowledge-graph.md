@@ -2,10 +2,10 @@
 
 **Status:** Accepted  
 **Date:** 2026-08-03  
-**Deciders:** @team-member-tech-lead
+**Deciders:** @tech-lead
 
 ## Context
-Three agents — `@team-member-tech-lead`, `@team-member-code-reviewer`, `@team-member-architecture-guardian` — are instructed to reason about blast radius, coupling, and impacted components before acting. Doing that from `grep` alone is unreliable once a codebase outgrows a single context window.
+Three agents — `@tech-lead`, `@code-reviewer`, `@architecture-guardian` — are instructed to reason about blast radius, coupling, and impacted components before acting. Doing that from `grep` alone is unreliable once a codebase outgrows a single context window.
 
 [Graphify](https://www.npmjs.com/package/@sentropic/graphify) builds a knowledge graph from a repository (code symbols plus git history) and can expose it over MCP. It was wired up incrementally across several changes; this ADR records the decisions retroactively, because the reasoning lived only in the Blueprint, which is documentation rather than a decision record.
 

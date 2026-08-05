@@ -121,17 +121,17 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 | Agent | Primary Role | Model | Family (Zen) | Role | Temp |
 |---|---|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | `{env:MODEL_B}` | Anthropic | Author | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | `{env:MODEL_A}` | Anthropic | Planner | 0.1 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
-| @team-member-tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
-| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
+| @product-owner | Requirement Discovery & BDD Criteria | `{env:MODEL_B}` | Anthropic | Author | 0.3 |
+| @tech-lead | Planner & Sub-Agent Dispatcher | `{env:MODEL_A}` | Anthropic | Planner | 0.1 |
+| @devops-engineer | Terraform, CDK & CI/CD | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
+| @db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
+| @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
+| @code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
+| @performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
 | **Expert Advisors** | | | | | |
 | @expert-alex-xu | Distributed Systems & System Design | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 | @expert-dave-farley | Continuous Delivery & TDD | `{env:MODEL_B}` | Anthropic | Advisory | 0.1 |
@@ -140,31 +140,31 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 > **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`) that each agent's `model:` frontmatter field references in `.opencode/agents/*.md`. The actual model ID is resolved at runtime from the corresponding variable in `.env` — see [Provider Switching](#342-provider-switching-via-abstract-model-names). The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 
-> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (OpenAI on Zen); every agent that audits it uses `MODEL_A` or `MODEL_B` (Anthropic on Zen). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @team-member-product-owner is the one Anthropic-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee when using OpenCode Zen. The guarantee weakens if using a provider that lacks distinct model families.**
+> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (OpenAI on Zen); every agent that audits it uses `MODEL_A` or `MODEL_B` (Anthropic on Zen). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @product-owner is the one Anthropic-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee when using OpenCode Zen. The guarantee weakens if using a provider that lacks distinct model families.**
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
 ### 3.3 Agent Responsibilities
 
-**@team-member-product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
+**@product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
 
-**@team-member-tech-lead** — Acts as system planner and engineering dispatcher. Advises on technical trade-offs, coordinates sub-agent execution pipelines, enforces Trunk-Based rules, and maintains architectural integrity.
+**@tech-lead** — Acts as system planner and engineering dispatcher. Advises on technical trade-offs, coordinates sub-agent execution pipelines, enforces Trunk-Based rules, and maintains architectural integrity.
 
-**@team-member-devops-engineer** — Generates Infrastructure-as-Code (Terraform / AWS CDK), constructs CI/CD workflows, configures cloud OIDC authentication, and manages continuous deployment pipelines.
+**@devops-engineer** — Generates Infrastructure-as-Code (Terraform / AWS CDK), constructs CI/CD workflows, configures cloud OIDC authentication, and manages continuous deployment pipelines.
 
-**@team-member-architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
+**@architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
 
-**@team-member-db-designer** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
+**@db-designer** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
 
-**@team-member-ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
+**@ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
 
-**@team-member-tester-unit-and-quality** — Writes fast, isolated unit tests with high branch coverage prior to PR creation.
+**@tester-unit-and-quality** — Writes fast, isolated unit tests with high branch coverage prior to PR creation.
 
-**@team-member-tester-api** — Verifies REST/GraphQL API contracts, end-to-end payload validations, and integration boundary tests.
+**@tester-api** — Verifies REST/GraphQL API contracts, end-to-end payload validations, and integration boundary tests.
 
-**@team-member-security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
+**@security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
 
-**@team-member-code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
+**@code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
 
 #### Orchestration Topology — Who May Invoke Whom
 
@@ -172,8 +172,8 @@ Roles alone do not constrain delegation. By default every agent can invoke every
 
 | Agent | `task` | Effect |
 |---|---|---|
-| @team-member-tech-lead | `allow` | the single orchestrator — may dispatch any agent |
-| @team-member-product-owner | `"*": deny`, then `team-member-tech-lead: allow` | discovers requirements, authors stories, hands the batch to the Tech Lead |
+| @tech-lead | `allow` | the single orchestrator — may dispatch any agent |
+| @product-owner | `"*": deny`, then `tech-lead: allow` | discovers requirements, authors stories, hands the batch to the Tech Lead |
 | the 9 delivery agents and the 4 expert advisers | `deny` | do the work and report back to whoever invoked them |
 
 The flow is one-directional: the Product Owner discovers requirements and writes stories, hands them to the Tech Lead, and the Tech Lead orchestrates the delivery agents. A delegate's findings return to its invoker as the Task result — which is why, for example, the Security Auditor needs no route *back* to the Tech Lead. When the Tech Lead invokes it, the verdict lands where it is needed by construction, with no agent-to-agent messaging mechanism to build and no possibility of a Tech Lead ↔ Auditor invocation loop.
@@ -311,9 +311,9 @@ MODEL_D=opencode/gemini-3.5-flash-lite
 
 | Abstract | Used By |
 |---|---|
-| `MODEL_A` (best) | Main model, @team-member-tech-lead, @team-member-architecture-guardian, @team-member-security-auditor, @expert-alex-xu, @expert-uncle-bod |
-| `MODEL_B` (mid) | @team-member-code-reviewer, @expert-kent-beck, @expert-dave-farley, @team-member-product-owner |
-| `MODEL_C` (coder) | @team-member-devops-engineer, @team-member-db-designer, @team-member-performance-engineer, @team-member-tester-api, @team-member-tester-unit-and-quality, @team-member-ui-builder |
+| `MODEL_A` (best) | Main model, @tech-lead, @architecture-guardian, @security-auditor, @expert-alex-xu, @expert-uncle-bod |
+| `MODEL_B` (mid) | @code-reviewer, @expert-kent-beck, @expert-dave-farley, @product-owner |
+| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @tester-api, @tester-unit-and-quality, @ui-builder |
 | `MODEL_D` (small) | `small_model` — titles and summaries |
 
 > **Migration note:** Previously each agent referenced a hardcoded model ID (e.g. `opencode/claude-sonnet-4-6`) in its `model:` frontmatter. These were replaced with `{env:MODEL_B}` etc. in a single batch update — no per-agent changes are needed to switch providers going forward.
@@ -443,7 +443,7 @@ Three routes, in order of directness:
 
    The command is the **repo-relative binary path**, not the bare `graphify`, so the server does not depend on direnv having exported `PATH` into OpenCode's own process environment.
 2. **`.opencode/plugins/graphify.js`** — a local plugin loaded by directory convention (it is *not* an entry in the `plugin` array of `.opencode/opencode.json`). It hooks `tool.execute.before`, and once per session, if `.graphify/graph.json` exists, prepends a one-line reminder to the first `bash` command pointing at the MCP tools and the report.
-3. **Three agent prompts** — `team-member-architecture-guardian`, `team-member-code-reviewer` and `team-member-tech-lead` each name the specific tools to prefer over reading raw files.
+3. **Three agent prompts** — `architecture-guardian`, `code-reviewer` and `tech-lead` each name the specific tools to prefer over reading raw files.
 
 > **Known gap — closed 2026-08-02: the graph is now callable.** Until that change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. All eleven tool names in the table above were **confirmed by direct invocation on 2026-08-03** — they are the MCP server's own names prefixed with the server key `graphify`, following the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention. The plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one; it is rejected because it writes into reviewed configuration out of band. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
 
@@ -827,8 +827,8 @@ Six agents exist to produce findings, not changes. A reviewer that can silently 
 
 | Agent | Why |
 |---|---|
-| `team-member-code-reviewer` | audits code; must not fix what it flags |
-| `team-member-security-auditor` | audits security; same reasoning |
+| `code-reviewer` | audits code; must not fix what it flags |
+| `security-auditor` | audits security; same reasoning |
 | the 4 `expert-*` advisers | advisory by definition — they answer questions, they do not touch the repository |
 
 Every other agent keeps `edit`, because writing is their job: the Performance Engineer maintains `docs/performance/TRENDS.md`, the Architecture Guardian writes `docs/`, the DevOps Engineer authors workflows, the Product Owner writes PRDs, and the testers, DB Designer and UI Builder all produce code.
@@ -841,28 +841,28 @@ The full operational sequence demonstrates how a requirement flows from initial 
 
 ```mermaid
 graph TB
-    P1["Phase 1: Requirements Discovery<br/>@team-member-product-owner"]
-    P2["Phase 2: Backlog & Jira Seeding<br/>@team-member-product-owner"]
-    P3["Phase 3: Technical Design & Branching<br/>@team-member-tech-lead"]
-    P4["Phase 4: Implementation & Flagging<br/>@team-member-ui-builder"]
-    P5["Phase 5: Automated Verification<br/>@team-member-tester-unit-and-quality & @team-member-tester-api"]
-    P6["Phase 6: PR, Audit & Human Gate<br/>@team-member-security-auditor & @team-member-code-reviewer"]
+    P1["Phase 1: Requirements Discovery<br/>@product-owner"]
+    P2["Phase 2: Backlog & Jira Seeding<br/>@product-owner"]
+    P3["Phase 3: Technical Design & Branching<br/>@tech-lead"]
+    P4["Phase 4: Implementation & Flagging<br/>@ui-builder"]
+    P5["Phase 5: Automated Verification<br/>@tester-unit-and-quality & @tester-api"]
+    P6["Phase 6: PR, Audit & Human Gate<br/>@security-auditor & @code-reviewer"]
     P7["Phase 7: Continuous Deployment<br/>CI/CD via OIDC → AWS"]
 
     P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
 ```
 
-**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @team-member-product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @team-member-product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @team-member-product-owner pass the instruction to @team-member-tech-lead. Story #1 is always designated as the Walking Skeleton.
+**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @product-owner pass the instruction to @tech-lead. Story #1 is always designated as the Walking Skeleton.
 
-**Phase 2 — Backlog & Jira Seeding**: @team-member-product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @team-member-tech-lead.
+**Phase 2 — Backlog & Jira Seeding**: @product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @tech-lead.
 
-**Phase 3 — Technical Design & Branching**: @team-member-tech-lead creates a short-lived topic branch from `main` and dispatches @team-member-architecture-guardian, @team-member-db-designer, and @team-member-devops-engineer to prepare infrastructure and domain models.
+**Phase 3 — Technical Design & Branching**: @tech-lead creates a short-lived topic branch from `main` and dispatches @architecture-guardian, @db-designer, and @devops-engineer to prepare infrastructure and domain models.
 
-**Phase 4 — Implementation & Flagging**: @team-member-ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
+**Phase 4 — Implementation & Flagging**: @ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
 
-**Phase 5 — Automated Verification**: @team-member-tester-unit-and-quality and @team-member-tester-api run test suites, creating Bug Sub-tasks for any failing checks.
+**Phase 5 — Automated Verification**: @tester-unit-and-quality and @tester-api run test suites, creating Bug Sub-tasks for any failing checks.
 
-**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @team-member-security-auditor and @team-member-code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
+**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @security-auditor and @code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
 
 **Phase 7 — Continuous Deployment**: PR merges to `main`. CI assumes the cloud IAM role via OIDC, executes infrastructure-as-code, and deploys to production.
 
@@ -872,9 +872,9 @@ graph TB
 
 Teams looking to build a similar system can customise this blueprint with three key adaptations:
 
-- **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@team-member-devops-engineer.md`.
-- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@team-member-product-owner.md`.
-- **UI Standards**: Customise `@team-member-ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
+- **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@devops-engineer.md`.
+- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
+- **UI Standards**: Customise `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
 
 ---
 
@@ -908,7 +908,7 @@ Key ADRs (see [docs/adr/README.md](../../docs/adr/README.md) for the full index 
 
 ## 11. Recommended Approach
 
-Start with **few details** and let @team-member-product-owner (PO) guide the discovery process:
+Start with **few details** and let @product-owner (PO) guide the discovery process:
 
 1. **Open a fresh session** (`/new`) — one story per session
 2. **Give a lightweight prompt** — a sentence or two about what you want to build
@@ -922,7 +922,7 @@ Start with **few details** and let @team-member-product-owner (PO) guide the dis
 **1. Requirements discovery** — prompt your PO:
 
 ```
-@team-member-product-owner I want to build an Elevation of Privilege (EoP) card
+@product-owner I want to build an Elevation of Privilege (EoP) card
 game — a threat modelling exercise based on the STRIDE framework.
 The goal is to help development teams learn to identify security
 threats in a fun, interactive way. Can you help me define the
@@ -1049,7 +1049,7 @@ Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, sy
 Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, the plugin keeps it in context, auto-continues when idle, and stops when complete, blocked, or a safety limit is hit. Supports evidence-gated completion with optional independent auditor.
 
 - **Package**: `opencode-goal-plugin` (npm), pinned at `0.6.7`
-- **Command**: `/goal` — configured in `opencode.json` under `"command"` with `"agent": "team-member-tech-lead"` for orchestrator-driven execution (defaults: max 10 turns, 15 min duration, 200k tokens)
+- **Command**: `/goal` — configured in `opencode.json` under `"command"` with `"agent": "tech-lead"` for orchestrator-driven execution (defaults: max 10 turns, 15 min duration, 200k tokens)
 - **Config**: Plugin-level defaults passed as options array in `opencode.json`
 - **Tools**: 11 agent-facing tools alongside the command — `set_goal`, `get_goal`, `get_goal_history`, `update_goal`, `clear_goal`, `goal_set`, `goal_status`, `goal_complete`, `goal_pause`, `goal_resume`, `goal_block`
 - **State**: `stateFilePath` is configured as `.opencode/goals/state.json`, but since `0.6.6` state is **sharded per OpenCode session** into `state.json.sessions/<sha256-of-session-id>/state.json` (mode `0600`), each shard holding its own `state.json.lock/owner.json`. Migration from the older aggregate format preserves the original as `state.json.migrated.<epoch>.<uuid>` and drops a `.migration-v1-complete` marker to prevent re-migration. The whole `.opencode/goals/` directory is gitignored (`.gitignore:52`)

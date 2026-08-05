@@ -71,7 +71,7 @@ The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the 
 
 ### AI agent implications
 
-- `@team-member-ui-builder` produces `.tsx` components using functional patterns
+- `@ui-builder` produces `.tsx` components using functional patterns
 - TypeScript interfaces in `ui/src/types/` mirror backend DTOs — agents use these as a contract anchor
 - GOV.UK classes (`govuk-button`, `govuk-input`, etc.) are applied directly in JSX
 - The UI builder agent must never generate class-based components or lifecycle methods

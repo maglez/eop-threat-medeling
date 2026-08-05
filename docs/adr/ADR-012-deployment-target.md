@@ -2,7 +2,7 @@
 
 **Status:** Accepted (deployment deferred 2026-08-05 — see Amendments)
 **Date:** 2026-08-03
-**Deciders:** @team-member-tech-lead, @team-member-devops-engineer
+**Deciders:** @tech-lead, @devops-engineer
 
 ## Context
 
