@@ -38,9 +38,16 @@ locals {
   # the wrong disk.
   data_volume_serial = replace(aws_ebs_volume.data.id, "-", "")
 
+  # Port 80 is implicit in an http:// URL, so printing it would produce an
+  # address nobody types. Any other port has to be spelled out or the output
+  # would be a lie the moment http_port changes.
+  url_port_suffix = var.http_port == 80 ? "" : ":${var.http_port}"
+
   user_data = templatefile("${path.module}/templates/user-data.sh.tftpl", {
     app_image              = var.app_image
+    ui_image               = var.ui_image
     app_port               = var.app_port
+    http_port              = var.http_port
     postgres_image         = var.postgres_image
     postgres_db            = var.postgres_db
     postgres_user          = var.postgres_user

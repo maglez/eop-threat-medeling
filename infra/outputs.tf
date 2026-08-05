@@ -1,11 +1,11 @@
 output "demo_url" {
   description = "Hand this to people. Plain HTTP — browsers will warn that it is not secure."
-  value       = "http://${aws_eip.app.public_ip}:${var.app_port}"
+  value       = "http://${aws_eip.app.public_ip}${local.url_port_suffix}"
 }
 
 output "health_url" {
   description = "The endpoint the walking skeleton exposes. Should return OK."
-  value       = "http://${aws_eip.app.public_ip}:${var.app_port}/health"
+  value       = "http://${aws_eip.app.public_ip}${local.url_port_suffix}/health"
 }
 
 output "ssh_command" {

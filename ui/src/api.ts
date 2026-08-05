@@ -1,0 +1,90 @@
+/**
+ * The card catalogue client.
+ *
+ * Every request is relative, never absolute. That is the whole point of the
+ * single-origin topology in ADR-017: the browser talks to the same origin that
+ * served the page, so there is no base URL to configure per environment and no
+ * cross-origin handling anywhere in the system.
+ */
+
+/** A STRIDE suit, matching the server's enum exactly. */
+export type StrideCategory =
+  | "SPOOFING"
+  | "TAMPERING"
+  | "REPUDIATION"
+  | "INFORMATION_DISCLOSURE"
+  | "DENIAL_OF_SERVICE"
+  | "ELEVATION_OF_PRIVILEGE";
+
+/** One threat card, as published by `GET /api/v1/cards`. */
+export interface Card {
+  readonly cardId: string;
+  readonly suit: StrideCategory;
+  readonly rank: string;
+  readonly rankSymbol: string;
+  readonly rankValue: number;
+  readonly threatPrompt: string;
+}
+
+/** A page of results, mirroring the server's paged envelope. */
+export interface PagedResponse<T> {
+  readonly content: readonly T[];
+  readonly page: number;
+  readonly size: number;
+  readonly totalElements: number;
+  readonly totalPages: number;
+}
+
+/**
+ * An error carrying the RFC 9457 problem detail the server returned, when it
+ * returned one. The server never puts internal detail in a 5xx body, so `detail`
+ * is deliberately treated as optional rather than assumed present.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+interface ProblemDetail {
+  readonly title?: string;
+  readonly detail?: string;
+}
+
+/** Human-readable suit names, since the wire format is a shouting enum. */
+export const SUIT_LABELS: Readonly<Record<StrideCategory, string>> = {
+  SPOOFING: "Spoofing",
+  TAMPERING: "Tampering",
+  REPUDIATION: "Repudiation",
+  INFORMATION_DISCLOSURE: "Information disclosure",
+  DENIAL_OF_SERVICE: "Denial of service",
+  ELEVATION_OF_PRIVILEGE: "Elevation of privilege",
+};
+
+async function problemMessage(response: Response): Promise<string> {
+  try {
+    const problem = (await response.json()) as ProblemDetail;
+    return problem.detail ?? problem.title ?? response.statusText;
+  } catch {
+    // A body that is not JSON is not an error worth surfacing on its own; the
+    // status code is the useful part.
+    return response.statusText;
+  }
+}
+
+/** Fetch one page of the card catalogue. */
+export async function fetchCards(size = 20): Promise<PagedResponse<Card>> {
+  const response = await fetch(`/api/v1/cards?size=${size}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as PagedResponse<Card>;
+}

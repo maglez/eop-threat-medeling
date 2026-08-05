@@ -1,0 +1,62 @@
+# Caddy configuration for the single-origin front-end topology (ADR-017).
+#
+# This file is committed and copied into the image rather than generated at
+# boot. The running configuration is therefore the reviewed configuration.
+#
+# Caddy listens on 8080 INSIDE the container, not 80. A non-root process
+# cannot bind a port below 1024, and running the web server as root to save
+# one line of port mapping is a poor trade. The container stack publishes
+# host port 80 to this one. The application container is a separate
+# container, so its own use of 8080 is not a conflict.
+
+{
+	# The admin API (default :2019) is an unauthenticated control plane that
+	# can rewrite the running configuration. Nothing here uses it, so it is
+	# switched off rather than left listening.
+	admin off
+
+	# There is no domain and no certificate (ADR-012). A bare ":8080" site
+	# address would not trigger automatic HTTPS anyway, but stating it makes
+	# the intent explicit: turning TLS on later is a deliberate edit here,
+	# not an accident of adding a hostname.
+	auto_https off
+}
+
+:8080 {
+	encode gzip
+
+	# The API and the health endpoint are proxied to the application over
+	# the container network. Same origin as the assets above, which is the
+	# entire point: the browser never makes a cross-origin request, so no
+	# CORS configuration exists anywhere in this project.
+	handle /api/* {
+		reverse_proxy app:8080
+	}
+
+	# The smoke test and the load test both assert this returns exactly OK.
+	handle /health {
+		reverse_proxy app:8080
+	}
+
+	handle {
+		root * /srv
+
+		# Vite emits content-hashed filenames under /assets, so those are
+		# safe to cache indefinitely. index.html must never be cached, or a
+		# browser will keep asking for asset filenames that no longer exist.
+		@immutable path /assets/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+
+		# Single-page application fallback. Without this, refreshing the
+		# browser on a client-side route returns 404 because no file of that
+		# name exists on disk.
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

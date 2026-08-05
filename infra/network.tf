@@ -79,10 +79,10 @@ resource "aws_vpc_security_group_ingress_rule" "app" {
   for_each = toset(var.app_ingress_cidrs)
 
   security_group_id = aws_security_group.instance.id
-  description       = "Application HTTP (plain text — see ADR-012)"
+  description       = "Reverse proxy HTTP (plain text — see ADR-012)"
   cidr_ipv4         = each.value
-  from_port         = var.app_port
-  to_port           = var.app_port
+  from_port         = var.http_port
+  to_port           = var.http_port
   ip_protocol       = "tcp"
 }
 
@@ -107,7 +107,10 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   ip_protocol       = "-1"
 }
 
-# There is deliberately no ingress rule for PostgreSQL. The database is
-# reachable only over the Docker Compose network inside the instance; it
-# publishes no port to the host, so nothing in the security group can expose
-# it even by mistake.
+# There is deliberately no ingress rule for PostgreSQL, and none for the
+# application's own port either. Both are reachable only over the Docker
+# Compose network inside the instance. PostgreSQL publishes no host port at
+# all; the application publishes none since ADR-017, so every request that
+# reaches it has passed through the reverse proxy on the same origin. Opening
+# var.app_port here would create a second, unproxied way in and quietly make
+# that property untrue.

@@ -8,7 +8,9 @@ export const options = {
   summaryTrendStats: ["avg", "min", "med", "max", "p(50)", "p(95)", "p(99)"],
 };
 
-const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
+// Port 80 through the reverse proxy, not the application port: since ADR-017
+// the application publishes no host port, and the proxy is the path users take.
+const BASE_URL = __ENV.BASE_URL || "http://localhost";
 
 export default function () {
   const res = http.get(`${BASE_URL}/health`);

@@ -39,12 +39,57 @@ jobs:
           name: app-jar
           path: target/*.jar
 
+  # The front end gets its own gate rather than being bolted onto `build`.
+  # Two reasons: `build` is the single required check protecting `main`, so
+  # it should stay Java-only and fast and must not fail for a lint rule in
+  # a TypeScript file; and a front-end failure should report as a front-end
+  # failure rather than as a mysterious red mark on the Java job.
+  ui:
+    name: ui
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # `ci`, not `install`: it installs exactly the locked tree and fails
+      # if the lockfile and the manifest disagree, rather than silently
+      # resolving something new.
+      - name: Install dependencies
+        run: npm ci
+
+      # Four separate steps rather than the chained `npm run verify`, so a
+      # failure names itself in the job summary instead of hiding inside
+      # one opaque command.
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
   # Deliberately NOT a required status check yet. It lands as an ordinary
   # job so its reliability can be observed over a few runs; promoting it
   # to required is a separate, deliberate branch-protection change.
+  #
+  # Gated on both code jobs: this one publishes both images, so neither
+  # should be published unless both quality gates passed.
   image:
     name: image
-    needs: build
+    needs: [ build, ui ]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -62,15 +107,29 @@ jobs:
       # and a developer laptop on Apple Silicon would otherwise produce an
       # arm64 image that cannot run there. Only CI publishes the image that
       # gets deployed.
-      - name: Build image
+      - name: Build application image
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           load: true
           tags: eop-threat-medeling:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      # The proxy image. It carries the built front end and the Caddy
+      # configuration, so it is the only thing that publishes a port
+      # (ADR-017). Its own build context is `ui/`, which keeps the
+      # front-end build out of the application image entirely.
+      - name: Build front-end image
+        uses: docker/build-push-action@v6
+        with:
+          context: ui
+          platforms: linux/amd64
+          load: true
+          tags: eop-ui:ci
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,mode=max,scope=ui
 
       # Nothing before this point proves the artifact starts. `mvn verify`
       # proves the code compiles and the tests pass; the build proves the
@@ -80,6 +139,7 @@ jobs:
       - name: Smoke test
         env:
           APP_IMAGE: eop-threat-medeling:ci
+          UI_IMAGE: eop-ui:ci
           POSTGRES_DB: eop
           POSTGRES_USER: eop
           # Ephemeral, lives for the duration of one job, reachable only
@@ -90,9 +150,14 @@ jobs:
 
           docker compose -f compose.app.yml up -d
 
+          # Port 80, through Caddy. The application container publishes no
+          # host port at all (ADR-017), so this is the only way in - which
+          # is exactly why the test goes this way: hitting the application
+          # directly would prove the application works and prove nothing
+          # about the proxy that every real request passes through.
           healthy=false
           for _ in $(seq 1 60); do
-            if [ "$(curl -fsS http://127.0.0.1:8080/health 2>/dev/null || true)" = "OK" ]; then
+            if [ "$(curl -fsS http://127.0.0.1/health 2>/dev/null || true)" = "OK" ]; then
               healthy=true
               break
             fi
@@ -100,13 +165,36 @@ jobs:
           done
 
           if [ "$healthy" != true ]; then
-            echo "::error::The container never served OK on /health"
+            echo "::error::The stack never served OK on /health through the proxy"
             docker compose -f compose.app.yml ps
             docker compose -f compose.app.yml logs --no-color
             exit 1
           fi
 
-          echo "GET /health returned OK"
+          echo "GET /health returned OK through the proxy"
+
+          # The site root must serve the front end, not fall through to the
+          # API. A proxy that answers /health but 404s the site would pass
+          # the check above and still be broken for every user.
+          root_status="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/)"
+          if [ "$root_status" != 200 ]; then
+            echo "::error::The site root returned $root_status, expected 200"
+            docker compose -f compose.app.yml logs --no-color caddy
+            exit 1
+          fi
+
+          echo "GET / returned 200"
+
+          # And the API must be reachable on the same origin. This is the
+          # single-origin property from ADR-017 asserted rather than
+          # assumed - if it regressed, the browser would need CORS.
+          if ! curl -fsS 'http://127.0.0.1/api/v1/cards?size=1' | grep -q '"totalElements":6'; then
+            echo "::error::The card catalogue was not reachable through the proxy"
+            docker compose -f compose.app.yml logs --no-color
+            exit 1
+          fi
+
+          echo "GET /api/v1/cards returned the seeded deck"
           docker compose -f compose.app.yml down --volumes
 
       # Publish only from `main`. A pull request builds and smoke tests the
@@ -131,11 +219,20 @@ jobs:
           repo="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
 
           # The commit SHA is the immutable, deployable reference - it is
-          # what `app_image` in infra/terraform.tfvars should point at.
-          # `latest` is a convenience for humans and moves under you.
+          # what `app_image` and `ui_image` in infra/terraform.tfvars should
+          # point at. `latest` is a convenience for humans and moves under
+          # you.
+          #
+          # Two images, both tagged with the same SHA, because they are
+          # deployed together and a mismatched pair is a class of bug worth
+          # making impossible to express.
           for tag in "${{ github.sha }}" latest; do
             docker tag eop-threat-medeling:ci "$repo:$tag"
             docker push "$repo:$tag"
+
+            docker tag eop-ui:ci "$repo-ui:$tag"
+            docker push "$repo-ui:$tag"
           done
 
           echo "Published $repo:${{ github.sha }}"
+          echo "Published $repo-ui:${{ github.sha }}"

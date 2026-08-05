@@ -71,6 +71,7 @@ install -d -m 0755 "$${APP_DIR}"
 # the committed compose file is used verbatim with no instance-specific edits.
 cat > "$${APP_DIR}/.env" <<ENVFILE
 APP_IMAGE=${app_image}
+UI_IMAGE=${ui_image}
 APP_BIND=0.0.0.0
 POSTGRES_IMAGE=${postgres_image}
 POSTGRES_DB=${postgres_db}
@@ -98,5 +99,6 @@ docker compose -f compose.app.yml up -d
 # but the symptom looks like data loss. Check `mountpoint /var/lib/eop` first.
 # ---------------------------------------------------------------------------
 
-echo "Bootstrap complete. Application should answer on port ${app_port}."
+echo "Bootstrap complete. The site should answer on port ${http_port}."
+echo "The application listens on ${app_port} inside the Compose network only."
 

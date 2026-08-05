@@ -10,22 +10,46 @@ A threat modeling card game based on the STRIDE framework (Spoofing, Tampering, 
 | Framework | Spring Boot 4.1.0 |
 | Build | Maven Wrapper (`./mvnw`) |
 | Tests | JUnit 5 |
-| CI | GitHub Actions — `./mvnw verify`, then build, smoke test and publish the image to GHCR |
-| Container | Multi-stage `Dockerfile`, `compose.app.yml` with PostgreSQL |
+| Front End | React + TypeScript + Vite, GOV.UK Design System (`ui/`) ([ADR-009](docs/adr/ADR-009-frontend-react-typescript.md)) |
+| Serving | Caddy reverse proxy — one origin for the site and the API ([ADR-017](docs/adr/ADR-017-frontend-delivery-topology.md)) |
+| CI | GitHub Actions — `./mvnw verify`, front-end gates, then build, smoke test and publish both images to GHCR |
+| Container | Multi-stage `Dockerfile` and `ui/Dockerfile`, `compose.app.yml` with PostgreSQL |
 | Infrastructure | Terraform (`infra/`) — single EC2 instance, not yet applied ([ADR-012](docs/adr/ADR-012-deployment-target.md)) |
 | AI Agents | OpenCode multi-agent system |
 
 ## Quick Start
 
-```bash
-# Build and test
-./mvnw compile
-./mvnw test
+### The whole stack, the way it is deployed
 
-# Run the server
-./mvnw spring-boot:run
+```bash
+colima start                                  # see ADR-016
+docker build -t eop-threat-medeling:local .
+docker build -t eop-ui:local ui
+docker compose -f compose.app.yml up -d
+open http://localhost/
+```
+
+Caddy is the only published port. The application container publishes nothing —
+`http://localhost/api/v1/cards` and `http://localhost/health` are proxied to it
+on the same origin, which is why there is no CORS configuration anywhere
+([ADR-017](docs/adr/ADR-017-frontend-delivery-topology.md)).
+
+### Just the back end, for development
+
+```bash
+./mvnw verify                                 # tests and quality gates
+./mvnw spring-boot:run                        # H2 in memory, default profile
 curl http://localhost:8080/health
 # → OK
+```
+
+### Just the front end, for development
+
+```bash
+cd ui
+npm install
+npm run dev                                   # proxies /api to localhost:8080
+npm run verify                                # typecheck, lint, test, build
 ```
 
 ## Project Structure
@@ -60,6 +84,16 @@ src/main/java/org/maglez/
 
 src/main/resources/db/changelog/      # Liquibase. Changesets are immutable once merged.
 docs/api/openapi.yml                  # The API contract. Hand authored, ahead of the code.
+
+ui/                                   # Front end. Its own build, its own image, its own CI job.
+├── src/
+│   ├── api.ts                        #   Typed client. Every path relative — see ADR-017.
+│   ├── App.tsx                       #   The one page: shell plus the card catalogue
+│   ├── App.test.tsx
+│   └── main.tsx
+├── scripts/copy-govuk-assets.mjs     #   Design System fonts and images into public/
+├── Caddyfile                          #   Serves the site, proxies /api and /health
+└── Dockerfile                         #   Node build → Caddy runtime, unprivileged
 ```
 
 The layering is not decoration. `entity` and `usecase` compile without Spring or

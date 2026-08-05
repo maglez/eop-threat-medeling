@@ -1,0 +1,19 @@
+# Default-deny, then allow only what the image build needs. Mirrors the
+# posture of the repository root .dockerignore: an allow-list cannot leak a
+# file that nobody remembered to exclude.
+#
+# node_modules is excluded on purpose. The build runs `npm ci` from the
+# lockfile inside the image, so copying a host-resolved tree in would both
+# bloat the context and risk shipping macOS-arm64 native binaries into a
+# Linux image.
+
+*
+
+!package.json
+!package-lock.json
+!tsconfig.json
+!vite.config.ts
+!index.html
+!Caddyfile
+!src
+!scripts

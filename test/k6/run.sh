@@ -9,7 +9,11 @@ RESULT_DIR="$PROJECT_DIR/docs/performance/history"
 mkdir -p "$RESULT_DIR"
 
 INFLUXDB_URL="${INFLUXDB_URL:-http://localhost:8086/k6}"
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+# Default to the reverse proxy on port 80, not the application port. Since
+# ADR-017 the application container publishes no host port at all, so 8080
+# would simply refuse the connection. Measuring through the proxy also
+# measures the path a real user takes; the earlier figures did not.
+BASE_URL="${BASE_URL:-http://localhost}"
 TEST_SCRIPT="${1:-$SCRIPT_DIR/health-check.js}"
 TEST_NAME="${2:-$(basename "$TEST_SCRIPT" .js)}"
 OUTPUT_JSON="$RESULT_DIR/${TEST_NAME}-${TIMESTAMP}.json"

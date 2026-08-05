@@ -159,10 +159,38 @@ variable "app_image" {
   default     = "ghcr.io/maglez/eop-threat-medeling:latest"
 }
 
+variable "ui_image" {
+  description = <<-EOT
+    Container image holding the built front end and the reverse proxy
+    configuration. Published by the same pipeline run as app_image and tagged
+    with the same commit SHA, because the two deploy together and a mismatched
+    pair is a class of bug worth making impossible to express. Keep this tag
+    and app_image on the same SHA.
+  EOT
+  type        = string
+  default     = "ghcr.io/maglez/eop-threat-medeling-ui:latest"
+}
+
 variable "app_port" {
-  description = "Host and container port the application listens on."
+  description = <<-EOT
+    Container port the application listens on. Since ADR-017 this is an
+    internal port only: the application container publishes nothing to the
+    host and is reachable solely through the reverse proxy on the Compose
+    network. It is not open in the security group.
+  EOT
   type        = number
   default     = 8080
+}
+
+variable "http_port" {
+  description = <<-EOT
+    Host port the reverse proxy publishes, and the only port open to the
+    internet. The proxy serves the front end and forwards /api and /health to
+    the application on the same origin (ADR-017), so a browser never makes a
+    cross-origin request and no CORS configuration exists anywhere.
+  EOT
+  type        = number
+  default     = 80
 }
 
 variable "postgres_image" {

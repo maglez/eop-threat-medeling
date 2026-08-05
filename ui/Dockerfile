@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1
+
+# Front-end image: build the static bundle with Node, serve it with Caddy.
+#
+# Two stages so that Node, npm and 281 development dependencies never reach
+# the runtime image. What ships is a web server and a directory of files.
+
+FROM node:22-alpine AS build
+
+WORKDIR /build
+
+# Manifests first so that the dependency layer is only invalidated when the
+# dependencies themselves change, not when a component is edited.
+COPY package.json package-lock.json ./
+
+# `npm ci` installs exactly the locked tree and fails if the lockfile and
+# manifest disagree. `npm install` would silently resolve a different tree,
+# which is the wrong behaviour for a reproducible build.
+RUN npm ci
+
+COPY tsconfig.json vite.config.ts index.html ./
+COPY scripts ./scripts
+COPY src ./src
+
+# The prebuild hook copies the GOV.UK Design System fonts and images into
+# public/ before Vite runs. Without it the stylesheet's absolute asset paths
+# 404 at runtime and the page renders in fallback system fonts, which looks
+# like a styling choice rather than a missing file.
+RUN npm run build
+
+# Quality gates (typecheck, lint, test) deliberately do NOT run here. They
+# run as their own pipeline job, so a failing test fails the pipeline with a
+# readable report instead of failing an image build with a Docker log.
+
+FROM caddy:2-alpine AS runtime
+
+# The official Caddy image runs as root and ships no unprivileged user, so create
+# one. The same identifiers are used as the application image for consistency.
+RUN addgroup -S -g 10001 web && adduser -S -u 10001 -G web -H -D web
+
+# The base image ships a caddy user and group. Running the web server as
+# root to avoid one port mapping is not a trade worth making.
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /build/dist /srv
+
+# Caddy binds 8080, not 80, because an unprivileged process cannot bind a
+# port below 1024. The container stack maps host 80 to this.
+EXPOSE 8080
+
+USER web
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/index.html || exit 1
+
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

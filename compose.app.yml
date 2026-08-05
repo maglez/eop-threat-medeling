@@ -11,12 +11,16 @@
 # docs/adr/ADR-012-deployment-target.md.
 #
 # There is no `build:` section on purpose. The deployment artifact is the image,
-# not this directory. Locally, build it first:
+# not this directory. Locally, build both images first:
 #
 #   docker build -t eop-threat-medeling:local .
+#   docker build -t eop-ui:local ui
 #
-# On the instance, APP_IMAGE points at an immutable GHCR tag and nothing is
-# built at all.
+# On the instance, APP_IMAGE and UI_IMAGE point at immutable GHCR tags and
+# nothing is built at all.
+#
+# The site is served at http://localhost/ (port 80), not :8080. Caddy is the only
+# published entry point.
 
 # Project namespace, set explicitly. Without it Compose derives the project name
 # from the directory, both files collide, and each stack reports the other's
@@ -67,11 +71,33 @@ services:
       DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       DATASOURCE_USER: ${POSTGRES_USER}
       DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    # No `ports:` either. The application is reachable only through Caddy, on the
+    # same origin as the front end. That is the whole point of
+    # docs/adr/ADR-017-frontend-delivery-topology.md: the browser never makes a
+    # cross-origin request, so no CORS configuration exists anywhere in the
+    # codebase. Publishing 8080 as well would create a second, unproxied way in
+    # and quietly make the single-origin property untrue.
+    #
+    # To reach the application directly for debugging, exec into the container or
+    # add a temporary override file. Do not add a port here.
+
+  caddy:
+    image: ${UI_IMAGE:-eop-ui:local}
+    container_name: eop-caddy
+    restart: unless-stopped
+    depends_on:
+      # Only for start ordering. Caddy serves the static site happily without the
+      # application; a request to /api would 502 until the app is up, which is
+      # the correct behaviour rather than a startup failure.
+      - app
     ports:
-      # 127.0.0.1 locally, following the InfluxDB precedent in
-      # docker-compose.yml. On the EC2 instance APP_BIND is 0.0.0.0, because the
-      # demo has to be reachable; the security group is what limits access.
-      - "${APP_BIND:-127.0.0.1}:8080:8080"
+      # Host 80 -> container 8080. Caddy listens on 8080 because it runs as an
+      # unprivileged user and cannot bind below 1024; the privileged port is
+      # mapped by the container runtime instead. APP_BIND keeps the local
+      # default at 127.0.0.1, following the InfluxDB precedent in
+      # docker-compose.yml; on the EC2 instance it is 0.0.0.0 because the demo
+      # has to be reachable, and the security group is what limits access.
+      - "${APP_BIND:-127.0.0.1}:80:8080"
 
 volumes:
   eop_postgres_data:
