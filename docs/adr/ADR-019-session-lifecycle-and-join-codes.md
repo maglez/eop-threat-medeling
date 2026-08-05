@@ -169,6 +169,19 @@ starts with EOP-7. EOP-7 is the first live deployment and is blocked on the
 repository owner, so **EOP-10 introduces the first flag in the codebase.** The ADRs
 do not disagree; the delivery order changed.
 
+**Amendment, 2026-08-05 (during EOP-10 implementation).** ADR-013 describes a flag as
+being read through a `@ConfigurationProperties` class with `@Validated` and gated with
+`@ConditionalOnProperty`. For this flag, only the second half applies, and there is no
+`EopFeatures` class. `@ConditionalOnProperty` is evaluated against the `Environment`
+while bean definitions are being decided, which is before any `@ConfigurationProperties`
+bean has been bound, so a boolean field mirroring this flag would have no reader: it
+would be a typed, validated, dead property that a future maintainer could change with no
+effect. The property is instead declared explicitly as `false` in `application.yml`, where
+its comment documents it, and `matchIfMissing` is left at its default so an absent property
+fails closed. The typed-and-validated idiom ADR-013 asks for still appears in this story,
+for the value it suits — `eop.realtime.heartbeat-interval`, which is read at runtime rather
+than used to decide whether a bean exists.
+
 ## Consequences
 
 **Positive:** the reconnect path and the first-load path are the same request, so

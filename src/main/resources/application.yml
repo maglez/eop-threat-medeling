@@ -21,3 +21,14 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
+
+# Feature flags (ADR-013). Every flag is off here so that forgetting to think
+# about one fails closed. A flag is bound at startup, so flipping it restarts the
+# application; on the deployment target that means setting the environment
+# variable in /opt/eop/.env and running docker compose up -d.
+eop:
+  features:
+    # Session create, join, state, event stream and start (EOP-10). While this is
+    # false the controller bean does not exist, so every /api/v1/sessions path
+    # returns the framework's own 404 and nothing else in the application changes.
+    session-lifecycle: false
