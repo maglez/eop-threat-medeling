@@ -1,0 +1,223 @@
+# ADR-019: Session Lifecycle, Join Codes, and How the Stream Is Authenticated
+
+**Status:** Accepted
+**Date:** 2026-08-05
+**Deciders:** @team-member-tech-lead, @team-member-security-auditor
+
+## Context
+
+EOP-10 builds the first externally reachable write path in this application.
+Everything shipped so far is read-only: a card catalogue and a health endpoint.
+From this story onward, an anonymous caller can create rows.
+
+The workflow it has to support is fixed by the PRD (§3.1, §3.2). A facilitator
+enters a display name, gets a short code and a shareable link, and pastes that link
+into whatever chat window the design review is happening in. Players open the link,
+enter a display name, and wait in a lobby watching each other arrive. When there
+are enough of them, the facilitator starts play.
+
+Three prior decisions constrain the design and leave one question explicitly open.
+ADR-014 chose SSE and established that **reconnection is a re-read, never a
+replay**, because no event history is kept. ADR-015 chose an opaque token in a
+custom request header, and left open how that header reaches a streaming endpoint
+given that the browser's `EventSource` API cannot set headers — recording that
+"the answer must not be 'query parameter' by default." ADR-013 chose feature flags
+as Spring configuration properties.
+
+The game also has a hard floor of three players. It is a rule from the source
+whitepaper, not a tunable: with two players there is no third perspective to
+challenge a threat, which is the entire mechanic. Six is the ceiling from the PRD.
+
+## Decision
+
+### Five endpoints, and the state endpoint is the only one that reports state
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/sessions` | create; returns session id, join code, identity token |
+| `POST` | `/api/v1/sessions/{joinCode}/players` | join by code |
+| `GET` | `/api/v1/sessions/{sessionId}` | read state — **the reconnect path** |
+| `GET` | `/api/v1/sessions/{sessionId}/events` | stream change notifications |
+| `POST` | `/api/v1/sessions/{sessionId}/start` | facilitator closes the lobby |
+
+`start` is in this story rather than deferred to EOP-14, even though dealing the
+deck is not. Without it, `IN_PROGRESS` is unreachable through the API, and the
+requirement that joining an in-progress game returns 409 could only be tested by
+fabricating a database fixture — a test that proves the handler works against a
+state the application cannot actually reach. Starting a session establishes that
+the lobby is closed. Nothing else.
+
+### Join codes: six Crockford base32 characters, and the limiter is therefore a primary control
+
+Generated with `SecureRandom` over the Crockford base32 alphabet
+`0123456789ABCDEFGHJKMNPQRSTVWXYZ` — the digits plus the twenty-two letters left
+after removing `I`, `L`, `O` and `U`. `I`/`L` and `O` are excluded because they are
+misread as `1` and `0` on a video call, which is the actual input channel; `U` is
+excluded because it turns random strings into words nobody wants to read aloud in a
+meeting. Input is normalised before lookup — upper-cased, with `I` and `L` mapped
+to `1` and `O` to `0` — so a human transcription error is not a failed join. Output
+is always the canonical upper-case form.
+
+Six characters is 32⁶, about 1.07 × 10⁹ codes, or roughly **thirty bits of
+entropy**. Eight characters was the recommendation. Six was chosen deliberately for
+usability: this code is read aloud and typed by hand.
+
+**The consequence is stated plainly rather than buried: at thirty bits the rate
+limiter is a primary security control, not defence in depth.** Thirty bits is
+unguessable only while guessing is slow. An attacker permitted unlimited attempts
+enumerates the keyspace in a time that is measured, not theoretical. This is why
+the limiter is in the same story rather than a follow-up, and why removing it later
+is a security regression rather than a simplification.
+
+Collisions are handled by inserting against a unique constraint on `join_code` and
+retrying on violation, with a bounded number of attempts before failing. The
+database, not a pre-insert `SELECT`, decides whether a code is taken — a check-then-
+insert has a race window and this endpoint is concurrent by nature.
+
+### Join attempts are rate-limited in memory, per IP and per code
+
+A sliding window over failed attempts, keyed both by client address and by the code
+being tried, returning 429 with `Retry-After`. The clock is injected so the window
+is testable without sleeping. Per-code as well as per-IP because an attacker
+distributed across addresses is still enumerating one keyspace, and because a
+single code under sustained attack is a signal in itself.
+
+**The counters live in process memory and reset when the container restarts.**
+Accepted: a restart is a deployment, performed by an operator, and an attacker
+cannot trigger one. A distributed limiter, or one backed by the database, would add
+a write path and a table to protect something that a single instance behind a single
+reverse proxy does not need (ADR-012, ADR-017).
+
+### Seat order is assigned once, at join, and enforced by the database
+
+Play is clockwise. "Who plays next" is derived from the current leader's seat plus
+the number of cards already in the trick, so `seatOrder` is load-bearing domain
+data rather than presentation ordering.
+
+It is assigned at the moment of joining and **never re-derived** — not from a
+database sort, not from `joined_at`, not from list position. The failure this
+prevents is specific: a player disconnects and reconnects, a read-time derivation
+puts them somewhere else, and the table silently rotates mid-game. The facilitator
+takes seat 0.
+
+Correctness under concurrent joins is enforced by a unique constraint on
+`(game_session_id, seat_order)`, not by application logic. Two players submitting a
+join at the same moment cannot both take seat 3; one insert fails and retries. A
+`MAX(seat_order) + 1` computed in application code without that constraint is a
+race condition that appears only under the exact conditions of a real lobby filling
+up.
+
+### The stream takes the token in the header, and there is no query-parameter fallback
+
+**This closes the open question ADR-015 left for this story.**
+
+`GET /api/v1/sessions/{sessionId}/events` requires the same
+`X-EoP-Player-Token` header as every other authenticated request. It does not
+accept the token as a query parameter, and no code path exists that would read one.
+
+A query parameter was rejected for the reason ADR-015 anticipated: it writes a
+bearer credential into the reverse proxy access log, the browser history, and the
+address bar of a screen being shared during the very meeting this game is played
+in. Since the token *is* the entire control (ADR-015), logging it is not a minor
+hygiene issue.
+
+The cost is real and is accepted: the browser's `EventSource` cannot set headers,
+so the client must consume the stream with `fetch` and read the response body
+incrementally. That is more client code than `new EventSource(url)`. It lands in
+EOP-11. Until then the stream is verified with `curl -N -H`.
+
+A short-lived single-use stream ticket — exchange the token for a URL-safe ticket
+valid for one connection — was also considered and rejected as the wrong shape for
+this project: it is a second credential type with its own issuance, expiry and
+storage, added to avoid writing fifteen lines of `fetch` parsing.
+
+### Errors
+
+RFC 9457 problem details throughout, via the existing `GlobalExceptionHandler`
+(ADR-005). Domain exceptions carry no HTTP vocabulary; the mapping lives in the web
+adapter.
+
+**404 on an unknown join code is byte-for-byte identical** whether the code never
+existed, was mistyped, or belonged to an abandoned session. Distinguishing them
+turns the endpoint into an oracle that confirms which codes are real, which is
+worth more to an attacker than any of the three messages is worth to a user.
+
+The `sessionId` endpoints deliberately do **not** hide existence in the same way. A
+session id is an unguessable UUID (ADR-018), so there is nothing to conceal, and
+the asymmetry is intentional rather than an inconsistency.
+
+**403, not 401, for a missing or unrecognised token.** There is no authentication
+scheme here — no realm, no challenge, nothing the client could retry differently. A
+401 must carry `WWW-Authenticate`, and emitting one would advertise a challenge
+that does not exist. The request was understood and refused, which is what 403
+means. The same 403 covers a participant attempting to start a session.
+
+**409 for three distinct conditions**, separated by the problem detail `title`:
+joining a session that has left `LOBBY`, joining a table already holding six, and
+starting with fewer than three players.
+
+### Behind a feature flag, and the flag-off behaviour is the absence of code
+
+`eop.features.session-lifecycle`, false by default (ADR-013). The controller is
+annotated `@ConditionalOnProperty`, so with the flag off the bean does not exist,
+no handler is mapped, and Spring's own no-handler response — already rendered as a
+problem detail — returns 404 for every path. Flag-off behaviour is not a branch
+that could be wrong; it is the absence of a bean.
+
+Worth noting because it looks like a contradiction: ADR-013 states that flagging
+starts with EOP-7. EOP-7 is the first live deployment and is blocked on the
+repository owner, so **EOP-10 introduces the first flag in the codebase.** The ADRs
+do not disagree; the delivery order changed.
+
+## Consequences
+
+**Positive:** the reconnect path and the first-load path are the same request, so
+recovery is exercised by every page load rather than only when something goes
+wrong. This is the property ADR-014 was aiming at, made concrete.
+
+**Positive:** seat order is protected by a constraint rather than by care, so the
+one class of bug that would corrupt an entire game — silently rotating the table —
+cannot be introduced by a later refactor of the join logic.
+
+**Positive:** the flag makes this deployable to the live instance before the UI
+exists, which is what allows EOP-11 to build against a real server.
+
+**Negative — thirty bits of entropy makes the limiter load-bearing.** Stated in the
+decision and repeated here because it is the single most important thing to
+carry forward: the join code is short enough that its security depends on the rate
+limiter working. Eight characters would have made the limiter a courtesy. Six makes
+it a control. Anyone tempted to remove or weaken it must lengthen the code first.
+
+**Negative — the limiter forgets everything on restart.** A deploy resets every
+counter. Not attacker-triggerable, and therefore accepted, but it means the
+protection is weakest immediately after a deployment.
+
+**Negative — the client cannot use `EventSource`.** More client code, and a
+`fetch`-based reader must handle partial frames arriving across chunk boundaries,
+which is a class of bug `EventSource` does not have. The alternative was a
+credential in the access log.
+
+**Negative — `connectionStatus` is advisory and will sometimes lie.** The emitter
+registry is a broadcast list, not a presence list (ADR-014): a dead client is only
+discovered on the next write. So the field can report `CONNECTED` for a player who
+has gone away. It is a display hint and must never be an input to a game rule.
+
+**Neutral — six is the ceiling and three the floor, both in the domain.** Neither
+is configurable, because both come from the game rather than from operations. A
+seventh join is a 409, not a resizing decision.
+
+**Neutral — no session expiry in this story.** Rows accumulate. At the volume this
+application will see, a cleanup job is speculative work; `ABANDONED` exists in the
+status enum so that the concept has somewhere to live when it is needed.
+
+## Related
+
+- [ADR-014](ADR-014-realtime-transport.md) — SSE, and why reconnection is a re-read rather than a replay
+- [ADR-015](ADR-015-player-identity.md) — the opaque token; this ADR closes the streaming-header question it left open
+- [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `game_session` and `player`; join codes and tokens are deliberately not UUIDs
+- [ADR-013](ADR-013-feature-flags.md) — the flag mechanism; EOP-10 rather than EOP-7 introduces the first flag
+- [ADR-005](ADR-005-error-handling-strategy.md) — RFC 9457 problem details and where the HTTP mapping lives
+- [ADR-008](ADR-008-database-migration-liquibase.md) — the migration precedes the entities
+- [ADR-012](ADR-012-deployment-target.md) — single instance, no TLS, restart on deploy
+- [PRD §3, §4, §5](../requirements/PRD-eop-card-game.md) — the workflow, the player range, and the domain model
+- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing)

@@ -20,11 +20,13 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
 | [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted (amended) | Partly — image and Compose run locally; Terraform validates but no `apply` has run |
-| [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Not yet — decided ahead of need; first flag arrives with EOP-7 |
+| [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Not yet — decided ahead of need; the first flag arrives with EOP-10, not EOP-7, because EOP-7 is blocked on the repository owner |
 | [014](ADR-014-realtime-transport.md) | Real-time transport via server-sent events | Accepted | Not yet — decided from a measured spike; first emitter arrives with EOP-10 |
 | [015](ADR-015-player-identity.md) | Player identity via a server-issued opaque token in session storage | Accepted | Not yet — decided from a measured spike; first token issued by EOP-10 |
 | [016](ADR-016-local-container-runtime.md) | Colima as the local container runtime | Accepted | Yes — installed, stack runs locally, all verification gates executed |
 | [017](ADR-017-frontend-delivery-topology.md) | Front-end delivery via Caddy on a single origin | Accepted | Yes — proxy serves the site and forwards the API |
+| [018](ADR-018-uuid-v7-identifiers.md) | UUID v7 primary keys generated through an application port | Accepted | Not yet — the identifier port arrives with EOP-10, the first table with runtime inserts |
+| [019](ADR-019-session-lifecycle-and-join-codes.md) | Session lifecycle, join codes, and header-only authentication on the event stream | Accepted | Not yet — implemented across EOP-10 |
 
 The "Implemented?" column exists because an accepted ADR is a decision, not a
 delivery. `CHANGELOG.md` separates the same two things for the same reason.
