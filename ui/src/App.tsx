@@ -14,13 +14,21 @@ type CatalogueState =
  * PostgreSQL and onto the page. Rendering static text would have proved only that
  * Vite works.
  */
+/**
+ * The full deck is 78 cards - thirteen ranks in each of the six STRIDE suits.
+ * The catalogue asks for all of them in one request rather than paginating,
+ * because a reference list of the deck is only useful whole. 78 is inside the
+ * server's maximum page size of 100, so this is a single round trip.
+ */
+const DECK_SIZE = 78;
+
 function Catalogue(): React.JSX.Element {
   const [state, setState] = useState<CatalogueState>({ status: "loading" });
 
   useEffect(() => {
     let abandoned = false;
 
-    fetchCards(6)
+    fetchCards(DECK_SIZE)
       .then((page) => {
         if (!abandoned) {
           setState({ status: "loaded", cards: page.content });
@@ -167,8 +175,10 @@ export default function App(): React.JSX.Element {
                 >
                   Creative Commons Attribution 3.0 United States
                 </a>
-                . The cards shown above are placeholders written for this project,
-                not Microsoft&apos;s.
+                . The threat prompts shown above are Microsoft&apos;s, transcribed
+                from the published deck. Attribution is the only obligation the
+                licence imposes, and it is discharged here rather than only in the
+                repository.
               </p>
             </div>
           </div>

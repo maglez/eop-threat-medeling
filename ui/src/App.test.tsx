@@ -3,29 +3,41 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { Card, PagedResponse } from "./api";
 
-const SPOOFING_THREE: Card = {
-  cardId: "11111111-1111-4111-8111-111111111111",
+/**
+ * The full deck is 78 cards, thirteen in each of the six suits.
+ */
+const DECK_SIZE = 78;
+
+/** The first card in deck order: Spoofing, rank two. */
+const SPOOFING_TWO: Card = {
+  cardId: "5e42f424-e084-5b0c-a428-7785d15f5dd8",
   suit: "SPOOFING",
-  rank: "THREE",
-  rankSymbol: "3",
-  rankValue: 3,
-  threatPrompt: "An attacker could pretend to be a legitimate user.",
+  rank: "TWO",
+  rankSymbol: "2",
+  rankValue: 2,
+  threatPrompt:
+    "An attacker could squat on the random port or socket that the server normally uses",
 };
 
-const TRUMP_KING: Card = {
-  cardId: "66666666-6666-4666-8666-666666666666",
+/**
+ * The last card in deck order, and the highest card in the game: the ace of the
+ * trump suit. Aces are open threat cards, which is why the text invites the
+ * player to name a threat rather than describing one.
+ */
+const TRUMP_ACE: Card = {
+  cardId: "2a497b0e-e59d-50c9-a24b-f03f347dd4ed",
   suit: "ELEVATION_OF_PRIVILEGE",
-  rank: "KING",
-  rankSymbol: "K",
-  rankValue: 13,
-  threatPrompt: "An attacker could gain permissions they were never granted.",
+  rank: "ACE",
+  rankSymbol: "A",
+  rankValue: 14,
+  threatPrompt: "You've invented a new Elevation of Privilege attack",
 };
 
 function pageOf(cards: readonly Card[]): PagedResponse<Card> {
   return {
     content: cards,
     page: 0,
-    size: 6,
+    size: DECK_SIZE,
     totalElements: cards.length,
     totalPages: 1,
   };
@@ -98,27 +110,27 @@ describe("App shell", () => {
 
 describe("Card catalogue", () => {
   it("requests the catalogue on the same origin, with no base URL", async () => {
-    respondWith(200, pageOf([SPOOFING_THREE]));
+    respondWith(200, pageOf([SPOOFING_TWO]));
 
     render(<App />);
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/v1/cards?size=6",
+        "/api/v1/cards?size=78",
         expect.objectContaining({ headers: { Accept: "application/json" } }),
       );
     });
   });
 
   it("renders each card with a readable suit name rather than the wire enum", async () => {
-    respondWith(200, pageOf([SPOOFING_THREE, TRUMP_KING]));
+    respondWith(200, pageOf([SPOOFING_TWO, TRUMP_ACE]));
 
     render(<App />);
 
     expect(await screen.findByText("Spoofing")).toBeInTheDocument();
     expect(screen.getByText("Elevation of privilege")).toBeInTheDocument();
-    expect(screen.getByText(SPOOFING_THREE.threatPrompt)).toBeInTheDocument();
-    expect(screen.getByText("K")).toBeInTheDocument();
+    expect(screen.getByText(SPOOFING_TWO.threatPrompt)).toBeInTheDocument();
+    expect(screen.getByText("A")).toBeInTheDocument();
   });
 
   it("surfaces the problem detail when the server rejects the request", async () => {

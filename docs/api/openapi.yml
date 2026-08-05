@@ -19,10 +19,12 @@ info:
     never mutated through this API. There is deliberately no POST, PUT, PATCH or
     DELETE on `/api/v1/cards`.
 
-    The deck served today is a six-card placeholder, one card per STRIDE
-    category, written for this project. The real Microsoft deck (78 cards,
-    Creative Commons Attribution 3.0 United States) arrives later as a
-    data-only migration — see `docs/EoP_Microsoft_Docs/LICENCE-eop-deck.md`.
+    The deck is the real Elevation of Privilege deck: 78 cards, thirteen ranks
+    in each of the six STRIDE suits. © 2009 Microsoft Corporation, licensed
+    Creative Commons Attribution 3.0 United States — see
+    `docs/EoP_Microsoft_Docs/LICENCE-eop-deck.md`. Attribution is the only
+    obligation the licence imposes, and it is discharged in the running
+    application rather than only in this repository.
   version: 1.0.0-SNAPSHOT
   license:
     name: Deck content — CC-BY-3.0 US (© 2009 Microsoft Corporation)
