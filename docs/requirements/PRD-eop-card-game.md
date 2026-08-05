@@ -158,7 +158,7 @@ which trick is in progress, and the notes recorded against played cards.
 
 - Multiplayer sessions of **3–6 players (3–5 tested range)** — see [ASSUMPTION C, corrected]
 - Anonymous identity: a display name only. No password, no account, no email.
-- A placeholder deck of six cards, one per STRIDE category, standing in for the real deck
+- The real deck: all 78 cards, thirteen ranks in each of the six suits, © 2009 Microsoft Corporation under CC-BY-3.0 US, with attribution shown in the running application (delivered by EOP-13)
 - Game state persisted in PostgreSQL: session, players, dealt hands, tricks, played cards
 - Real-time state synchronisation to every connected player
 - Resume after a browser refresh, a lost connection, or a server restart

@@ -1,0 +1,744 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The real Elevation of Privilege deck: 78 cards, thirteen per STRIDE suit.
+
+  Provenance and licence
+
+  Card text is (c) 2009 Microsoft Corporation, licensed Creative Commons
+  Attribution 3.0 United States (http://creativecommons.org/licenses/by/3.0/us/).
+  See docs/EoP_Microsoft_Docs/LICENCE-eop-deck.md. The sole obligation is
+  attribution, and it is only discharged by attribution VISIBLE IN THE RUNNING
+  APPLICATION - a file in docs/ does not satisfy it. The footer in
+  ui/src/App.tsx carries it.
+
+  Transcribed from https://github.com/adamshostack/eop (cards.yaml), which
+  Adam Shostack maintains under the same licence.
+
+  Why 78 and not the 74 of the printed deck
+
+  The printed deck has 74 because, in the whitepaper's words, "the Elevation of
+  Privilege suit starts at 5, and Tampering starts at 3 because we didn't have
+  sufficient hints to fill out the suit and wanted to avoid repetition". Its
+  Future Work section names thirteen threats per suit as the intent, and
+  cards.yaml is that completed version. The larger number is also the simpler
+  one: a uniform 2..A in every suit removes two per-suit minimum-rank special
+  cases from the trick-taking rules in EOP-14.
+
+  Identifiers
+
+  Deterministic UUID version 5, namespace 6ba7b811-9dad-11d1-80b4-00c04fd430c8
+  (the RFC 4122 OID namespace), name "eop-card:<SUIT>:<rank>". Derived rather
+  than random so that re-deriving this file from the same source yields the same
+  identifiers, and so an identifier is a stable reference to a specific card.
+
+  This changeset is additive. It does not edit 001-card-catalogue.xml, which is
+  immutable once merged.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="003-remove-placeholder-deck" author="eop">
+    <comment>
+      Remove the six placeholder cards from 002-seed-placeholder-deck. They must
+      go before the real deck lands: uq_card_suit_rank is unique on
+      (suit, card_rank), and every placeholder occupies a coordinate the real
+      deck also uses, so inserting over them would violate the constraint.
+      Deleted by identifier rather than by a blanket DELETE so the changeset
+      cannot silently discard data it did not create.
+    </comment>
+
+    <delete tableName="card">
+      <where>id = :value</where>
+      <whereParams>
+        <param value="11111111-1111-4111-8111-111111111111"/>
+      </whereParams>
+    </delete>
+    <delete tableName="card">
+      <where>id = :value</where>
+      <whereParams>
+        <param value="22222222-2222-4222-8222-222222222222"/>
+      </whereParams>
+    </delete>
+    <delete tableName="card">
+      <where>id = :value</where>
+      <whereParams>
+        <param value="33333333-3333-4333-8333-333333333333"/>
+      </whereParams>
+    </delete>
+    <delete tableName="card">
+      <where>id = :value</where>
+      <whereParams>
+        <param value="44444444-4444-4444-8444-444444444444"/>
+      </whereParams>
+    </delete>
+    <delete tableName="card">
+      <where>id = :value</where>
+      <whereParams>
+        <param value="55555555-5555-4555-8555-555555555555"/>
+      </whereParams>
+    </delete>
+    <delete tableName="card">
+      <where>id = :value</where>
+      <whereParams>
+        <param value="66666666-6666-4666-8666-666666666666"/>
+      </whereParams>
+    </delete>
+
+    <rollback>
+      <comment>
+        Rolling back re-inserts nothing: 002-seed-placeholder-deck owns those
+        rows and rolling this changeset back is only meaningful alongside
+        rolling that one forward again.
+      </comment>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="004-seed-real-deck" author="eop">
+    <comment>
+      All 78 cards, ordered by suit then rank. Aces read "You've invented a new
+      &lt;Suit&gt; attack": they are Open Threat cards, and EOP-14 must treat them
+      as requiring a threat not printed on any other card rather than as ordinary
+      high cards.
+    </comment>
+
+    <!-- SPOOFING -->
+    <insert tableName="card">
+      <column name="id" value="5e42f424-e084-5b0c-a428-7785d15f5dd8"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="2"/>
+      <column name="threat_prompt" value="An attacker could take over the port or socket that the server normally uses"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="544dfebc-da1b-522c-b997-9b8e24b4f97a"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="An attacker could try one credential after another and there's nothing to slow them down (online or offline)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="8deeac3e-06d9-5419-bc6b-f2a31bc2ac7f"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="4"/>
+      <column name="threat_prompt" value="An attacker can anonymously connect, because we expect authentication to be done at a higher level"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="c6ad7315-dea1-552c-b754-f91c244bea79"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker can confuse a client because there are too many ways to identify a server"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="82c0780f-2f68-5e8b-8df6-4c41d46b1cbb"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="6"/>
+      <column name="threat_prompt" value="An attacker can spoof a server because identifiers aren't stored on the client and checked for consistency on re-connection (that is, there's no key persistence)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="ec96a5a0-e53e-53d3-8a65-25d1913e6ff5"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="An attacker can connect to a server or peer over a link that isn't authenticated (and encrypted)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="1f1ce40b-3877-5252-a674-090df7ae2fe6"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="8"/>
+      <column name="threat_prompt" value="An attacker could steal credentials stored on the server and reuse them (for example, a key is stored in a world readable file)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="b86f2133-06c4-50e4-acbf-5d12523d2972"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="An attacker who gets a password can reuse it (Use stronger authenticators)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="b7dfc6d6-341c-5586-ad77-2801c1f1dde2"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="10"/>
+      <column name="threat_prompt" value="An attacker can choose to use weaker or no authentication"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="d4964d3b-7f69-5a02-92c2-af0a8feb6cd1"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker could steal credentials stored on the client and reuse them"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="47f9f61a-b123-5b03-b27a-4998f7c4da0c"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="12"/>
+      <column name="threat_prompt" value="An attacker could go after the way credentials are updated or recovered (account recovery doesn't require disclosing the old password)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="23e10fc1-6f8f-5c58-bfe5-fac9ee07884f"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="Your system ships with a default admin password, and doesn't force a change"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="048c87ce-e1e0-519b-be26-05f7b8ae9e5e"/>
+      <column name="suit" value="SPOOFING"/>
+      <column name="suit_order" valueNumeric="1"/>
+      <column name="card_rank" valueNumeric="14"/>
+      <column name="threat_prompt" value="You've invented a new Spoofing attack"/>
+    </insert>
+
+    <!-- TAMPERING -->
+    <insert tableName="card">
+      <column name="id" value="0145d70f-544b-5cd0-9c0a-164d09a969b7"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="2"/>
+      <column name="threat_prompt" value="An attacker can modify your build system and produce signed builds of your software"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="8afe167d-2748-53c1-8e5b-163acc0d2ce8"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="An attacker can take advantage of your custom key exchange or integrity control which you built instead of using standard crypto"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="788c8b77-0d55-5cfe-9965-1fb32b61dd6e"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="4"/>
+      <column name="threat_prompt" value="Your code makes access control decisions all over the place, rather than with a security kernel"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="6fe0fb21-69b2-5d74-8d21-00cebe91e2f0"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker can replay data without detection because your code doesn't provide timestamps or sequence numbers"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="b4b53f9b-89a2-530a-9cca-04cc3a52e8c3"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="6"/>
+      <column name="threat_prompt" value="An attacker can write to a data store your code relies on"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="e38f4f3c-af8e-50bd-b96b-998b707f948d"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="An attacker can bypass permissions because you don't make names canonical before checking access permissions"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="7fc1c384-664c-5000-9c0b-650fc91d4934"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="8"/>
+      <column name="threat_prompt" value="An attacker can manipulate data because there's no integrity protection for data on the network"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="eca7e7b6-84a0-5c80-805b-6e3f15a87448"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="An attacker can provide or control state information"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="943d2917-9d77-50a6-be5a-29b8f2aabac1"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="10"/>
+      <column name="threat_prompt" value='An attacker can alter information in a data store because it has weak/open permissions or includes a group which is equivalent to everyone ("anyone with a Facebook account")'/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="7bf2c64e-1df2-5d8e-aabc-5d1dea5fd035"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker can write to some resource because permissions are granted to the world or there are no ACLs"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="4078f055-38f1-5a30-bdf8-a7d54dc35f4f"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="12"/>
+      <column name="threat_prompt" value="An attacker can change parameters over a trust boundary and after validation (for example, important parameters in a hidden field in HTML, or passing a pointer to critical memory)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="2fbf275d-2740-564d-9d0e-a702099965a3"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="An attacker can load code inside your process via an extension point"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="56c1a22f-b191-5a09-8231-faca8224ff2c"/>
+      <column name="suit" value="TAMPERING"/>
+      <column name="suit_order" valueNumeric="2"/>
+      <column name="card_rank" valueNumeric="14"/>
+      <column name="threat_prompt" value="You've invented a new Tampering attack"/>
+    </insert>
+
+    <!-- REPUDIATION -->
+    <insert tableName="card">
+      <column name="id" value="493b0209-0f34-514f-ae5c-67edead746aa"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="2"/>
+      <column name="threat_prompt" value="An attacker can pass data through the log to attack a log reader, and there's no documentation of what sorts of validation are done"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="93c0348b-fcd1-5832-ac0e-a3ea2ed8b8a5"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="A low privilege attacker can read interesting security information in the logs"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="da4851dd-66cd-5ec4-a7ee-1ed169496a3b"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="4"/>
+      <column name="threat_prompt" value="An attacker can alter digital signatures because the digital signature system you're implementing is weak, or uses MACs where it should use a signature"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="4276b8a4-d395-52c1-979d-45c59adf6e29"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker can alter log messages on a network because they lack strong integrity controls"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="2c006977-5945-5906-bf39-3e0e6c33a8b4"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="6"/>
+      <column name="threat_prompt" value="An attacker can create a log entry without a timestamp (or no log entry is timestamped)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="2ac8dd92-a320-5bbe-8eb3-5385c98cc08f"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="An attacker can make the logs wrap around and lose data"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="74f27b18-9e0a-5296-b1ba-d168e6f64c41"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="8"/>
+      <column name="threat_prompt" value="An attacker can make a log lose or confuse security information"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="96bd0282-97ad-551a-b6e1-6d33c4835d3c"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="An attacker can use a shared key to authenticate as different principals, confusing the information in the logs"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="3181ec5a-3e3d-586c-baec-2b579813327a"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="10"/>
+      <column name="threat_prompt" value="An attacker can get arbitrary data into logs from unauthenticated (or weakly authenticated) outsiders without validation"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="dd54c520-5ba4-5436-a65b-7b37d01f7867"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker can edit logs and there's no way to tell (perhaps because there's no heartbeat option for the logging system)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="bd5a2fff-6469-5951-a14e-74a381b66807"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="12"/>
+      <column name="threat_prompt" value="An attacker can say &quot;I didn't do that,&quot; and you'd have no way to prove them wrong"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="120e4c65-81a0-5813-b462-eb0b148f0392"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="The system has no logs"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="089d68f1-0588-5840-a25f-5f6157731327"/>
+      <column name="suit" value="REPUDIATION"/>
+      <column name="suit_order" valueNumeric="3"/>
+      <column name="card_rank" valueNumeric="14"/>
+      <column name="threat_prompt" value="You've invented a new Repudiation attack"/>
+    </insert>
+
+    <!-- INFORMATION_DISCLOSURE -->
+    <insert tableName="card">
+      <column name="id" value="2dfb05e5-0ad6-5fd5-8c34-f5674d05d0bb"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="2"/>
+      <column name="threat_prompt" value="An attacker can brute-force file encryption because there's no defense in place (example defense, password stretching)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="bc427562-210f-5caf-a502-e545b01fac43"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="An attacker can see error messages with security sensitive content"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="6d5b4259-c458-51cc-9665-6ceb4b77dd6f"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="4"/>
+      <column name="threat_prompt" value="An attacker can read content because messages (say, an email or HTTP cookie) aren't encrypted even if the channel is encrypted"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="720aa35a-af80-5f56-a4c3-9c94ccf21fae"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker may be able to read a document or data because it's encrypted with a non-standard algorithm"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="69eae2ce-b286-52ac-8828-ee59059d4808"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="6"/>
+      <column name="threat_prompt" value="An attacker can read data because it's hidden or occluded (for undo or change tracking) and the user might forget that it's there"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="36a548d4-380e-5eb5-8592-4b11981d82db"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="An attacker can act as a 'man in the middle' because you don't authenticate endpoints of a network connection"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="95adff9c-3a1d-5eb6-ac89-edd823fe124e"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="8"/>
+      <column name="threat_prompt" value="An attacker can access information through a search indexer, logger, or other such mechanism"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="c9a58e96-641f-5c7b-a12e-bfde0292fb21"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="An attacker can read sensitive information in a file with permissive permissions"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="334a902c-4de5-56c0-a827-8e5579df4fd2"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="10"/>
+      <column name="threat_prompt" value="An attacker can read information in files or databases with no access controls"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="d3061546-d9f5-5e6a-9738-d4122cd352a3"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker can discover the fixed key being used to encrypt"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="4b92ec4d-4954-54a1-b0ad-eb4cf9c5f3b0"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="12"/>
+      <column name="threat_prompt" value="An attacker can read the entire channel because the channel (say, HTTP or SMTP) isn't encrypted"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="041d72dd-f8e8-5468-b3ff-41550d8048f1"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="An attacker can read network information because there's no cryptography used"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="4d22c229-2edb-56eb-8983-28d885d1b9a8"/>
+      <column name="suit" value="INFORMATION_DISCLOSURE"/>
+      <column name="suit_order" valueNumeric="4"/>
+      <column name="card_rank" valueNumeric="14"/>
+      <column name="threat_prompt" value="You've invented a new Information Disclosure attack"/>
+    </insert>
+
+    <!-- DENIAL_OF_SERVICE -->
+    <insert tableName="card">
+      <column name="id" value="c2dfedf2-947a-5eef-9f83-32025f1a31e0"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="2"/>
+      <column name="threat_prompt" value="An attacker can make your authentication system unusable or unavailable"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="07c0d5cd-00b5-59f6-b856-26469c09d149"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="An attacker can drain our easily replacable battery (battery, temporary)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="3344b629-4f41-5714-9d7d-9548a2501bcf"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="4"/>
+      <column name="threat_prompt" value="An attacker can drain a battery that's hard to replace (sealed in a phone, an implanted medical device, or in a hard to reach location) (battery, persist)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="69d44d69-4b5b-5944-829b-51d757d0cb26"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker can spend our cloud budget (budget, persist)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="981f231a-2eb2-5da7-a6a3-19b85d69383a"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="6"/>
+      <column name="threat_prompt" value="An attacker can make a server unavailable or unusable without ever authenticating but the problem goes away when the attacker stops (server, anonymous, temporary)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="df1cf3b8-6ec8-51cd-9624-37bd86248597"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="An attacker can make a client unavailable or unusable and the problem persists after the attacker goes away (client, auth, persist)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="48436ddc-d9ce-5210-bf21-2d7a3299b646"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="8"/>
+      <column name="threat_prompt" value="An attacker can make a server unavailable or unusable and the problem persists after the attacker goes away (server, auth, persist)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="2f714fba-20d4-5124-b8e6-d58486a0a5d1"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="An attacker can make a client unavailable or unusable without ever authenticating and the problem persists after the attacker goes away (client, anon, persist)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="6f5cff6b-5d41-5841-a50a-0eb4c4a8a09c"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="10"/>
+      <column name="threat_prompt" value="An attacker can make a server unavailable or unusable without ever authenticating and the problem persists after the attacker goes away (server, anon, persist)"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="f276aa37-aea7-59a1-abef-d9ae076d4de1"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker can cause the logging subsystem to stop working"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="3d339df3-83bf-5eb2-9c35-46aea24513c5"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="12"/>
+      <column name="threat_prompt" value="An attacker can amplify a Denial of Service attack through this component with amplification on the order of 10 to 1"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="b3b15148-ff55-5a16-a7ac-3f6bcdf67715"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="An attacker can amplify a Denial of Service attack through this component with amplification on the order of 100 to 1"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="59f51c4e-1887-5614-a9c9-c3916f2cfd86"/>
+      <column name="suit" value="DENIAL_OF_SERVICE"/>
+      <column name="suit_order" valueNumeric="5"/>
+      <column name="card_rank" valueNumeric="14"/>
+      <column name="threat_prompt" value="You've invented a new Denial of Service attack"/>
+    </insert>
+
+    <!-- ELEVATION_OF_PRIVILEGE -->
+    <insert tableName="card">
+      <column name="id" value="24b333fb-38c4-581e-b86c-670cdc7b4c62"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="2"/>
+      <column name="threat_prompt" value="An attacker has compromised a key technology supplier"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="e030b625-b4e3-51d4-9d91-1b50ae0bf0e1"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="3"/>
+      <column name="threat_prompt" value="An attacker can access the cloud service which manages your devices"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="7229e28b-c578-5ab8-bbc5-fdc8d5b00521"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="4"/>
+      <column name="threat_prompt" value="An attacker can escape from a container or other sandbox"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="afb50abf-793c-5902-afb4-a9bb6c925f82"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="5"/>
+      <column name="threat_prompt" value="An attacker can force data through different validation paths which give different results"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="809a1c72-f290-5472-807a-d296d19f2a90"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="6"/>
+      <column name="threat_prompt" value="An attacker could take advantage of permissions you set, but don't use"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="62370eee-4dfa-5289-972f-e1b27e65791d"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="7"/>
+      <column name="threat_prompt" value="An attacker can provide a pointer across a trust boundary, rather than data which can be validated"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="e6b0e08d-d1e8-52b7-b9e0-8442047ad793"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="8"/>
+      <column name="threat_prompt" value="An attacker can enter data that is checked while still under their control and used later on the other side of a trust boundary"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="e8854852-e51e-5064-9e10-3be51ee914c2"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="9"/>
+      <column name="threat_prompt" value="There's no reasonable way for a caller to figure out what validation of tainted data you perform before passing it to them"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="eeddc08d-7c55-5471-a45b-c54596df541c"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="10"/>
+      <column name="threat_prompt" value="There's no reasonable way for a caller to figure out what security assumptions you make"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="672003f4-6334-57d3-bc8d-ae5e0257f323"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="11"/>
+      <column name="threat_prompt" value="An attacker can reflect input back to a user, like cross site scripting"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="eff85e01-516a-5cbe-a13f-ec3b6bbe489b"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="12"/>
+      <column name="threat_prompt" value="You include user-generated content within your page, possibly including the content of random URLs"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="f4ea3e6e-5cd5-53d0-a32d-b9f389069b74"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="13"/>
+      <column name="threat_prompt" value="An attacker can inject a command that the system will run at a higher privilege level"/>
+    </insert>
+
+    <insert tableName="card">
+      <column name="id" value="2a497b0e-e59d-50c9-a24b-f03f347dd4ed"/>
+      <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+      <column name="suit_order" valueNumeric="6"/>
+      <column name="card_rank" valueNumeric="14"/>
+      <column name="threat_prompt" value="You've invented a new Elevation of Privilege attack"/>
+    </insert>
+
+    <rollback>
+      <delete tableName="card">
+        <where>suit_order BETWEEN 1 AND 6</where>
+      </delete>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>
