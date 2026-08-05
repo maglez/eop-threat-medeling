@@ -133,9 +133,19 @@ public final class GameSession {
      * race is settled by the {@code uq_player_session_seat} database constraint
      * rejecting the second insert, not by this method (ADR-019). Callers retry.
      *
+     * <p>A full table has no next seat, so this refuses rather than handing back
+     * a seat number {@link Player} would reject. Returning the count regardless
+     * made the seventh join fail as an invalid argument, which the API reported
+     * as 400 quoting an internal invariant, instead of the 409 the caller is
+     * owed. Keeping the capacity rule here means one place states it.
+     *
      * @return the next free seat
+     * @throws SessionFullException if every seat is already taken
      */
     public int nextSeatOrder() {
+        if (players.size() >= MAXIMUM_PLAYERS) {
+            throw new SessionFullException(sessionId, MAXIMUM_PLAYERS);
+        }
         return players.size();
     }
 

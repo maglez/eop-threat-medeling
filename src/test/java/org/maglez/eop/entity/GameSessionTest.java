@@ -150,6 +150,16 @@ class GameSessionTest {
         }
 
         @Test
+        @DisplayName("refuses to name a seat at a full table, rather than naming one no player may hold")
+        void shouldRefuseToNameASeatAtAFullTable() {
+            final GameSession full = aSession().withPlayerCount(GameSession.MAXIMUM_PLAYERS).build();
+
+            assertThatExceptionOfType(SessionFullException.class)
+                    .isThrownBy(full::nextSeatOrder)
+                    .withMessageContaining("maximum of 6 players");
+        }
+
+        @Test
         @DisplayName("refuses a seventh player, because the deck deals to six")
         void shouldRefuseASeventhPlayer() {
             final GameSession full = aSession().withPlayerCount(GameSession.MAXIMUM_PLAYERS).build();
