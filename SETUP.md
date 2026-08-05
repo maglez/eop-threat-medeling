@@ -5,17 +5,21 @@
 - **Colima + the Docker CLI plugins** (`brew install colima docker docker-compose docker-buildx`) — required to run the application stack, the monitoring stack or the k6 load test. Four formulae: the `docker` formula is a client only and ships **neither** Compose **nor** Buildx. **Do not install Docker Desktop** — it needs administrator rights this machine does not grant, and its licence requires a paid subscription for commercial use above an organisation-size threshold. See [ADR-016](docs/adr/ADR-016-local-container-runtime.md)
 - **k6** (`brew install k6`) — required by `test/k6/run.sh`
 - **direnv** — required to load `.env` into the Spring app (see below)
-- **Node.js 20+** (`brew install node`) — required by the Graphify knowledge graph, whose CLI OpenCode launches as a separate process. Below Node 20 the `graphify` MCP server silently fails to start and no `graphify_*` tools appear
+- **Node.js 22+** (`brew install node`) — required twice over. The Graphify knowledge graph needs Node 20 or later, and below that the `graphify` MCP server silently fails to start and no `graphify_*` tools appear. The `ui/` front end declares `engines.node >= 22` and CI builds it on Node 22, so 22 is the floor for this repository
 - **uv** (`brew install uv`) — required by the Atlassian MCP server, launched as `uvx mcp-atlassian`. Without `uvx` on `PATH` it silently fails and no `atlassian_jira_*` tools appear
 
 ### Per-clone setup that cannot be committed
-Four steps live outside version control. **All four fail silently or misleadingly**,
+Five steps live outside version control. **All five fail silently or misleadingly**,
 so verify each one:
 
 ```bash
 # Install the pinned Graphify CLI (see Blueprint §5.2 for why --ignore-scripts)
 cd tools/graphify && npm install --ignore-scripts && cd -
 graphify --version            # must print 0.17.1
+
+# Install the front-end dependencies
+cd ui && npm install && cd -
+cd ui && npm run verify && cd -   # typecheck, lint, test, build — all four must pass
 
 # Activate the committed git hooks — enforces the [EOP-NNN] commit prefix
 git config core.hooksPath .githooks

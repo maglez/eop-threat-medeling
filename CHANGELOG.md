@@ -13,7 +13,10 @@ Working code and tooling that exists in the repository today.
 
 - Walking Skeleton: Spring Boot 4.1.0 + Java 21 + `GET /health` (ADR-002)
 - Continuous integration: GitHub Actions running `./mvnw verify` on push and PR, uploading the built artifact, then building the container image, smoke testing it against a real PostgreSQL and publishing it to GHCR on `main`
-- Container image: multi-stage `Dockerfile` producing a non-root JRE image, `compose.app.yml` running it alongside containerised PostgreSQL, published to `ghcr.io` by CI with no repository secrets (ADR-012)
+- Front end: React + TypeScript + Vite under `ui/` with GOV.UK Design System CSS (ADR-009). One page — the application shell plus the card catalogue fetched live from the API. Both calls to action are visibly disabled, because a button that looks live and does nothing is worse than one that admits it
+- Single-origin serving: Caddy serves the built front end and reverse-proxies `/api/*` and `/health` to the application on the same origin (ADR-017). The application container publishes no host port at all, so there is no cross-origin request anywhere and therefore no CORS configuration to maintain
+- Front-end quality gates: a dedicated `ui` CI job runs type checking, linting, unit tests and the production build as four separate steps. It is deliberately separate from the Java `build` job — the single required status check protecting `main` stays Java-only and fast, and a front-end failure reports as a front-end failure
+- Container images: multi-stage `Dockerfile` producing a non-root JRE image and `ui/Dockerfile` producing a Caddy image carrying the built front end, `compose.app.yml` running both alongside containerised PostgreSQL, published to `ghcr.io` by CI with no repository secrets (ADR-012, ADR-017)
 - Deployment infrastructure: Terraform under `infra/` describing a single `t3.small` EC2 instance in a dedicated VPC with an Elastic IP and a separate encrypted EBS data volume (ADR-012). Validated with `terraform validate`; no `apply` has run yet because no AWS account has been provisioned, and cloud deployment is deferred in favour of running locally (see the ADR-012 amendment)
 - Local container runtime: Colima provides a Docker-compatible daemon from Homebrew formulae with no administrator rights (ADR-016). The whole stack — application and PostgreSQL — now runs on a developer machine with the same `docker compose -f compose.app.yml up -d` that CI and the EC2 bootstrap script use
 - Build quality gates: Checkstyle (`checkstyle.xml`), SpotBugs, JaCoCo 80% instruction coverage, Enforcer (ADR-006)
@@ -23,7 +26,7 @@ Working code and tooling that exists in the repository today.
 - Error handling: a single `@RestControllerAdvice` rendering RFC 9457 problem details, with a unit test for every mapped exception (ADR-005)
 - Feature flags: decided as Spring configuration properties under `eop.features.*` (ADR-013). No flag exists yet — the first arrives with the first live deployment
 - Real-time transport and player identity: decided from a time-boxed spike that ran a real server-sent-events endpoint against the application (EOP-8). Server-sent events carry state to every connected player (ADR-014); a server-issued opaque token in per-tab session storage identifies a player (ADR-015). Both are decisions only — the spike code was deleted and no production code graduated from it
-- Load testing: k6 with SLO thresholds (p95 < 200ms), now run against the container rather than a development-mode process. The health endpoint measures p95 5.77ms against the 200ms threshold with 663 of 663 checks passing. The InfluxDB + Grafana stack starts and is provisioned, but k6 results never reach it — see Known issues
+- Load testing: k6 with SLO thresholds (p95 < 200ms), run against the container through the reverse proxy — the path a real user takes. The health endpoint measures p95 9.85ms against the 200ms threshold with 663 of 663 checks passing. The earlier 5.77ms figure measured the application's own port, which no longer exists, so `docs/performance/TRENDS.md` records a deliberate baseline reset rather than a regression. The InfluxDB + Grafana stack starts and is provisioned, but k6 results never reach it — see Known issues
 - GitHub MCP integration for agent-based PR and repository management, read-only at the server (ADR-003)
 - Graphify knowledge graph exposed as a repo-local MCP server (ADR-011)
 - Multi-agent system: 15 agents in `.opencode/agents/` — 11 delivery agents and 4 advisory experts
@@ -40,6 +43,8 @@ Working code and tooling that exists in the repository today.
 - **Documentation named an uninstallable prerequisite.** `SETUP.md`, `docs/devops/local-development.md` and `.opencode/rules/performance-testing.md` all instructed the reader to install or launch Docker Desktop, which needs administrator rights this project does not have and a paid licence above an organisation-size threshold. All three now describe Colima (ADR-016)
 - **The two Compose files shared one project namespace.** Both derived their project name from the directory, so each stack reported the other's containers as orphans and `docker compose down --remove-orphans` on either would have destroyed the other. They are now named `eop-app` and `eop-monitoring` explicitly
 - **`.env.example` pointed k6 at a container hostname.** `INFLUXDB_URL` was `http://influxdb:8086`, which cannot resolve from the host where k6 runs, and omitted the `/k6` database path
+- **The ADR index claimed four delivered decisions were unimplemented.** The OpenAPI contract, the RFC 9457 handler and the first Liquibase changeset all shipped with the card catalogue, and the index still read "No" for each; the front-end row read "No" since July. `docs/adr/README.md` now matches what is on disk
+- **`docs/performance/TRENDS.md` held placeholder rows.** Every cell had been an em dash since the file was created, because the load test had never run against a container. It now carries measured figures and records the baseline reset
 
 ### Known issues
 
@@ -52,7 +57,6 @@ has an accepted ADR or rule file but no implementation in `src/` or `pom.xml`.
 
 - Configuration management via `@ConfigurationProperties` + `@Validated` — rule only, no such class exists
 - Resilience patterns: Resilience4j retry, circuit-breaker and time-limiter — `.opencode/rules/resilience.md` records the intent, but the dependency is absent from `pom.xml`
-- Front-end stack: React + TypeScript + Vite + GOV.UK Design System CSS (ADR-009) — no `ui/` directory exists
 - Automated deployment: the pipeline publishes a deployable image but does not deploy it. Rolling the new tag onto the instance is a manual pull-and-restart over SSH (ADR-012 records why CI-driven SSH deployment is deliberately avoided)
 
 [1.0.0-SNAPSHOT]: https://github.com/maglez/eop-threat-medeling/releases/tag/v1.0.0-SNAPSHOT

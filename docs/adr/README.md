@@ -11,12 +11,12 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 |---|---|---|---|
 | [002](ADR-002-spring-boot-bootstrap.md) | Spring Boot Walking Skeleton | Accepted | Yes |
 | [003](ADR-003-github-mcp-integration.md) | GitHub MCP integration | Accepted (amended 2026-07-28) | Yes |
-| [004](ADR-004-api-contract-first.md) | API contract-first with OpenAPI 3.1 | Accepted | No — `docs/api/openapi.yml` not yet written |
-| [005](ADR-005-error-handling-strategy.md) | Error handling via RFC 9457 Problem Details | Accepted | No — no handler exists |
+| [004](ADR-004-api-contract-first.md) | API contract-first with OpenAPI 3.1 | Accepted | Yes — `docs/api/openapi.yml` hand-authored before the first controller |
+| [005](ADR-005-error-handling-strategy.md) | Error handling via RFC 9457 Problem Details | Accepted | Yes — `GlobalExceptionHandler` maps every 4xx and 5xx |
 | [006](ADR-006-build-quality-gates.md) | Build quality gates | Accepted | Yes |
 | [007](ADR-007-versioning-strategy.md) | Semantic Versioning | Accepted | Yes |
-| [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted | Partly — wiring exists, no migrations written |
-| [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted | No — no `ui/` directory |
+| [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted | Yes — autoconfiguration fixed and the first changeset applies |
+| [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted | Yes — `ui/` scaffolded, built and served |
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
 | [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted (amended) | Partly — image and Compose run locally; Terraform validates but no `apply` has run |
@@ -24,6 +24,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [014](ADR-014-realtime-transport.md) | Real-time transport via server-sent events | Accepted | Not yet — decided from a measured spike; first emitter arrives with EOP-10 |
 | [015](ADR-015-player-identity.md) | Player identity via a server-issued opaque token in session storage | Accepted | Not yet — decided from a measured spike; first token issued by EOP-10 |
 | [016](ADR-016-local-container-runtime.md) | Colima as the local container runtime | Accepted | Yes — installed, stack runs locally, all verification gates executed |
+| [017](ADR-017-frontend-delivery-topology.md) | Front-end delivery via Caddy on a single origin | Accepted | Yes — proxy serves the site and forwards the API |
 
 The "Implemented?" column exists because an accepted ADR is a decision, not a
 delivery. `CHANGELOG.md` separates the same two things for the same reason.
