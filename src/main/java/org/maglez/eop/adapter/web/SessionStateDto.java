@@ -33,6 +33,21 @@ public record SessionStateDto(
         String updatedAt) {
 
     /**
+     * Copies the players defensively so the state cannot be mutated after construction.
+     *
+     * <p>A record is only a value if every component is one. Without this the list handed in stays
+     * shared with whoever built it, so a caller could reorder the table after the object claiming to
+     * describe it had been created — and seat order is the one thing this shape promises
+     * (ADR-014). {@link java.util.List#copyOf} also refuses a null list, which is the right answer
+     * for a session state with no players at all: a lobby always seats its facilitator.
+     *
+     * @throws NullPointerException if the players are null
+     */
+    public SessionStateDto {
+        players = List.copyOf(players);
+    }
+
+    /**
      * Converts a domain session into its transport form.
      *
      * @param session the domain aggregate
