@@ -11,8 +11,10 @@ import org.maglez.eop.entity.DisplayName;
 import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
 import org.maglez.eop.usecase.JoinSessionUseCase;
+import org.maglez.eop.usecase.ResolvePlayerUseCase;
 import org.maglez.eop.usecase.StartSessionUseCase;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * HTTP access to the session lifecycle: create a lobby, join one, read its state,
@@ -67,15 +70,23 @@ public class SessionController {
 
     private final StartSessionUseCase startSessionUseCase;
 
+    private final ResolvePlayerUseCase resolvePlayerUseCase;
+
+    private final SseSessionEventPublisher sessionEventPublisher;
+
     SessionController(
             final CreateSessionUseCase createSessionUseCase,
             final JoinSessionUseCase joinSessionUseCase,
             final GetSessionStateUseCase getSessionStateUseCase,
-            final StartSessionUseCase startSessionUseCase) {
+            final StartSessionUseCase startSessionUseCase,
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final SseSessionEventPublisher sessionEventPublisher) {
         this.createSessionUseCase = Objects.requireNonNull(createSessionUseCase, "createSessionUseCase is required");
         this.joinSessionUseCase = Objects.requireNonNull(joinSessionUseCase, "joinSessionUseCase is required");
         this.getSessionStateUseCase = Objects.requireNonNull(getSessionStateUseCase, "getSessionStateUseCase is required");
         this.startSessionUseCase = Objects.requireNonNull(startSessionUseCase, "startSessionUseCase is required");
+        this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
+        this.sessionEventPublisher = Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
     }
 
     /**
@@ -147,5 +158,38 @@ public class SessionController {
             @PathVariable final UUID sessionId,
             @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
         return SessionStateDto.from(startSessionUseCase.execute(sessionId, playerToken));
+    }
+
+    /**
+     * Opens a stream of change notifications for one session.
+     *
+     * <p>The credential is resolved before the stream is opened, so an unrecognised
+     * caller receives a problem detail rather than an empty stream that would look
+     * like a session where nothing ever happens.
+     *
+     * <p>The credential arrives in the same header as everywhere else, and there is
+     * no query-parameter alternative — not because one was rejected during review,
+     * but because no code path here reads one. The browser's {@code EventSource} API
+     * cannot set request headers, so the client uses {@code fetch}-based streaming
+     * instead; that cost is accepted because a credential in a query string is a
+     * credential in the access log, in the browser history, and on screen during a
+     * shared call (ADR-019).
+     *
+     * <p>What arrives on this stream is notification, never state. Each frame says
+     * that the session changed; the client then re-reads
+     * {@code GET /api/v1/sessions/{sessionId}}. There is no history, so
+     * {@code Last-Event-ID} is not honoured.
+     *
+     * @param sessionId   the session to watch
+     * @param playerToken the caller's identity credential
+     * @return an open server-sent event stream
+     */
+    @GetMapping(value = "/{sessionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Stream notifications that the session changed")
+    public SseEmitter streamSessionEvents(
+            @PathVariable final UUID sessionId,
+            @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
+        resolvePlayerUseCase.execute(sessionId, playerToken);
+        return sessionEventPublisher.subscribe(sessionId);
     }
 }
