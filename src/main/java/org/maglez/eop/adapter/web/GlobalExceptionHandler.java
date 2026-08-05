@@ -94,14 +94,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * A join code matched nothing.
      *
-     * <p>The title and detail are fixed strings and the exception's own message is
-     * deliberately not used, so that every failed lookup produces a byte-identical
-     * response. A code that was mistyped, a code that never existed and a code
-     * belonging to an abandoned session must be indistinguishable: at roughly
+     * <p>The status, title and detail are fixed strings and the exception's own
+     * message is deliberately not used, so that no field of the response depends on
+     * why the lookup failed. A code that was mistyped, a code that never existed and
+     * a code belonging to an abandoned session must be indistinguishable: at roughly
      * thirty bits of entropy, an endpoint that confirmed which codes are real would
      * be an oracle worth querying (ADR-019).
      *
-     * @return a 404 problem detail carrying no information about the attempt
+     * <p>The bodies are not byte-identical, because Spring fills in {@code instance}
+     * with the request URI when a handler leaves it null, and the request URI carries
+     * the attempted code. That echoes the caller's own input back at it and so
+     * discloses nothing, which is why it is left alone rather than blanked: an empty
+     * {@code instance} on this one mapping and a populated one everywhere else would
+     * itself be a signal, and it would cost a real diagnostic in the logs of every
+     * client that reports problem details verbatim.
+     *
+     * @return a 404 problem detail whose status, title and detail are the same for
+     *         every unusable code
      */
     @ExceptionHandler(UnknownJoinCodeException.class)
     public ProblemDetail handleUnknownJoinCode() {
