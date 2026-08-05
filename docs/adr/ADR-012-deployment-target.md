@@ -1,6 +1,6 @@
 # ADR-012: Deployment to a Single EC2 Instance with Terraform
 
-**Status:** Accepted
+**Status:** Accepted (deployment deferred 2026-08-05 — see Amendments)
 **Date:** 2026-08-03
 **Deciders:** @team-member-tech-lead, @team-member-devops-engineer
 
@@ -227,8 +227,36 @@ and the bootstrap script is syntax-checked, but no `apply` has run because no pe
 AWS account exists yet. `infra/README.md` lists what the project owner must do first;
 the "Implemented?" column in the ADR index reflects that honestly.
 
+## Amendments
+
+**2026-08-05 — deployment deferred; the same artifacts now run locally first.**
+The decision above is left as written because none of it turned out to be wrong.
+The OCI image remains the portability boundary, GHCR remains the registry, Compose
+remains the orchestration layer, and Terraform remains the mechanism for the AWS
+target. What changed is **timing, not design**: the owner deferred creating a
+personal AWS account, so the stack now runs on the development machine using the
+*same* `Dockerfile`, the *same* `compose.app.yml`, the *same* `prod` profile and
+the *same* `docker compose -f compose.app.yml up -d` command that the user-data
+script in `infra/templates/user-data.sh.tftpl` runs on the instance.
+
+That the local pivot required **no change to any artifact named in this ADR** is
+the strongest available evidence that the portability argument in the Decision
+section was sound. See [ADR-016](ADR-016-local-container-runtime.md) for the
+runtime that made it possible.
+
+`infra/` is untouched by the deferral. It remains `terraform validate`-clean and
+**has never been applied**, so every claim in this document about instance
+behaviour — the AL2023 AMI resolving from the SSM parameter, user-data running to
+completion, the NVMe-serial volume discovery, the anonymous GHCR pull, the
+`nofail` mount hazard — is still unverified against a real AWS API. The five
+owner prerequisites listed in `infra/README.md` are all still outstanding.
+[EOP-7](https://maglez.atlassian.net/browse/EOP-7) stays open and unstarted; it
+is postponed, not withdrawn.
+
 ## Related
 
+- [ADR-016: Colima as the local container runtime](ADR-016-local-container-runtime.md)
+  — how the same artifacts run on a developer machine, and the arm64/amd64 caveat
 - [ADR-002: Spring Boot Walking Skeleton](ADR-002-spring-boot-bootstrap.md) — the
   skeleton this completes
 - [ADR-008: Database migrations with Liquibase](ADR-008-database-migration-liquibase.md)

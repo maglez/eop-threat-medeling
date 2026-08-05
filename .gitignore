@@ -68,3 +68,9 @@ tools/graphify/node_modules/
 # clone stays small. Re-download from Microsoft if the artwork is ever needed:
 #   https://www.microsoft.com/en-us/download/details.aspx?id=20303
 docs/EoP_Microsoft_Docs/EoP_Cards_Box_Native_files.zip
+
+# k6 run artefacts. Every load-test run writes a timestamped JSON pair here, so the
+# directory would grow without bound. docs/performance/TRENDS.md is the curated
+# record; the raw runs are local evidence. The directory itself stays tracked via
+# its .gitkeep.
+docs/performance/history/*.json

@@ -39,9 +39,15 @@ If a threshold is crossed and `abortOnFail: true`, the test stops immediately. S
 
 ### Prerequisites
 
-- Docker Desktop (for InfluxDB + Grafana stack): `open /Applications/Docker.app`
+- Container runtime started (for the InfluxDB + Grafana stack): `colima start` — see ADR-016. Docker Desktop is deliberately not used and is not installed
 - k6 CLI: `brew install k6`
 - App running on `http://localhost:8080`
+
+> **Known broken:** k6 results have never reached InfluxDB, so the Grafana
+> dashboard is empty. k6 logs `Couldn't write stats` once per flush interval but
+> **exits 0**, so thresholds still gate correctly and the JSON plus summary files
+> written to `docs/performance/history/` are the real evidence. Causes and
+> evidence are recorded in ADR-016; repair is not yet scheduled.
 
 ### Quick smoke test (no monitoring stack)
 

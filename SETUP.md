@@ -2,13 +2,15 @@
 
 ## Prerequisites
 - Java 21 (Maven Wrapper included — no global Maven needed)
-- Docker + Docker Compose (for monitoring stack)
+- **Colima + the Docker CLI plugins** (`brew install colima docker docker-compose docker-buildx`) — required to run the application stack, the monitoring stack or the k6 load test. Four formulae: the `docker` formula is a client only and ships **neither** Compose **nor** Buildx. **Do not install Docker Desktop** — it needs administrator rights this machine does not grant, and its licence requires a paid subscription for commercial use above an organisation-size threshold. See [ADR-016](docs/adr/ADR-016-local-container-runtime.md)
+- **k6** (`brew install k6`) — required by `test/k6/run.sh`
 - **direnv** — required to load `.env` into the Spring app (see below)
 - **Node.js 20+** (`brew install node`) — required by the Graphify knowledge graph, whose CLI OpenCode launches as a separate process. Below Node 20 the `graphify` MCP server silently fails to start and no `graphify_*` tools appear
 - **uv** (`brew install uv`) — required by the Atlassian MCP server, launched as `uvx mcp-atlassian`. Without `uvx` on `PATH` it silently fails and no `atlassian_jira_*` tools appear
 
 ### Per-clone setup that cannot be committed
-Two steps live outside version control. Both fail **silently**, so verify each one:
+Four steps live outside version control. **All four fail silently or misleadingly**,
+so verify each one:
 
 ```bash
 # Install the pinned Graphify CLI (see Blueprint §5.2 for why --ignore-scripts)
@@ -18,7 +20,23 @@ graphify --version            # must print 0.17.1
 # Activate the committed git hooks — enforces the [EOP-NNN] commit prefix
 git config core.hooksPath .githooks
 git config --get core.hooksPath   # must print .githooks
+
+# Start the container runtime (needed after every reboot — see ADR-016)
+colima start --vm-type=vz --cpu 4 --memory 6 --disk 60
+docker compose version        # must print a version, not "unknown command"
+docker info | grep -i 'Server Version'   # must succeed, not a socket error
+
+# Point the Docker CLI at the Homebrew plugin directory, if it does not already
+grep -q cliPluginsExtraDirs ~/.docker/config.json || \
+  echo 'add "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"] to ~/.docker/config.json'
 ```
+
+> **If `docker compose` reports `unknown command`, do not conclude Compose is
+> missing.** A previous Docker Desktop install can leave dangling plugin symlinks
+> in `~/.docker/cli-plugins/` pointing into an unmounted disk image; the CLI finds
+> them, cannot execute them, and reports the command as unknown. Delete any
+> symlink there whose target does not exist. Also remove `credsStore` and
+> `currentContext` from `~/.docker/config.json` if they name `desktop`.
 
 MCP servers are registered only at session start, so restart OpenCode afterwards.
 
@@ -33,6 +51,16 @@ If `.env` already exists, append only missing variables:
 ```bash
 grep -v '^#' .env.example >> .env   # then remove duplicates manually
 ```
+
+> **An `.env` predating the containerised stack will be missing `POSTGRES_DB`,
+> `POSTGRES_USER` and `POSTGRES_PASSWORD`.** `compose.app.yml` declares those with
+> required-variable syntax, so `docker compose -f compose.app.yml up -d` fails
+> loudly rather than starting a database with no password. That is the good case —
+> add them and retry.
+>
+> **direnv exports `.env` at directory entry, so editing it does not change an
+> already-running shell.** After changing a variable, open a new shell or pass the
+> value inline. Two separate diagnoses were wasted on this.
 
 > **`chmod 600 .env` is not optional.** `cp` gives the new file your umask
 > default, which on macOS is `0644` — group- and world-readable. `.env` holds

@@ -6,7 +6,7 @@
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** — **required** for the Atlassian MCP server, which OpenCode launches as `uvx mcp-atlassian`. Install via [Homebrew](https://brew.sh): `brew install uv`. Without `uvx` on `PATH` the server silently fails to start and no `atlassian_jira_*` tools appear.
 - **GitHub PAT** with `repo` scope — used by both the read-only GitHub MCP server and the `gh` CLI
-- **Docker Desktop** — for the monitoring stack (InfluxDB + Grafana). [Download here](https://www.docker.com/products/docker-desktop/) or `brew install --cask docker`
+- **Colima + the Docker CLI plugins** — **required** to run anything in a container: the application stack (`compose.app.yml`), the monitoring stack (`docker-compose.yml`) and the k6 load test against a real image. Install via [Homebrew](https://brew.sh): `brew install colima docker docker-compose docker-buildx`, then `colima start --vm-type=vz --cpu 4 --memory 6 --disk 60`. Four formulae, because the `docker` formula is a client only and ships **neither** Compose **nor** Buildx — with Colima stopped every `docker` command fails with a socket error, and without the two plugin formulae `docker compose` reports `unknown command`. **Do not install Docker Desktop**: it is an application bundle needing administrator rights this machine does not grant, and its licence requires a paid subscription for commercial use above an organisation-size threshold. See [ADR-016](../adr/ADR-016-local-container-runtime.md).
 - **k6** — for load testing: `brew install k6`
 
 ## Setup

@@ -318,7 +318,7 @@ trick. See §3.3.
 **[ASSUMPTION F] — OPEN.** A reverse proxy serves the built front-end assets and proxies the
 API. Caddy is the likely choice, because it obtains and renews TLS certificates automatically,
 which turns the accepted no-TLS limitation into a one-line change the day a domain exists. No
-ADR selects a reverse proxy today — decision 016 is required before EOP-9 starts.
+ADR selects a reverse proxy today — decision 017 is required before EOP-9 starts.
 
 > **Correction on the record:** no ADR selects a reverse proxy today. ADR-009 chooses React,
 > TypeScript, Vite and GOV.UK Frontend and says nothing about a proxy; the only mention anywhere
@@ -379,7 +379,7 @@ The backlog is ordered by risk retired per unit of work, not by how interesting 
 | 5 | [EOP-10](https://maglez.atlassian.net/browse/EOP-10) Session lifecycle: create and join | L | EOP-8 output |
 | 6 | [EOP-11](https://maglez.atlassian.net/browse/EOP-11) Game lobby UI | M | EOP-9, EOP-10 |
 | 7 | [EOP-13](https://maglez.atlassian.net/browse/EOP-13) Replace the placeholder deck with the real content | S | No longer licence-blocked (R1 closed); blocked only on EOP-6 |
-| 8 | [EOP-14](https://maglez.atlassian.net/browse/EOP-14) Trick mechanics: deal, lead, follow suit, resolve trick, pass lead | XL | EOP-10, EOP-11, decision 017 |
+| 8 | [EOP-14](https://maglez.atlassian.net/browse/EOP-14) Trick mechanics: deal, lead, follow suit, resolve trick, pass lead | XL | EOP-10, EOP-11, decision 018 |
 | 9 | [EOP-15](https://maglez.atlassian.net/browse/EOP-15) Scoring: compute and display points per trick and per game | M | EOP-14 |
 
 **EOP-12 has been retired.** The original "play a card: core game loop" story described a
