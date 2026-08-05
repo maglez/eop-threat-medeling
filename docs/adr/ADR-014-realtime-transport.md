@@ -20,7 +20,7 @@ server-to-client direction dominates by an order of magnitude.
 Two constraints from earlier decisions bound the choice. ADR-012 puts the
 application on a single t3.small with no load balancer and no session affinity,
 so every deployment is a container restart that drops every connected client.
-And decision 016 has not yet chosen a reverse proxy, so the transport must not
+And decision 017 has not yet chosen a reverse proxy, so the transport must not
 quietly impose one.
 
 This decision was made after a time-boxed spike (EOP-8) that ran a real
@@ -57,7 +57,7 @@ but the property is worth having for free.
 **It asks nothing of the reverse proxy that Caddy does not already do.** Caddy
 does not buffer proxied responses by default, so SSE works with no directive.
 nginx does buffer, and would need `proxy_buffering off` on the event path. This
-is a constraint to carry into decision 016 rather than a reason to pick a
+is a constraint to carry into decision 017 rather than a reason to pick a
 transport, but it is one fewer thing that can be silently misconfigured.
 
 ### Reconnection means re-fetching state, not replaying events

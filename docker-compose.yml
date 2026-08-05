@@ -1,3 +1,9 @@
+# Project namespace, set explicitly. Without it Compose derives the project name
+# from the directory, both files collide, and each stack reports the other's
+# containers as orphans - so `docker compose down --remove-orphans` on one file
+# would destroy the other stack.
+name: eop-monitoring
+
 services:
   influxdb:
     image: influxdb:1.8
