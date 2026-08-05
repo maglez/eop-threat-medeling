@@ -1,8 +1,20 @@
 package org.maglez.eop.config;
 
+import java.time.Clock;
 import org.maglez.eop.usecase.CardRepository;
+import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.GetCardUseCase;
+import org.maglez.eop.usecase.GetSessionStateUseCase;
+import org.maglez.eop.usecase.IdentifierGenerator;
+import org.maglez.eop.usecase.IdentityTokenGenerator;
+import org.maglez.eop.usecase.JoinAttemptLimiter;
+import org.maglez.eop.usecase.JoinCodeGenerator;
+import org.maglez.eop.usecase.JoinSessionUseCase;
 import org.maglez.eop.usecase.ListCardsUseCase;
+import org.maglez.eop.usecase.ResolvePlayerUseCase;
+import org.maglez.eop.usecase.SessionEventPublisher;
+import org.maglez.eop.usecase.SessionRepository;
+import org.maglez.eop.usecase.StartSessionUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,6 +29,24 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class UseCaseConfiguration {
+
+    /**
+     * Declares the clock the session use cases read the current instant from.
+     *
+     * <p>A clock is a dependency rather than a call to {@code Instant.now()} so that
+     * a test can decide what time it is. Every timestamp this story writes — when a
+     * lobby opened, when a player took a seat, when play began — comes from here, so
+     * a fixed clock makes those assertions exact instead of approximate.
+     *
+     * <p>UTC, not the system zone: the database columns are {@code TIMESTAMP WITH TIME
+     * ZONE} and the deployment target's zone is not a property anything should depend on.
+     *
+     * @return a UTC clock reading the system time
+     */
+    @Bean
+    public Clock clock() {
+        return Clock.systemUTC();
+    }
 
     /**
      * Declares the list-cards use case.
@@ -38,5 +68,94 @@ public class UseCaseConfiguration {
     @Bean
     public GetCardUseCase getCardUseCase(final CardRepository cardRepository) {
         return new GetCardUseCase(cardRepository);
+    }
+
+    /**
+     * Declares the create-session use case.
+     *
+     * @param sessionRepository the port implementation supplied by the persistence adapter
+     * @param identifierGenerator the UUID version 7 generator (ADR-018)
+     * @param joinCodeGenerator the cryptographically secure join code generator
+     * @param identityTokenGenerator the cryptographically secure identity token generator
+     * @param clock the clock the created timestamps are read from
+     * @return the create-session use case
+     */
+    @Bean
+    public CreateSessionUseCase createSessionUseCase(
+            final SessionRepository sessionRepository,
+            final IdentifierGenerator identifierGenerator,
+            final JoinCodeGenerator joinCodeGenerator,
+            final IdentityTokenGenerator identityTokenGenerator,
+            final Clock clock) {
+        return new CreateSessionUseCase(
+                sessionRepository, identifierGenerator, joinCodeGenerator, identityTokenGenerator, clock);
+    }
+
+    /**
+     * Declares the join-session use case.
+     *
+     * @param sessionRepository the port implementation supplied by the persistence adapter
+     * @param identifierGenerator the UUID version 7 generator (ADR-018)
+     * @param identityTokenGenerator the cryptographically secure identity token generator
+     * @param joinAttemptLimiter the rate limiter that makes a six character code safe (ADR-019)
+     * @param sessionEventPublisher the transport that announces a change to connected clients
+     * @param clock the clock the joined timestamp is read from
+     * @return the join-session use case
+     */
+    @Bean
+    public JoinSessionUseCase joinSessionUseCase(
+            final SessionRepository sessionRepository,
+            final IdentifierGenerator identifierGenerator,
+            final IdentityTokenGenerator identityTokenGenerator,
+            final JoinAttemptLimiter joinAttemptLimiter,
+            final SessionEventPublisher sessionEventPublisher,
+            final Clock clock) {
+        return new JoinSessionUseCase(
+                sessionRepository,
+                identifierGenerator,
+                identityTokenGenerator,
+                joinAttemptLimiter,
+                sessionEventPublisher,
+                clock);
+    }
+
+    /**
+     * Declares the resolve-player use case.
+     *
+     * @param sessionRepository the port implementation supplied by the persistence adapter
+     * @return the resolve-player use case
+     */
+    @Bean
+    public ResolvePlayerUseCase resolvePlayerUseCase(final SessionRepository sessionRepository) {
+        return new ResolvePlayerUseCase(sessionRepository);
+    }
+
+    /**
+     * Declares the get-session-state use case.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @return the get-session-state use case
+     */
+    @Bean
+    public GetSessionStateUseCase getSessionStateUseCase(final ResolvePlayerUseCase resolvePlayerUseCase) {
+        return new GetSessionStateUseCase(resolvePlayerUseCase);
+    }
+
+    /**
+     * Declares the start-session use case.
+     *
+     * @param sessionRepository the port implementation supplied by the persistence adapter
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param sessionEventPublisher the transport that announces a change to connected clients
+     * @param clock the clock the started timestamp is read from
+     * @return the start-session use case
+     */
+    @Bean
+    public StartSessionUseCase startSessionUseCase(
+            final SessionRepository sessionRepository,
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final SessionEventPublisher sessionEventPublisher,
+            final Clock clock) {
+        return new StartSessionUseCase(sessionRepository, resolvePlayerUseCase, sessionEventPublisher, clock);
     }
 }

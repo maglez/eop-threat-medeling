@@ -25,6 +25,26 @@ info:
     `docs/EoP_Microsoft_Docs/LICENCE-eop-deck.md`. Attribution is the only
     obligation the licence imposes, and it is discharged in the running
     application rather than only in this repository.
+
+    ## Sessions and state authority
+
+    A game is played in a session. A facilitator creates one and shares its join
+    code; players join with that code and a display name. Every participant then
+    holds an opaque identity token (ADR-015) sent in the `X-EoP-Player-Token`
+    header. There is no account system and no authentication scheme, so that
+    token is the only thing distinguishing one player from another.
+
+    **The database is the only authority on state.** `GET /api/v1/sessions/{sessionId}`
+    is the single endpoint that reports it, and the event stream at
+    `/api/v1/sessions/{sessionId}/events` only announces *that* something changed
+    — never *what* it changed to. A client that has missed events, reconnected,
+    or survived a server restart re-reads the state endpoint; it does not replay
+    an event history, because none is kept (ADR-014). This is why the recovery
+    path and the first-load path are the same request.
+
+    The session endpoints are gated by the `eop.features.session-lifecycle`
+    feature flag (ADR-013) and are **off by default**. While the flag is off the
+    handlers do not exist and every path below returns 404.
   version: 1.0.0-SNAPSHOT
   license:
     name: Deck content — CC-BY-3.0 US (© 2009 Microsoft Corporation)
@@ -37,6 +57,10 @@ servers:
 tags:
   - name: cards
     description: The threat card deck. Read only.
+  - name: sessions
+    description: |
+      Game session lifecycle — create, join, read state, stream change
+      notifications, start play. Gated by `eop.features.session-lifecycle`.
 
 paths:
   /api/v1/cards:
@@ -103,6 +127,252 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/v1/sessions:
+    post:
+      tags: [sessions]
+      summary: Create a game session
+      description: |
+        Creates a session in `LOBBY` status and admits the caller as its
+        `FACILITATOR` at `seatOrder` 0.
+
+        The response is the only time the identity token is ever transmitted in
+        plaintext. A client that loses it has lost that player identity and must
+        join again as a new player.
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: The session was created and the caller admitted as facilitator.
+          headers:
+            Location:
+              description: URI of the created session.
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionAdmission'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/sessions/{joinCode}/players:
+    post:
+      tags: [sessions]
+      summary: Join a game session with its join code
+      description: |
+        Admits a new participant and assigns the next free `seatOrder`. Everyone
+        already streaming from the session receives a `player-joined`
+        notification.
+
+        Seat order is assigned **once, here**, and is never recomputed. Play
+        proceeds clockwise, so seat order is load-bearing game data: a player who
+        disconnects and reconnects must not move around the table.
+
+        The join code identifies the session but is not a credential for acting
+        within it — the returned token is. Note that unlike the token, the join
+        code deliberately does appear in a URL, because the facilitator's whole
+        workflow is pasting a link into a chat window.
+      operationId: joinSession
+      parameters:
+        - name: joinCode
+          in: path
+          required: true
+          description: |
+            The session's join code. Matched case-insensitively, and the
+            Crockford base32 substitutions are applied before lookup, so `I` and
+            `L` are read as `1` and `O` is read as `0`. A human transcribing a
+            code from a video call is the expected input path.
+          schema:
+            type: string
+            minLength: 6
+            maxLength: 6
+            pattern: '^[0-9A-Za-z]{6}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinSessionRequest'
+      responses:
+        '200':
+          description: The participant was admitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionAdmission'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: |
+            No joinable session has that code.
+
+            This response is **byte-for-byte identical** whether the code never
+            existed, was mistyped, or belonged to a session that has since been
+            abandoned. Distinguishing those cases would turn this endpoint into
+            an oracle confirming which codes are real, which is exactly the
+            information a code-guessing attack needs.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/sessions/{sessionId}:
+    get:
+      tags: [sessions]
+      summary: Read the current state of a session
+      description: |
+        **The reconnect endpoint.** Returns the whole session as stored in the
+        database, with no reference to any in-memory structure. A player
+        refreshing the page, recovering from a dropped connection, or arriving
+        after a deployment restarted the container all use this one request, and
+        all get the same answer.
+
+        The join code is included so a facilitator who has reloaded can still
+        share it. It is only ever returned to a caller already holding a valid
+        token for this session.
+      operationId: getSessionState
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The current session state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /api/v1/sessions/{sessionId}/events:
+    get:
+      tags: [sessions]
+      summary: Stream change notifications for a session
+      description: |
+        An `text/event-stream` connection (ADR-014) that emits a named event
+        whenever the session changes.
+
+        **These events are notifications, not state.** The payload identifies the
+        session and the kind of change; it does not carry the new state. On
+        receiving one, a client re-reads `GET /api/v1/sessions/{sessionId}`. That
+        keeps a single source of truth and means the code path exercised after a
+        change is the same one exercised on first load.
+
+        There is no event history and no replay. `Last-Event-ID` is not honoured:
+        a restart resets the counter, so an id from a previous process names an
+        event this one cannot produce. Reconnection is a re-read, never a replay.
+
+        The stream also carries periodic comment frames as a heartbeat. They are
+        not events and have no payload. They exist because a silently dead
+        connection is otherwise indistinguishable from an idle one — the EOP-8
+        spike observed the server reporting two live subscribers after both
+        clients had gone away.
+
+        Event names currently emitted: `player-joined`, `game-started`. The JSON
+        carried in each `data:` field is the `SessionEvent` schema. It is not
+        referenced with `$ref` here because the response body is a framed text
+        stream, not a single JSON document, and saying otherwise would misdescribe
+        the wire format to a code generator.
+      operationId: streamSessionEvents
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            The stream is open. It stays open until the client disconnects, the
+            server shuts down, or the configured timeout elapses.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                playerJoined:
+                  summary: A player joined, followed by a heartbeat
+                  value: |
+                    retry: 3000
+
+                    event: player-joined
+                    data: {"type":"player-joined","sessionId":"018f3c4a-...","occurredAt":"2026-08-05T10:15:30Z"}
+
+                    : heartbeat
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /api/v1/sessions/{sessionId}/start:
+    post:
+      tags: [sessions]
+      summary: Start play
+      description: |
+        Moves the session from `LOBBY` to `IN_PROGRESS` and notifies everyone
+        streaming with `game-started`.
+
+        Facilitator only. Requires at least three players: the game is
+        unplayable below three, which is a rule of the game rather than a
+        configurable threshold.
+
+        Dealing the deck is **not** part of this operation — it belongs to the
+        trick-play story. Starting a session establishes that the lobby is
+        closed, nothing more.
+      operationId: startSession
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Play has started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
 components:
   schemas:
@@ -220,9 +490,211 @@ components:
           format: uri
           description: URI reference identifying this specific occurrence.
 
+    SessionStatus:
+      type: string
+      description: |
+        Lifecycle state of a session. Only `LOBBY` accepts new players, and only
+        `LOBBY` can be started.
+      enum:
+        - LOBBY
+        - IN_PROGRESS
+        - COMPLETED
+        - ABANDONED
+
+    PlayerRole:
+      type: string
+      description: |
+        `FACILITATOR` is whoever created the session. The role carries exactly one
+        privilege — starting play — and is not transferable.
+      enum:
+        - FACILITATOR
+        - PARTICIPANT
+
+    ConnectionStatus:
+      type: string
+      description: |
+        Whether the server currently believes this player is connected.
+
+        Advisory only. A dead connection is discovered on the next failed write,
+        so this can over-report `CONNECTED` between heartbeats. It is a display
+        hint, never an input to a game rule.
+      enum:
+        - CONNECTED
+        - DISCONNECTED
+
+    DisplayName:
+      type: string
+      minLength: 1
+      maxLength: 40
+      description: |
+        The name a player is known by at the table. Free text, unverified, and
+        not unique — nothing stops two players choosing the same name. It is
+        length-bounded and rejected if blank or containing control characters,
+        because "anonymous" does not mean "unvalidated" (ADR-015).
+      examples: ['Ada']
+
+    JoinCode:
+      type: string
+      minLength: 6
+      maxLength: 6
+      pattern: '^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$'
+      description: |
+        Six characters of Crockford base32, drawn from a cryptographically secure
+        generator. The alphabet excludes `I`, `L`, `O` and `U`, so a code cannot
+        be misread as a different valid code and cannot spell an unfortunate
+        word.
+
+        Always emitted in this canonical upper-case form. Input is normalised
+        before lookup, so a code typed in lower case or with `I`/`L`/`O`
+        substituted still resolves.
+      examples: ['7QK2FM']
+
+    CreateSessionRequest:
+      type: object
+      description: Everything needed to open a session — a name, and nothing else.
+      required: [displayName]
+      properties:
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+
+    JoinSessionRequest:
+      type: object
+      description: Everything needed to join a session. The code travels in the path.
+      required: [displayName]
+      properties:
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+
+    Player:
+      type: object
+      description: |
+        One player at the table.
+
+        Note what is absent: the stored hash of the player's identity token. It
+        is never serialised, to any caller, under any flag. The only plaintext
+        token any client ever sees is its own, in the admission response.
+      required: [playerId, displayName, seatOrder, role, connectionStatus]
+      properties:
+        playerId:
+          type: string
+          format: uuid
+          description: Stable identifier, assigned at join.
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+        seatOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: |
+            Position at the table, assigned once at join and never recomputed.
+            Play is clockwise, so "who plays next" is derived from this: it is
+            game data, not presentation ordering. It is not re-derived from a
+            database sort or a join timestamp, because a reconnect must not move
+            a player around the table.
+        role:
+          $ref: '#/components/schemas/PlayerRole'
+        connectionStatus:
+          $ref: '#/components/schemas/ConnectionStatus'
+
+    SessionState:
+      type: object
+      description: |
+        The complete state of a session as stored in the database. This is the
+        only representation of state the API produces, and the only thing a
+        reconnecting client needs to read.
+      required: [sessionId, joinCode, status, players, createdAt, updatedAt]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+          description: |
+            Identifier of the session. Appears in shareable URLs and is not a
+            secret — holding it grants nothing without a token.
+        joinCode:
+          $ref: '#/components/schemas/JoinCode'
+        status:
+          $ref: '#/components/schemas/SessionStatus'
+        players:
+          type: array
+          minItems: 1
+          maxItems: 6
+          description: |
+            Everyone admitted so far, in ascending `seatOrder`. Three is the
+            minimum to start and six is the maximum the deck and the game
+            support.
+          items:
+            $ref: '#/components/schemas/Player'
+        createdAt:
+          type: string
+          format: date-time
+          description: When the session was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the session last changed.
+
+    SessionAdmission:
+      type: object
+      description: |
+        Returned by both create and join. One schema rather than two, because the
+        two payloads are identical and two names for one shape invite drift.
+
+        This is the only response that carries a plaintext identity token.
+      required: [playerToken, playerId, session]
+      properties:
+        playerToken:
+          type: string
+          description: |
+            The caller's opaque identity credential, base64url-encoded (ADR-015).
+            Sent back in `X-EoP-Player-Token` on every subsequent request. The
+            server stores only a SHA-256 hash of it and cannot reissue it, so a
+            client that loses it has lost that player identity.
+          examples: ['t7Yc0Qw9Jt5mB3nR8vK1sZ2xL6hD4fA0pE9gU7iO3bY']
+        playerId:
+          type: string
+          format: uuid
+          description: |
+            Which player in `session.players` the caller is. Supplied so the
+            client does not have to infer its own identity by matching on display
+            name, which is not unique.
+        session:
+          $ref: '#/components/schemas/SessionState'
+
+    SessionEvent:
+      type: object
+      description: |
+        The `data` payload of a server-sent event.
+
+        Deliberately minimal. It says that something changed and in which
+        session; it does not say what the new state is. State comes from
+        `GET /api/v1/sessions/{sessionId}` and from nowhere else, so there is
+        exactly one code path producing it (ADR-014).
+      required: [type, sessionId, occurredAt]
+      properties:
+        type:
+          type: string
+          description: The kind of change. Matches the SSE `event:` name.
+          enum:
+            - player-joined
+            - game-started
+        sessionId:
+          type: string
+          format: uuid
+          description: Which session changed.
+        occurredAt:
+          type: string
+          format: date-time
+          description: |
+            Server time at which the change was published. Useful for ordering in
+            a log; not a cursor, because there is no replay.
+
   responses:
     BadRequest:
-      description: The request was malformed — for example a `cardId` that is not a UUID.
+      description: |
+        The request was malformed — for example a `cardId` that is not a UUID, a
+        body that does not parse, or a display name that is blank or longer than
+        forty characters.
       content:
         application/problem+json:
           schema:
@@ -234,3 +706,82 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: |
+        The `X-EoP-Player-Token` header is missing, unrecognised, or belongs to a
+        different session — or it is valid but the player it identifies is not
+        permitted to perform this operation.
+
+        403 rather than 401, deliberately. There is no authentication scheme
+        here: no realm, no challenge, nothing a client could retry differently
+        after being told to authenticate. A 401 is required to carry a
+        `WWW-Authenticate` header, and emitting one would advertise a challenge
+        that does not exist. The request was understood and refused, which is
+        what 403 means.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Conflict:
+      description: |
+        The request is valid but the session's current state does not allow it.
+        The `title` distinguishes the cases: play has already started, the table
+        is full at six players, or play cannot start with fewer than three.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    SessionNotFound:
+      description: |
+        No session exists with that identifier.
+
+        Note the asymmetry with joining by code: a `sessionId` is a UUID that
+        nobody can usefully guess, so there is nothing to be gained by hiding
+        whether one exists. A join code is six characters, so that endpoint
+        deliberately does hide it.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    TooManyRequests:
+      description: |
+        Too many failed join attempts from this source or against this code, and
+        further attempts are refused for a period.
+
+        This is not politeness about load. A six-character code has roughly
+        thirty bits of entropy, which is only unguessable while guessing is
+        rate-limited — so this limiter is a primary security control rather than
+        a courtesy (ADR-019).
+      headers:
+        Retry-After:
+          description: Seconds to wait before attempting again.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  securitySchemes:
+    playerToken:
+      type: apiKey
+      in: header
+      name: X-EoP-Player-Token
+      description: |
+        The opaque identity credential issued at create or join (ADR-015).
+
+        A custom header rather than `Authorization: Bearer`, because this is not
+        OAuth and naming it so would invite the assumption that it behaves like
+        one.
+
+        It is **never** accepted as a query parameter, including on the event
+        stream where `EventSource` would have made that convenient. A credential
+        in a query string is a credential in the access log, in the browser
+        history and on screen during a shared call. Clients that need to stream
+        use `fetch`-based streaming, which can set headers.

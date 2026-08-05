@@ -2,20 +2,47 @@ package org.maglez.eop.adapter.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.maglez.eop.entity.CardNotFoundException;
+import org.maglez.eop.entity.IdentityTokenHash;
+import org.maglez.eop.entity.NotFacilitatorException;
+import org.maglez.eop.entity.PlayerNotRecognisedException;
+import org.maglez.eop.entity.SessionFullException;
+import org.maglez.eop.entity.SessionNotFoundException;
+import org.maglez.eop.entity.SessionNotJoinableException;
+import org.maglez.eop.entity.SessionStatus;
+import org.maglez.eop.entity.TooFewPlayersException;
+import org.maglez.eop.entity.UnknownJoinCodeException;
+import org.maglez.eop.usecase.TooManyJoinAttemptsException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 
 /**
  * The error handling rules require a test for every mapped exception, because
  * this class is a single point of failure: a bug here hides every error the API
  * would otherwise report.
+ *
+ * <p>Handlers are called directly rather than through a request. Each one is a
+ * pure function from an exception to a problem detail, so a servlet container
+ * would add nothing but seconds; the status and title of every mapping are
+ * pinned here, and the wiring that chooses a handler is proved once by the
+ * endpoint tests.
  */
 @DisplayName("GlobalExceptionHandler")
 class GlobalExceptionHandlerTest {
+
+    /** A session identifier, reused so the tests read as one conversation. */
+    private static final UUID SESSION_ID = UUID.fromString("00000000-0000-7000-8000-0000000000ff");
+
+    /** A player identifier distinct from the session's. */
+    private static final UUID PLAYER_ID = UUID.fromString("00000000-0000-7000-8000-0000000000a1");
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
@@ -50,5 +77,140 @@ class GlobalExceptionHandlerTest {
         assertThat(problem.getTitle()).isEqualTo("Internal server error");
         assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
         assertThat(problem.getDetail()).doesNotContain("postgresql");
+    }
+
+    @Nested
+    @DisplayName("mapping a session failure")
+    class SessionFailures {
+
+        @Test
+        @DisplayName("an unknown session identifier is a 404 naming it, because a UUID is not worth concealing")
+        void shouldMapSessionNotFoundTo404() {
+            final ProblemDetail problem = handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+            assertThat(problem.getTitle()).isEqualTo("Session not found");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("an unknown join code is a 404 with a fixed body that names nothing")
+        void shouldMapUnknownJoinCodeTo404() {
+            final ProblemDetail problem = handler.handleUnknownJoinCode();
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+            assertThat(problem.getTitle()).isEqualTo("No such session");
+            assertThat(problem.getDetail()).isEqualTo("No session matches that join code.");
+        }
+
+        @Test
+        @DisplayName("every unknown join code produces the same body, so the endpoint is no oracle")
+        void shouldMapEveryUnknownJoinCodeIdentically() {
+            final ProblemDetail mistyped = handler.handleUnknownJoinCode();
+            final ProblemDetail neverExisted = handler.handleUnknownJoinCode();
+
+            assertThat(neverExisted.getStatus()).isEqualTo(mistyped.getStatus());
+            assertThat(neverExisted.getTitle()).isEqualTo(mistyped.getTitle());
+            assertThat(neverExisted.getDetail()).isEqualTo(mistyped.getDetail());
+        }
+
+        @Test
+        @DisplayName("a session past the lobby is a 409 naming the status it reached")
+        void shouldMapSessionNotJoinableTo409() {
+            final ProblemDetail problem =
+                    handler.handleSessionNotJoinable(new SessionNotJoinableException(SESSION_ID, SessionStatus.IN_PROGRESS));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Session is not in the lobby");
+            assertThat(problem.getDetail()).contains("IN_PROGRESS");
+        }
+
+        @Test
+        @DisplayName("a full table is a 409 naming the capacity")
+        void shouldMapSessionFullTo409() {
+            final ProblemDetail problem = handler.handleSessionFull(new SessionFullException(SESSION_ID, 6));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Session is full");
+            assertThat(problem.getDetail()).contains("maximum of 6 players");
+        }
+
+        @Test
+        @DisplayName("too few players is a 409, because waiting for another player fixes it")
+        void shouldMapTooFewPlayersTo409() {
+            final ProblemDetail problem = handler.handleTooFewPlayers(new TooFewPlayersException(SESSION_ID, 2, 3));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Not enough players to start");
+            assertThat(problem.getDetail()).contains("2 players").contains("at least 3");
+        }
+
+        @Test
+        @DisplayName("an unrecognised credential is a 403, not a 401, because there is no challenge to offer")
+        void shouldMapPlayerNotRecognisedTo403() {
+            final ProblemDetail problem = handler.handlePlayerNotRecognised(new PlayerNotRecognisedException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+            assertThat(problem.getTitle()).isEqualTo("Player not recognised");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("a participant trying to start play is a 403")
+        void shouldMapNotFacilitatorTo403() {
+            final ProblemDetail problem = handler.handleNotFacilitator(new NotFacilitatorException(SESSION_ID, PLAYER_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+            assertThat(problem.getTitle()).isEqualTo("Only the facilitator can start play");
+            assertThat(problem.getDetail()).contains(PLAYER_ID.toString());
+        }
+    }
+
+    @Nested
+    @DisplayName("throttling a guesser")
+    class Throttling {
+
+        @Test
+        @DisplayName("too many join attempts is a 429 whose Retry-After states the wait in seconds")
+        void shouldMapTooManyJoinAttemptsTo429WithRetryAfter() {
+            final ResponseEntity<ProblemDetail> response =
+                    handler.handleTooManyJoinAttempts(new TooManyJoinAttemptsException(Duration.ofSeconds(45)));
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+            assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("45");
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+            assertThat(response.getBody().getTitle()).isEqualTo("Too many join attempts");
+            assertThat(response.getBody().getDetail()).contains("retry after 45 seconds");
+        }
+
+        @Test
+        @DisplayName("Retry-After is a whole number of seconds, because the header admits nothing finer")
+        void shouldRoundRetryAfterDownToWholeSeconds() {
+            final ResponseEntity<ProblemDetail> response =
+                    handler.handleTooManyJoinAttempts(new TooManyJoinAttemptsException(Duration.ofMillis(1500)));
+
+            assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
+        }
+    }
+
+    @Test
+    @DisplayName("no refusal echoes a credential, in plaintext or as a digest")
+    void shouldNeverLeakACredential() {
+        final String plaintext = "grace-plaintext-token";
+        final String digest = IdentityTokenHash.of(plaintext).value();
+
+        final List<String> details = List.of(
+                handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID)).getDetail(),
+                handler.handleUnknownJoinCode().getDetail(),
+                handler.handleSessionNotJoinable(new SessionNotJoinableException(SESSION_ID, SessionStatus.LOBBY)).getDetail(),
+                handler.handleSessionFull(new SessionFullException(SESSION_ID, 6)).getDetail(),
+                handler.handleTooFewPlayers(new TooFewPlayersException(SESSION_ID, 2, 3)).getDetail(),
+                handler.handlePlayerNotRecognised(new PlayerNotRecognisedException(SESSION_ID)).getDetail(),
+                handler.handleNotFacilitator(new NotFacilitatorException(SESSION_ID, PLAYER_ID)).getDetail());
+
+        assertThat(details).noneMatch(detail -> detail.contains(plaintext))
+                .noneMatch(detail -> detail.contains(digest))
+                .noneMatch(detail -> detail.matches(".*\\b[0-9a-f]{64}\\b.*"));
     }
 }

@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EOP-10: the first two tables in this schema whose rows are inserted at runtime.
+  Everything before this file is seeded reference data.
+
+  The migration lands BEFORE the entity classes, not alongside them: Hibernate
+  runs with ddl-auto=validate, so an entity without a matching table fails
+  startup rather than creating one.
+
+  Every type here must be valid on both engines, because the test suite runs on
+  H2 and production runs on PostgreSQL 17. That constraint is why identifiers are
+  generated in the application (ADR-018) rather than by a uuidv7() column
+  default, which exists on neither engine.
+
+  Changesets are immutable once merged. Later stories add files.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001-create-game-session-table" author="eop">
+    <comment>
+      Create the game session aggregate root. Named game_session rather than
+      session because "session" collides with HTTP-session vocabulary in every
+      conversation about this code, and is a reserved identifier on some engines.
+    </comment>
+
+    <createTable tableName="game_session">
+      <!-- UUIDv7, generated in the application through a port (ADR-018). Appears
+           in the shareable URL, so it must not be enumerable; it is not a
+           credential and grants nothing without an identity token. -->
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_game_session" nullable="false"/>
+      </column>
+      <!-- Six Crockford base32 characters, stored in the canonical upper-case
+           form. Input is normalised before lookup, so exactly one representation
+           ever reaches this column. Short because a human reads it aloud on a
+           video call; the rate limiter is what makes thirty bits of entropy
+           safe (ADR-019). -->
+      <column name="join_code" type="VARCHAR(6)">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Enum constant name, not an ordinal: readable in a database dump and
+           unaffected by reordering the Java enum. LOBBY, IN_PROGRESS,
+           COMPLETED, ABANDONED. -->
+      <column name="status" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="updated_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Optimistic locking. Joining is a read-modify-write on this aggregate
+           and lobbies fill concurrently, so a lost update is a real scenario
+           rather than a theoretical one. -->
+      <column name="version" type="BIGINT" defaultValueNumeric="0">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <!-- A join code identifies exactly one session. This constraint is also the
+         collision detector: the generator inserts and retries on violation
+         rather than doing a check-then-insert, which has a race window. -->
+    <addUniqueConstraint
+      tableName="game_session"
+      columnNames="join_code"
+      constraintName="uq_game_session_join_code"/>
+
+    <rollback>
+      <dropTable tableName="game_session"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="002-create-player-table" author="eop">
+    <comment>
+      Create the player table. One row per participant per session; there is no
+      cross-session identity, so a player who joins two games is two rows.
+    </comment>
+
+    <createTable tableName="player">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_player" nullable="false"/>
+      </column>
+      <column name="game_session_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Free text, unverified, not unique: two players may choose the same
+           name and the humans on the call disambiguate them. Bounded at 40 so
+           that "anonymous" does not also mean "unbounded" (ADR-015). -->
+      <column name="display_name" type="VARCHAR(40)">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Seat at the table, 0 through 5, assigned once when the player joins.
+           Load-bearing domain data: play is clockwise, so the next player is
+           derived from the current leader's seat plus the cards already in the
+           trick. It is never re-derived from a sort or from joined_at, because
+           a reconnect must not move a player around the table. -->
+      <column name="seat_order" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <!-- FACILITATOR or PARTICIPANT. Named player_role rather than role
+           following the card_rank precedent: role is a keyword on some engines
+           and the quoting rules differ between the two used here. -->
+      <column name="player_role" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <!-- CONNECTED or DISCONNECTED. Advisory only. The emitter registry is a
+           broadcast list, not a presence list, so this can over-report
+           CONNECTED; it is a display hint and never an input to a game rule. -->
+      <column name="connection_status" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <!-- SHA-256 of the identity token, hex encoded, hence exactly 64
+           characters. The plaintext token is returned once at join and is never
+           stored: whoever holds it is that player, so storing it in the clear
+           would be the same class of mistake as a plaintext password. A plain
+           hash rather than a KDF is correct because the input is 256 bits of
+           SecureRandom output (ADR-015). -->
+      <column name="identity_token_hash" type="VARCHAR(64)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="joined_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <!-- Deleting a session removes its players. There is nothing to keep: a
+         player row has no meaning outside the session it belongs to. -->
+    <addForeignKeyConstraint
+      constraintName="fk_player_game_session"
+      baseTableName="player"
+      baseColumnNames="game_session_id"
+      referencedTableName="game_session"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <!-- This constraint, not application code, is what makes seat assignment
+         correct. Two players submitting a join at the same instant cannot both
+         take seat 3: one insert fails and retries. A MAX(seat_order) + 1
+         computed in Java without this is a race that only appears when a real
+         lobby fills up, which is exactly when it matters. -->
+    <addUniqueConstraint
+      tableName="player"
+      columnNames="game_session_id, seat_order"
+      constraintName="uq_player_session_seat"/>
+
+    <!-- A token identifies exactly one player. Also the lookup path for every
+         authenticated request, so it needs the index either way. -->
+    <addUniqueConstraint
+      tableName="player"
+      columnNames="identity_token_hash"
+      constraintName="uq_player_identity_token_hash"/>
+
+    <!-- Loading a session loads its players by this key on every request,
+         including the reconnect path. PostgreSQL does not index a foreign key
+         automatically. -->
+    <createIndex tableName="player" indexName="idx_player_game_session">
+      <column name="game_session_id"/>
+    </createIndex>
+
+    <rollback>
+      <dropTable tableName="player"/>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

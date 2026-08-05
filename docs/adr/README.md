@@ -20,11 +20,13 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
 | [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted (amended) | Partly — image and Compose run locally; Terraform validates but no `apply` has run |
-| [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Not yet — decided ahead of need; first flag arrives with EOP-7 |
-| [014](ADR-014-realtime-transport.md) | Real-time transport via server-sent events | Accepted | Not yet — decided from a measured spike; first emitter arrives with EOP-10 |
-| [015](ADR-015-player-identity.md) | Player identity via a server-issued opaque token in session storage | Accepted | Not yet — decided from a measured spike; first token issued by EOP-10 |
+| [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Yes — `eop.features.session-lifecycle` withholds `SessionController` via `@ConditionalOnProperty`; `SessionControllerDisabledIntegrationTest` asserts the bean is absent and all five routes 404 |
+| [014](ADR-014-realtime-transport.md) | Real-time transport via server-sent events | Accepted | Yes — `SseSessionEventPublisher` emits `player-joined` and `game-started`; verified on a real socket through Caddy, `retry:3000` and `:heartbeat` frames included, events carrying no state |
+| [015](ADR-015-player-identity.md) | Player identity via a server-issued opaque token in session storage | Accepted | Yes — 43-character token issued on admission, only its SHA-256 digest stored; no response or event carries the digest and a missing credential is refused identically to a wrong one |
 | [016](ADR-016-local-container-runtime.md) | Colima as the local container runtime | Accepted | Yes — installed, stack runs locally, all verification gates executed |
 | [017](ADR-017-frontend-delivery-topology.md) | Front-end delivery via Caddy on a single origin | Accepted | Yes — proxy serves the site and forwards the API |
+| [018](ADR-018-uuid-v7-identifiers.md) | UUID v7 primary keys generated through an application port | Accepted | Yes — `IdentifierGenerator` mints identifiers in the use case, not at flush; `UuidV7IdentifierGeneratorTest` pins the version nibble, the variant and time ordering across 2,000 draws |
+| [019](ADR-019-session-lifecycle-and-join-codes.md) | Session lifecycle, join codes, and header-only authentication on the event stream | Accepted | Yes — implemented across EOP-10: Crockford base32 codes, seat contention settled by `uq_player_session_seat`, throttled guessing, and one indistinguishable refusal for every unusable code |
 
 The "Implemented?" column exists because an accepted ADR is a decision, not a
 delivery. `CHANGELOG.md` separates the same two things for the same reason.
