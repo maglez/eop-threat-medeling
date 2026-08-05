@@ -138,9 +138,13 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @expert-kent-beck | TDD & XP | `{env:MODEL_B}` | Anthropic | Advisory | 0.2 |
 | @expert-uncle-bod | SOLID & Clean Architecture | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 
-> **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`) that each agent's `model:` frontmatter field references in `.opencode/agents/*.md`. The actual model ID is resolved at runtime from the corresponding variable in `.env` — see [Provider Switching](#342-provider-switching-via-abstract-model-names). The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
+> **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`). Agent files carry **no** `model:` frontmatter — the assignment lives in the `agent` block of `.opencode/opencode.json`, which is the single authoritative table, and each entry resolves its `{env:MODEL_X}` placeholder from `.env` at startup. A key in that block which no longer matches an agent filename silently drops that agent to the global default (`{env:MODEL_A}`) with no error, so the block must be re-checked whenever an agent is renamed. The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 
-> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (OpenAI on Zen); every agent that audits it uses `MODEL_A` or `MODEL_B` (Anthropic on Zen). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @product-owner is the one Anthropic-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee when using OpenCode Zen. The guarantee weakens if using a provider that lacks distinct model families.**
+> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (or `MODEL_E`); every agent that audits it uses `MODEL_A` or `MODEL_B`. No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @product-owner is the one auditor-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto the auditors' family, or an auditor onto the authors', silently collapses the guarantee.**
+
+> **The invariant is a property of the `.env` values, not of this table.** On OpenCode Zen it holds because `MODEL_C` is OpenAI and `MODEL_A`/`MODEL_B` are Anthropic. On Bedrock it was **nominal from the first day of use until 2026-08-05**: `MODEL_A` through `MODEL_D` were all Anthropic Claude (Opus, Sonnet, Haiku, Haiku), so every author and every auditor shared one family and the guarantee existed only on paper. It was worse than a no-op, because the authoring agents sat on Haiku — the weakest model in the set — while Opus reviewed them, inverting the sensible allocation. It is now restored by pointing `MODEL_C` and `MODEL_E` at `qwen.qwen3-coder-480b-a35b-v1:0`. See §3.4.2 for the tested model catalogue.
+
+> **The primary agent is not covered by the invariant.** `small_model` aside, the global default is `MODEL_A`, so the agent you converse with in the TUI (`build`) runs on an *auditor-family* model. If it authors code itself rather than delegating to the `MODEL_C` agents, the artefact is authored and audited by the same family and no later review repairs that. This is not hypothetical: story EOP-10 was written entirely by the primary agent, and the retrospective `@security-auditor` pass over it ran on `MODEL_A` — literally the same model clearing its own output. Use `/trace` (see `tools/agent-trace.py`) to detect this; it reports a `RISK` line naming the agents involved.
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
@@ -226,18 +230,19 @@ Defaults are set in `.opencode/opencode.json`:
 - `MODEL_C` — OpenAI codex family, allocated to builders.
 - `MODEL_D` — cheap model for session titles and summaries (`small_model`).
 
-This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the four `MODEL_*` values in `.env` — no agent file or config changes needed.
+This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the five `MODEL_*` values in `.env` — no agent file or config changes needed.
 
 #### Allocated Models
 
-Four abstract model names map to the real provider-specific model IDs. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output) for the OpenCode Zen variant.
+Five abstract model names map to the real provider-specific model IDs. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output) for the OpenCode Zen variant.
 
 | Abstract | Model ID (Zen) | Vendor | Price | Allocated To |
 |---|---|---|---|---|
 | `MODEL_A` | `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
 | `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
-| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, UI Builder, both Testers, Performance Engineer |
-| `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only |
+| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, both Testers, Performance Engineer |
+| `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only; no agent uses it |
+| `MODEL_E` | `opencode/gemini-3.1-pro` | Google | — | UI Builder |
 
 #### Deprecation Watch
 
@@ -266,40 +271,69 @@ Amazon Bedrock is a **built-in provider** in OpenCode — no npm package install
 
 | Variable | Purpose |
 |---|---|
-| `AWS_ACCESS_KEY_ID` | AWS IAM access key |
-| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
-| `AWS_REGION` | AWS region (e.g. `eu-west-2`) |
+| `AWS_BEARER_TOKEN_BEDROCK` | Bedrock API key. **This is what is actually used here.** |
+| `AWS_REGION` | AWS region — `eu-west-2` in this project |
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key — SigV4 alternative, left empty in this project |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key — SigV4 alternative, left empty in this project |
 
-To use Bedrock, map the four abstract model names to Bedrock model IDs in `.env`:
+> Because auth is a bearer token rather than SigV4, the AWS CLI control plane is unavailable: `aws bedrock list-foundation-models` fails with `Unable to parse config file: ~/.aws/credentials`. Entitlements must be probed against the runtime endpoint instead — see below.
 
-| Abstract | Example Bedrock ID |
+To use Bedrock, map the five abstract model names to Bedrock model IDs in `.env`. The live values in this project are:
+
+| Abstract | Bedrock ID | Family | Role |
+|---|---|---|---|
+| `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5` | Anthropic | Global default, orchestration, audit |
+| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, code review, experts |
+| `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, both Testers, Performance |
+| `MODEL_D` | `amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0` | Anthropic | `small_model` only — titles, compaction. No agent uses it. |
+| `MODEL_E` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — UI Builder |
+
+Note the Anthropic IDs carry **no** `-v1:0` suffix, while most third-party IDs do (and several, such as `qwen.qwen3-coder-next` and `zai.glm-5`, carry none). Copy IDs verbatim from `~/.cache/opencode/models.json` rather than inferring a suffix; a wrong suffix presents as `The provided model identifier is invalid`, indistinguishable from a missing entitlement.
+
+##### Verifying a Bedrock model before using it
+
+`~/.cache/opencode/models.json` is models.dev's **global** catalogue, not your account's entitlements, and it lists many models Bedrock will refuse. Two checks are needed, in order, because each can pass while the next fails:
+
+1. **Entitlement** — POST to `https://bedrock-runtime.$AWS_REGION.amazonaws.com/model/<id>/converse` with `Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK`. HTTP 200 means the account may call it; HTTP 400 `The provided model identifier is invalid.` means it may not.
+2. **Usability through OpenCode** — `opencode run --model amazon-bedrock/<id> "Reply with exactly: OK"`. Raw Converse success is **not** sufficient: `nova-lite` and `nova-micro` both return 200 on Converse yet fail through the OpenCode AI SDK with `invalid model identifier`.
+3. **Tool-calling** — `opencode run --model amazon-bedrock/<id> "Use the glob tool to find files matching 'tools/*.sh' then state only the filenames you found."` A plain completion does not exercise tool use, and this is where non-Anthropic models on the Converse API actually break. An agent whose tool calls arrive as prose will appear to work while silently editing nothing.
+
+Results as tested on this account in `eu-west-2` on **2026-08-05**:
+
+| Model | Verdict |
 |---|---|
-| `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5-v1:0` |
-| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6-v1:0` |
-| `MODEL_C` | `amazon-bedrock/eu.amazon.nova-pro-v1:0` |
-| `MODEL_D` | `amazon-bedrock/eu.amazon.nova-lite-v1:0` |
+| `qwen.qwen3-coder-480b-a35b-v1:0` | **Clean** — structured tool calls, correct answers. Current `MODEL_C`/`MODEL_E`. |
+| `qwen.qwen3-coder-next` | **Clean** |
+| `zai.glm-5` | **Clean** |
+| `deepseek.v3.2` | **Leaky** — right answer, but emits `<｜DSML｜function_calls` into the text channel |
+| `mistral.devstral-2-123b` | **Broken** — emits `[/THINK]glob{"pattern": …}` as prose and answers wrongly. Do not use. |
+| `minimax.minimax-m2.5`, `nvidia.nemotron-super-3-120b` | Entitled, tool-calling untested |
+| every `openai.*` (incl. `gpt-5.6-*`, `gpt-oss-*`), `mistral.mistral-large-3-675b-instruct`, `xai.grok-4.3`, `moonshot.kimi-k2-thinking`, `meta.llama4-*` | **Not entitled** — HTTP 400 |
 
-Bedrock model IDs follow the format `amazon-bedrock/<region>.<vendor>.<model-version>`. Available models depend on your AWS account's Bedrock access — verify with `aws bedrock list-foundation-models`.
-
-> **Limitation:** Unlike OpenCode Zen, Bedrock does not offer a `gpt-5.3-codex` equivalent. The mapping for `MODEL_C` above uses Amazon Nova Pro as a substitute. If your use case requires OpenAI codex-specific behaviour, keep `MODEL_C` pointed at `opencode/gpt-5.3-codex` while switching the other three to Bedrock.
+> **Correction to an earlier claim in this document:** it previously stated that Bedrock offers no `gpt-5.3-codex` equivalent and that `MODEL_C` must therefore fall back to Amazon Nova Pro. The first half is half-true and the conclusion was wrong. No OpenAI model of any kind is reachable on this account, but Qwen, DeepSeek, GLM, MiniMax, Nemotron and Mistral all are, and `qwen.qwen3-coder-480b-a35b-v1:0` is a dedicated 480B MoE coding model that drives tools cleanly. Nova Pro was never the best available substitute; it was simply the first one tried.
 
 #### <span id="342-provider-switching-via-abstract-model-names"></span> Provider Switching via Abstract Model Names
 
 The mapping from abstract names to real model IDs lives entirely in `.env` (gitignored):
 
 ```bash
-# OpenCode Zen (default — no AWS credentials needed)
+# === Zen === (no AWS credentials needed)
 MODEL_A=opencode/claude-opus-5
 MODEL_B=opencode/claude-sonnet-4-6
 MODEL_C=opencode/gpt-5.3-codex
 MODEL_D=opencode/gemini-3.5-flash-lite
+MODEL_E=opencode/gemini-3.1-pro
 
-# Or AWS Bedrock (uncomment the block below, fill AWS credentials)
-# MODEL_A=amazon-bedrock/eu.anthropic.claude-opus-5-v1:0
-# MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6-v1:0
-# MODEL_C=amazon-bedrock/eu.amazon.nova-pro-v1:0
-# MODEL_D=amazon-bedrock/eu.amazon.nova-lite-v1:0
+# === Bedrock === (needs AWS_BEARER_TOKEN_BEDROCK and AWS_REGION)
+# MODEL_A=amazon-bedrock/eu.anthropic.claude-opus-5
+# MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6
+# MODEL_C=amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0
+# MODEL_D=amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0
+# MODEL_E=amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0
 ```
+
+> `./tools/switch-provider.sh [zen|bedrock]` toggles which block is commented. It holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
+
 
 ##### To Switch Providers
 
