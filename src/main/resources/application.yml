@@ -11,8 +11,31 @@ spring:
     password: ${DB_PASSWORD}
   h2:
     console:
-      enabled: true
-      path: /h2-console
+      # Fail closed (EOP-27). This said `true` until now, which read as an
+      # unauthenticated arbitrary-SQL endpoint on every default-profile start: the H2
+      # console lets the caller supply the JDBC URL, which is the CVE-2021-42392
+      # JNDI/RCE class of exposure, and there is no Spring Security dependency in this
+      # project that could have stood in front of it.
+      #
+      # It was, in fact, never served. Spring Boot 4 moved the console's
+      # autoconfiguration out of spring-boot-autoconfigure into a separate
+      # `org.springframework.boot:spring-boot-h2console` module, and nothing here
+      # depends on it, so no class ever read this property. That makes the old `true`
+      # a loaded gun rather than a fired one — one transitive dependency, or one
+      # developer adding the module for convenience, and the exposure would have
+      # arrived silently with no review, because the configuration already said yes.
+      #
+      # So this stays as an explicit `false` rather than being deleted. It is the
+      # standing answer for the day the module appears: whoever adds it has to change
+      # a line that says why it is off, instead of inheriting a default. There is
+      # deliberately no profile and no property that turns it on — ADR-012 keeps the
+      # profile set at {default, prod} so local and deployed runs execute identical
+      # configuration, and adding a working opt-in would mean adding the module, which
+      # is a decision for its own ticket and not a side effect of this one.
+      #
+      # H2ConsoleAbsentIntegrationTest is the tripwire: it fails if the module ever
+      # lands, so the conversation happens at review time rather than in an incident.
+      enabled: false
   jpa:
     hibernate:
       ddl-auto: validate
