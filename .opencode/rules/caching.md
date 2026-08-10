@@ -4,4 +4,7 @@
 - `@CacheEvict` on write operations (create, update, delete) for the affected cache region
 - Only cache read-heavy, write-light data (game state snapshots, card definitions)
 - Never cache domain decisions or privilege escalation results (security-sensitive)
-- Profile-based: disable caching in `dev` profile to avoid stale-data confusion during development
+- Nothing is cached today: `spring-boot-starter-cache` is on the classpath (`pom.xml`) but dormant — there is no `@EnableCaching`, no cache annotation anywhere in `src/`, and no `spring.cache.*` config. The rules above describe how caching must be introduced, not something already in place
+- When caching does arrive, make it switchable with a boolean property under the `eop.*` root (e.g. `eop.cache.enabled`), not with a profile. There is no `dev` profile to switch it off in — see `configuration.md`
+- That property is an infrastructure toggle, not a feature flag: it belongs directly under `eop.*`, and the `eop.features.{kebab-case-feature}` naming in `feature-flags.md` does not govern it. Reserve `eop.features.*` for user-visible behaviour that ships dark and is deleted after rollout; a cache switch is neither
+- Only the *naming* rule stops at that boundary — the fail-closed default does not. An infrastructure toggle defaults to `false` for the same reason a feature flag does, and it matters more here than elsewhere: caching that switches itself on by default would do so in front of the security-sensitive reads ruled out above

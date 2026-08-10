@@ -78,21 +78,22 @@ Structure every User Story in Jira using this exact template:
 - **Value Proposition:** [Brief explanation of value]
 
 ## Deployment & Feature Flag Strategy
-- **Feature Flag Name:** `ff_feature_name_v1`
+- **Feature Flag Name:** `eop.features.[feature-name]` — kebab-case under the `eop.features` root, holding a plain boolean; no `ff_` prefix and no `_v{n}` suffix (see `.opencode/rules/feature-flags.md`)
 - **Deployment Behavior:** Code will be merged to `main` and continuously deployed to production with flag set to `OFF`.
 - **Release Condition:** Enable flag once all Acceptance Criteria pass and `@product-owner` approves release.
 
 ## Acceptance Criteria (Gherkin BDD Format)
 
 ### Scenario 1: Happy Path (Feature Enabled)
-- **Given** feature flag `ff_feature_name_v1` is ON
+- **Given** feature flag `eop.features.[feature-name]` is ON
 - **And** [initial state / context]
 - **When** [user performs action]
 - **Then** [expected system outcome]
 
 ### Scenario 2: Default Fallback (Feature Disabled)
-- **Given** feature flag `ff_feature_name_v1` is OFF
+- **Given** feature flag `eop.features.[feature-name]` is OFF
 - **Then** the user sees existing default system behavior.
+- **And** the gated bean is absent from the application context, not merely unreachable — a scenario satisfied only by asserting a 404 would still pass if the bean existed with its handlers mapped elsewhere (see `.opencode/rules/feature-flags.md`)
 
 ## Definition of Done (DoD)
 - [ ] UI designs conform to GOV.UK accessibility standards (WCAG 2.2 AA).

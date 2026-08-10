@@ -1,8 +1,11 @@
 - Externalize all environment-specific config to `application-{profile}.yml` files
 - Use `@ConfigurationProperties` with `@Validated` for type-safe config binding — never raw `@Value`
+  - One exception: a property that decides whether a bean exists at all is read by `@ConditionalOnProperty`, which Spring evaluates *before* any `@ConfigurationProperties` bean is bound. Such a property cannot also be read through a typed properties class (ADR-013, ADR-019)
 - Prefix all custom properties with the `eop.*` root namespace (e.g. `eop.game.max-players`) — never invent a second root
 - Validate config at startup via `@PostConstruct` validation in `@ConfigurationProperties` classes
-- Profile convention: `dev` (local), `test` (CI), `prod` (production)
-- `application.yml` holds defaults; profile overrides go in `application-{profile}.yml`
+- There are exactly two profiles and there have only ever been two: the default profile (`src/main/resources/application.yml`) and `prod` (`application-prod.yml`). There is no `dev` profile and no `test` profile — do not write config, code or docs that reference one
+- Two rather than three is deliberate: the container runs with `SPRING_PROFILES_ACTIVE=prod`, so a local container and the deployed one execute byte-identical configuration instead of a third overlay profile that nobody exercises before release (ADR-012). Adding a profile means amending that ADR first
+- Tests activate no profile at all. `src/test/resources/application.properties` overrides the default profile for the whole suite; a single test that needs a different value overrides just that property with `@SpringBootTest(properties = "…")`. There is no `application-test.yml`
+- `application.yml` holds defaults; `prod` overrides go in `application-prod.yml`
 - Secrets use env vars resolved via `${VARIABLE_NAME}` in yml — never literal values
 - Keep config classes in `org.maglez.eop.config` package (interface adapter layer)

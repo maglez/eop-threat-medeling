@@ -135,7 +135,7 @@ future audits without new evidence.
 
 ### Production hardening applied
 - `application-prod.yml` disables springdoc (`/v3/api-docs`, `/swagger-ui.html`).
-  They remain enabled in the default (dev) profile for local development.
+  They remain enabled in the default profile for local development.
 - **Notificator plugin removed** — it shelled out to OS commands
   (`osascript`/`afplay`/`notify-send`) for desktop notifications; attack
   surface not justified by utility. See Blueprint §12.6.

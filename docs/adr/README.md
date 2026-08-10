@@ -9,7 +9,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 
 | ADR | Decision | Status | Implemented? |
 |---|---|---|---|
-| [002](ADR-002-spring-boot-bootstrap.md) | Spring Boot Walking Skeleton | Accepted | Yes |
+| [002](ADR-002-spring-boot-bootstrap.md) | Spring Boot Walking Skeleton | Accepted (framework version superseded 2026-07-27) | Yes |
 | [003](ADR-003-github-mcp-integration.md) | GitHub MCP integration | Accepted (amended 2026-07-28) | Yes |
 | [004](ADR-004-api-contract-first.md) | API contract-first with OpenAPI 3.1 | Accepted | Yes — `docs/api/openapi.yml` hand-authored before the first controller |
 | [005](ADR-005-error-handling-strategy.md) | Error handling via RFC 9457 Problem Details | Accepted | Yes — `GlobalExceptionHandler` maps every 4xx and 5xx |
@@ -19,7 +19,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted | Yes — `ui/` scaffolded, built and served |
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
-| [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted (amended) | Partly — image and Compose run locally; Terraform validates but no `apply` has run |
+| [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted (deployment target withdrawn 2026-08-10) | Partly — image and Compose run locally; Terraform validates but no `apply` has run |
 | [013](ADR-013-feature-flags.md) | Feature flags via Spring configuration properties | Accepted | Yes — `eop.features.session-lifecycle` withholds `SessionController` via `@ConditionalOnProperty`; `SessionControllerDisabledIntegrationTest` asserts the bean is absent and all five routes 404 |
 | [014](ADR-014-realtime-transport.md) | Real-time transport via server-sent events | Accepted | Yes — `SseSessionEventPublisher` emits `player-joined` and `game-started`; verified on a real socket through Caddy, `retry:3000` and `:heartbeat` frames included, events carrying no state |
 | [015](ADR-015-player-identity.md) | Player identity via a server-issued opaque token in session storage | Accepted | Partly — the server half is done: 43-character token issued on admission, only its SHA-256 digest stored, no response or event carries the digest, and a missing credential is refused identically to a wrong one. The `sessionStorage` per-tab custody half is not built — `ui/` holds only a health-check shell and the string `sessionStorage` appears nowhere in it, so nothing yet keeps a token across a refresh. EOP-11 delivers it |
@@ -48,6 +48,16 @@ recorded here and left alone.
    `## Related`.
 4. State consequences honestly, including the negative ones. An ADR that lists only
    benefits has not recorded a decision, only an advertisement.
-5. Add a row to the index above.
+5. Add a row to the index above, and keep its Status cell in step with the ADR's own
+   `**Status:**` line — including the date whenever an amendment changes the status.
+   An amendment that leaves the status word alone, such as withdrawing a consequence
+   that was never true, needs no date in either place; that is why several ADRs here
+   record a dated amendment — some under a `## Amendments` heading, one as an inline
+   `**Amendment, YYYY-MM-DD …**` paragraph — above a bare `Accepted`.
+   `AdrIndexConsistencyTest` fails the build if a file has no row, a row points at no
+   file, a file carries anything other than exactly one `**Status:**` line, the leading
+   status word disagrees, or a dated status line reaches the index without its date.
+   It checks that last rule in one direction only — an undated status line is always
+   accepted. That test exists because this step was drifted past twice.
 6. To reverse a decision, write a new ADR that supersedes the old one and mark the
    old one `Superseded by ADR-NNN`. Do not edit the original's decision.
