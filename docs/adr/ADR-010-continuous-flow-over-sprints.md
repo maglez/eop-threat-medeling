@@ -16,8 +16,8 @@ Meanwhile the engineering documentation commits the project unambiguously to con
 - Blueprint §2.2 mandates **Trunk-Based Development over GitFlow** — short-lived branches, small frequent pull requests, long-lived branches "strictly prohibited"
 - Blueprint §2.3 mandates **Continuous Deployment** — every passing commit merged to `main` deploys to production
 - Blueprint §2.4 mandates feature flags defaulting to `OFF`, explicitly so that *incomplete* work can still deploy continuously
-- `team-member-tech-lead` enforces "Continuous Deployment on every commit"
-- `team-member-devops-engineer` runs pipelines on every push or merge to `main` with immediate zero-downtime deploy
+- `tech-lead` enforces "Continuous Deployment on every commit"
+- `devops-engineer` runs pipelines on every push or merge to `main` with immediate zero-downtime deploy
 
 A sprint timebox is a batching device. Running one on top of deploy-per-commit is a direct contradiction: the pipeline releases continuously while the tracker pretends work arrives in fortnightly parcels. The contradiction had not yet caused harm only because the tracker was empty.
 
@@ -105,7 +105,7 @@ Board and project configuration are **user actions in the Jira UI**. The bot acc
 3. Set a WIP limit (column maximum) on **In Progress**; all three columns currently have no limit
 4. Leave board estimation on `customfield_10016` as-is
 
-Documentation changes shipped with this ADR: Blueprint §2.5 and its Table of Contents entry, and removal of sprint-relative wording from `team-member-product-owner` and the CI/CD pipeline document.
+Documentation changes shipped with this ADR: Blueprint §2.5 and its Table of Contents entry, and removal of sprint-relative wording from `product-owner` and the CI/CD pipeline document.
 
 ## Related
 

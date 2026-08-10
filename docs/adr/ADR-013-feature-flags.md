@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-04
-**Deciders:** @team-member-tech-lead, @team-member-product-owner
+**Deciders:** @tech-lead, @product-owner
 
 ## Context
 
@@ -16,7 +16,8 @@ No flag library is on the dependency list. The candidates range from a
 configuration property to a hosted service (Unleash, Flipt, FF4J), and the cost
 of each is very different: a property costs nothing, a library costs a
 dependency and a convergence risk, and a service costs a network hop on the
-request path plus an operational component on a single 2 GB instance.
+request path plus an operational component to run alongside the application and
+its database on a single developer machine.
 
 The first story to face this, EOP-6, is a read-only card catalogue. The flag the
 backlog originally proposed for it would have gated `GET /api/v1/cards` behind a
@@ -33,12 +34,13 @@ disappear or with a plain conditional where behaviour should branch.
 Consequences of that shape, stated so they are not discovered later:
 
 - **Flipping a flag restarts the application.** Properties are bound at startup.
-  On a single instance behind no load balancer that means a few seconds of
+  With one process and no load balancer that means a few seconds of
   downtime, which is acceptable for a proof of concept and is the same
   interruption every deployment already causes.
-- **Flags are set as environment variables** on the instance, so a flag can be
-  flipped without rebuilding the image — `EOP_FEATURES_SOMETHING=true` in
-  `/opt/eop/.env` followed by `docker compose up -d`.
+- **Flags are set as environment variables**, so a flag can be
+  flipped without rebuilding the image — set `EOP_FEATURES_SESSION_LIFECYCLE=true`
+  in the environment the container is started with and restart the stack with
+  `docker compose -f compose.app.yml up -d`.
 - **Every flag is off by default.** An unset property reads as disabled, so
   forgetting to configure a flag fails closed rather than releasing early.
 - **A flag is deleted once its feature is released.** A flag that outlives its
@@ -50,17 +52,17 @@ half-finished feature. There is no live production surface, the endpoint is read
 only, and the deck it serves is placeholder data that no client depends on.
 Adding a flag there would be ceremony that has to be tested and then removed.
 
-**Flagging starts at EOP-7**, the story that produces the first live deployment.
-From that point every user-visible change arrives behind a flag, as the product
-owner's criteria require.
+**Flagging starts at EOP-10**, the first story with a user-visible write surface to
+protect. From that point every user-visible change arrives behind a flag, as the
+product owner's criteria require.
 
 **Rejected: a flag library or service.** Unleash and Flipt solve problems this
 project does not have — percentage rollouts, per-user targeting, an audit trail
 of who flipped what, and flag changes without a restart. Buying them now would
-add a dependency and, in the hosted case, a component to run on a 2 GB instance
-alongside the application and its database. The migration path is open: flags
-are read through one configuration properties class, so replacing the mechanism
-touches that class and not the call sites.
+add a dependency and, in the hosted case, a third component to run alongside the
+application and its database on one developer machine. The migration path is open:
+flags are read through one configuration properties class, so replacing the
+mechanism touches that class and not the call sites.
 
 ## Consequences
 
@@ -80,12 +82,41 @@ touches that class and not the call sites.
 - **Neutral — the flag namespace is a convention, not an enforced rule.** Nothing
   stops a future property from being added outside `eop.features.*`. A reviewer
   catches that, not the compiler.
-- **Neutral — no flag exists yet.** This decision is recorded before it is needed
-  so that EOP-7 does not have to make it under time pressure while also making a
-  first deployment work.
+- **Neutral — this decision was recorded before it was needed**, so that the first
+  story to want a flag did not have to make it under time pressure. That story
+  turned out to be EOP-10 rather than EOP-7.
+
+## Amendments
+
+**2026-08-10 — the deployment premises in this ADR were corrected; the decision
+was not changed.** Three statements referred to a `2 GB instance` and to editing
+`/opt/eop/.env` on that instance. The EC2 target has been withdrawn
+([ADR-012](./ADR-012-deployment-target.md)), so those premises were false. They
+have been reworded to describe the local container stack ([ADR-016](./ADR-016-local-container-runtime.md)).
+
+The reasoning is untouched, because none of it depended on the host. A configuration
+property still costs nothing, a hosted flag service is still a third process to run
+next to the application and its database, and flipping a flag still requires a
+restart — a restart of a local container rather than of a remote one, which is if
+anything cheaper.
+
+The trigger story also moved. This ADR said flagging starts at EOP-7, the first
+live deployment. EOP-7 is closed as superseded and no longer exists as a story, and
+the first flag in the codebase was in fact introduced by EOP-10:
+`eop.features.session-lifecycle`, which withholds `SessionController` entirely via
+`@ConditionalOnProperty`. [ADR-019](./ADR-019-session-lifecycle-and-join-codes.md)
+records that, and its own amendment records the one place where this ADR's
+prescribed shape did not fit: `@ConditionalOnProperty` is evaluated before any
+`@ConfigurationProperties` bean is bound, so a flag that decides whether a bean
+exists cannot also be read through a typed properties class.
 
 ## Related
 
 - [ADR-012: Deployment to a Single EC2 Instance with Terraform](./ADR-012-deployment-target.md)
+  — the deployment premises this ADR originally borrowed; its EC2 target is withdrawn
+- [ADR-016: Colima as the local container runtime](./ADR-016-local-container-runtime.md)
+  — where the application actually runs, and therefore where a flag is actually set
+- [ADR-019: Session lifecycle and join codes](./ADR-019-session-lifecycle-and-join-codes.md)
+  — the first flag in the codebase, and why it is gated but not typed
 - [Product requirements](../requirements/PRD-eop-card-game.md)
 - [Configuration rules](../../.opencode/rules/configuration.md)

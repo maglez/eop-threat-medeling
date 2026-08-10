@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-05
-**Deciders:** @team-member-tech-lead, @team-member-security-auditor
+**Deciders:** @tech-lead, @security-auditor
 
 ## Context
 
@@ -165,9 +165,11 @@ problem detail — returns 404 for every path. Flag-off behaviour is not a branc
 that could be wrong; it is the absence of a bean.
 
 Worth noting because it looks like a contradiction: ADR-013 states that flagging
-starts with EOP-7. EOP-7 is the first live deployment and is blocked on the
-repository owner, so **EOP-10 introduces the first flag in the codebase.** The ADRs
-do not disagree; the delivery order changed.
+starts with EOP-7. EOP-7 was the first live deployment story and has since been
+**closed as superseded** — the owner withdrew cloud deployment, and EOP-16 satisfies
+the deployment goal instead — so **EOP-10 introduces the first flag in the
+codebase.** The ADRs do not disagree; the story that was supposed to go first no
+longer exists. ADR-013 has been corrected to point here.
 
 **Amendment, 2026-08-05 (during EOP-10 implementation).** ADR-013 describes a flag as
 being read through a `@ConfigurationProperties` class with `@Validated` and gated with
@@ -192,8 +194,9 @@ wrong. This is the property ADR-014 was aiming at, made concrete.
 one class of bug that would corrupt an entire game — silently rotating the table —
 cannot be introduced by a later refactor of the join logic.
 
-**Positive:** the flag makes this deployable to the live instance before the UI
-exists, which is what allows EOP-11 to build against a real server.
+**Positive:** the flag makes this shippable before the UI exists, so the endpoints
+can be exercised against a running server — with `curl` today and by EOP-11's
+client tomorrow — without a half-finished lobby being reachable by default.
 
 **Negative — thirty bits of entropy makes the limiter load-bearing.** Stated in the
 decision and repeated here because it is the single most important thing to
@@ -231,6 +234,10 @@ status enum so that the concept has somewhere to live when it is needed.
 - [ADR-013](ADR-013-feature-flags.md) — the flag mechanism; EOP-10 rather than EOP-7 introduces the first flag
 - [ADR-005](ADR-005-error-handling-strategy.md) — RFC 9457 problem details and where the HTTP mapping lives
 - [ADR-008](ADR-008-database-migration-liquibase.md) — the migration precedes the entities
-- [ADR-012](ADR-012-deployment-target.md) — single instance, no TLS, restart on deploy
+- [ADR-020](ADR-020-session-concurrency-control.md) — how the seat constraint and the status guard actually serialise concurrent joins, and why `@Version` is not the mechanism
+- [ADR-012](ADR-012-deployment-target.md) — one process, no TLS, restart on deploy; the EC2 target is withdrawn but every premise this ADR borrows from it still holds
+- [ADR-016](ADR-016-local-container-runtime.md) — the local container stack this actually runs in, and the restart that resets the limiter
+- [Runtime view](../architecture/runtime-view.md) — the reconnect, subscribe and create/join/start sequences
+- [C4 container diagram](../architecture/C4-Diagrams.md) — where the controller, the publisher and the limiter sit
 - [PRD §3, §4, §5](../requirements/PRD-eop-card-game.md) — the workflow, the player range, and the domain model
 - EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing)

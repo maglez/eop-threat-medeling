@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-26
-**Deciders:** @team-member-tech-lead, @team-member-architecture-guardian
+**Deciders:** @tech-lead, @architecture-guardian
 
 ## Context
 

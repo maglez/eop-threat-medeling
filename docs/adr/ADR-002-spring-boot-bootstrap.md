@@ -2,7 +2,7 @@
 
 **Status:** Accepted (framework version superseded 2026-07-27 — see Amendments)  
 **Date:** 2026-07-26  
-**Deciders:** @team-member-tech-lead, @team-member-architecture-guardian  
+**Deciders:** @tech-lead, @architecture-guardian  
 
 ## Context
 The project needed a deployable Walking Skeleton — a minimal end-to-end slice that compiles, passes tests, and runs as a verifiable service. The original `pom.xml` used only JUnit 5 with Java 26 but had no runtime framework and no CI pipeline.

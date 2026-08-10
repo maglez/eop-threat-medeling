@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-05
-**Deciders:** @team-member-tech-lead, @team-member-db-designer
+**Deciders:** @tech-lead, @db-designer
 
 ## Context
 
@@ -20,7 +20,7 @@ whatever EOP-10 does first is what those will copy.
 
 A standard does already exist in the repository, but not where it binds. The
 db-designer agent persona lists "standardize on UUID v7 or auto-increment BigInt"
-as a non-negotiable rule (`.opencode/agents/team-member-db-designer.md`). Being
+as a non-negotiable rule (`.opencode/agents/db-designer.md`). Being
 persona-scoped, it applies only when that agent happens to do the work. No ADR
 mentions UUID at all — the string does not appear in ADR-002 through ADR-017, nor
 in `.opencode/rules/database.md`. A rule that binds one contributor and not the
@@ -148,5 +148,5 @@ mixed conventions.
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase is the only authority on schema; `type="UUID"` is portable across both engines
 - [ADR-012](ADR-012-deployment-target.md) — `postgres:17-alpine`, which is why `uuidv7()` is unavailable server-side
 - [PRD §5](../requirements/PRD-eop-card-game.md) — the domain model whose tables this governs
-- `.opencode/agents/team-member-db-designer.md` — where this standard previously existed, bound to one persona instead of the codebase
+- `.opencode/agents/db-designer.md` — where this standard previously existed, bound to one persona instead of the codebase
 - EOP-10 (first runtime inserts), EOP-14 and EOP-15 (inherit the convention)

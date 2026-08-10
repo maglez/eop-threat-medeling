@@ -1,10 +1,9 @@
 # PRD: Elevation of Privilege threat modelling card game
 
-**Status:** Game rules now sourced and corrected (see §11). Assumptions about mechanics are closed
-where confirmed by primary sources. Assumptions about architecture and infrastructure remain open.
-**Date:** 2026-08-03 (rules correction: 2026-08-04)
+**Status:** Game rules now sourced and corrected (see §11). Deployment model updated: local-only, no AWS. Assumptions about architecture and infrastructure remain open.
+**Date:** 2026-08-03 (rules correction: 2026-08-04; deployment model update: 2026-08-10)
 **Epic:** [EOP-5](https://maglez.atlassian.net/browse/EOP-5)
-**Author:** `@team-member-product-owner`, reviewed and corrected by `@team-member-tech-lead`
+**Author:** `@product-owner`, reviewed and corrected by `@tech-lead`
 
 This document is the source of truth for what the application is meant to do. Where it
 disagrees with a Jira story, this document wins and the story is wrong. Where it records an
@@ -163,8 +162,9 @@ which trick is in progress, and the notes recorded against played cards.
 - Real-time state synchronisation to every connected player
 - Resume after a browser refresh, a lost connection, or a server restart
 - A React + TypeScript + Vite front end under `ui/`, served behind a reverse proxy
-- Plain HTTP on a bare IP address — no TLS, no domain (ADR-012 records why)
-- Deployment to the EC2 instance already described by the Terraform in `infra/`
+- Plain HTTP on `localhost` — no TLS, no domain, no certificate (ADR-016 and ADR-017 record
+  the topology; ADR-015 records what the absence of TLS costs)
+- Local deployment on the developer machine using the container runtime delivered in EOP-16 — no cloud account required
 - A searchable reference list of all 78 threat prompts (replaces the 6 physical reference cards
   shipped with the deck, which players use to adjudicate whether an Ace's invented threat is
   already covered)
@@ -274,11 +274,11 @@ of scope now**, but the schema should not make it impossible to add later.
 | # | Risk | Owner | Blocks |
 |---|------|-------|--------|
 | R1 | ~~**The deck's licence is unverified.**~~ **CLOSED.** © 2009 Microsoft Corporation, Creative Commons Attribution 3.0 United States (CC-BY-3.0 US). Confirmed independently in the instruction card copyright page, whitepaper §2 footnote 6, and Shostack's repository README. Attribution to Microsoft is a licence obligation and must be visible in the UI — it is an acceptance criterion on EOP-13. | — | Closed |
-| R2 | **No AWS account exists.** `terraform apply` has never run. Nothing is demonstrable at a public IP. | Owner | EOP-7 only. |
-| R3 | **Real-time transport undecided.** Server-sent events, WebSocket, or polling. | Tech Lead | EOP-10, EOP-14 |
-| R4 | **Player identity undecided.** Even anonymous multiplayer needs a durable credential answering "am I that player?" across a refresh. | Tech Lead | EOP-10, EOP-14 |
-| R5 | **Concurrency control undecided.** Two players acting at once must not produce an illegal game state (e.g. two players both believing they hold the same card). Optimistic locking is the likely answer; the semantics are not decided. | Tech Lead | EOP-14 |
-| R6 | **Session lifecycle and storage growth undefined.** Sessions accumulate forever on a t3.small with a 10 GB data volume. No expiry, archival, or deletion policy exists. | Owner + Tech Lead | Production readiness |
+| R2 | ~~**No AWS account exists.**~~ **CLOSED.** The owner has decided not to deploy to AWS. The application is demonstrated locally on the developer machine, with multiplayer simulated across three browsers (Chrome, Safari, Chrome Incognito) to avoid shared cookie state. EOP-7 is closed as superseded; EOP-16 satisfies the deployment goal. The Terraform code in `infra/` is retained as a valid starting point if cloud deployment is wanted later. | — | Closed |
+| R3 | ~~**Real-time transport undecided.**~~ **CLOSED.** Server-sent events, chosen in **ADR-014** after a measured spike (EOP-8) and implemented in EOP-10. No new dependency — `SseEmitter` ships inside `spring-webmvc`. End-to-end delivery measured at 59 ms against the 500 ms requirement. The decision that matters most is not the transport but its corollary: **reconnection is a re-read, never a replay**, because no event log is kept. | — | Closed |
+| R4 | ~~**Player identity undecided.**~~ **CLOSED.** A server-issued 256-bit opaque token, stored only as its SHA-256 digest, sent in the `X-EoP-Player-Token` header, and held per-tab in `sessionStorage` — **ADR-014**'s sibling decision, **ADR-015**, with the streaming-header question closed by **ADR-019** (header only, never a query parameter). The server half is implemented in EOP-10; the client-side custody half arrives with EOP-11, so ADR-015 is recorded as *partly* implemented. | — | Closed |
+| R5 | ~~**Concurrency control undecided.**~~ **CLOSED.** **ADR-020**, and the guess recorded in this row was wrong: it is **not** optimistic locking. Control is **compare-and-set on `status`** — `touchWhileInStatus` and `advanceStatus` are status-guarded conditional `UPDATE`s whose rows-affected count is the whole protocol, backed by the row lock that update holds to end of transaction and by three unique constraints. A `@Version` column *is* mapped on the JPA entity and is deliberately **not** the enforcement mechanism; nothing handles `OptimisticLockingFailureException`. Settled for `game_session` by EOP-10; EOP-14 must re-derive its own guard for trick play rather than assume this generalises. | — | Closed |
+| R6 | **Session lifecycle and storage growth undefined.** Sessions accumulate forever in the PostgreSQL container's volume. No expiry, archival, or deletion policy exists. `ABANDONED` exists in the status enum so the concept has somewhere to live, but nothing sets it (ADR-019). Less urgent than it was — a local disk is larger than the 10 GB EBS volume this row originally assumed — but not closed, because unbounded growth is still unbounded. | Owner + Tech Lead | Production readiness |
 | R7 | ~~**Card fields beyond suit, number and prompt are unconfirmed.**~~ **CLOSED.** Whitepaper p6: "Each playing card shows a suit, a number, and a threat of the type exemplified by the suit." Schema is exactly suit + rank + threat text. Safe to write the first Liquibase changeset for EOP-6. | — | Closed |
 | R8 | ~~**Round mechanics unconfirmed.**~~ **CLOSED.** Trick-taking mechanic fully sourced — see §3.3 and §3.4. | — | Closed |
 | R9 | ~~**Whether the modelled system belongs in the app is unconfirmed.**~~ **CLOSED.** Whitepaper §2.1: "an architectural diagram of that system should be available. A whiteboard diagram is ideal." The diagram is a precondition held outside the app. [ASSUMPTION B] confirmed by source. | — | Closed |
@@ -352,7 +352,7 @@ All four are out of scope for this PoC.
 | Accessibility | GOV.UK Design System defaults. Full WCAG 2.2 AA is **not** claimed and is recorded as a known gap. |
 | Data retention | Undefined — see R6. |
 | Browsers | Modern evergreen browsers. |
-| Deployment | Manual `docker compose pull && up -d` over SSH. ADR-012 records why CI does not deploy. |
+| Deployment | Manual `docker compose -f compose.app.yml up -d` on the developer machine (ADR-016). Not over SSH and not to a cloud host — ADR-012's EC2 target is withdrawn. CI builds, tests and publishes the image but does not deploy; ADR-012 records why. |
 
 ### The security consequence of having no authentication
 
@@ -396,41 +396,73 @@ which already boots the application under the `prod` profile against real Postgr
 Liquibase enabled and asserts `/health`. **It does not need a deployment to be finished.**
 
 That last point is a correction to an earlier draft, which made the card catalogue depend on the
-deploy story. Since the deploy story is itself blocked on an AWS account that does not exist,
-that dependency would have stalled the entire backlog behind a task nobody had started. EOP-7 is
-deliberately independent and gates nothing.
+deploy story. EOP-7 is deliberately independent and gates nothing. It has since been closed as
+superseded: the owner decided to run locally rather than on AWS, and EOP-16 (local container
+runtime) satisfies the deployment goal.
 
-### Architecture decisions still required
+### Architecture decisions once required — all now made
 
-| Number | Subject | Needed by |
-|--------|---------|-----------|
-| 013 | Feature-flag mechanism | EOP-6 |
-| 014 | Real-time transport | EOP-10 |
-| 015 | Player identity within an anonymous session | EOP-10 |
-| 016 | Front-end delivery and reverse-proxy topology | EOP-9 |
-| 017 | Concurrency control | EOP-14 |
+Every decision this section originally listed as outstanding has been recorded. The table
+is kept as a map rather than deleted, because **the numbers it reserved are not the numbers
+the ADRs ended up with** and other documents cite both.
 
-For 013, a plain Spring conditional property is likely sufficient: no new dependency, and
-overridable by environment variable, which is all a single-instance PoC needs.
+| Planned number | Subject | Actual ADR | Needed by |
+|--------|---------|-----------|-----------|
+| 013 | Feature-flag mechanism | [ADR-013](../adr/ADR-013-feature-flags.md) | EOP-6 — in the event, first used by EOP-10 |
+| 014 | Real-time transport | [ADR-014](../adr/ADR-014-realtime-transport.md) | EOP-10 |
+| 015 | Player identity within an anonymous session | [ADR-015](../adr/ADR-015-player-identity.md) | EOP-10 |
+| 016 | Front-end delivery and reverse-proxy topology | **[ADR-017](../adr/ADR-017-frontend-delivery-topology.md)** | EOP-9 |
+| 017 | Concurrency control | **[ADR-020](../adr/ADR-020-session-concurrency-control.md)** | EOP-10 (settled for `game_session`), EOP-14 (trick play) |
 
-For 014, server-sent events deserve serious consideration before WebSocket is chosen by reflex.
-The traffic is overwhelmingly server-to-client, SSE introduces no new protocol, browsers
-reconnect automatically by specification, and it passes through a reverse proxy with less
-configuration. `spring-boot-starter-websocket` is not currently a dependency; whatever is chosen
-has to justify what it adds.
+**Where the drift came from.** The first three landed on their reserved numbers. Then an
+unplanned decision took 016: [ADR-016](../adr/ADR-016-local-container-runtime.md), the local
+container runtime, which was not foreseen when this table was written and which is the
+decision that ultimately replaced cloud deployment altogether. Front-end delivery therefore
+became ADR-017, one higher than reserved. Concurrency control drifted further still, because
+018 and 019 were taken by UUIDv7 identifiers and the session lifecycle before it was written,
+so it landed on **ADR-020** rather than 017.
+
+The consequence to remember: **"decision 017" in an older document means front-end delivery,
+but ADR-017 is the ADR that records it, and concurrency control is ADR-020, not ADR-017.**
+ADRs are never renumbered (`docs/adr/README.md` says why), so this table is the reconciliation.
+
+Two predictions in this section are worth keeping score of, since both were made before the
+work and both held. A plain Spring conditional property was indeed sufficient for 013 — no
+dependency was added. And server-sent events were indeed the right answer for 014 rather than
+WebSocket: the traffic is overwhelmingly server-to-client, SSE introduced no new protocol and
+no new dependency, and `spring-boot-starter-websocket` is still not on the dependency list.
+The one thing the prediction did not anticipate is the finding that mattered most — that with
+no event log, reconnection has to be a full re-read rather than a replay.
 
 ---
 
 ## 10. The concern worth recording
 
-This will run on one t3.small with no load balancer, no horizontal scaling and no session
-affinity. Every deployment restarts the container, and every restart drops every connected
-client.
+This runs as **one process on one developer machine**, with no load balancer, no horizontal
+scaling and no session affinity. Every rebuild restarts the container, and every restart drops
+every connected client.
+
+That premise moved — it was written when the target was a single `t3.small` on EC2, which has
+since been withdrawn (ADR-012, ADR-016) — but **the concern did not move with it, and this is
+the point of keeping the section.** A local container is restarted more often than a deployed
+one, not less, and three browsers on one machine refresh exactly as readily as three players in
+three cities. Every reason reconnection had to be designed up front is still in force.
 
 That makes reconnection a hard functional requirement rather than a refinement. It has to be
 designed before the session story is built, not retrofitted after the first demo goes quiet
 mid-trick. A player who reconnects mid-trick must see the current trick state — led suit, cards
 already played, whose turn it is — not a blank board.
+
+This was honoured. ADR-014 established that reconnection is a **re-read, never a replay**,
+because no event log exists to replay from; EOP-10 implemented it as
+`GET /api/v1/sessions/{sessionId}`, the same request a first page load makes, so the recovery
+path is exercised constantly rather than only after a failure. `docs/architecture/runtime-view.md`
+draws the sequence.
+
+Two things genuinely lost on restart are recorded rather than hidden, because both are
+process-local by design and neither is a cache: the **SSE subscriber registry**, so every client
+must reconnect, and the **join-attempt rate limiter**, which means brute-force protection on
+join codes is at its weakest in the moments immediately after a restart (ADR-019).
 
 ---
 

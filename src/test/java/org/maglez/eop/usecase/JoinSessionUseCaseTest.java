@@ -223,6 +223,8 @@ class JoinSessionUseCaseTest {
                     .isThrownBy(() -> useCaseFor(repository).execute(SEEDED_CODE, JOINER_NAME, ADDRESS))
                     .withMessageContaining("IN_PROGRESS");
 
+            assertThat(limiter.failures()).hasSize(1);
+            assertThat(limiter.failures().get(0).code()).isEqualTo(SEEDED_CODE);
             assertThat(publisher.published()).isEmpty();
         }
 
@@ -236,6 +238,8 @@ class JoinSessionUseCaseTest {
                     .withMessageContaining("maximum of 6 players");
 
             assertThat(repository.seatPlayerCalls()).isZero();
+            assertThat(limiter.failures()).hasSize(1);
+            assertThat(limiter.failures().get(0).code()).isEqualTo(SEEDED_CODE);
             assertThat(publisher.published()).isEmpty();
         }
 

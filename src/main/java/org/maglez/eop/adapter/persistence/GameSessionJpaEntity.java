@@ -59,7 +59,19 @@ class GameSessionJpaEntity {
     private OffsetDateTime updatedAt;
 
     /**
-     * Optimistic locking lives here and nowhere else.
+     * Change counter for this row. <strong>This is not the concurrency
+     * control.</strong>
+     *
+     * <p>The annotation is mapped, but nothing in this repository handles
+     * {@code OptimisticLockingFailureException}, and the two writes that
+     * matter increment this column by hand in JPQL rather than going through
+     * Hibernate's dirty-check path, which is what leaves the annotation inert.
+     * Serialisation actually rests on the row lock that
+     * {@code GameSessionJpaRepository.touchWhileInStatus} acquires and holds to
+     * the end of the transaction, together with the unique constraints. ADR-020
+     * records why, and warns that {@code touchWhileInStatus} reads like a
+     * timestamp bump while being the mechanism the story depends on — do not
+     * delete it on the grounds that the framework has locking covered.
      *
      * <p>The domain aggregate has no version field, because a version is a
      * statement about a row rather than about a game. Keeping it inside this

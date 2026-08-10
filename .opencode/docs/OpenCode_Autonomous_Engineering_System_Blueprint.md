@@ -121,50 +121,54 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 | Agent | Primary Role | Model | Family (Zen) | Role | Temp |
 |---|---|---|---|---|---|---|
-| @team-member-product-owner | Requirement Discovery & BDD Criteria | `{env:MODEL_B}` | Anthropic | Author | 0.3 |
-| @team-member-tech-lead | Planner & Sub-Agent Dispatcher | `{env:MODEL_A}` | Anthropic | Planner | 0.1 |
-| @team-member-devops-engineer | Terraform, CDK & CI/CD | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
-| @team-member-db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
-| @team-member-tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @team-member-security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
-| @team-member-code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
-| @team-member-performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
+| @product-owner | Requirement Discovery & BDD Criteria | `{env:MODEL_B}` | Anthropic | Author | 0.3 |
+| @tech-lead | Planner & Sub-Agent Dispatcher | `{env:MODEL_A}` | Anthropic | Planner | 0.1 |
+| @devops-engineer | Terraform, CDK & CI/CD | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
+| @db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
+| @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
+| @code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
+| @performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
 | **Expert Advisors** | | | | | |
 | @expert-alex-xu | Distributed Systems & System Design | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 | @expert-dave-farley | Continuous Delivery & TDD | `{env:MODEL_B}` | Anthropic | Advisory | 0.1 |
 | @expert-kent-beck | TDD & XP | `{env:MODEL_B}` | Anthropic | Advisory | 0.2 |
 | @expert-uncle-bod | SOLID & Clean Architecture | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 
-> **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`) that each agent's `model:` frontmatter field references in `.opencode/agents/*.md`. The actual model ID is resolved at runtime from the corresponding variable in `.env` — see [Provider Switching](#342-provider-switching-via-abstract-model-names). The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
+> **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`). Agent files carry **no** `model:` frontmatter — the assignment lives in the `agent` block of `.opencode/opencode.json`, which is the single authoritative table, and each entry resolves its `{env:MODEL_X}` placeholder from `.env` at startup. A key in that block which no longer matches an agent filename silently drops that agent to the global default (`{env:MODEL_A}`) with no error, so the block must be re-checked whenever an agent is renamed. The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 
-> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (OpenAI on Zen); every agent that audits it uses `MODEL_A` or `MODEL_B` (Anthropic on Zen). No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @team-member-product-owner is the one Anthropic-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto Anthropic or an auditor onto OpenAI silently collapses the guarantee when using OpenCode Zen. The guarantee weakens if using a provider that lacks distinct model families.**
+> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (or `MODEL_E`); every agent that audits it uses `MODEL_A` or `MODEL_B`. No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @product-owner is the one auditor-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto the auditors' family, or an auditor onto the authors', silently collapses the guarantee.**
+
+> **The invariant is a property of the `.env` values, not of this table.** On OpenCode Zen it holds because `MODEL_C` is OpenAI and `MODEL_A`/`MODEL_B` are Anthropic. On Bedrock it was **nominal from the first day of use until 2026-08-05**: `MODEL_A` through `MODEL_D` were all Anthropic Claude (Opus, Sonnet, Haiku, Haiku), so every author and every auditor shared one family and the guarantee existed only on paper. It was worse than a no-op, because the authoring agents sat on Haiku — the weakest model in the set — while Opus reviewed them, inverting the sensible allocation. It is now restored by pointing `MODEL_C` and `MODEL_E` at `qwen.qwen3-coder-480b-a35b-v1:0`. See §3.4.2 for the tested model catalogue.
+
+> **The primary agent is not covered by the invariant.** `small_model` aside, the global default is `MODEL_A`, so the agent you converse with in the TUI (`build`) runs on an *auditor-family* model. If it authors code itself rather than delegating to the `MODEL_C` agents, the artefact is authored and audited by the same family and no later review repairs that. This is not hypothetical: story EOP-10 was written entirely by the primary agent, and the retrospective `@security-auditor` pass over it ran on `MODEL_A` — literally the same model clearing its own output. Use `/trace` (see `tools/agent-trace.py`) to detect this; it reports a `RISK` line naming the agents involved.
 
 > **Security Note:** The Security Auditor agent is configured with a temperature of **0.0** — the lowest possible value. This is intentional: security auditing must prioritise deterministic, repeatable analysis over creative variation. Any hallucination in a security audit could introduce undetected vulnerabilities, so the system guarantees maximum rigour by eliminating output randomness.
 
 ### 3.3 Agent Responsibilities
 
-**@team-member-product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
+**@product-owner** — Drives requirement discovery, challenges premature technical solutions, writes INVEST stories with BDD Gherkin criteria, mandates Walking Skeleton, manages feature flag release status, and tracks defects.
 
-**@team-member-tech-lead** — Acts as system planner and engineering dispatcher. Advises on technical trade-offs, coordinates sub-agent execution pipelines, enforces Trunk-Based rules, and maintains architectural integrity.
+**@tech-lead** — Acts as system planner and engineering dispatcher. Advises on technical trade-offs, coordinates sub-agent execution pipelines, enforces Trunk-Based rules, and maintains architectural integrity.
 
-**@team-member-devops-engineer** — Generates Infrastructure-as-Code (Terraform / AWS CDK), constructs CI/CD workflows, configures cloud OIDC authentication, and manages continuous deployment pipelines.
+**@devops-engineer** — Generates Infrastructure-as-Code (Terraform / AWS CDK), constructs CI/CD workflows, configures cloud OIDC authentication, and manages continuous deployment pipelines.
 
-**@team-member-architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
+**@architecture-guardian** — Maintains C4/arc42 architectural models, enforces domain boundaries, reviews system design, and documents Architecture Decision Records (ADRs).
 
-**@team-member-db-designer** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
+**@db-designer** — Designs relational and document schemas, writes migration scripts, optimises query performance with execution plan verification, and manages index strategies.
 
-**@team-member-ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
+**@ui-builder** — Implements user interfaces conforming to accessibility standards (WCAG 2.2 AA / GOV.UK Design System) and wraps UI components in feature flags.
 
-**@team-member-tester-unit-and-quality** — Writes fast, isolated unit tests with high branch coverage prior to PR creation.
+**@tester-unit-and-quality** — Writes fast, isolated unit tests with high branch coverage prior to PR creation.
 
-**@team-member-tester-api** — Verifies REST/GraphQL API contracts, end-to-end payload validations, and integration boundary tests.
+**@tester-api** — Verifies REST/GraphQL API contracts, end-to-end payload validations, and integration boundary tests.
 
-**@team-member-security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
+**@security-auditor** — Audits code and IaC for vulnerability patterns, OWASP Top 10 risks, plaintext secrets, and aggressive IAM wildcards.
 
-**@team-member-code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
+**@code-reviewer** — Performs static code reviews for readability, SOLID compliance, error handling, and maintainability before human review.
 
 #### Orchestration Topology — Who May Invoke Whom
 
@@ -172,11 +176,13 @@ Roles alone do not constrain delegation. By default every agent can invoke every
 
 | Agent | `task` | Effect |
 |---|---|---|
-| @team-member-tech-lead | `allow` | the single orchestrator — may dispatch any agent |
-| @team-member-product-owner | `"*": deny`, then `team-member-tech-lead: allow` | discovers requirements, authors stories, hands the batch to the Tech Lead |
+| @tech-lead | `allow` | the single orchestrator — may dispatch any agent |
+| @product-owner | `"*": deny`, then `tech-lead: allow` | discovers requirements and authors stories; may ask the Tech Lead for a specialist trade-off comparison, but **not** for delivery |
 | the 9 delivery agents and the 4 expert advisers | `deny` | do the work and report back to whoever invoked them |
 
-The flow is one-directional: the Product Owner discovers requirements and writes stories, hands them to the Tech Lead, and the Tech Lead orchestrates the delivery agents. A delegate's findings return to its invoker as the Task result — which is why, for example, the Security Auditor needs no route *back* to the Tech Lead. When the Tech Lead invokes it, the verdict lands where it is needed by construction, with no agent-to-agent messaging mechanism to build and no possibility of a Tech Lead ↔ Auditor invocation loop.
+The flow is one-directional, and the hop from requirements to delivery goes **through the Prompter**: the Product Owner discovers requirements and writes stories, hands the frozen batch back to the human, who presses **Tab** to make the Tech Lead the session's primary agent, and the Tech Lead orchestrates the delivery agents from there. A delegate's findings return to its invoker as the Task result — which is why, for example, the Security Auditor needs no route *back* to the Tech Lead. When the Tech Lead invokes it, the verdict lands where it is needed by construction, with no agent-to-agent messaging mechanism to build and no possibility of a Tech Lead ↔ Auditor invocation loop.
+
+> **Why the human relays instead of the Product Owner dispatching.** A `task` dispatch creates a *child session with fresh context*, so a Tech Lead invoked that way would see only the handoff text the Product Owner composes — not the discovery interview — and could never come back to ask the Prompter a question. Worse, it would sit outside the session: `/goal` binds `tech-lead` as the **session's** primary agent, and the turn/duration/token budgets and the `completionAudit` gate are all session-scoped, so a child-session Tech Lead would run with no goal, no budget and no audit, silently bypassing the five-agent sign-off required by §12.8. Tab preserves the whole message history, so relaying costs one keypress and loses nothing. The Product Owner keeps `tech-lead: allow` only for the bounded advisory round-trip — asking for a specialist trade-off comparison — which is exactly the one-prompt-in, one-answer-out shape a subagent dispatch handles well.
 
 > **`task: deny` is enforcement, not documentation — and it does not restrict you.** A denied subagent is removed from the Task tool description entirely, so the model never sees it and cannot attempt to invoke it; contrast a prompt instruction, which a model may simply ignore. A human is unaffected: every agent remains directly invocable from the `@` autocomplete menu regardless of `task` permissions. Note the flip side — an agent cannot be *forced* to delegate, so the Tech Lead's prompt still has to say what to dispatch and when.
 
@@ -226,18 +232,19 @@ Defaults are set in `.opencode/opencode.json`:
 - `MODEL_C` — OpenAI codex family, allocated to builders.
 - `MODEL_D` — cheap model for session titles and summaries (`small_model`).
 
-This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the four `MODEL_*` values in `.env` — no agent file or config changes needed.
+This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the five `MODEL_*` values in `.env` — no agent file or config changes needed.
 
 #### Allocated Models
 
-Four abstract model names map to the real provider-specific model IDs. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output) for the OpenCode Zen variant.
+Five abstract model names map to the real provider-specific model IDs. All are non-deprecated as of 2026-07-27; prices are USD per 1M tokens (input / output) for the OpenCode Zen variant.
 
 | Abstract | Model ID (Zen) | Vendor | Price | Allocated To |
 |---|---|---|---|---|
 | `MODEL_A` | `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
 | `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
-| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, UI Builder, both Testers, Performance Engineer |
-| `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only |
+| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, both Testers, Performance Engineer |
+| `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only; no agent uses it |
+| `MODEL_E` | `opencode/gemini-3.1-pro` | Google | — | UI Builder |
 
 #### Deprecation Watch
 
@@ -266,40 +273,69 @@ Amazon Bedrock is a **built-in provider** in OpenCode — no npm package install
 
 | Variable | Purpose |
 |---|---|
-| `AWS_ACCESS_KEY_ID` | AWS IAM access key |
-| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
-| `AWS_REGION` | AWS region (e.g. `eu-west-2`) |
+| `AWS_BEARER_TOKEN_BEDROCK` | Bedrock API key. **This is what is actually used here.** |
+| `AWS_REGION` | AWS region — `eu-west-2` in this project |
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key — SigV4 alternative, left empty in this project |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key — SigV4 alternative, left empty in this project |
 
-To use Bedrock, map the four abstract model names to Bedrock model IDs in `.env`:
+> Because auth is a bearer token rather than SigV4, the AWS CLI control plane is unavailable: `aws bedrock list-foundation-models` fails with `Unable to parse config file: ~/.aws/credentials`. Entitlements must be probed against the runtime endpoint instead — see below.
 
-| Abstract | Example Bedrock ID |
+To use Bedrock, map the five abstract model names to Bedrock model IDs in `.env`. The live values in this project are:
+
+| Abstract | Bedrock ID | Family | Role |
+|---|---|---|---|
+| `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5` | Anthropic | Global default, orchestration, audit |
+| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, code review, experts |
+| `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, both Testers, Performance |
+| `MODEL_D` | `amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0` | Anthropic | `small_model` only — titles, compaction. No agent uses it. |
+| `MODEL_E` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — UI Builder |
+
+Note the Anthropic IDs carry **no** `-v1:0` suffix, while most third-party IDs do (and several, such as `qwen.qwen3-coder-next` and `zai.glm-5`, carry none). Copy IDs verbatim from `~/.cache/opencode/models.json` rather than inferring a suffix; a wrong suffix presents as `The provided model identifier is invalid`, indistinguishable from a missing entitlement.
+
+##### Verifying a Bedrock model before using it
+
+`~/.cache/opencode/models.json` is models.dev's **global** catalogue, not your account's entitlements, and it lists many models Bedrock will refuse. Two checks are needed, in order, because each can pass while the next fails:
+
+1. **Entitlement** — POST to `https://bedrock-runtime.$AWS_REGION.amazonaws.com/model/<id>/converse` with `Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK`. HTTP 200 means the account may call it; HTTP 400 `The provided model identifier is invalid.` means it may not.
+2. **Usability through OpenCode** — `opencode run --model amazon-bedrock/<id> "Reply with exactly: OK"`. Raw Converse success is **not** sufficient: `nova-lite` and `nova-micro` both return 200 on Converse yet fail through the OpenCode AI SDK with `invalid model identifier`.
+3. **Tool-calling** — `opencode run --model amazon-bedrock/<id> "Use the glob tool to find files matching 'tools/*.sh' then state only the filenames you found."` A plain completion does not exercise tool use, and this is where non-Anthropic models on the Converse API actually break. An agent whose tool calls arrive as prose will appear to work while silently editing nothing.
+
+Results as tested on this account in `eu-west-2` on **2026-08-05**:
+
+| Model | Verdict |
 |---|---|
-| `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5-v1:0` |
-| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6-v1:0` |
-| `MODEL_C` | `amazon-bedrock/eu.amazon.nova-pro-v1:0` |
-| `MODEL_D` | `amazon-bedrock/eu.amazon.nova-lite-v1:0` |
+| `qwen.qwen3-coder-480b-a35b-v1:0` | **Clean** — structured tool calls, correct answers. Current `MODEL_C`/`MODEL_E`. |
+| `qwen.qwen3-coder-next` | **Clean** |
+| `zai.glm-5` | **Clean** |
+| `deepseek.v3.2` | **Leaky** — right answer, but emits `<｜DSML｜function_calls` into the text channel |
+| `mistral.devstral-2-123b` | **Broken** — emits `[/THINK]glob{"pattern": …}` as prose and answers wrongly. Do not use. |
+| `minimax.minimax-m2.5`, `nvidia.nemotron-super-3-120b` | Entitled, tool-calling untested |
+| every `openai.*` (incl. `gpt-5.6-*`, `gpt-oss-*`), `mistral.mistral-large-3-675b-instruct`, `xai.grok-4.3`, `moonshot.kimi-k2-thinking`, `meta.llama4-*` | **Not entitled** — HTTP 400 |
 
-Bedrock model IDs follow the format `amazon-bedrock/<region>.<vendor>.<model-version>`. Available models depend on your AWS account's Bedrock access — verify with `aws bedrock list-foundation-models`.
-
-> **Limitation:** Unlike OpenCode Zen, Bedrock does not offer a `gpt-5.3-codex` equivalent. The mapping for `MODEL_C` above uses Amazon Nova Pro as a substitute. If your use case requires OpenAI codex-specific behaviour, keep `MODEL_C` pointed at `opencode/gpt-5.3-codex` while switching the other three to Bedrock.
+> **Correction to an earlier claim in this document:** it previously stated that Bedrock offers no `gpt-5.3-codex` equivalent and that `MODEL_C` must therefore fall back to Amazon Nova Pro. The first half is half-true and the conclusion was wrong. No OpenAI model of any kind is reachable on this account, but Qwen, DeepSeek, GLM, MiniMax, Nemotron and Mistral all are, and `qwen.qwen3-coder-480b-a35b-v1:0` is a dedicated 480B MoE coding model that drives tools cleanly. Nova Pro was never the best available substitute; it was simply the first one tried.
 
 #### <span id="342-provider-switching-via-abstract-model-names"></span> Provider Switching via Abstract Model Names
 
 The mapping from abstract names to real model IDs lives entirely in `.env` (gitignored):
 
 ```bash
-# OpenCode Zen (default — no AWS credentials needed)
+# === Zen === (no AWS credentials needed)
 MODEL_A=opencode/claude-opus-5
 MODEL_B=opencode/claude-sonnet-4-6
 MODEL_C=opencode/gpt-5.3-codex
 MODEL_D=opencode/gemini-3.5-flash-lite
+MODEL_E=opencode/gemini-3.1-pro
 
-# Or AWS Bedrock (uncomment the block below, fill AWS credentials)
-# MODEL_A=amazon-bedrock/eu.anthropic.claude-opus-5-v1:0
-# MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6-v1:0
-# MODEL_C=amazon-bedrock/eu.amazon.nova-pro-v1:0
-# MODEL_D=amazon-bedrock/eu.amazon.nova-lite-v1:0
+# === Bedrock === (needs AWS_BEARER_TOKEN_BEDROCK and AWS_REGION)
+# MODEL_A=amazon-bedrock/eu.anthropic.claude-opus-5
+# MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6
+# MODEL_C=amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0
+# MODEL_D=amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0
+# MODEL_E=amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0
 ```
+
+> `./tools/switch-provider.sh [zen|bedrock]` toggles which block is commented. It holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
+
 
 ##### To Switch Providers
 
@@ -311,9 +347,9 @@ MODEL_D=opencode/gemini-3.5-flash-lite
 
 | Abstract | Used By |
 |---|---|
-| `MODEL_A` (best) | Main model, @team-member-tech-lead, @team-member-architecture-guardian, @team-member-security-auditor, @expert-alex-xu, @expert-uncle-bod |
-| `MODEL_B` (mid) | @team-member-code-reviewer, @expert-kent-beck, @expert-dave-farley, @team-member-product-owner |
-| `MODEL_C` (coder) | @team-member-devops-engineer, @team-member-db-designer, @team-member-performance-engineer, @team-member-tester-api, @team-member-tester-unit-and-quality, @team-member-ui-builder |
+| `MODEL_A` (best) | Main model, @tech-lead, @architecture-guardian, @security-auditor, @expert-alex-xu, @expert-uncle-bod |
+| `MODEL_B` (mid) | @code-reviewer, @expert-kent-beck, @expert-dave-farley, @product-owner |
+| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @tester-api, @tester-unit-and-quality, @ui-builder |
 | `MODEL_D` (small) | `small_model` — titles and summaries |
 
 > **Migration note:** Previously each agent referenced a hardcoded model ID (e.g. `opencode/claude-sonnet-4-6`) in its `model:` frontmatter. These were replaced with `{env:MODEL_B}` etc. in a single batch update — no per-agent changes are needed to switch providers going forward.
@@ -443,7 +479,7 @@ Three routes, in order of directness:
 
    The command is the **repo-relative binary path**, not the bare `graphify`, so the server does not depend on direnv having exported `PATH` into OpenCode's own process environment.
 2. **`.opencode/plugins/graphify.js`** — a local plugin loaded by directory convention (it is *not* an entry in the `plugin` array of `.opencode/opencode.json`). It hooks `tool.execute.before`, and once per session, if `.graphify/graph.json` exists, prepends a one-line reminder to the first `bash` command pointing at the MCP tools and the report.
-3. **Three agent prompts** — `team-member-architecture-guardian`, `team-member-code-reviewer` and `team-member-tech-lead` each name the specific tools to prefer over reading raw files.
+3. **Three agent prompts** — `architecture-guardian`, `code-reviewer` and `tech-lead` each name the specific tools to prefer over reading raw files.
 
 > **Known gap — closed 2026-08-02: the graph is now callable.** Until that change the only routes were a reminder a model could ignore and prompt text it could skim, and the plugin registered no tools at all. `graphify serve` is now wired, so the graph is reachable by tool call. All eleven tool names in the table above were **confirmed by direct invocation on 2026-08-03** — they are the MCP server's own names prefixed with the server key `graphify`, following the established `atlassian` + `jira_search` -> `atlassian_jira_search` convention. The plugin's reminder is now arguably redundant, since its whole purpose was to compensate for the absence of tools. Removing it would also remove a `tool.execute.before` command-rewriting surface — but that is a separate decision, not a cleanup, so the hook stays until someone decides otherwise. `graphify opencode install` remains an alternative that would replace the hand-rolled plugin with the vendor's own generated one; it is rejected because it writes into reviewed configuration out of band. See [ADR-011](../../docs/adr/ADR-011-graphify-knowledge-graph.md).
 
@@ -827,8 +863,8 @@ Six agents exist to produce findings, not changes. A reviewer that can silently 
 
 | Agent | Why |
 |---|---|
-| `team-member-code-reviewer` | audits code; must not fix what it flags |
-| `team-member-security-auditor` | audits security; same reasoning |
+| `code-reviewer` | audits code; must not fix what it flags |
+| `security-auditor` | audits security; same reasoning |
 | the 4 `expert-*` advisers | advisory by definition — they answer questions, they do not touch the repository |
 
 Every other agent keeps `edit`, because writing is their job: the Performance Engineer maintains `docs/performance/TRENDS.md`, the Architecture Guardian writes `docs/`, the DevOps Engineer authors workflows, the Product Owner writes PRDs, and the testers, DB Designer and UI Builder all produce code.
@@ -841,28 +877,28 @@ The full operational sequence demonstrates how a requirement flows from initial 
 
 ```mermaid
 graph TB
-    P1["Phase 1: Requirements Discovery<br/>@team-member-product-owner"]
-    P2["Phase 2: Backlog & Jira Seeding<br/>@team-member-product-owner"]
-    P3["Phase 3: Technical Design & Branching<br/>@team-member-tech-lead"]
-    P4["Phase 4: Implementation & Flagging<br/>@team-member-ui-builder"]
-    P5["Phase 5: Automated Verification<br/>@team-member-tester-unit-and-quality & @team-member-tester-api"]
-    P6["Phase 6: PR, Audit & Human Gate<br/>@team-member-security-auditor & @team-member-code-reviewer"]
+    P1["Phase 1: Requirements Discovery<br/>@product-owner"]
+    P2["Phase 2: Backlog & Jira Seeding<br/>@product-owner"]
+    P3["Phase 3: Technical Design & Branching<br/>@tech-lead"]
+    P4["Phase 4: Implementation & Flagging<br/>@ui-builder"]
+    P5["Phase 5: Automated Verification<br/>@tester-unit-and-quality & @tester-api"]
+    P6["Phase 6: PR, Audit & Human Gate<br/>@security-auditor & @code-reviewer"]
     P7["Phase 7: Continuous Deployment<br/>CI/CD via OIDC → AWS"]
 
     P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
 ```
 
-**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @team-member-product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @team-member-product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @team-member-product-owner pass the instruction to @team-member-tech-lead. Story #1 is always designated as the Walking Skeleton.
+**Phase 1 — Requirements Discovery**: Prompter submits a feature request. @product-owner interacts directly with the human to challenge premature solutionising, clarify business objectives, and refine the requirements. @product-owner verifies the proposed solution serves the end-user's needs based on today's accessibility and usability standards, including Government Digital Service (GDS) standards where applicable. Only once the request passes these checks and is deemed worthy of building does @product-owner declare the stories ready and hand them back to the Prompter, who switches the session to @tech-lead. Story #1 is always designated as the Walking Skeleton.
 
-**Phase 2 — Backlog & Jira Seeding**: @team-member-product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, signaling @team-member-tech-lead.
+**Phase 2 — Backlog & Jira Seeding**: @product-owner creates INVEST stories with Gherkin BDD criteria and feature flag definitions in Jira, then emits the ready-for-delivery handoff block.
 
-**Phase 3 — Technical Design & Branching**: @team-member-tech-lead creates a short-lived topic branch from `main` and dispatches @team-member-architecture-guardian, @team-member-db-designer, and @team-member-devops-engineer to prepare infrastructure and domain models.
+**Phase 3 — Technical Design & Branching**: @tech-lead creates a short-lived topic branch from `main` and dispatches @architecture-guardian, @db-designer, and @devops-engineer to prepare infrastructure and domain models.
 
-**Phase 4 — Implementation & Flagging**: @team-member-ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
+**Phase 4 — Implementation & Flagging**: @ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
 
-**Phase 5 — Automated Verification**: @team-member-tester-unit-and-quality and @team-member-tester-api run test suites, creating Bug Sub-tasks for any failing checks.
+**Phase 5 — Automated Verification**: @tester-unit-and-quality and @tester-api run test suites, creating Bug Sub-tasks for any failing checks.
 
-**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @team-member-security-auditor and @team-member-code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
+**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @security-auditor and @code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
 
 **Phase 7 — Continuous Deployment**: PR merges to `main`. CI assumes the cloud IAM role via OIDC, executes infrastructure-as-code, and deploys to production.
 
@@ -872,9 +908,9 @@ graph TB
 
 Teams looking to build a similar system can customise this blueprint with three key adaptations:
 
-- **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@team-member-devops-engineer.md`.
-- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@team-member-product-owner.md`.
-- **UI Standards**: Customise `@team-member-ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
+- **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@devops-engineer.md`.
+- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
+- **UI Standards**: Customise `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
 
 ---
 
@@ -908,7 +944,7 @@ Key ADRs (see [docs/adr/README.md](../../docs/adr/README.md) for the full index 
 
 ## 11. Recommended Approach
 
-Start with **few details** and let @team-member-product-owner (PO) guide the discovery process:
+Start with **few details** and let @product-owner (PO) guide the discovery process:
 
 1. **Open a fresh session** (`/new`) — one story per session
 2. **Give a lightweight prompt** — a sentence or two about what you want to build
@@ -922,7 +958,7 @@ Start with **few details** and let @team-member-product-owner (PO) guide the dis
 **1. Requirements discovery** — prompt your PO:
 
 ```
-@team-member-product-owner I want to build an Elevation of Privilege (EoP) card
+@product-owner I want to build an Elevation of Privilege (EoP) card
 game — a threat modelling exercise based on the STRIDE framework.
 The goal is to help development teams learn to identify security
 threats in a fun, interactive way. Can you help me define the
@@ -1049,11 +1085,25 @@ Schedules recurring agent tasks using OS-native schedulers (launchd on macOS, sy
 Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, the plugin keeps it in context, auto-continues when idle, and stops when complete, blocked, or a safety limit is hit. Supports evidence-gated completion with optional independent auditor.
 
 - **Package**: `opencode-goal-plugin` (npm), pinned at `0.6.7`
-- **Command**: `/goal` — configured in `opencode.json` under `"command"` with `"agent": "team-member-tech-lead"` for orchestrator-driven execution (defaults: max 10 turns, 15 min duration, 200k tokens)
+- **Command**: `/goal` — configured in `opencode.json` under `"command"` with `"agent": "tech-lead"` for orchestrator-driven execution (budgets: max 40 turns, 60 min duration, 500k tokens — sized to survive implementation plus five reviewer sign-offs and one remediation cycle)
 - **Config**: Plugin-level defaults passed as options array in `opencode.json`
 - **Tools**: 11 agent-facing tools alongside the command — `set_goal`, `get_goal`, `get_goal_history`, `update_goal`, `clear_goal`, `goal_set`, `goal_status`, `goal_complete`, `goal_pause`, `goal_resume`, `goal_block`
 - **State**: `stateFilePath` is configured as `.opencode/goals/state.json`, but since `0.6.6` state is **sharded per OpenCode session** into `state.json.sessions/<sha256-of-session-id>/state.json` (mode `0600`), each shard holding its own `state.json.lock/owner.json`. Migration from the older aggregate format preserves the original as `state.json.migrated.<epoch>.<uuid>` and drops a `.migration-v1-complete` marker to prevent re-migration. The whole `.opencode/goals/` directory is gitignored (`.gitignore:52`)
 - **Notable**: Session forks don't inherit parent goals. The plugin registers `experimental.chat.system.transform` only as defense in depth for hosts that invoke it — real OpenCode 1.17.15 and 1.18.10 never call it, and command routing deliberately does not depend on it.
+- **Completion audit**: `completionAudit: true` with `auditorOptions: { timeoutMs: 120000, failurePolicy: "reject" }`. Every completion path — the `[goal:complete]` marker, `goal_complete`, and `update_goal { status: "complete" }` — spawns an independent read-only child session that must answer `[audit:approved]` or `[audit:rejected]` as the **final line** of its reply (`parseAuditVerdict`, `src/goal-plugin.js:3163`). Anything ambiguous, absent, or non-final counts as rejection. Rejection does not archive the goal: it pauses with stop reason `audit rejected`, recoverable with `/goal resume`. The claim itself is machine-checked first (`src/completion-claim.js`) — failed `checks[]` entries and `criteria[]` with empty `evidence` are refused before the auditor is even consulted.
+
+#### Two-layer completion gate
+
+The audit backstop is deliberately paired with a prompt-level gate, because the two catch different failures.
+
+**Layer 1 — Tech Lead sign-off gate** (`.opencode/agents/tech-lead.md`, "Definition of Done — Multi-Agent Sign-Off Gate"). Before claiming completion the Tech Lead must dispatch all five of `@tester-unit-and-quality`, `@tester-api`, `@security-auditor`, `@code-reviewer`, `@architecture-guardian` and record each verbatim verdict as a `criteria`/`evidence` pair. All five are mandatory on every story — a reviewer answering "no applicable findings" is a valid approval, but the Tech Lead may not pre-empt that judgement. `./mvnw verify` is one `checks[]` entry, explicitly *not* the gate. This is the substantive control: only `tech-lead` holds `permission: { task: allow }`, so it is the only agent that can convene the reviewers at all.
+
+**Layer 2 — plugin audit backstop** (`completionAudit`, above). It cannot re-run the reviews, but it can detect the failure mode Layer 1 cannot police itself against: the Tech Lead self-certifying, or filing vacuous or fabricated evidence.
+
+> **Known limitation — auditor shares the claimant's model family.** The built-in verifier agent inherits the top-level `model` (`MODEL_A`), which is also `tech-lead`'s model, so the claim and its audit are same-family. This cannot be fixed by pinning: `requireVerifierOwnership: Boolean(pluginOptions.completionAudit)` (`src/goal-plugin.js:3532`) makes `applyNativeGoalConfig` **throw at startup** if `config.agent["goal-verify"]` already exists (`src/native-agent-config.js:27-31`), so declaring `goal-verify` in `opencode.json` or as `.opencode/agents/goal-verify.md` breaks the session rather than overriding the model. Accepted as a residual risk: code and infrastructure are authored by `MODEL_C` agents and reviewed by `MODEL_A`/`MODEL_B` agents, so the separation invariant still holds for every *artifact* — only the completion claim itself is audited within its own family. **Do not create `.opencode/agents/goal-verify.md`.**
+
+> **Known limitation — the auditor cannot execute anything.** The default verifier is a hidden subagent with `permission: { "*": "deny" }` and only `read`, `glob`, `grep`; `bash`, `write`, `edit`, `patch` and every `goal_*` tool are disabled, and it has no `task` tool (`src/native-agent-config.js:37-66`). It therefore cannot run `./mvnw verify` and cannot dispatch the five reviewers itself — it performs static inspection of the workspace against the submitted evidence. Making the plugin-level gate convene the reviewers would require a custom `auditor` function, which means abandoning the `plugin` array entry for a hand-written `.opencode/plugins/*.js` that imports the package — not resolvable from the isolated `~/.cache/opencode/packages/` install. Rejected as disproportionate; Layer 1 obtains the same five verdicts.
+
 
 > **Do not drop below `0.6.7` on OpenCode 1.18.x.** Releases up to and including `0.6.6` declared `@opencode-ai/plugin` as a *peer* dependency and registered their tools through an optional dynamic `import()` of it. OpenCode installs each plugin in isolation under `~/.cache/opencode/packages/<spec>/node_modules/` and does not supply peer dependencies, so that import silently failed and **all 11 goal tools were skipped**: `/goal` was still recognised as a command, but its subcommands were never routed and the model just free-associated about the word "status". `0.6.7` drops the peer dependency in favour of a direct `zod` dependency, so the tools register on a clean install. Upstream [willytop8/OpenCode-goal-plugin#42](https://github.com/willytop8/OpenCode-goal-plugin/issues/42). Verify the tools are live by *calling* one (e.g. `get_goal`), not by trusting the plugin to have loaded.
 

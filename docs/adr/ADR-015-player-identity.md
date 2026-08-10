@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-04
-**Deciders:** @team-member-tech-lead, @team-member-security-auditor
+**Deciders:** @tech-lead, @security-auditor
 
 ## Context
 
@@ -17,9 +17,9 @@ decision that the client cannot be trusted to assert. Without a credential,
 anyone holding a session code could play a card as anyone else at the table.
 
 The credential must survive two events. A browser refresh, because players will
-refresh. And a **container restart**, because ADR-012 deploys by restarting the
-container, so every deploy invalidates anything held only in server memory, and
-the PRD makes resuming mid-trick a hard functional requirement.
+refresh. And a **container restart**, because the application is deployed by
+restarting its container, so every deploy invalidates anything held only in server
+memory, and the PRD makes resuming mid-trick a hard functional requirement.
 
 There is one further constraint that turns out to be decisive, and it is not a
 security constraint at all: **two players must be able to play from one browser**.
@@ -101,14 +101,23 @@ project rule (`.opencode/rules/security.md`) and this decision does not satisfy
 it; it is a single gate. That is accepted for a PoC with no real data, and it is
 recorded here so nobody later mistakes it for a layered design.
 
-**Negative — the token is sniffable on the wire.** ADR-012 accepts bare-IP HTTP
-with no TLS. Anyone on the network path between a player and the instance can
-read the header and impersonate that player for the rest of the session. This is
-not a flaw in the token design; **no credential design survives a plaintext
-transport.** It is acceptable for a demo where the worst outcome is a stranger
-playing a card in a threat-modelling game. It is unacceptable for anything real,
-and the fix is TLS, not a cleverer token. If this application ever holds
-something worth taking, TLS comes before the next feature.
+**Negative — the token travels in plaintext, and nothing about that is fixed by
+running locally.** There is no TLS anywhere in this project. When this ADR was
+written the exposure was a remote one: ADR-012 accepted bare-IP HTTP, so anyone on
+the network path between a player and the instance could read the header and
+impersonate that player for the rest of the session. That EC2 target has been
+withdrawn and the application now runs on one developer machine (ADR-016), so
+**there is currently no network path to sit on** — the traffic goes from three
+browsers to a loopback-published container port and never reaches a wire. The
+exposure is therefore reduced to whatever else can read that machine's loopback
+traffic or its process memory, which is a much smaller set of attackers and not an
+empty one.
+
+What has not changed is the design: **no credential design survives a plaintext
+transport.** The moment this is exposed beyond one machine — a tunnel, a port
+forward, a colleague on the same LAN, a resumed cloud path — the original sentence
+applies again in full, unmodified. TLS is the fix, not a cleverer token. If this
+application ever holds something worth taking, TLS comes before the next feature.
 
 **Negative — closing the tab loses the credential.** `sessionStorage` does not
 survive tab close, so the player must rejoin. Refresh is safe; close is not. This
@@ -124,10 +133,48 @@ other. Names must still be length-bounded and escaped on output, because
 **Neutral — no cross-session identity.** A player who joins two games is two
 unrelated players. Consistent with the PRD's exclusion of cross-session history.
 
+## Amendments
+
+**2026-08-10 — the open question is closed, the deployment premise is corrected, and
+half of this decision is still unbuilt.**
+
+*The streaming-header question is answered.* This ADR left it open and warned that
+"the answer must not be 'query parameter' by default."
+[ADR-019](ADR-019-session-lifecycle-and-join-codes.md) closed it: the event stream
+takes the same `X-EoP-Player-Token` header as every other request, no code path
+reads a token from a query string, and the cost — the browser's `EventSource` cannot
+set headers, so the client must stream with `fetch` — is accepted rather than traded
+away.
+
+*The remote-attacker framing is obsolete but the design conclusion is not.* ADR-012's
+EC2 target is withdrawn and EOP-7 is closed as superseded; the application runs
+locally under ADR-016. The sniffable-token consequence above has been reworded
+accordingly. Note that this makes the transport risk smaller without making the
+token stronger, and the requirement that made persistence necessary — surviving a
+container restart — is unchanged, because a locally rebuilt container restarts at
+least as often as a deployed one.
+
+*The two-players-one-browser constraint became the demonstration mechanism.* This
+ADR called it decisive for reasons of local testing. Multiplayer is now demonstrated
+by three browsers on one machine — Chrome, Safari and Chrome Incognito — chosen
+because they do not share storage. Per-tab `sessionStorage` scoping is what makes
+that work, so the constraint this decision was shaped around is now the only way the
+game is played at all.
+
+*Only the server half exists.* EOP-10 implemented issuance, SHA-256 storage of the
+digest, and an indistinguishable refusal for a missing and a wrong credential. The
+client half — a token actually kept in `sessionStorage` and replayed on the next
+request — is **not built**: `ui/` currently holds a health-check shell and the string
+`sessionStorage` appears nowhere in it. Until EOP-11 delivers it, a refresh loses the
+token in practice even though the server is ready to accept it, and the ADR index
+records this ADR as *Partly* implemented for that reason.
+
 ## Related
 
 - [ADR-014](ADR-014-realtime-transport.md) — the other half of this spike; the stream needs this credential
-- [ADR-012](ADR-012-deployment-target.md) — no TLS, and restart-on-deploy is why the token is persisted
+- [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — closes this ADR's open question: header only, no query-parameter fallback
+- [ADR-012](ADR-012-deployment-target.md) — no TLS, and restart-on-deploy is why the token is persisted; its EC2 target is withdrawn, the restart premise is not
+- [ADR-016](ADR-016-local-container-runtime.md) — where the application runs, and therefore what the transport risk actually is today
 - [PRD §8](../requirements/PRD-eop-card-game.md) — the security consequence of having no authentication
 - `.opencode/rules/security.md` — the defence-in-depth rule this decision knowingly does not meet
-- EOP-8 (spike), EOP-10 (issues the first token)
+- EOP-8 (spike), EOP-10 (issues the first token), EOP-11 (the client half that keeps it)

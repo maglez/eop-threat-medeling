@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-04
-**Deciders:** @team-member-tech-lead, @team-member-architecture-guardian
+**Deciders:** @tech-lead, @architecture-guardian
 
 ## Context
 
@@ -17,11 +17,14 @@ is a discrete request that wants a status code and a body. Everything else is th
 server telling everyone what just happened. Over a 60–90 minute game the
 server-to-client direction dominates by an order of magnitude.
 
-Two constraints from earlier decisions bound the choice. ADR-012 puts the
-application on a single t3.small with no load balancer and no session affinity,
-so every deployment is a container restart that drops every connected client.
-And decision 017 has not yet chosen a reverse proxy, so the transport must not
-quietly impose one.
+Two constraints from earlier decisions bound the choice. The application runs as a
+**single process with no load balancer and no session affinity**, so every
+deployment is a container restart that drops every connected client. At the time
+this ADR was written that followed from ADR-012's single EC2 instance; the EC2
+target has since been withdrawn and the process now runs in a local container
+(ADR-016), which changes nothing about the constraint — a local container is
+restarted at least as often as a remote one. And no reverse proxy had yet been
+chosen, so the transport must not quietly impose one.
 
 This decision was made after a time-boxed spike (EOP-8) that ran a real
 `SseEmitter` endpoint against the real application. The findings below are
@@ -49,16 +52,19 @@ harness, so the true number is lower. There is no latency argument for a more
 complex transport.
 
 **It does not pin a thread per connection.** `SseEmitter` returns immediately and
-completes asynchronously on the servlet container's async path. On a 2 GB
-instance shared with PostgreSQL, a transport that held a request thread open per
+completes asynchronously on the servlet container's async path. On one modest host
+shared with PostgreSQL, a transport that held a request thread open per
 connected player would be a real constraint. At 3–6 players it would not break,
 but the property is worth having for free.
 
 **It asks nothing of the reverse proxy that Caddy does not already do.** Caddy
 does not buffer proxied responses by default, so SSE works with no directive.
 nginx does buffer, and would need `proxy_buffering off` on the event path. This
-is a constraint to carry into decision 017 rather than a reason to pick a
-transport, but it is one fewer thing that can be silently misconfigured.
+was a constraint to carry into the reverse-proxy decision rather than a reason to
+pick a transport, but it is one fewer thing that can be silently misconfigured.
+ADR-017 subsequently chose Caddy, and the `ui/Caddyfile` that resulted contains no
+buffering directive on `handle /api/*` because none is needed — the prediction
+held.
 
 ### Reconnection means re-fetching state, not replaying events
 
@@ -155,11 +161,48 @@ onto the transport.
 `spike/EOP-8-sse-throwaway` is gone and no production code graduated from it, as
 EOP-8 required. The first real emitter arrives with EOP-10.
 
+## Amendments
+
+**2026-08-10 — the deployment premises were corrected; every conclusion stands.**
+This ADR reasoned from ADR-012's single `t3.small`. That EC2 target has been
+**withdrawn**, EOP-7 is closed as superseded, and the application runs locally in a
+container (ADR-016), demonstrated across three browsers on one machine.
+
+**None of the findings or conclusions change, and the two that matter get stronger.**
+
+*Reconnection is still a re-read, never a replay.* The argument never depended on
+the host. It depended on there being no persisted event log and on the process
+losing its subscriber list when it restarts — both still true, and a locally rebuilt
+container restarts more often than a deployed one would have. EOP-10 implemented it
+exactly as specified: `GET /api/v1/sessions/{sessionId}` re-reads full state from
+PostgreSQL, `Last-Event-ID` is deliberately not honoured, and
+`SessionRepositoryAdapter.assemble` takes both its reads from the database so that
+no registry or cache can contribute a different answer.
+
+*The heartbeat is still mandatory.* `SseSessionEventPublisher` runs a `sse-heartbeat`
+daemon thread at `eop.realtime.heartbeat-interval` and constructs every emitter as
+`new SseEmitter(0L)` — no container timeout at all. That combination is only safe
+because of the heartbeat: detecting a dead peer is this class's job, and a container
+timeout would otherwise close healthy idle lobbies. The over-reporting subscriber
+list is unchanged, and EOP-10 respected it: the registry is a broadcast list and is
+explicitly not used as a presence list.
+
+*The six-connection-per-origin note became more relevant, not less.* It was written
+off as "plausible during local testing". Local testing on one machine is now the
+only way this application is demonstrated. It remains harmless — three separate
+browsers hold one connection each against a per-origin cap of roughly six, and
+Caddy on a single origin (ADR-017) does not change the arithmetic — but anyone
+opening several tabs per browser should expect the seventh to stall rather than
+diagnose a server fault.
+
 ## Related
 
 - [ADR-015](ADR-015-player-identity.md) — the other half of this spike
-- [ADR-012](ADR-012-deployment-target.md) — single instance, no affinity, restart on deploy
+- [ADR-012](ADR-012-deployment-target.md) — one process, no affinity, restart on deploy; its EC2 target is withdrawn but the restart premise is unchanged
+- [ADR-016](ADR-016-local-container-runtime.md) — where the process actually runs
+- [ADR-017](ADR-017-frontend-delivery-topology.md) — the reverse proxy this ADR left open: Caddy, which needs no buffering directive on the event path
 - [ADR-005](ADR-005-error-handling-strategy.md) — why client actions stay HTTP requests
-- Decision 016, not yet made — reverse proxy; must not buffer the event path
+- [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — the first real emitter, and how the stream is authenticated
 - [PRD §3.3](../requirements/PRD-eop-card-game.md) — the game's traffic shape
+- [Runtime view](../architecture/runtime-view.md) — the reconnect and SSE sequences drawn out
 - EOP-8 (spike), EOP-10 (first use)
