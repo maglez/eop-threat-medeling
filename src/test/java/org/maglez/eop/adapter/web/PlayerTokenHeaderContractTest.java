@@ -27,32 +27,33 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Player token header contract")
 class PlayerTokenHeaderContractTest {
 
-  private static final Path CONTRACT = Path.of("docs", "api", "openapi.yml");
+    private static final Path CONTRACT = Path.of("docs", "api", "openapi.yml");
 
-  /** RFC 9110 field name: one or more token characters, no whitespace, no separators. */
-  private static final Pattern FIELD_NAME = Pattern.compile("[!#$%&'*+\\-.^_`|~0-9A-Za-z]+");
+    /** RFC 9110 field name: one or more token characters, no whitespace, no separators. */
+    private static final Pattern FIELD_NAME = Pattern.compile("[!#$%&'*+\\-.^_`|~0-9A-Za-z]+");
 
-  @Test
-  @DisplayName("is a syntactically valid HTTP field name")
-  void headerNameIsAValidHttpFieldName() {
-    assertThat(SessionController.PLAYER_TOKEN_HEADER).isNotBlank();
-    assertThat(SessionController.PLAYER_TOKEN_HEADER).matches(FIELD_NAME);
-  }
+    @Test
+    @DisplayName("is a syntactically valid HTTP field name")
+    void headerNameIsAValidHttpFieldName() {
+        assertThat(SessionController.PLAYER_TOKEN_HEADER).isNotBlank();
+        assertThat(SessionController.PLAYER_TOKEN_HEADER).matches(FIELD_NAME);
+    }
 
-  @Test
-  @DisplayName("is declared as a header parameter in the OpenAPI contract")
-  void headerNameIsDeclaredInTheContract() throws IOException {
-    assertThat(CONTRACT)
-        .as("the hand-authored API contract must be present for this test to mean anything")
-        .isRegularFile();
+    @Test
+    @DisplayName("is declared as a header parameter in the OpenAPI contract")
+    void headerNameIsDeclaredInTheContract() throws IOException {
+        assertThat(CONTRACT)
+                .as("the hand-authored API contract must be present for this test to mean anything")
+                .isRegularFile();
 
-    final String contract = Files.readString(CONTRACT, StandardCharsets.UTF_8);
+        final String contract = Files.readString(CONTRACT, StandardCharsets.UTF_8);
 
-    assertThat(contract)
-        .as(
-            "SessionController.PLAYER_TOKEN_HEADER names a header that %s does not declare;"
-                + " clients follow the contract, so every authenticated request would be refused",
-            CONTRACT)
-        .contains("name: " + SessionController.PLAYER_TOKEN_HEADER);
-  }
+        assertThat(contract)
+                .as(
+                        "SessionController.PLAYER_TOKEN_HEADER names a header that %s does not"
+                                + " declare; clients follow the contract, so every authenticated"
+                                + " request would be refused",
+                        CONTRACT)
+                .contains("name: " + SessionController.PLAYER_TOKEN_HEADER);
+    }
 }
