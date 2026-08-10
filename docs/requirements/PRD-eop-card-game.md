@@ -1,8 +1,7 @@
 # PRD: Elevation of Privilege threat modelling card game
 
-**Status:** Game rules now sourced and corrected (see §11). Assumptions about mechanics are closed
-where confirmed by primary sources. Assumptions about architecture and infrastructure remain open.
-**Date:** 2026-08-03 (rules correction: 2026-08-04)
+**Status:** Game rules now sourced and corrected (see §11). Deployment model updated: local-only, no AWS. Assumptions about architecture and infrastructure remain open.
+**Date:** 2026-08-03 (rules correction: 2026-08-04; deployment model update: 2026-08-10)
 **Epic:** [EOP-5](https://maglez.atlassian.net/browse/EOP-5)
 **Author:** `@product-owner`, reviewed and corrected by `@tech-lead`
 
@@ -164,7 +163,7 @@ which trick is in progress, and the notes recorded against played cards.
 - Resume after a browser refresh, a lost connection, or a server restart
 - A React + TypeScript + Vite front end under `ui/`, served behind a reverse proxy
 - Plain HTTP on a bare IP address — no TLS, no domain (ADR-012 records why)
-- Deployment to the EC2 instance already described by the Terraform in `infra/`
+- Local deployment on the developer machine using the container runtime delivered in EOP-16 — no cloud account required
 - A searchable reference list of all 78 threat prompts (replaces the 6 physical reference cards
   shipped with the deck, which players use to adjudicate whether an Ace's invented threat is
   already covered)
@@ -274,7 +273,7 @@ of scope now**, but the schema should not make it impossible to add later.
 | # | Risk | Owner | Blocks |
 |---|------|-------|--------|
 | R1 | ~~**The deck's licence is unverified.**~~ **CLOSED.** © 2009 Microsoft Corporation, Creative Commons Attribution 3.0 United States (CC-BY-3.0 US). Confirmed independently in the instruction card copyright page, whitepaper §2 footnote 6, and Shostack's repository README. Attribution to Microsoft is a licence obligation and must be visible in the UI — it is an acceptance criterion on EOP-13. | — | Closed |
-| R2 | **No AWS account exists.** `terraform apply` has never run. Nothing is demonstrable at a public IP. | Owner | EOP-7 only. |
+| R2 | ~~**No AWS account exists.**~~ **CLOSED.** The owner has decided not to deploy to AWS. The application is demonstrated locally on the developer machine, with multiplayer simulated across three browsers (Chrome, Safari, Chrome Incognito) to avoid shared cookie state. EOP-7 is closed as superseded; EOP-16 satisfies the deployment goal. The Terraform code in `infra/` is retained as a valid starting point if cloud deployment is wanted later. | — | Closed |
 | R3 | **Real-time transport undecided.** Server-sent events, WebSocket, or polling. | Tech Lead | EOP-10, EOP-14 |
 | R4 | **Player identity undecided.** Even anonymous multiplayer needs a durable credential answering "am I that player?" across a refresh. | Tech Lead | EOP-10, EOP-14 |
 | R5 | **Concurrency control undecided.** Two players acting at once must not produce an illegal game state (e.g. two players both believing they hold the same card). Optimistic locking is the likely answer; the semantics are not decided. | Tech Lead | EOP-14 |
@@ -396,9 +395,9 @@ which already boots the application under the `prod` profile against real Postgr
 Liquibase enabled and asserts `/health`. **It does not need a deployment to be finished.**
 
 That last point is a correction to an earlier draft, which made the card catalogue depend on the
-deploy story. Since the deploy story is itself blocked on an AWS account that does not exist,
-that dependency would have stalled the entire backlog behind a task nobody had started. EOP-7 is
-deliberately independent and gates nothing.
+deploy story. EOP-7 is deliberately independent and gates nothing. It has since been closed as
+superseded: the owner decided to run locally rather than on AWS, and EOP-16 (local container
+runtime) satisfies the deployment goal.
 
 ### Architecture decisions still required
 
