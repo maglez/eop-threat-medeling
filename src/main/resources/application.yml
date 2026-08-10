@@ -47,8 +47,9 @@ spring:
 
 # Feature flags (ADR-013). Every flag is off here so that forgetting to think
 # about one fails closed. A flag is bound at startup, so flipping it restarts the
-# application; on the deployment target that means setting the environment
-# variable in /opt/eop/.env and running docker compose up -d.
+# application; in a container that means setting EOP_FEATURES_SESSION_LIFECYCLE
+# in the environment the container starts with, then
+# docker compose -f compose.app.yml up -d (ADR-016).
 eop:
   features:
     # Session create, join, state, event stream and start (EOP-10). While this is
