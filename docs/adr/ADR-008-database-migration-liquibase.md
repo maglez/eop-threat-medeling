@@ -96,7 +96,8 @@ Adding the module behind a working opt-in was considered and rejected as out of 
 would create exactly the attack surface this change removes, and it belongs to its own ticket
 if anybody ever wants it. Until then, ad-hoc inspection of the in-memory schema is done with
 `spring.jpa.show-sql=true`, `./mvnw liquibase:updateSQL` for the DDL, or an integration test —
-an in-memory H2 database is only reachable from inside the JVM that owns it in any case.
+an in-memory H2 database is only reachable from inside the JVM that owns it in any case, unless
+an H2 TCP server is explicitly started, which nothing here does.
 
 ## Related
 

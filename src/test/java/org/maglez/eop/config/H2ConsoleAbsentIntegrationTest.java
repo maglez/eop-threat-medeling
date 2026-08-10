@@ -24,7 +24,7 @@ import org.springframework.core.env.Environment;
  * database, and it accepts a JDBC URL of the caller's choosing, which is the shape of
  * CVE-2021-42392. There is no Spring Security dependency in this project that could stand
  * in front of it. {@code application.yml} nonetheless said {@code enabled: true}, on the
- * profile every developer run uses, so the intent recorded in configuration was to expose it.
+ * profile every developer run uses, so the configuration, as written, consented to exposing it.
  *
  * <p>It was never actually exposed. Spring Boot 4 moved the console's autoconfiguration out
  * of {@code spring-boot-autoconfigure} into a separate {@code spring-boot-h2console} module,
@@ -32,15 +32,20 @@ import org.springframework.core.env.Environment;
  * property. The defect this class guards is therefore not a live endpoint but a standing
  * {@code yes} in configuration that only needed a dependency to become one.
  *
- * <p>Which changes what the assertions are worth, and the honest reading is worth stating.
- * {@link #shouldNotHaveTheConsoleAutoconfigurationOnTheClasspath()} is the only one that can
- * fail today: it is the tripwire, and it fires the moment somebody adds the module, so the
- * decision gets made at review time rather than discovered in an incident. The other three
- * cannot fail while the module is absent — nothing exists that could serve a console, so they
- * are vacuous by construction. They are kept anyway, because the tripwire converts them: the
- * day it fires and somebody adds the module deliberately, these become the assertions that
- * the guard in {@code application.yml} actually holds, and they are already in place rather
- * than needing to be remembered under pressure.
+ * <p>Which changes what the assertions are worth, and the honest reading is worth stating,
+ * in both directions. Two of the four are real gates. {@link #shouldResolveTheShippedDefaultToFalse()}
+ * fails if the shipped default is flipped back on — verified by mutation during the EOP-27
+ * review, and it is a gate only because the test-scoped override described below was removed.
+ * {@link #shouldNotHaveTheConsoleAutoconfigurationOnTheClasspath()} is the tripwire: it fires
+ * the moment somebody adds the module, so the decision gets made at review time rather than
+ * discovered in an incident.
+ *
+ * <p>The remaining two — the absent bean and the 404 — cannot fail while the module is absent,
+ * because nothing exists that could serve a console, so they are vacuous by construction
+ * today. They are kept anyway, because the tripwire converts them: the day it fires and
+ * somebody adds the module deliberately, these become the assertions that the guard in
+ * {@code application.yml} actually holds, and they are already in place rather than needing
+ * to be remembered under pressure.
  *
  * <p>The server is real and the request goes over a socket, because the console is a servlet
  * registration rather than a Spring MVC handler mapping: {@code MockMvc} answers 404 for
@@ -96,7 +101,7 @@ class H2ConsoleAbsentIntegrationTest {
     @Test
     @DisplayName("resolves the shipped default to false, so flipping it back on breaks this build")
     void shouldResolveTheShippedDefaultToFalse() {
-        assertThat(environment.getProperty(CONSOLE_ENABLED, Boolean.class)).isFalse();
+        assertThat(environment.getProperty(CONSOLE_ENABLED, Boolean.class, Boolean.FALSE)).isFalse();
     }
 
     @Test
