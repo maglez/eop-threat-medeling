@@ -1,6 +1,8 @@
 # ADR-012: Deployment to a Single EC2 Instance with Terraform
 
-**Status:** Accepted (deployment deferred 2026-08-05 — see Amendments)
+**Status:** Accepted; **deployment target withdrawn 2026-08-10** — superseded in part by
+[ADR-016](ADR-016-local-container-runtime.md) (see Amendments). The portability decisions
+below still stand and are implemented; the EC2 target is no longer intended.
 **Date:** 2026-08-03
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -230,6 +232,12 @@ the "Implemented?" column in the ADR index reflects that honestly.
 ## Amendments
 
 **2026-08-05 — deployment deferred; the same artifacts now run locally first.**
+*Partly retracted by the 2026-08-10 amendment below: the two sentences claiming that
+"what changed is timing, not design" and that EOP-7 "is postponed, not withdrawn" are
+no longer true. The rest of this note still holds. It is left in place rather than
+rewritten because an ADR records what was believed when, and on 2026-08-05 a deferral
+was genuinely what had been decided.*
+
 The decision above is left as written because none of it turned out to be wrong.
 The OCI image remains the portability boundary, GHCR remains the registry, Compose
 remains the orchestration layer, and Terraform remains the mechanism for the AWS
@@ -252,6 +260,73 @@ completion, the NVMe-serial volume discovery, the anonymous GHCR pull, the
 owner prerequisites listed in `infra/README.md` are all still outstanding.
 [EOP-7](https://maglez.atlassian.net/browse/EOP-7) stays open and unstarted; it
 is postponed, not withdrawn.
+
+**2026-08-10 — the target is withdrawn. This is a decision reversal, not a delay.**
+
+The 2026-08-05 note above was wrong on the only point that mattered. What changed
+was not timing. The owner has **withdrawn cloud deployment**, and
+[EOP-7](https://maglez.atlassian.net/browse/EOP-7) is **closed as superseded** — not
+postponed, not blocked, not waiting on a prerequisite. There is no AWS account, and
+**none is required**. A publicly reachable URL is no longer a goal of this epic.
+
+The deployment goal is satisfied by [ADR-016](ADR-016-local-container-runtime.md).
+The application runs on the developer's machine under the local container runtime,
+and multiplayer is demonstrated by **three browsers on one machine** — Chrome,
+Safari and Chrome Incognito — chosen because they do not share cookie or storage
+state, so three tabs behave as three players (ADR-015). That is the demonstration
+mechanism now. It is not a stand-in for a deployment that is coming later.
+
+What this reversal does and does not change:
+
+- **Withdrawn:** the `t3.small`, the Elastic IP, the dedicated VPC, the security
+  groups, the SSH keypair and its open port 22, the separate encrypted EBS volume,
+  the bare-IP HTTP demo URL, and the account-migration procedure. None of it is
+  intended to be created. Every operational statement in the Decision and
+  Consequences sections above should be read as *conditional on a cloud path that
+  is not being taken* — including the two ports, the IMDSv2 requirement, and the
+  Elastic IPv4 billing note.
+- **Still true and still implemented:** the container image is the portability
+  boundary; GHCR is the registry; the image is built `linux/amd64` in CI because
+  the development machine is Apple Silicon; `compose.app.yml` and the `prod`
+  profile are what actually run; `server.address` is `0.0.0.0`; there is no Swagger
+  UI in the container; PostgreSQL publishes no port outside the Compose network;
+  the repository still holds zero secrets. These were the load-bearing decisions
+  and none of them depended on EC2 — which the local pivot demonstrated by
+  requiring no change to any of them.
+- **Retained, unapplied:** `infra/` is kept as a `terraform validate`-clean
+  artefact and is **not deleted**. It has **never been applied**. It is retained on
+  one specific ground: if a cloud path ever resumes, it would need **no application
+  changes** — the image, the Compose file and the profile it targets are the same
+  ones running locally today. It is an option, not a plan, and it should not be
+  read as evidence that anything about the instance behaviour described above has
+  been verified. It has not.
+
+**One hazard is on record if the cloud path ever does resume, and it was never
+checked.** The data volume is mounted with `nofail`, so a failed mount does not
+brick the boot — it silently lets PostgreSQL initialise an **empty database on the
+root volume**. Nothing is actually lost, because the real data is still on EBS, but
+the symptom is indistinguishable from data loss, and the first `apply` is exactly
+when it would happen. `mountpoint /var/lib/eop` is the first thing to check. **That
+check has never been performed against a real AWS API**, and neither has any other
+claim in this document about instance behaviour: the AL2023 AMI resolving from the
+SSM parameter, user-data running to completion, the NVMe-serial volume discovery,
+or the anonymous GHCR pull. Anyone resuming this path starts from unverified.
+
+Consequences of the withdrawal that are worth stating plainly:
+
+- **No TLS is no longer a deployment trade-off; it is simply localhost.** The
+  sniffable-token consequence in ADR-015 changes shape rather than disappearing:
+  traffic no longer crosses a network at all, so the remote-attacker framing there
+  is obsolete, but the token still travels in plaintext HTTP and TLS is still the
+  fix if this is ever exposed.
+- **Restart-survival and reconnect-without-replay remain hard requirements.** This
+  is the important thing not to conclude from the withdrawal. Three browsers on one
+  machine still refresh, and the local container is still restarted on every
+  rebuild, so every connected client is still dropped and every reconnect is still
+  a full re-read (ADR-014, ADR-019). The premise moved from EC2 to a laptop; the
+  requirement did not move at all.
+- **`docs/devops/` and `infra/README.md` describe a path that is not being taken.**
+  They are accurate as instructions and inaccurate as intent.
 
 ## Related
 
