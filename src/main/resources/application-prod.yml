@@ -10,6 +10,9 @@ spring:
       ddl-auto: validate
   h2:
     console:
+      # Deliberately redundant since EOP-27 pinned the base default to false. Kept as a
+      # second independent guard: if somebody ever flips application.yml back on, the
+      # deployed profile still refuses. Defense in depth, not a single gate.
       enabled: false
   liquibase:
     enabled: true

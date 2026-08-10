@@ -1,6 +1,6 @@
 # ADR-008: Database Migration Strategy with Liquibase
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, DevOps Engineer, Security Auditor
@@ -46,6 +46,9 @@ Hibernate `ddl-auto` is set to `validate` in all profiles — Liquibase owns sch
 - New developers get a fully migrated DB on `./mvnw spring-boot:run` with no manual steps
 - H2 console available at `/h2-console` in `dev` profile for ad-hoc queries
 
+*Retracted by the 2026-08-10 amendment below: there is no `dev` profile, and there is no
+console. Ad-hoc inspection of the in-memory schema is covered in the amendment.*
+
 ### Negative
 
 - Developers must write Liquibase XML changesets instead of raw DDL (learning curve)
@@ -57,6 +60,44 @@ Hibernate `ddl-auto` is set to `validate` in all profiles — Liquibase owns sch
 - Rule file `.opencode/rules/database.md` provides change-set templates and conventions
 - H2 PostgreSQL compatibility mode can be used if dialect issues arise
 - Staging environment runs against PostgreSQL to catch dialect mismatches before prod
+
+## Amendments
+
+**Amendment, 2026-08-10 (EOP-27).** The positive consequence "H2 console available at
+`/h2-console` in `dev` profile for ad-hoc queries" is withdrawn. It was wrong in two
+independent ways, and the second one mattered.
+
+There has never been a `dev` profile. ADR-012 fixes the profile set at `{default, prod}`
+precisely so that local and deployed runs execute identical configuration, so the console
+was never scoped to a developer-only overlay — it was configured on the profile that every
+run uses unless told otherwise. `application.yml` carried `spring.h2.console.enabled: true`
+from the Walking Skeleton until this amendment.
+
+That is a serious default to have written down. The console is unauthenticated arbitrary
+SQL against the running application's own database, it accepts a JDBC URL supplied by the
+caller — the CVE-2021-42392 JNDI/RCE shape — and this project has no Spring Security
+dependency that could have stood in front of it.
+
+It was never actually served. Spring Boot 4 moved the console's autoconfiguration out of
+`spring-boot-autoconfigure` into a separate `org.springframework.boot:spring-boot-h2console`
+module, which this project does not depend on, so no class on the classpath ever read the
+property. The exposure was latent, not live: one transitive dependency, or one developer
+adding the module for convenience, and it would have arrived with the configuration already
+consenting and no review to notice.
+
+The property therefore stays in `application.yml` as an explicit `false` with the reasoning
+attached, rather than being deleted. Deleting it would leave the next person free to add the
+module and inherit a default; leaving it means they have to change a line that says why it is
+off. `H2ConsoleAbsentIntegrationTest` pins this: it asserts the console is absent, and its
+load-bearing assertion is a tripwire on the autoconfiguration class itself, so the build fails
+the day the module lands and the decision is taken at review time rather than in an incident.
+
+Adding the module behind a working opt-in was considered and rejected as out of scope: it
+would create exactly the attack surface this change removes, and it belongs to its own ticket
+if anybody ever wants it. Until then, ad-hoc inspection of the in-memory schema is done with
+`spring.jpa.show-sql=true`, `./mvnw liquibase:updateSQL` for the DDL, or an integration test —
+an in-memory H2 database is only reachable from inside the JVM that owns it in any case, unless
+an H2 TCP server is explicitly started, which nothing here does.
 
 ## Related
 
