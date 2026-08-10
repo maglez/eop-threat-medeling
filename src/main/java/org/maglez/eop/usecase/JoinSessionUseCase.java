@@ -4,11 +4,14 @@ import java.time.Clock;
 import java.util.Objects;
 import org.maglez.eop.entity.ConnectionStatus;
 import org.maglez.eop.entity.DisplayName;
+import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.IdentityTokenHash;
 import org.maglez.eop.entity.JoinCode;
 import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.PlayerRole;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
+import org.maglez.eop.entity.SessionFullException;
+import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 
 /**
@@ -76,6 +79,13 @@ public class JoinSessionUseCase {
      * those two apart would turn the endpoint into an oracle that confirms which codes
      * are real (ADR-019).
      *
+     * <p>A refusal that arrives <em>after</em> the code matched is charged to the
+     * throttle for the same reason. A full table and a game already under way are both
+     * proof that the code is live, so leaving those paths free would let a caller
+     * confirm real codes at full request rate while the limiter — the primary control
+     * behind a thirty-bit code space — never fires. Losing a race for a seat is not
+     * charged: that is our own contention, not a failed attempt by the caller.
+     *
      * <p>The identity token and the player identifier are generated once, before the
      * retry loop, so that losing a race for a seat does not change who the player is.
      *
@@ -87,8 +97,8 @@ public class JoinSessionUseCase {
      * @throws NullPointerException if displayName is null
      * @throws TooManyJoinAttemptsException if this caller has failed too often
      * @throws UnknownJoinCodeException if the code matches no session
-     * @throws org.maglez.eop.entity.SessionNotJoinableException if play has started
-     * @throws org.maglez.eop.entity.SessionFullException if the table is full
+     * @throws SessionNotJoinableException if play has started
+     * @throws SessionFullException if the table is full
      * @throws SeatAlreadyTakenException if every seat claim lost its race
      */
     public SessionAdmission execute(final String rawJoinCode, final DisplayName displayName, final String clientAddress) {
@@ -117,15 +127,23 @@ public class JoinSessionUseCase {
                 throw new UnknownJoinCodeException();
             }
 
-            final var joining = new Player(
-                    playerId,
-                    displayName,
-                    session.nextSeatOrder(),
-                    PlayerRole.PARTICIPANT,
-                    ConnectionStatus.CONNECTED,
-                    tokenHash,
-                    now);
-            final var joined = session.join(joining, now);
+            final Player joining;
+            final GameSession joined;
+            try {
+                joining = new Player(
+                        playerId,
+                        displayName,
+                        session.nextSeatOrder(),
+                        PlayerRole.PARTICIPANT,
+                        ConnectionStatus.CONNECTED,
+                        tokenHash,
+                        now);
+                joined = session.join(joining, now);
+            }
+            catch (final SessionFullException | SessionNotJoinableException refused) {
+                joinAttemptLimiter.recordFailure(clientAddress, rawJoinCode);
+                throw refused;
+            }
 
             try {
                 sessionRepository.seatPlayer(session.sessionId(), joining, now);
