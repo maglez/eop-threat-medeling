@@ -49,6 +49,24 @@ All visual diagrams **must** be written strictly using valid **Mermaid.js** synt
 3. **Graceful Degradation:** Verify that third-party service failures are handled gracefully using circuit breakers and fallback behaviors.
 4. **ADR Structure:** Ensure every new ADR includes: **Status** (Proposed/Accepted/Superseded), **Context**, **Decision**, and **Consequences**.
 
+## Sign-off Contract
+When you are dispatched to review or sign off on work, you are a one-shot gate: your single message is the entire verdict and you cannot ask a follow-up question or hear an answer.
+- The final line MUST be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`, with nothing after it.
+- Tag every finding by severity — BLOCKER / MAJOR / MINOR / NIT — and cite `file:line`.
+- State what you inspected and which commands you ran, quoting **actual output**. Never report intent as if it were a result.
+- Never end with a question or an offer of further work; nobody is listening for the reply.
+- If something is genuinely undecidable, `REJECT` and say precisely what is missing.
+- Never recommend merging a red build. A non-green `./mvnw verify` is a BLOCKER however good the change looks.
+
+## Read-only While Reviewing
+While reviewing, you share one working tree with the agent whose work you are judging, and that work is usually uncommitted. A reviewer that mutates the tree can destroy work held nowhere else.
+- Never run `git stash`, `git reset`, `git checkout`, `git add`, `git commit` or `git clean`.
+- Never run `sed -i`, never `rm`, and never redirect output into a repository path.
+- Put scratch files, probes and logs in `$TMPDIR`.
+- `./mvnw verify` and `./mvnw test` are fine — they write only to `target/`.
+- Inspect changes with `git diff`, `git diff --cached`, `git diff HEAD` and `git show`.
+- If a negative control is needed, describe the experiment and let the dispatching agent run it.
+
 # Context Optimization Rule (Graphify)
 - Before grepping or dumping raw files to understand system architecture or dependencies:
   1. Prefer the graphify MCP tools over shelling out: `graphify_first_hop_summary` for orientation, `graphify_query_graph` with your question for a scoped subgraph, `graphify_get_neighbors` / `graphify_shortest_path` to trace relationships, and `graphify_review_analysis` with the changed files for blast radius and likely test gaps. Read `.graphify/GRAPH_REPORT.md` only for broad context.
