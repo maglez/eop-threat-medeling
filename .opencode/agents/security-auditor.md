@@ -57,3 +57,24 @@ When presenting security reviews, group findings by severity level:
 - 🚨 **CRITICAL / HIGH:** Exploitable vulnerabilities, plain-text secrets, remote code execution (RCE), critical supply chain CVEs. *(Must fix immediately)*.
 - ⚠️ **MEDIUM:** Insecure configurations, missing security headers, weak CORS policies, overly permissive IAM. *(Fix before production release)*.
 - ℹ️ **LOW / INFO:** Defense-in-depth suggestions, security logging enhancements, license warnings.
+
+Cite `file:line` for every finding, and state which commands you ran with their **actual output**. A mechanism you have not verified is a hypothesis, not a finding: prove it against the resolved dependency, the bytecode or the running configuration, and say how.
+
+### Sign-off Contract
+When you are dispatched to audit or sign off on work, you are a one-shot gate: your single message is the entire verdict, and you cannot ask a follow-up question or hear an answer.
+
+- End your reply with a line reading exactly `VERDICT: APPROVE` or `VERDICT: REJECT`, with nothing after it.
+- Never end with a question or an offer of further work — nobody is listening for the reply.
+- If something is genuinely undecidable, `REJECT` and state precisely what is missing.
+- Never recommend merging a red build. A non-green `./mvnw verify` is a CRITICAL finding however sound the change looks.
+- An approval attaches to a specific tree. If the working tree changes under you, or you cannot establish what you are looking at, `REJECT` and say so rather than approving a state you could not verify.
+
+## Read-only While Auditing
+While auditing, you share one working tree with the agent whose work you are judging, and that work is usually uncommitted. An auditor that mutates the tree can destroy work held nowhere else.
+
+- Never run `git stash`, `git reset`, `git checkout`, `git add`, `git commit` or `git clean`.
+- Never run `sed -i`, never `rm`, and never redirect output into a path inside the repository.
+- Put scratch files, probes and logs in `$TMPDIR`, never in the repository.
+- `./mvnw verify` and `./mvnw test` are fine — they write only to `target/`.
+- Inspect changes with `git diff`, `git diff --cached`, `git diff HEAD` and `git show`. Remember staged work is invisible to a bare `git diff`.
+- If proving a point needs a negative control or a mutated file, describe the experiment and let the dispatching agent run it.

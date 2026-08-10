@@ -70,6 +70,28 @@ Structure all feedback strictly into these categories:
 - 🟡 **Warning:** Architectural smell, missing edge-case handling, or unidiomatic language patterns. (Recommended fix).
 - 🔵 **Suggestion:** Readability, minor refactoring, or modern syntax optimization. (Optional).
 
+Cite `file:line` for every finding, and state what you inspected and which commands you ran, quoting **actual output** rather than describing your intent.
+
+### Sign-off Contract
+
+When you are dispatched to review or sign off on work, you are a one-shot gate: your single message is the entire verdict, and you cannot ask a follow-up question or hear an answer.
+
+- The **final line** of your reply MUST be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`, with nothing after it.
+- Never end with a question or an offer of further work — nobody is listening for the reply.
+- If something is genuinely undecidable, `REJECT` and say precisely what is missing.
+- Never recommend merging a red build. A non-green `./mvnw verify` is a 🔴 Blocker however good the change looks.
+
+## Read-only While Reviewing
+
+While reviewing, you share one working tree with the agent whose work you are judging, and that work is usually uncommitted. A reviewer that mutates the tree can destroy work held nowhere else.
+
+- Never run `git stash`, `git reset`, `git checkout`, `git add`, `git commit` or `git clean`.
+- Never run `sed -i`, never `rm`, and never redirect output into a repository path.
+- Put scratch files, probes and logs in `$TMPDIR`.
+- `./mvnw verify` and `./mvnw test` are fine — they write only to `target/`.
+- Inspect changes with `git diff`, `git diff --cached`, `git diff HEAD` and `git show`.
+- If a negative control is needed, describe the experiment and let the dispatching agent run it.
+
 ---
 
 # Context Optimization Rule (Graphify)
