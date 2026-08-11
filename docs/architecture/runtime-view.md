@@ -236,6 +236,7 @@ sequenceDiagram
     participant F as Facilitator
     participant P2 as Player 2
     participant SC as SessionController
+    participant CAR as ClientAddressResolver
     participant LIM as InMemoryJoinAttemptLimiter
     participant JU as JoinSessionUseCase
     participant SRA as SessionRepositoryAdapter
@@ -257,6 +258,9 @@ sequenceDiagram
     Note over F: The token plaintext leaves the server<br/>exactly once, here.
 
     P2->>SC: POST /api/v1/sessions/{joinCode}/players
+    SC->>CAR: of(request)
+    Note over SC,CAR: X-Forwarded-For is read only if the peer is on<br/>eop.web.trusted-proxies — empty by default.<br/>Otherwise getRemoteAddr wins. The caller cannot<br/>choose the key the throttle counts against (ADR-021).
+    CAR-->>SC: canonical client address
     SC->>JU: execute(joinCode, displayName, clientAddress)
     JU->>LIM: check the sliding windows, per IP and per code
     alt allowance exhausted
@@ -336,6 +340,12 @@ mistyped, or belonged to an abandoned session, so the endpoint is not an oracle.
 limiter's counters are in process memory, so **immediately after a restart every
 attacker starts with a full allowance** (ADR-019).
 
+**And the key it counts against is resolved before it, deliberately.** A throttle whose
+bucket the caller can choose is not a throttle. Until EOP-26 `X-Forwarded-For` was
+believed from anyone, so rotating it once per request gave a fresh empty window every
+time; the header is now read only from a peer on the `eop.web.trusted-proxies`
+allow-list, which is empty unless a deployment says otherwise (ADR-021).
+
 ---
 
 ## Related
@@ -344,6 +354,7 @@ attacker starts with a full allowance** (ADR-019).
 - [ADR-014](../adr/ADR-014-realtime-transport.md) — SSE, the mandatory heartbeat, and why reconnection re-reads
 - [ADR-019](../adr/ADR-019-session-lifecycle-and-join-codes.md) — the five routes, header-only stream auth, and the join code
 - [ADR-020](../adr/ADR-020-session-concurrency-control.md) — compare-and-set on `status`, the row lock, and the unique constraints
+- [ADR-021](../adr/ADR-021-trusted-proxy-forwarded-for.md) — how `clientAddress` is decided, and why the header is ignored by default
 - [ADR-015](../adr/ADR-015-player-identity.md) — the token, its digest, and the client half that is not built yet
 - [ADR-005](../adr/ADR-005-error-handling-strategy.md) — where every refusal above becomes a problem detail
 - [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all five routes

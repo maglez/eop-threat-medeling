@@ -1,5 +1,13 @@
 server:
   port: 8080
+  # Explicitly pinned (EOP-26, ADR-021). The application resolves the client address itself via
+  # ClientAddressResolver against an explicit allow-list; letting the container or framework
+  # rewrite getRemoteAddr() from headers would undermine that, because both alternatives trust
+  # wide private ranges by default and one of those ranges contains our own Compose subnet;
+  # so the value is pinned rather than left to a default. NONE is already the effective default
+  # and pinning it is the point - the property exists so a future well-intentioned "we're behind
+  # a proxy now" change cannot silently re-open EOP-26.
+  forward-headers-strategy: none
 
 spring:
   application:
@@ -45,12 +53,25 @@ spring:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
 
-# Feature flags (ADR-013). Every flag is off here so that forgetting to think
-# about one fails closed. A flag is bound at startup, so flipping it restarts the
-# application; in a container that means setting EOP_FEATURES_SESSION_LIFECYCLE
-# in the environment the container starts with, then
-# docker compose -f compose.app.yml up -d (ADR-016).
 eop:
+  web:
+    # Peers whose X-Forwarded-For header is believed, as literal addresses or CIDR
+    # blocks (ADR-021). Empty means nobody, so the header is ignored and the real
+    # peer address is used instead. That is the correct answer everywhere the
+    # application is reached without a reverse proxy in front of it: locally, in
+    # tests, and from a sibling container. Before EOP-26 the header was read
+    # unconditionally, which let any caller nominate its own rate-limiter bucket and
+    # rotate it once per guess, defeating the join throttle ADR-019 depends on.
+    #
+    # The deployed value is set on the app service in compose.app.yml, beside the
+    # fixed address of the proxy it has to match. A malformed entry fails startup.
+    trusted-proxies: []
+
+  # Feature flags (ADR-013). Every flag is off here so that forgetting to think
+  # about one fails closed. A flag is bound at startup, so flipping it restarts the
+  # application; in a container that means setting EOP_FEATURES_SESSION_LIFECYCLE
+  # in the environment the container starts with, then
+  # docker compose -f compose.app.yml up -d (ADR-016).
   features:
     # Session create, join, state, event stream and start (EOP-10). While this is
     # false the controller bean does not exist, so every /api/v1/sessions path

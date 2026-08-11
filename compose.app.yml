@@ -28,6 +28,15 @@
 # would destroy the other stack.
 name: eop-app
 
+# Pin the default network subnet so the proxy can have a fixed address for the
+# application to allow-list. Without this Compose hands out dynamic IPs.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          ip_range: 172.28.0.128/25
+
 services:
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -71,6 +80,10 @@ services:
       DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       DATASOURCE_USER: ${POSTGRES_USER}
       DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # Must match the ipv4_address pinned on the caddy service in this same file.
+      # A /32 is used so only Caddy is trusted - not the Postgres container or
+      # anything else that happens to share the network.
+      EOP_WEB_TRUSTED_PROXIES: 172.28.0.10/32
     # No `ports:` either. The application is reachable only through Caddy, on the
     # same origin as the front end. That is the whole point of
     # docs/adr/ADR-017-frontend-delivery-topology.md: the browser never makes a
@@ -98,6 +111,9 @@ services:
       # docker-compose.yml; on the EC2 instance it is 0.0.0.0 because the demo
       # has to be reachable, and the security group is what limits access.
       - "${APP_BIND:-127.0.0.1}:80:8080"
+    networks:
+      default:
+        ipv4_address: 172.28.0.10
 
 volumes:
   eop_postgres_data:

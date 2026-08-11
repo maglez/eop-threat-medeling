@@ -15,8 +15,9 @@ Visual architecture for the EoP threat-modelling card game, in
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after EOP-10. Where a diagram would
-flatter the design, the prose underneath says so instead.
+Everything below reflects the code as it stands after EOP-10, with the client-address
+resolution introduced by EOP-26 (ADR-021). Where a diagram would flatter the design, the
+prose underneath says so instead.
 
 ---
 
@@ -34,7 +35,7 @@ flowchart TD
 
     subgraph host["Developer machine — Colima / Docker Compose (ADR-016)"]
         subgraph caddyC["Container: caddy<br/>[Caddy 2]"]
-            CADDY["Single origin, host port 80<br/>listens on 8080 inside the container<br/>admin off, auto_https off"]
+            CADDY["Single origin, host port 80<br/>listens on 8080 inside the container<br/>admin off, auto_https off<br/>fixed address 172.28.0.10 on the pinned 172.28.0.0/24 network"]
             STATIC["file_server over /srv<br/>SPA fallback to index.html"]
         end
 
@@ -55,7 +56,7 @@ flowchart TD
     B2 --> CADDY
     B3 --> CADDY
 
-    CADDY -->|"handle /api/*<br/>reverse_proxy app:8080<br/>no buffering directive needed"| WEB
+    CADDY -->|"handle /api/*<br/>reverse_proxy app:8080<br/>header_up X-Forwarded-For — the immediate peer<br/>no buffering directive needed"| WEB
     CADDY -->|"handle /health"| WEB
     CADDY --> STATIC
 
@@ -67,7 +68,7 @@ flowchart TD
     PERS -->|"JDBC, inside the Compose network only"| PG
 ```
 
-Two things to read off this diagram rather than infer.
+Three things to read off this diagram rather than infer.
 
 **One origin, therefore no CORS.** Caddy serves the built front end and proxies
 `/api/*` and `/health` to the application, so the browser never makes a cross-origin
@@ -80,6 +81,15 @@ later would require CORS to be designed, not merely switched on.
 layer talks to use cases, use cases talk to ports, and the persistence adapter
 implements those ports. The dotted line to `entity` is drawn only to state that it is
 not used as a shortcut.
+
+**Caddy's address on the diagram is a fact the application depends on, not decoration.**
+The Compose default network is pinned to `172.28.0.0/24` and the `caddy` service to
+`172.28.0.10` so that the application has something stable to allow-list; the `app`
+service carries `EOP_WEB_TRUSTED_PROXIES: 172.28.0.10/32` a few lines away in the same
+file. `X-Forwarded-For` is read **only** from that peer, and the default is to trust
+nobody, so this arrow is the whole trust boundary for client-address resolution
+(ADR-021). The single-origin topology makes only Caddy *reachable in practice*; it does
+not make the peer *provably* Caddy, and the application no longer assumes it does.
 
 ---
 
@@ -95,7 +105,8 @@ flowchart LR
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
         SSE["SseSessionEventPublisher<br/>in-process subscriber registry"]
         LIM["InMemoryJoinAttemptLimiter<br/>process-local — A SECURITY CONTROL"]
-        CA["ClientAddresses<br/>resolves the caller IP to key the limiter"]
+        CA["ClientAddressResolver<br/>the one answer to who the caller is<br/>ignores X-Forwarded-For unless the peer is allow-listed"]
+        TP["TrustedProxies + IpLiterals<br/>eop.web.trusted-proxies — empty by default, so deny-all<br/>malformed entry fails startup; addresses canonicalised"]
     end
 
     subgraph secpkg["adapter/security"]
@@ -134,7 +145,8 @@ flowchart LR
     SC --> RESOLVE
     SC --> SSE
     SC -.->|"throws domain exceptions"| GEH
-    JOIN --> CA
+    SC -->|"resolves the client address before calling the use case"| CA
+    CA --> TP
 
     CREATE --> P1
     CREATE --> P3
@@ -245,6 +257,14 @@ video call. Thirty bits is unguessable *only while guessing is slow*. The limite
 therefore a **primary control, not defence in depth** (ADR-019). Lengthening the code
 is a precondition for weakening the limiter, not an alternative to it.
 
+**Which makes the key it counts against part of the control.** Until EOP-26 the client
+address came from `X-Forwarded-For` unconditionally, so a caller could pick its own
+bucket and rotate it once per request; the limiter ran and enforced nothing.
+`ClientAddressResolver` now reads that header only when the peer is on the
+`eop.web.trusted-proxies` allow-list, which is empty by default, and canonicalises the
+result before it becomes a map key — because two spellings of one address are two
+buckets, which is the same defect by another route ([ADR-021](../adr/ADR-021-trusted-proxy-forwarded-for.md)).
+
 **And why the diagram must not smooth this over:** the state is in process memory, so
 **a restart forgets every counter, and protection is at its weakest in the moments
 immediately after a restart.** Accepted rather than solved, on the stated ground that
@@ -289,5 +309,6 @@ answerable by listing one directory.
 - [ADR-014](../adr/ADR-014-realtime-transport.md) — SSE, the heartbeat, and the over-reporting subscriber list
 - [ADR-019](../adr/ADR-019-session-lifecycle-and-join-codes.md) — the five routes, the join code, and why the limiter is a primary control
 - [ADR-020](../adr/ADR-020-session-concurrency-control.md) — compare-and-set on `status`, and why `@Version` is not the gate
+- [ADR-021](../adr/ADR-021-trusted-proxy-forwarded-for.md) — the trusted-proxy allow-list, the pinned Compose subnet, and why the limiter's key is part of the control
 - [ADR-013](../adr/ADR-013-feature-flags.md) — the flag that decides whether `SessionController` exists
 - [PRD §5](../requirements/PRD-eop-card-game.md) — the domain concepts these containers persist
