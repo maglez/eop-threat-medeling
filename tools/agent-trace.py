@@ -135,7 +135,8 @@ AUDITOR_AGENTS = {
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and
-# `/trace` documents a read-only RISK as an urgent configuration defect.
+# `/trace` documents a read-only RISK as a Sign-off Contract breach worth
+# fixing immediately.
 #
 # Scope: the DoD gates that declare `permission.edit: deny`, and only those. The
 # four advisory experts declare it too but are not gates and never carry a
@@ -478,9 +479,11 @@ def conformance(trace: dict) -> list[str]:
                 f" ({', '.join(culprits)}) - same model, so this is self-review"
             )
 
-    # An agent whose definition denies `edit` but which edited files is a
-    # permission failure. Only the strictly read-only gates are checked here;
-    # see READ_ONLY_AGENTS for why this is not AUDITOR_AGENTS.
+    # An agent whose definition denies `edit` but which edited files has broken
+    # its Sign-off Contract. Whether it also defeated the permission layer
+    # depends on which tool it used — see AUTHORING_TOOLS. Only the strictly
+    # read-only gates are checked here; see READ_ONLY_AGENTS for why this is
+    # not AUDITOR_AGENTS.
     for node in trace["nodes"]:
         if node["agent"] in READ_ONLY_AGENTS and node["authoring"] > 0:
             findings.append(
