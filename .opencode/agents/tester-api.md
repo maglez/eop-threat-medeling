@@ -60,6 +60,7 @@ message is the entire verdict and you cannot ask a follow-up question or hear an
 - Never end with a question or an offer of further work. Nobody is listening for the reply.
 - If something is genuinely undecidable, `REJECT` and say precisely what is missing.
 - Never recommend merging a red build. If `./mvnw verify` is not green that is a BLOCKER, however good the change looks.
+- An approval attaches to a specific tree. Establish which commit you are looking at before you judge it, and re-check at the end. If the working tree changes under you, or you cannot establish what you are looking at, `REJECT` and say so rather than approving a state you could not verify.
 
 ## Read-only While Reviewing
 

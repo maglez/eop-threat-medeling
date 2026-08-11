@@ -84,9 +84,9 @@ If budget runs low before all five have signed off, pause and report status hone
 ┌───────────────────────────▼────────────────────────────┐
 │              1. TRUNK-BASED EXECUTION                  │
 │  Short-lived topic branch created off `main`           │
-│  @architecture-guardian ──► @db-designer             │
+│  @architecture-guardian ──► @db-designer               │
 │  @ui-builder (Wraps incomplete features in Flags)      │
-│  @devops-engineer (Evolves CI/CD pipeline incrementally)│
+│  @devops-engineer (Evolves CI/CD incrementally)        │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐

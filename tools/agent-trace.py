@@ -44,8 +44,12 @@ DB_PATH = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
 
 # Tools that change the working tree. An agent declaring `edit: deny` that shows
 # up here has violated its contract; whether it also defeated the permission
-# layer depends on which tool it used, because only `edit` is actually denied.
-# See READ_ONLY_AGENTS below for why that gap is deliberate.
+# layer depends on which tool it used, because `edit` is the only write-class
+# key any agent actually declares. That last point is inferred from the
+# declarations in `.opencode/agents/*.md`, not confirmed against the OpenCode
+# runtime — the runtime may withhold the whole write class from an `edit: deny`
+# agent, in which case there is no gap. Erring toward the wider check is the
+# safe direction. See READ_ONLY_AGENTS below for why it is deliberate.
 AUTHORING_TOOLS = {"edit", "write", "patch", "multiedit", "notebookedit"}
 
 # Built-in agents. They are not team members and should not be judged
@@ -88,6 +92,9 @@ PIPELINE = {
 # rather than hand-listed, so it cannot drift out of step with the rosters above.
 # These are the agents whose mere presence in a trace is not evidence that any
 # particular stage was served, because the trace records no stage attribution.
+# Under the rosters above this resolves to `architecture-guardian` alone, so the
+# plural wording downstream is currently unreachable; it is kept so a second
+# multi-stage agent does not silently produce a grammatically wrong finding.
 MULTI_STAGE_AGENTS = {
     agent
     for agent in {name for stage in PIPELINE.values() for name in stage}
