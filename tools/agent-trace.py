@@ -63,7 +63,8 @@ BUILTIN_AGENTS = {
 # Definition-of-Done gates and nothing else: performance-engineer is advisory and
 # carries no Sign-off Contract, so dispatching it as a gate is unsupported.
 # architecture-guardian appears in both stages by design — it authors ADRs during
-# build and gates the PR — so it is not double-counted in error.
+# build and gates the PR. The roster is right, but the arithmetic below cannot
+# tell those two dispatches apart, so see MULTI_STAGE_AGENTS.
 PIPELINE = {
     "0 requirements": ["product-owner"],
     "1 build": [
@@ -79,6 +80,16 @@ PIPELINE = {
         "code-reviewer",
         "architecture-guardian",
     ],
+}
+
+# Agents the pipeline expects in more than one stage. Derived from PIPELINE
+# rather than hand-listed, so it cannot drift out of step with the rosters above.
+# These are the agents whose mere presence in a trace is not evidence that any
+# particular stage was served, because the trace records no stage attribution.
+MULTI_STAGE_AGENTS = {
+    agent
+    for agent in {name for stage in PIPELINE.values() for name in stage}
+    if sum(agent in stage for stage in PIPELINE.values()) > 1
 }
 
 # Agents whose job is to judge someone else's work. If one of these ran on the
@@ -101,8 +112,10 @@ AUDITOR_AGENTS = {
 # A *strictly* read-only agent: one whose definition declares `permission.edit:
 # deny`, so any edit it makes is a permission failure. This is deliberately NOT
 # the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
-# independent of the author — family-independent where the invariant holds, at
-# worst model-independent in its two documented exceptions (Blueprint §3.1)";
+# independent of the author — family-independent where the invariant holds, and
+# in its two documented exceptions the strongest guarantee still available,
+# which is model-independence at best and neither degree where the gate and the
+# author resolve to one model ID (Blueprint §3.1)";
 # read-only membership means "this agent must never write". Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
@@ -375,13 +388,30 @@ def conformance(trace: dict) -> list[str]:
     for stage, expected in PIPELINE.items():
         present = [agent for agent in expected if agent in ran]
         missing = [agent for agent in expected if agent not in ran]
+        # `ran` carries no stage attribution: the trace records that an agent was
+        # dispatched, never which pipeline stage the dispatch served. So an agent
+        # listed in two stages is credited to both on the strength of a single
+        # dispatch, and this stage's evidence is not proof it ran *here*. Say so
+        # rather than printing an unqualified OK over evidence that cannot bear
+        # it — @architecture-guardian authors ADRs at stage 1 and gates the PR at
+        # stage 2, so one build-time dispatch would otherwise report stage 2
+        # complete while that gate never reviewed the work at all.
+        ambiguous = [agent for agent in present if agent in MULTI_STAGE_AGENTS]
+        caveat = (
+            f" (unattributable: {', '.join(ambiguous)} also belongs to another"
+            " stage, so this may be one dispatch counted twice)"
+            if ambiguous
+            else ""
+        )
         if not present:
             findings.append(f"MISS  stage {stage}: none of {', '.join(expected)} ran")
         elif missing:
             findings.append(
                 f"PART  stage {stage}: ran {', '.join(present)};"
-                f" absent {', '.join(missing)}"
+                f" absent {', '.join(missing)}{caveat}"
             )
+        elif ambiguous:
+            findings.append(f"PART  stage {stage}: {', '.join(present)}{caveat}")
         else:
             findings.append(f"OK    stage {stage}: {', '.join(present)}")
 
