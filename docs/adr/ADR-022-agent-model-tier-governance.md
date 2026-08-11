@@ -72,9 +72,12 @@ emits files.
    because a behaviour enforced only by whatever the dispatching prompt happens to mention is
    not enforced.
 5. **This narrows the Separation Invariant, and the narrowing is accepted deliberately rather
-   than denied.** The invariant now holds unconditionally for production code and
-   infrastructure. It does **not** hold for test code. The Separation Invariant must be stated
-   with that qualification rather than continuing to claim it holds without exception.
+   than denied.** The invariant holds for *delegated* production code and infrastructure. It has
+   two documented exceptions and must always be cited with them: it does **not** hold for test
+   code (this decision), and it does **not** hold for production code the primary agent or
+   `@tech-lead` authors itself instead of delegating, since both run on `MODEL_A` alongside two
+   of the five gates. Stating it as unconditional — for any artefact class — is the specific
+   error this ADR exists to stop.
 6. Reversing any part of this allocation requires a superseding ADR. It may not be done by
    editing the tier tables, which is how the previous classification came to contradict a rule
    the project had already written down.
@@ -83,18 +86,23 @@ emits files.
 flowchart LR
     subgraph reasoning["MODEL_A / MODEL_B — reasoning tiers"]
         G1["@architecture-guardian<br/>@security-auditor<br/>MODEL_A"]
-        G2["@code-reviewer<br/>@tester-api<br/>@tester-unit-and-quality<br/>MODEL_B"]
+        G2["@code-reviewer<br/>@tester-api<br/>@tester-unit-and-quality<br/>MODEL_B<br/><i>(gates only; @product-owner<br/>and the experts also sit here)</i>"]
+        TL["primary agent / @tech-lead<br/>MODEL_A"]
     end
     subgraph coder["MODEL_C / MODEL_E — coder tier (one model)"]
         A1["@db-designer<br/>@devops-engineer<br/>@performance-engineer<br/>@ui-builder"]
     end
-    A1 -->|"production code &<br/>infrastructure"| PROD["Production artefacts"]
+    A1 -->|"delegated production code<br/>& infrastructure"| PROD["Production artefacts"]
+    TL -.->|"production code authored<br/>instead of delegated"| PROD
     G2 -->|"test code"| TEST["Test artefacts"]
-    PROD -->|"reviewed by — invariant holds"| G1
-    PROD -->|"reviewed by — invariant holds"| G2
+    PROD -->|"reviewed by — independent<br/>only for the delegated path"| G1
+    PROD -->|"reviewed by — independent"| G2
     TEST -->|"reviewed by — independent"| G1
     TEST -.->|"same model ID —<br/>NOT independent"| G2
 ```
+
+Dashed edges are the two documented exceptions: `@tech-lead`/primary-agent production code shares
+`MODEL_A` with `G1`, and tester-authored test code shares its exact model ID with `@code-reviewer`.
 
 ## Consequences
 
@@ -117,8 +125,10 @@ flowchart LR
   `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` — not merely the same family. Test code
   authored by a tester and reviewed by `@code-reviewer` is therefore reviewed by identical
   weights. The mitigation is real but partial: `@architecture-guardian` on `MODEL_A` remains a
-  genuinely independent reviewer of test code, so tests are not wholly unreviewed; but any
-  claim that *both* named reviewers provide independence for tester-authored tests is false.
+  genuinely independent reviewer of any test authored on `MODEL_B`, so tests are not wholly
+  unreviewed; but any claim that *both* named reviewers provide independence for tester-authored
+  tests is false, and a test authored by the primary agent on `MODEL_A` has no independent
+  reviewer at all.
   The trade was accepted because a gate that cannot hold its contract blocks or corrupts every
   story, whereas same-model review of test code degrades one artefact class that is itself
   never shipped.
@@ -126,13 +136,15 @@ flowchart LR
   writes a test. **That finding is a true positive and must not be silenced.** It is the
   visible price of this decision, and suppressing it would restore the blindness this ADR was
   written to remove.
-- `AUDITOR_AGENTS` in `tools/agent-trace.py` is consumed for two different purposes: detecting
+- `AUDITOR_AGENTS` in `tools/agent-trace.py` was consumed for two different purposes: detecting
   same-model review, and detecting an agent that edited files when its role forbids it. The two
   testers belong in the first check and not in the second, because they legitimately author
-  files. Holding both meanings in one set makes the permission check emit a false alarm for
-  every tester that does its job. Separating the two sets — ideally deriving the read-only set
-  from the `edit: deny` permission actually declared in each agent's frontmatter — is required
-  follow-up work, not an optional refinement.
+  files. Holding both meanings in one set made the permission check emit a false alarm for
+  every tester that did its job. **The sets are separated in the same commit that records this
+  ADR:** `READ_ONLY_AGENTS` now backs the write check and holds only the gates that declare
+  `permission.edit: deny`. What remains optional refinement, not required work, is *deriving*
+  that set from the frontmatter instead of hand-maintaining it — the membership is correct
+  today but nothing fails if a future `permission.edit` change desynchronises it.
 - Gate work runs on more expensive models. Five gates per story on reasoning tiers is a real
   and recurring cost increase over the coder tier.
 - The guarantee remains a property of the `.env` values rather than of any table. `MODEL_E` is

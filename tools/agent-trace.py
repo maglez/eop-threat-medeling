@@ -94,15 +94,20 @@ AUDITOR_AGENTS = {
     "tester-unit-and-quality",
 }
 
-# A *strictly* read-only agent: one whose definition declares `edit: deny`, so
-# any edit it makes is a permission failure. This is deliberately NOT the same
-# set as AUDITOR_AGENTS. Gate membership means "this verdict must be
+# A *strictly* read-only agent: one whose definition declares `permission.edit:
+# deny`, so any edit it makes is a permission failure. This is deliberately NOT
+# the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
 # independent"; read-only membership means "this agent must never write". Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and
-# `/trace` documents a read-only RISK as an urgent configuration defect. Keep
-# this set in step with the `edit: deny` frontmatter in .opencode/agents/.
+# `/trace` documents a read-only RISK as an urgent configuration defect.
+#
+# Scope: the DoD gates that declare `permission.edit: deny`, and only those. The
+# four advisory experts declare it too but are not gates and never carry a
+# verdict, so they are out of scope here rather than missing. Keep this set in
+# step with the gate frontmatter in .opencode/agents/; ADR-022 records deriving
+# it from that frontmatter as the preferred long-term form.
 READ_ONLY_AGENTS = {
     "code-reviewer",
     "security-auditor",
@@ -408,6 +413,22 @@ def conformance(trace: dict) -> list[str]:
             findings.append(
                 f"RISK  {node['agent']} made {node['authoring']} edits;"
                 " its role is read-only"
+            )
+
+    # A gate that wrote files in the same dispatch that returned a verdict has
+    # approved a tree it changed. That is legitimate when the brief authorised a
+    # documentation write, so it is INFO rather than RISK — but it must be
+    # visible, because the three gates that may write declare no `edit: deny`
+    # and so are invisible to the read-only check above.
+    for node in trace["nodes"]:
+        if (
+            node["agent"] in AUDITOR_AGENTS
+            and node["agent"] not in READ_ONLY_AGENTS
+            and node["authoring"] > 0
+        ):
+            findings.append(
+                f"INFO  {node['agent']} made {node['authoring']} edits while"
+                " gating; its verdict attaches to a tree it changed"
             )
 
     pinned = trace["pinned"]
