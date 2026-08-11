@@ -127,8 +127,8 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
 | @db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
 | @ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
-| @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
+| @tester-api | API Contract & Payload Verification | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
 | @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
 | @code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
 | @performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
@@ -141,6 +141,8 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 > **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`). Agent files carry **no** `model:` frontmatter — the assignment lives in the `agent` block of `.opencode/opencode.json`, which is the single authoritative table, and each entry resolves its `{env:MODEL_X}` placeholder from `.env` at startup. A key in that block which no longer matches an agent filename silently drops that agent to the global default (`{env:MODEL_A}`) with no error, so the block must be re-checked whenever an agent is renamed. The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 
 > **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (or `MODEL_E`); every agent that audits it uses `MODEL_A` or `MODEL_B`. No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @product-owner is the one auditor-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto the auditors' family, or an auditor onto the authors', silently collapses the guarantee.**
+
+> **The two testers are gates first, authors second — they belong on the auditor family.** This document originally classified @tester-unit-and-quality and @tester-api as `MODEL_C` "Authors" because they write test code. That classification was wrong in effect: both are named gates in the §12.8 Definition of Done, so a story cannot complete without a verdict from each, and a gate that cannot hold its Sign-off Contract blocks delivery just as surely as a red build. Both were moved to `MODEL_B` after failing in exactly that way on `MODEL_C` — `tester-unit-and-quality` needing three dispatches and once recommending a merge of a red build, and `tester-api` (EOP-46) returning `VERDICT: APPROVE` on four consecutive dispatches with none of the contracted evidence, once substituting headings of its own for the brief's required outputs and once claiming its evidence sat in a markdown document it was never permitted to write. This does **not** breach the invariant: the artefacts they author are *tests*, not production code, and those tests are themselves reviewed by @code-reviewer and @architecture-guardian on `MODEL_A`/`MODEL_B` — the same-family overlap is confined to test code, which is the cheaper risk by a wide margin. **The rule to carry forward is that no DoD gate agent may sit on `MODEL_C`/`MODEL_E`.**
 
 > **The invariant is a property of the `.env` values, not of this table.** On OpenCode Zen it holds because `MODEL_C` is OpenAI and `MODEL_A`/`MODEL_B` are Anthropic. On Bedrock it was **nominal from the first day of use until 2026-08-05**: `MODEL_A` through `MODEL_D` were all Anthropic Claude (Opus, Sonnet, Haiku, Haiku), so every author and every auditor shared one family and the guarantee existed only on paper. It was worse than a no-op, because the authoring agents sat on Haiku — the weakest model in the set — while Opus reviewed them, inverting the sensible allocation. It is now restored by pointing `MODEL_C` and `MODEL_E` at `qwen.qwen3-coder-480b-a35b-v1:0`. See §3.4.2 for the tested model catalogue.
 
@@ -228,8 +230,8 @@ Defaults are set in `.opencode/opencode.json`:
 ```
 
 - `MODEL_A` — default for primary agents and any subagent that omits `model:` (see [Provider Switching](#342-provider-switching-via-abstract-model-names)).
-- `MODEL_B` — mid-tier Anthropic reasoning, allocated to auditors and requirements.
-- `MODEL_C` — OpenAI codex family, allocated to builders.
+- `MODEL_B` — mid-tier Anthropic reasoning, allocated to auditors, the two DoD tester gates, and requirements.
+- `MODEL_C` — OpenAI codex family, allocated to builders. No DoD gate agent may sit here.
 - `MODEL_D` — cheap model for session titles and summaries (`small_model`).
 
 This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the five `MODEL_*` values in `.env` — no agent file or config changes needed.
@@ -241,8 +243,8 @@ Five abstract model names map to the real provider-specific model IDs. All are n
 | Abstract | Model ID (Zen) | Vendor | Price | Allocated To |
 |---|---|---|---|---|
 | `MODEL_A` | `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
-| `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
-| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, both Testers, Performance Engineer |
+| `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, both Testers, Dave Farley, Kent Beck |
+| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, Performance Engineer |
 | `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only; no agent uses it |
 | `MODEL_E` | `opencode/gemini-3.1-pro` | Google | — | UI Builder |
 
@@ -285,8 +287,8 @@ To use Bedrock, map the five abstract model names to Bedrock model IDs in `.env`
 | Abstract | Bedrock ID | Family | Role |
 |---|---|---|---|
 | `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5` | Anthropic | Global default, orchestration, audit |
-| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, code review, experts |
-| `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, both Testers, Performance |
+| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, code review, the two tester gates, experts |
+| `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, Performance |
 | `MODEL_D` | `amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0` | Anthropic | `small_model` only — titles, compaction. No agent uses it. |
 | `MODEL_E` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — UI Builder |
 
@@ -348,8 +350,8 @@ MODEL_E=opencode/gemini-3.1-pro
 | Abstract | Used By |
 |---|---|
 | `MODEL_A` (best) | Main model, @tech-lead, @architecture-guardian, @security-auditor, @expert-alex-xu, @expert-uncle-bod |
-| `MODEL_B` (mid) | @code-reviewer, @expert-kent-beck, @expert-dave-farley, @product-owner |
-| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @tester-api, @tester-unit-and-quality, @ui-builder |
+| `MODEL_B` (mid) | @code-reviewer, @tester-api, @tester-unit-and-quality, @expert-kent-beck, @expert-dave-farley, @product-owner |
+| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @ui-builder |
 | `MODEL_D` (small) | `small_model` — titles and summaries |
 
 > **Migration note:** Previously each agent referenced a hardcoded model ID (e.g. `opencode/claude-sonnet-4-6`) in its `model:` frontmatter. These were replaced with `{env:MODEL_B}` etc. in a single batch update — no per-agent changes are needed to switch providers going forward.
