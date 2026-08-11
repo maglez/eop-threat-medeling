@@ -59,7 +59,11 @@ BUILTIN_AGENTS = {
     "summary",
 }
 
-# The pipeline from .opencode/agents/tech-lead.md, by stage.
+# The pipeline from .opencode/agents/tech-lead.md, by stage. Stage 2 is the five
+# Definition-of-Done gates and nothing else: performance-engineer is advisory and
+# carries no Sign-off Contract, so dispatching it as a gate is unsupported.
+# architecture-guardian appears in both stages by design — it authors ADRs during
+# build and gates the PR — so it is not double-counted in error.
 PIPELINE = {
     "0 requirements": ["product-owner"],
     "1 build": [
@@ -72,8 +76,8 @@ PIPELINE = {
         "tester-unit-and-quality",
         "tester-api",
         "security-auditor",
-        "performance-engineer",
         "code-reviewer",
+        "architecture-guardian",
     ],
 }
 

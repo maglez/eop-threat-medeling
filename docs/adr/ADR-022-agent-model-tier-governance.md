@@ -10,8 +10,8 @@ Delivery in this repository is performed by a team of agents defined in `.openco
 each pinned to one of five abstract model tiers (`MODEL_A`–`MODEL_E`) resolved from the
 environment by `.opencode/opencode.json`. The tiering exists to serve one architectural
 constraint, stated in the Blueprint as the **Separation Invariant**: an artefact must not be
-reviewed by the same model that produced it, because a model asked to find fault with its own
-output reliably finds none.
+reviewed by the same model *family* that produced it, because a model asked to find fault with
+its own output reliably finds none.
 
 Throughout this ADR, **"independent" is never used unqualified**, because the word covers two
 degrees of protection that the current pins deliver very differently. The definitions are
@@ -151,13 +151,15 @@ are at best model-independent: `@tech-lead`/primary-agent production code shares
   `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` — not merely the same family. Test code
   authored by a tester and reviewed by `@code-reviewer` is therefore reviewed by identical
   weights, which is neither degree of independence defined above. The mitigation is real but
-  strictly the weaker degree: `@architecture-guardian` on `MODEL_A` is **model-independent** of
-  any test authored on `MODEL_B`, so tests are not wholly unreviewed — but it is **not
-  family-independent**, because `MODEL_A` and `MODEL_B` are both Anthropic Claude. No reviewer of
+  strictly the weaker degree: `@architecture-guardian` and `@security-auditor`, both on
+  `MODEL_A`, are **model-independent** of any test authored on `MODEL_B`, so tests are not wholly
+  unreviewed — but neither is **family-independent**, because `MODEL_A` and `MODEL_B` are both
+  Anthropic Claude. No reviewer of
   a tester-authored test sits outside the author's family, so for test code the family-level
-  guarantee §3.1 asks for is absent entirely, not merely reduced. Any claim that *both* named
-  reviewers provide independence for tester-authored tests is false, and a test authored by the
-  primary agent on `MODEL_A` is reviewed model-independently only by the `MODEL_B` gates, with
+  guarantee §3.1 asks for is absent entirely, not merely reduced. Any claim that
+  `@code-reviewer` *and* `@architecture-guardian` both provide independence for tester-authored
+  tests is false — `@code-reviewer` shares the author's exact model ID — and a test authored by
+  the primary agent on `MODEL_A` is reviewed model-independently only by the `MODEL_B` gates, with
   `@architecture-guardian` and `@security-auditor` sharing its exact model ID.
   The trade was accepted because a gate that cannot hold its contract blocks or corrupts every
   story, whereas same-model review of test code degrades one artefact class that is itself
