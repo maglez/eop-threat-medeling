@@ -79,10 +79,19 @@ PIPELINE = {
 
 # Agents whose job is to judge someone else's work. If one of these ran on the
 # same model as whoever authored the code, the review was self-review.
+#
+# This set must stay in step with the five Definition-of-Done gates in
+# AGENTS.md. Both testers belong here: they are gates first and authors second,
+# so a tester sharing a model with the author of the code under test is exactly
+# the condition this detector exists to catch. Omitting them left the check
+# blind to two of the five gates. `performance-engineer` is deliberately absent
+# — it is not a DoD gate.
 AUDITOR_AGENTS = {
     "code-reviewer",
     "security-auditor",
     "architecture-guardian",
+    "tester-api",
+    "tester-unit-and-quality",
 }
 
 

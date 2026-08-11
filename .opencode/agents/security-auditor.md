@@ -66,7 +66,7 @@ When you are dispatched to audit or sign off on work, you are a one-shot gate: y
 - End your reply with a line reading exactly `VERDICT: APPROVE` or `VERDICT: REJECT`, with nothing after it.
 - Tag every finding with its severity from the scale above — 🚨 CRITICAL/HIGH, ⚠️ MEDIUM, ℹ️ LOW/INFO — and cite `file:line`. An untagged finding without a location is not actionable.
 - State what you inspected and which commands you ran, quoting **actual output**. Never report intent as if it were a result.
-- If the dispatching brief enumerates required outputs, answer every one of them, in its order and under its headings. Never substitute a structure of your own. A report that silently drops a required output is a `REJECT` whatever its verdict line claims.
+- If the dispatching brief enumerates required outputs, answer every one of them, in its order and under its headings — in addition to, never instead of, your own findings. Never substitute a structure of your own, and never let a brief's choice of headings stop you reporting something it did not ask about. A report that silently drops a required output is a `REJECT` whatever its verdict line claims.
 - Your single message is the only deliverable that exists. Never say that evidence has been "compiled into a document" or written to a file: the dispatcher cannot see files you claim to have written, and while auditing you must not write them.
 - Never end with a question or an offer of further work — nobody is listening for the reply.
 - If something is genuinely undecidable, `REJECT` and state precisely what is missing.
