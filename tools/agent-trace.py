@@ -97,7 +97,9 @@ AUDITOR_AGENTS = {
 # A *strictly* read-only agent: one whose definition declares `permission.edit:
 # deny`, so any edit it makes is a permission failure. This is deliberately NOT
 # the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
-# independent"; read-only membership means "this agent must never write". Three
+# independent of the author — family-independent where the invariant holds, at
+# worst model-independent in its two documented exceptions (Blueprint §3.1)";
+# read-only membership means "this agent must never write". Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and

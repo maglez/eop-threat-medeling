@@ -120,12 +120,14 @@ flowchart LR
     TEST -.->|"same model ID —<br/>neither degree"| G2
 ```
 
-Solid edges into `G1`/`G2` are family-independent **only** where the production artefact was
-delegated to the coder tier; that is the guarantee the invariant makes. Dashed edges are the two
-documented exceptions, and in both of them the best available degree is model-independence:
-`@tech-lead`/primary-agent production code shares `MODEL_A` with `G1` and is at most
-model-independent of `G2`, while tester-authored test code shares its exact model ID with
-`@code-reviewer` in `G2` and is at most model-independent of `G1`.
+Read each edge's own label rather than inferring the degree from its line style: solid means the
+path is the norm and dashed means it is one of the two documented exceptions, but the degree of
+independence is stated per edge because it does not follow from the style. Only the two
+`PROD --> G1`/`G2` edges are family-independent, and only where the production artefact was
+delegated to the coder tier — that is the whole of what the invariant guarantees. Both exceptions
+are at best model-independent: `@tech-lead`/primary-agent production code shares `MODEL_A` with
+`G1` and is model-independent of `G2` only, while tester-authored test code is model-independent of
+`G1` and shares its exact model ID with `@code-reviewer` in `G2`, where neither degree applies.
 
 ## Consequences
 
