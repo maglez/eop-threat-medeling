@@ -117,6 +117,13 @@ Scrum's ceremonies are a coordination protocol for teammates who are **opaque** 
 
 To eliminate systematic blind spots, authoring agents (who write code and infrastructure) and auditing agents (who review and check security) run on distinct model families or reasoning architectures. This prevents auditors from inheriting the exact same training biases, logic gaps, or hallucinations as the authors.
 
+> **"Independent" has two degrees, and they are not interchangeable.** Every claim of review independence in this document and in the ADRs means one of exactly two things, so use the precise word:
+>
+> - **Family-independent** — reviewer and author sit in different model families or reasoning architectures. This is what the paragraph above requires and the only degree that defends against a *shared training bias*: a blind spot common to every model in a family survives any amount of review from within it. On the current Bedrock mapping the sole family boundary is `MODEL_C`/`MODEL_E` (`qwen.qwen3-coder-480b-a35b-v1:0`) against `MODEL_A`/`MODEL_B`/`MODEL_D` (all Anthropic Claude).
+> - **Model-independent** — reviewer and author run different model IDs from the *same* family, as `MODEL_A` (`claude-opus-5`) does against `MODEL_B` (`claude-sonnet-4-6`). Different weights and a different reasoning scale catch a genuine class of error — the author's specific arithmetic slip, dropped requirement or misread line — but not a bias the family holds in common. This is the **weaker** guarantee, and it is all that any review inside the reasoning tiers can offer.
+>
+> A review that is neither — identical model ID on both sides — is not review at all in the sense §3.1 means, and `/trace` reports it as `RISK … self-review`. Never write "independent" unqualified where the distinction decides whether a claim is true; the Separation Invariant below is stated in these terms, and [ADR-022](../../docs/adr/ADR-022-agent-model-tier-governance.md) records where each degree does and does not hold.
+
 ### 3.2 Agent Model Matrix
 
 | Agent | Primary Role | Model | Family (Zen) | Role | Temp |
@@ -127,8 +134,8 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
 | @db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
 | @ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
-| @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @tester-api | API Contract & Payload Verification | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
+| @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
+| @tester-api | API Contract & Payload Verification | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
 | @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
 | @code-reviewer (Audit) | Static Code Review & SOLID Compliance | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
 | @performance-engineer | Load testing, k6, latency/throughput SLOs | `{env:MODEL_C}` | OpenAI | Author | 0.2 |
@@ -140,7 +147,9 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 
 > **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`). Agent files carry **no** `model:` frontmatter — the assignment lives in the `agent` block of `.opencode/opencode.json`, which is the single authoritative table, and each entry resolves its `{env:MODEL_X}` placeholder from `.env` at startup. A key in that block which no longer matches an agent filename silently drops that agent to the global default (`{env:MODEL_A}`) with no error, so the block must be re-checked whenever an agent is renamed. The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 
-> **Separation Invariant:** Every agent that authors code or infrastructure uses `MODEL_C` (or `MODEL_E`); every agent that audits it uses `MODEL_A` or `MODEL_B`. No artefact is therefore reviewed by the same model family that produced it, satisfying §3.1 without exception. @product-owner is the one auditor-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto the auditors' family, or an auditor onto the authors', silently collapses the guarantee.**
+> **Separation Invariant:** Every *delegated authoring* agent uses `MODEL_C` (or `MODEL_E`); every agent that audits its output uses `MODEL_A` or `MODEL_B`. Where that holds, no artefact is reviewed by the model family that produced it, satisfying §3.1. **It is not unconditional, and this document does not claim it is.** There are exactly two documented exceptions, both below and both real: *test* code, because the two tester gates author tests from `MODEL_B` (blockquote immediately below, and [ADR-022](../../docs/adr/ADR-022-agent-model-tier-governance.md)); and *production* code authored by the primary agent or `@tech-lead` rather than delegated, because both run on `MODEL_A` alongside two of the five gates (the "primary agent is not covered" blockquote below, with story EOP-10 as a real instance). The invariant is therefore a guarantee about *delegated* work, not about the repository as a whole — cite it that way, and use `/trace` to find out which case a given story actually falls in. In both exceptions the strongest guarantee still available is **model**-independence and never **family**-independence (§3.1), because author and reviewer are then both inside the Anthropic tiers; that is a real but weaker protection, and it must be described with the weaker word. @product-owner is the one auditor-family "Author", but it authors requirements rather than code and sits outside the review path, so it does not weaken the invariant. **When reassigning any model, re-check this table: moving an author onto the auditors' family, or an auditor onto the authors', silently collapses the guarantee.**
+
+> **The two testers are gates first, authors second — they belong on the auditor family.** This document originally classified @tester-unit-and-quality and @tester-api as `MODEL_C` "Authors" because they write test code. That classification was wrong in effect: both are named gates in the §12.8 Definition of Done, so a story cannot complete without a verdict from each, and a gate that cannot hold its Sign-off Contract blocks delivery just as surely as a red build. Both were moved to `MODEL_B` after failing in exactly that way on `MODEL_C` — `tester-unit-and-quality` needing three dispatches and once recommending a merge of a red build, and `tester-api` (which failed under EOP-26 and was remediated by EOP-46) returning `VERDICT: APPROVE` on four consecutive dispatches with none of the contracted evidence, once substituting headings of its own for the brief's required outputs and once claiming its evidence sat in a markdown document it was never permitted to write. This does **not** add a production-code exception, and the qualification matters: the artefacts *they* author are tests, never production code or infrastructure, so this change leaves the delegated-production-code guarantee exactly as it was. (It was already not universal — see the primary-agent exception below — but that is a separate, older gap, not one this change creates.) For the tests themselves the invariant is genuinely narrowed, and understating that would repeat the failure this change exists to fix. On the current Bedrock mapping `@code-reviewer` and both testers resolve to the **same model ID**, not merely the same family, so `@code-reviewer` reviewing a tester-authored test is identical weights judging identical weights — neither degree of independence in §3.1 applies. What remains for test code is **two model-independent gate reviewers** — `@architecture-guardian` and `@security-auditor`, both on `MODEL_A` — and nothing family-independent at all: `MODEL_A` and `MODEL_B` are both Anthropic Claude, so no reviewer of a tester-authored test sits outside the author's family. Say it in those words rather than calling the survivor "independent" — the weaker degree is what the pins actually deliver, and overstating it would repeat in miniature the failure this change exists to fix. `/trace` will emit a `RISK … self-review` line for that overlap on any story where a tester writes a test; **it is a true positive and must not be silenced.** The trade was accepted because a gate that cannot hold its contract corrupts every story, whereas same-model review degrades one artefact class that is never shipped. **The rule to carry forward is that no DoD gate agent may sit on `MODEL_C`/`MODEL_E`.** Recorded as [ADR-022](../../docs/adr/ADR-022-agent-model-tier-governance.md); reversing it requires a superseding ADR, not an edit to a tier table.
 
 > **The invariant is a property of the `.env` values, not of this table.** On OpenCode Zen it holds because `MODEL_C` is OpenAI and `MODEL_A`/`MODEL_B` are Anthropic. On Bedrock it was **nominal from the first day of use until 2026-08-05**: `MODEL_A` through `MODEL_D` were all Anthropic Claude (Opus, Sonnet, Haiku, Haiku), so every author and every auditor shared one family and the guarantee existed only on paper. It was worse than a no-op, because the authoring agents sat on Haiku — the weakest model in the set — while Opus reviewed them, inverting the sensible allocation. It is now restored by pointing `MODEL_C` and `MODEL_E` at `qwen.qwen3-coder-480b-a35b-v1:0`. See §3.4.2 for the tested model catalogue.
 
@@ -228,8 +237,8 @@ Defaults are set in `.opencode/opencode.json`:
 ```
 
 - `MODEL_A` — default for primary agents and any subagent that omits `model:` (see [Provider Switching](#342-provider-switching-via-abstract-model-names)).
-- `MODEL_B` — mid-tier Anthropic reasoning, allocated to auditors and requirements.
-- `MODEL_C` — OpenAI codex family, allocated to builders.
+- `MODEL_B` — mid-tier Anthropic reasoning, allocated to auditors, the two DoD tester gates, and requirements.
+- `MODEL_C` — OpenAI codex family, allocated to builders. No DoD gate agent may sit here.
 - `MODEL_D` — cheap model for session titles and summaries (`small_model`).
 
 This indirection lets the operator switch between OpenCode Zen and Amazon Bedrock (or any future provider) by changing the five `MODEL_*` values in `.env` — no agent file or config changes needed.
@@ -241,8 +250,8 @@ Five abstract model names map to the real provider-specific model IDs. All are n
 | Abstract | Model ID (Zen) | Vendor | Price | Allocated To |
 |---|---|---|---|---|
 | `MODEL_A` | `opencode/claude-opus-5` | Anthropic | $5.00 / $25.00 | Tech Lead, Architecture Guardian, Security Auditor, Alex Xu, Uncle Bob |
-| `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, Dave Farley, Kent Beck |
-| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, both Testers, Performance Engineer |
+| `MODEL_B` | `opencode/claude-sonnet-4-6` | Anthropic | $3.00 / $15.00 | Product Owner, Code Reviewer, both Testers, Dave Farley, Kent Beck |
+| `MODEL_C` | `opencode/gpt-5.3-codex` | OpenAI | $1.75 / $14.00 | DevOps, DB Designer, Performance Engineer |
 | `MODEL_D` | `opencode/gemini-3.5-flash-lite` | Google | $0.30 / $2.50 | `small_model` — titles and summaries only; no agent uses it |
 | `MODEL_E` | `opencode/gemini-3.1-pro` | Google | — | UI Builder |
 
@@ -285,8 +294,8 @@ To use Bedrock, map the five abstract model names to Bedrock model IDs in `.env`
 | Abstract | Bedrock ID | Family | Role |
 |---|---|---|---|
 | `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5` | Anthropic | Global default, orchestration, audit |
-| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, code review, experts |
-| `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, both Testers, Performance |
+| `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, code review, the two tester gates, experts |
+| `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, Performance |
 | `MODEL_D` | `amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0` | Anthropic | `small_model` only — titles, compaction. No agent uses it. |
 | `MODEL_E` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — UI Builder |
 
@@ -348,8 +357,8 @@ MODEL_E=opencode/gemini-3.1-pro
 | Abstract | Used By |
 |---|---|
 | `MODEL_A` (best) | Main model, @tech-lead, @architecture-guardian, @security-auditor, @expert-alex-xu, @expert-uncle-bod |
-| `MODEL_B` (mid) | @code-reviewer, @expert-kent-beck, @expert-dave-farley, @product-owner |
-| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @tester-api, @tester-unit-and-quality, @ui-builder |
+| `MODEL_B` (mid) | @code-reviewer, @tester-api, @tester-unit-and-quality, @expert-kent-beck, @expert-dave-farley, @product-owner |
+| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @ui-builder |
 | `MODEL_D` (small) | `small_model` — titles and summaries |
 
 > **Migration note:** Previously each agent referenced a hardcoded model ID (e.g. `opencode/claude-sonnet-4-6`) in its `model:` frontmatter. These were replaced with `{env:MODEL_B}` etc. in a single batch update — no per-agent changes are needed to switch providers going forward.
@@ -1100,7 +1109,7 @@ The audit backstop is deliberately paired with a prompt-level gate, because the 
 
 **Layer 2 — plugin audit backstop** (`completionAudit`, above). It cannot re-run the reviews, but it can detect the failure mode Layer 1 cannot police itself against: the Tech Lead self-certifying, or filing vacuous or fabricated evidence.
 
-> **Known limitation — auditor shares the claimant's model family.** The built-in verifier agent inherits the top-level `model` (`MODEL_A`), which is also `tech-lead`'s model, so the claim and its audit are same-family. This cannot be fixed by pinning: `requireVerifierOwnership: Boolean(pluginOptions.completionAudit)` (`src/goal-plugin.js:3532`) makes `applyNativeGoalConfig` **throw at startup** if `config.agent["goal-verify"]` already exists (`src/native-agent-config.js:27-31`), so declaring `goal-verify` in `opencode.json` or as `.opencode/agents/goal-verify.md` breaks the session rather than overriding the model. Accepted as a residual risk: code and infrastructure are authored by `MODEL_C` agents and reviewed by `MODEL_A`/`MODEL_B` agents, so the separation invariant still holds for every *artifact* — only the completion claim itself is audited within its own family. **Do not create `.opencode/agents/goal-verify.md`.**
+> **Known limitation — auditor shares the claimant's model ID.** The built-in verifier agent inherits the top-level `model` (`MODEL_A`), which is also `tech-lead`'s model, so the claim and its audit run on the *same model ID* — not merely the same family. By §3.1's definitions that audit is therefore neither family- nor model-independent: it is the identical-weights case §3.1 calls "not review at all in the sense §3.1 means", and `/trace` reports it as `RISK … self-review`. This cannot be fixed by pinning: `requireVerifierOwnership: Boolean(pluginOptions.completionAudit)` (`src/goal-plugin.js:3532`) makes `applyNativeGoalConfig` **throw at startup** if `config.agent["goal-verify"]` already exists (`src/native-agent-config.js:27-31`), so declaring `goal-verify` in `opencode.json` or as `.opencode/agents/goal-verify.md` breaks the session rather than overriding the model. Accepted as a residual risk: *delegated* production code and infrastructure are authored by `MODEL_C` agents and reviewed by `MODEL_A`/`MODEL_B` agents, so the separation invariant holds for those artifacts — with two documented exceptions, test code (§3.4, [ADR-022](../../docs/adr/ADR-022-agent-model-tier-governance.md)) and production code the primary agent authors itself instead of delegating (§3.4) — while the completion claim itself is audited on the claimant's own model ID, with neither degree of independence. **Do not create `.opencode/agents/goal-verify.md`.**
 
 > **Known limitation — the auditor cannot execute anything.** The default verifier is a hidden subagent with `permission: { "*": "deny" }` and only `read`, `glob`, `grep`; `bash`, `write`, `edit`, `patch` and every `goal_*` tool are disabled, and it has no `task` tool (`src/native-agent-config.js:37-66`). It therefore cannot run `./mvnw verify` and cannot dispatch the five reviewers itself — it performs static inspection of the workspace against the submitted evidence. Making the plugin-level gate convene the reviewers would require a custom `auditor` function, which means abandoning the `plugin` array entry for a hand-written `.opencode/plugins/*.js` that imports the package — not resolvable from the isolated `~/.cache/opencode/packages/` install. Rejected as disproportionate; Layer 1 obtains the same five verdicts.
 

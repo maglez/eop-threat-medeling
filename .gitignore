@@ -74,3 +74,10 @@ docs/EoP_Microsoft_Docs/EoP_Cards_Box_Native_files.zip
 # record; the raw runs are local evidence. The directory itself stays tracked via
 # its .gitkeep.
 docs/performance/history/*.json
+
+# Python bytecode caches. tools/*.py are developer scripts run ad hoc, so CPython
+# drops a __pycache__ beside them on any import or py_compile. The bytecode is
+# machine- and interpreter-version-specific and regenerates on demand, so it is
+# never worth reviewing in a diff.
+__pycache__/
+*.pyc

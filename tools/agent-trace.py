@@ -59,7 +59,11 @@ BUILTIN_AGENTS = {
     "summary",
 }
 
-# The pipeline from .opencode/agents/tech-lead.md, by stage.
+# The pipeline from .opencode/agents/tech-lead.md, by stage. Stage 2 is the five
+# Definition-of-Done gates and nothing else: performance-engineer is advisory and
+# carries no Sign-off Contract, so dispatching it as a gate is unsupported.
+# architecture-guardian appears in both stages by design — it authors ADRs during
+# build and gates the PR — so it is not double-counted in error.
 PIPELINE = {
     "0 requirements": ["product-owner"],
     "1 build": [
@@ -72,17 +76,47 @@ PIPELINE = {
         "tester-unit-and-quality",
         "tester-api",
         "security-auditor",
-        "performance-engineer",
         "code-reviewer",
+        "architecture-guardian",
     ],
 }
 
 # Agents whose job is to judge someone else's work. If one of these ran on the
 # same model as whoever authored the code, the review was self-review.
+#
+# This set must stay in step with the five Definition-of-Done gates in
+# AGENTS.md. Both testers belong here: they are gates first and authors second,
+# so a tester sharing a model with the author of the code under test is exactly
+# the condition this detector exists to catch. Omitting them left the check
+# blind to two of the five gates. `performance-engineer` is deliberately absent
+# — it is not a DoD gate.
 AUDITOR_AGENTS = {
     "code-reviewer",
     "security-auditor",
     "architecture-guardian",
+    "tester-api",
+    "tester-unit-and-quality",
+}
+
+# A *strictly* read-only agent: one whose definition declares `permission.edit:
+# deny`, so any edit it makes is a permission failure. This is deliberately NOT
+# the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
+# independent of the author — family-independent where the invariant holds, at
+# worst model-independent in its two documented exceptions (Blueprint §3.1)";
+# read-only membership means "this agent must never write". Three
+# of the five gates legitimately author files — the two testers write tests and
+# @architecture-guardian writes ADRs — so folding them into the write check
+# would raise a false alarm on every story where a tester does its job, and
+# `/trace` documents a read-only RISK as an urgent configuration defect.
+#
+# Scope: the DoD gates that declare `permission.edit: deny`, and only those. The
+# four advisory experts declare it too but are not gates and never carry a
+# verdict, so they are out of scope here rather than missing. Keep this set in
+# step with the gate frontmatter in .opencode/agents/; ADR-022 records deriving
+# it from that frontmatter as the preferred long-term form.
+READ_ONLY_AGENTS = {
+    "code-reviewer",
+    "security-auditor",
 }
 
 
@@ -377,12 +411,34 @@ def conformance(trace: dict) -> list[str]:
                 f" ({', '.join(culprits)}) - same model, so this is self-review"
             )
 
-    # A read-only agent that edited files is a permission failure.
+    # An agent whose definition denies `edit` but which edited files is a
+    # permission failure. Only the strictly read-only gates are checked here;
+    # see READ_ONLY_AGENTS for why this is not AUDITOR_AGENTS.
     for node in trace["nodes"]:
-        if node["agent"] in AUDITOR_AGENTS and node["authoring"] > 0:
+        if node["agent"] in READ_ONLY_AGENTS and node["authoring"] > 0:
             findings.append(
                 f"RISK  {node['agent']} made {node['authoring']} edits;"
                 " its role is read-only"
+            )
+
+    # A gate that wrote files in the same dispatch that returned a verdict has
+    # approved a tree it changed. That is legitimate when the brief authorised a
+    # documentation write, so it is INFO rather than RISK — but it must be
+    # visible, because the three gates that may write declare no `edit: deny`
+    # and so are invisible to the read-only check above. The trace records edits
+    # but not verdicts, so this cannot tell an authoring-only dispatch from a
+    # gating one; the message is worded to leave that to the reader rather than
+    # asserting a verdict was returned.
+    for node in trace["nodes"]:
+        if (
+            node["agent"] in AUDITOR_AGENTS
+            and node["agent"] not in READ_ONLY_AGENTS
+            and node["authoring"] > 0
+        ):
+            findings.append(
+                f"INFO  {node['agent']} made {node['authoring']} edits; if that"
+                " dispatch also returned a verdict, the verdict attaches to a"
+                " tree it changed"
             )
 
     pinned = trace["pinned"]

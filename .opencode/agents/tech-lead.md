@@ -92,9 +92,10 @@ If budget runs low before all five have signed off, pause and report status hone
 ┌───────────────────────────▼────────────────────────────┐
 │              2. AUTOMATED GATEWAYS (PR)                │
 │  @tester-unit-and-quality ──► @tester-api              │
-│  @security-auditor ──► @performance-engineer           │
-│  @code-reviewer                                        │
+│  @security-auditor ──► @code-reviewer                  │
+│  @architecture-guardian                                │
 │  ALL FIVE sign-offs required — see Definition of Done  │
+│  (@performance-engineer is advisory, NOT a gate)       │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
