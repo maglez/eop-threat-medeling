@@ -419,7 +419,10 @@ def conformance(trace: dict) -> list[str]:
     # approved a tree it changed. That is legitimate when the brief authorised a
     # documentation write, so it is INFO rather than RISK — but it must be
     # visible, because the three gates that may write declare no `edit: deny`
-    # and so are invisible to the read-only check above.
+    # and so are invisible to the read-only check above. The trace records edits
+    # but not verdicts, so this cannot tell an authoring-only dispatch from a
+    # gating one; the message is worded to leave that to the reader rather than
+    # asserting a verdict was returned.
     for node in trace["nodes"]:
         if (
             node["agent"] in AUDITOR_AGENTS
@@ -427,8 +430,9 @@ def conformance(trace: dict) -> list[str]:
             and node["authoring"] > 0
         ):
             findings.append(
-                f"INFO  {node['agent']} made {node['authoring']} edits while"
-                " gating; its verdict attaches to a tree it changed"
+                f"INFO  {node['agent']} made {node['authoring']} edits; if that"
+                " dispatch also returned a verdict, the verdict attaches to a"
+                " tree it changed"
             )
 
     pinned = trace["pinned"]

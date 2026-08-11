@@ -13,6 +13,25 @@ constraint, stated in the Blueprint as the **Separation Invariant**: an artefact
 reviewed by the same model that produced it, because a model asked to find fault with its own
 output reliably finds none.
 
+Throughout this ADR, **"independent" is never used unqualified**, because the word covers two
+degrees of protection that the current pins deliver very differently. The definitions are
+Blueprint §3.1's:
+
+- **Family-independent** — reviewer and author sit in different model families or reasoning
+  architectures. This is what the Separation Invariant asks for, and the only degree that
+  defends against a bias the whole family shares. On the current Bedrock mapping the sole family
+  boundary is `MODEL_C`/`MODEL_E` (Qwen) against `MODEL_A`/`MODEL_B`/`MODEL_D` (Anthropic
+  Claude).
+- **Model-independent** — different model IDs from the same family, as `MODEL_A`
+  (`claude-opus-5`) is to `MODEL_B` (`claude-sonnet-4-6`). Different weights and reasoning scale
+  catch the author's particular mistakes but not its family's shared blind spots. This is the
+  **weaker** guarantee, and it is the most that any review conducted wholly inside the reasoning
+  tiers can provide.
+
+A review where both sides resolve to the *same* model ID is neither, and `/trace` reports it as
+`RISK … self-review`. The distinction is load-bearing: it is what makes the difference between a
+true and a false claim in the Consequences below.
+
 That invariant was originally operationalised by asking a question about **artefact type** —
 *does this agent write files?* Agents that wrote files were classified "Author" and pinned to
 the coder tier (`MODEL_C`/`MODEL_E`); agents that judged files were classified "Audit" and
@@ -95,14 +114,18 @@ flowchart LR
     A1 -->|"delegated production code<br/>& infrastructure"| PROD["Production artefacts"]
     TL -.->|"production code authored<br/>instead of delegated"| PROD
     G2 -->|"test code"| TEST["Test artefacts"]
-    PROD -->|"reviewed by — independent<br/>only for the delegated path"| G1
-    PROD -->|"reviewed by — independent"| G2
-    TEST -->|"reviewed by — independent"| G1
-    TEST -.->|"same model ID —<br/>NOT independent"| G2
+    PROD -->|"reviewed by — family-independent<br/>only for the delegated path"| G1
+    PROD -->|"reviewed by — family-independent<br/>only for the delegated path"| G2
+    TEST -->|"reviewed by — model-independent,<br/>never family-independent"| G1
+    TEST -.->|"same model ID —<br/>neither degree"| G2
 ```
 
-Dashed edges are the two documented exceptions: `@tech-lead`/primary-agent production code shares
-`MODEL_A` with `G1`, and tester-authored test code shares its exact model ID with `@code-reviewer`.
+Solid edges into `G1`/`G2` are family-independent **only** where the production artefact was
+delegated to the coder tier; that is the guarantee the invariant makes. Dashed edges are the two
+documented exceptions, and in both of them the best available degree is model-independence:
+`@tech-lead`/primary-agent production code shares `MODEL_A` with `G1` and is at most
+model-independent of `G2`, while tester-authored test code shares its exact model ID with
+`@code-reviewer` in `G2` and is at most model-independent of `G1`.
 
 ## Consequences
 
@@ -111,8 +134,8 @@ Dashed edges are the two documented exceptions: `@tech-lead`/primary-agent produ
 - Gate verdicts are produced by a tier that has demonstrated it can hold the Sign-off Contract.
   This is the whole point: the gate's output is a decision, and a decision from a model that
   cannot reliably follow the contract governing it is not a decision.
-- `MODEL_B` authors no production code, so independence of review for production artefacts is
-  untouched by the move.
+- `MODEL_B` authors no production code, so the family-independence of review for *delegated*
+  production artefacts is untouched by the move.
 - The rule is now numbered and citable. A future pin that puts a gate on the coder tier
   contradicts ADR-022 rather than contradicting a bullet in a reference manual.
 - Any agent later promoted to gate status inherits the constraint automatically, because the
@@ -120,15 +143,20 @@ Dashed edges are the two documented exceptions: `@tech-lead`/primary-agent produ
 
 **Accepted costs, stated plainly.**
 
-- **The Separation Invariant is now conditional, and test code is the exception.** With the
+- **The Separation Invariant is now conditional, and it has two exceptions — test code and
+  primary-agent-authored production code.** With the
   current Bedrock mapping, `@code-reviewer` and both testers resolve to the *same model ID* —
   `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` — not merely the same family. Test code
   authored by a tester and reviewed by `@code-reviewer` is therefore reviewed by identical
-  weights. The mitigation is real but partial: `@architecture-guardian` on `MODEL_A` remains a
-  genuinely independent reviewer of any test authored on `MODEL_B`, so tests are not wholly
-  unreviewed; but any claim that *both* named reviewers provide independence for tester-authored
-  tests is false, and a test authored by the primary agent on `MODEL_A` has no independent
-  reviewer at all.
+  weights, which is neither degree of independence defined above. The mitigation is real but
+  strictly the weaker degree: `@architecture-guardian` on `MODEL_A` is **model-independent** of
+  any test authored on `MODEL_B`, so tests are not wholly unreviewed — but it is **not
+  family-independent**, because `MODEL_A` and `MODEL_B` are both Anthropic Claude. No reviewer of
+  a tester-authored test sits outside the author's family, so for test code the family-level
+  guarantee §3.1 asks for is absent entirely, not merely reduced. Any claim that *both* named
+  reviewers provide independence for tester-authored tests is false, and a test authored by the
+  primary agent on `MODEL_A` is reviewed model-independently only by the `MODEL_B` gates, with
+  `@architecture-guardian` and `@security-auditor` sharing its exact model ID.
   The trade was accepted because a gate that cannot hold its contract blocks or corrupts every
   story, whereas same-model review of test code degrades one artefact class that is itself
   never shipped.
