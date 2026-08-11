@@ -74,19 +74,23 @@ public class SessionController {
 
     private final SseSessionEventPublisher sessionEventPublisher;
 
+    private final ClientAddressResolver clientAddressResolver;
+
     SessionController(
             final CreateSessionUseCase createSessionUseCase,
             final JoinSessionUseCase joinSessionUseCase,
             final GetSessionStateUseCase getSessionStateUseCase,
             final StartSessionUseCase startSessionUseCase,
             final ResolvePlayerUseCase resolvePlayerUseCase,
-            final SseSessionEventPublisher sessionEventPublisher) {
+            final SseSessionEventPublisher sessionEventPublisher,
+            final ClientAddressResolver clientAddressResolver) {
         this.createSessionUseCase = Objects.requireNonNull(createSessionUseCase, "createSessionUseCase is required");
         this.joinSessionUseCase = Objects.requireNonNull(joinSessionUseCase, "joinSessionUseCase is required");
         this.getSessionStateUseCase = Objects.requireNonNull(getSessionStateUseCase, "getSessionStateUseCase is required");
         this.startSessionUseCase = Objects.requireNonNull(startSessionUseCase, "startSessionUseCase is required");
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.sessionEventPublisher = Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
+        this.clientAddressResolver = Objects.requireNonNull(clientAddressResolver, "clientAddressResolver is required");
     }
 
     /**
@@ -118,7 +122,7 @@ public class SessionController {
             @Valid @RequestBody final JoinSessionRequest request,
             final HttpServletRequest httpRequest) {
         final var admission = joinSessionUseCase.execute(
-                joinCode, DisplayName.of(request.displayName()), ClientAddresses.of(httpRequest));
+                joinCode, DisplayName.of(request.displayName()), clientAddressResolver.of(httpRequest));
         return SessionAdmissionDto.from(admission);
     }
 

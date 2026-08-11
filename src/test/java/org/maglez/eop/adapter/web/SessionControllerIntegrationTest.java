@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -40,11 +42,26 @@ import org.springframework.test.web.servlet.ResultActions;
  * rather than spelled out. Repeating the name here would let a rename pass the
  * build while breaking every client.
  *
- * <p>Every join that is expected to fail carries its own {@code X-Forwarded-For}
- * address. The rate limiter is a singleton in a cached Spring context, so failures
- * charged to the default peer address would accumulate across tests and eventually
- * make an unrelated test fail depending on the order the runner chose. Giving each
- * one its own address makes the class order-independent.
+ * <p>Before EOP-26, every join that was expected to fail carried its own
+ * {@code X-Forwarded-For} address so that failures would not accumulate against
+ * the shared peer ({@code 127.0.0.1} in MockMvc). That strategy only ever worked
+ * because the header was trusted unconditionally — the exact vulnerability EOP-26
+ * was filed to close. With the fix in place the header is ignored (no trusted proxy
+ * is configured in the test properties), so the old per-test address rotation became
+ * a no-op that silently lied about isolation. The {@link ThrottlingGuesses} nested
+ * class now carries its own {@code @SpringBootTest} with a dedicated in-memory
+ * database ({@code throttle-test}). That datasource URL is load-bearing for test
+ * isolation: it makes the nested class's Spring context cache key unique, so Spring
+ * allocates a separate {@link InMemoryJoinAttemptLimiter} singleton for it rather
+ * than sharing the one from the outer class's context. Without that distinct URL the
+ * two contexts would share a limiter and failures from one test would bleed into
+ * another. {@code @DirtiesContext(BEFORE_EACH_TEST_METHOD)} gives each test method
+ * within the class a fresh limiter so that the ten-failure window resets between
+ * methods. The helper that used to generate per-test addresses has been renamed to
+ * {@code unusedAddressHint()} and its Javadoc updated to record that the value it
+ * returns is sent as a header that the application now ignores; it is kept only
+ * where removing it would require restructuring the call site, and callers that do
+ * not need it have been updated to drop it.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -149,8 +166,19 @@ class SessionControllerIntegrationTest {
         return drawn.toString();
     }
 
-    /** An address no other test charges failures to. */
-    private static String freshAddress() {
+    /**
+     * Returns a unique address string that is sent as {@code X-Forwarded-For}.
+     *
+     * <p>Before EOP-26 this was the test suite's isolation mechanism: each failing
+     * join attempt carried a distinct address so failures would not accumulate against
+     * the shared MockMvc peer ({@code 127.0.0.1}). That strategy only worked because
+     * the header was trusted unconditionally — the exact vulnerability EOP-26 closed.
+     * With the fix in place the header is ignored (no trusted proxy is configured),
+     * so the value returned here has no effect on throttle-bucket assignment. The
+     * helper is kept only where removing it would require restructuring the call site;
+     * it must not be read as providing any isolation guarantee.
+     */
+    private static String unusedAddressHint() {
         return "203.0.113." + SERIAL.incrementAndGet();
     }
 
@@ -278,7 +306,7 @@ class SessionControllerIntegrationTest {
         @Test
         @DisplayName("refuses a code no session holds")
         void shouldRefuseAnUnknownCode() throws Exception {
-            attemptJoin(unheldCode(), freshAddress())
+            attemptJoin(unheldCode(), unusedAddressHint())
                     .andExpect(status().isNotFound())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
                     .andExpect(jsonPath("$.title").value("No such session"))
@@ -290,9 +318,9 @@ class SessionControllerIntegrationTest {
         void shouldNotDiscloseWhichCodesAreReal() throws Exception {
             final var wellFormed = unheldCode();
             final var attempts = List.of(
-                    attemptJoin(wellFormed, freshAddress()),
-                    attemptJoin("12345", freshAddress()),
-                    attemptJoin("1234IU", freshAddress()));
+                    attemptJoin(wellFormed, unusedAddressHint()),
+                    attemptJoin("12345", unusedAddressHint()),
+                    attemptJoin("1234IU", unusedAddressHint()));
 
             final var described = new ArrayList<String>();
             for (final var attempt : attempts) {
@@ -312,7 +340,7 @@ class SessionControllerIntegrationTest {
         void shouldOnlyEchoWhatTheCallerSent() throws Exception {
             final var attempted = unheldCode();
 
-            final var body = attemptJoin(attempted, freshAddress())
+            final var body = attemptJoin(attempted, unusedAddressHint())
                     .andExpect(status().isNotFound())
                     .andReturn()
                     .getResponse()
@@ -330,7 +358,7 @@ class SessionControllerIntegrationTest {
                 joinSession(facilitator.joinCode(), "Player " + seat);
             }
 
-            attemptJoin(facilitator.joinCode(), freshAddress())
+            attemptJoin(facilitator.joinCode(), unusedAddressHint())
                     .andExpect(status().isConflict())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
                     .andExpect(jsonPath("$.title").value("Session is full"))
@@ -345,7 +373,7 @@ class SessionControllerIntegrationTest {
             joinSession(facilitator.joinCode(), "Alan");
             startPlay(facilitator.sessionId(), facilitator.playerToken()).andExpect(status().isOk());
 
-            attemptJoin(facilitator.joinCode(), freshAddress())
+            attemptJoin(facilitator.joinCode(), unusedAddressHint())
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.title").value("Session is not in the lobby"))
                     .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("IN_PROGRESS")));
@@ -479,21 +507,63 @@ class SessionControllerIntegrationTest {
         }
     }
 
+    /**
+     * Tests that exercise the join throttle.
+     *
+     * <p>Before EOP-26, each test in this class used a unique {@code X-Forwarded-For}
+     * address so that failures would not accumulate against the shared MockMvc peer
+     * ({@code 127.0.0.1}). That strategy only worked because the header was trusted
+     * unconditionally — the exact vulnerability EOP-26 was filed to close. With the
+     * fix in place the header is ignored (no trusted proxy is configured), so all
+     * failures now accumulate against {@code 127.0.0.1}.
+     *
+     * <p>This class carries its own {@code @SpringBootTest} with a dedicated in-memory
+     * database ({@code throttle-test}). That datasource URL is load-bearing for test
+     * isolation: it makes this nested class's Spring context cache key unique, so Spring
+     * allocates a separate {@link InMemoryJoinAttemptLimiter} singleton for it rather
+     * than sharing the one from the outer class's context. Without that distinct URL the
+     * two contexts would share a limiter and failures from one test would bleed into
+     * another. Do not remove or rename the datasource property — it is not cosmetic.
+     *
+     * <p>{@code @DirtiesContext(BEFORE_EACH_TEST_METHOD)} gives each test method within
+     * this class a fresh limiter so that the ten-failure window resets between methods.
+     * It does not provide any after-class isolation; that is handled by the unique
+     * datasource URL above, which ensures this class's context is never shared with
+     * the outer class or with {@code SessionResilienceIntegrationTest}.
+     *
+     * <p>The per-address isolation property (one exhausted address must not throttle
+     * another) is proved end-to-end in
+     * {@code ForwardedForThrottleBypassIntegrationTest.PerAddressIsolationUnderTrustedProxy},
+     * which saturates one address and then asserts a different address still succeeds.
+     */
+    @SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:throttle-test;DB_CLOSE_DELAY=-1")
+    @AutoConfigureMockMvc
     @Nested
     @DisplayName("throttling guesses")
+    @DirtiesContext(classMode = ClassMode.BEFORE_EACH_TEST_METHOD)
     class ThrottlingGuesses {
+
+        @Autowired
+        private MockMvc throttleMvc;
 
         @Test
         @DisplayName("tolerates ten wrong codes from one address and then refuses with a retry hint")
         void shouldThrottleAFloodOfGuesses() throws Exception {
-            final var guesser = freshAddress();
+            final var hint = unusedAddressHint();
             final var code = unheldCode();
 
             for (int attempt = 1; attempt <= TOLERATED_FAILURES; attempt++) {
-                attemptJoin(code, guesser).andExpect(status().isNotFound());
+                throttleMvc.perform(post(SESSIONS + "/" + code + "/players")
+                                .header(FORWARDED_FOR, hint)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(nameRequest("Hopeful")))
+                        .andExpect(status().isNotFound());
             }
 
-            final var refused = attemptJoin(code, guesser)
+            final var refused = throttleMvc.perform(post(SESSIONS + "/" + code + "/players")
+                            .header(FORWARDED_FOR, hint)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(nameRequest("Hopeful")))
                     .andExpect(status().isTooManyRequests())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
                     .andExpect(jsonPath("$.title").value("Too many join attempts"))
@@ -507,37 +577,35 @@ class SessionControllerIntegrationTest {
             // whole number, and does not exceed the window.
             assertThat(refused.getHeader("Retry-After"))
                     .isNotNull()
-                    .satisfies(hint -> assertThat(Long.parseLong(hint)).isBetween(1L, 60L));
-        }
-
-        @Test
-        @DisplayName("one exhausted address does not throttle another")
-        void shouldThrottlePerAddress() throws Exception {
-            final var guesser = freshAddress();
-            final var code = unheldCode();
-            for (int attempt = 1; attempt <= TOLERATED_FAILURES; attempt++) {
-                attemptJoin(code, guesser).andExpect(status().isNotFound());
-            }
-            attemptJoin(code, guesser).andExpect(status().isTooManyRequests());
-
-            attemptJoin(code, freshAddress()).andExpect(status().isNotFound());
+                    .satisfies(h -> assertThat(Long.parseLong(h)).isBetween(1L, 60L));
         }
 
         @Test
         @DisplayName("a throttled address can still be seated at a table it knows, because success is not charged")
         void shouldNotChargeSuccessfulJoins() throws Exception {
-            final var facilitator = createSession("Ada");
-            final var joiner = freshAddress();
+            final var sessionBody = throttleMvc.perform(post(SESSIONS)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(nameRequest("Ada")))
+                    .andExpect(status().isCreated())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            final var facilitator = admissionFrom(sessionBody);
+            final var hint = unusedAddressHint();
 
             for (int attempt = 1; attempt <= TOLERATED_FAILURES; attempt++) {
-                mockMvc.perform(post(SESSIONS + "/" + facilitator.joinCode() + "/players")
-                                .header(FORWARDED_FOR, joiner)
+                throttleMvc.perform(post(SESSIONS + "/" + facilitator.joinCode() + "/players")
+                                .header(FORWARDED_FOR, hint)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(nameRequest("Guest " + attempt)))
                         .andExpect(attempt <= 5 ? status().isOk() : status().isConflict());
             }
 
-            attemptJoin(unheldCode(), joiner).andExpect(status().isNotFound());
+            throttleMvc.perform(post(SESSIONS + "/" + unheldCode() + "/players")
+                            .header(FORWARDED_FOR, hint)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(nameRequest("Hopeful")))
+                    .andExpect(status().isNotFound());
         }
     }
 

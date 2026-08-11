@@ -29,13 +29,28 @@
 	# the container network. Same origin as the assets above, which is the
 	# entire point: the browser never makes a cross-origin request, so no
 	# CORS configuration exists anywhere in this project.
+	#
+	# Hardening: overwrite the header with the immediate peer so any chain
+	# a caller invented is discarded. Safe under either Caddy ordering -
+	# applied after Caddy's own append it leaves a single entry, applied
+	# before it the value is appended to itself. The application reads the
+	# LAST entry, which is the real client either way.
+	#
+	# Note: header_up <name> <value> without a + prefix is a SET, not an APPEND.
+	# This discards an attacker's invented chain, but means a legitimate second
+	# proxy in front of Caddy would have its chain destroyed, and the application
+	# would then key every request on that outer proxy's single address.
 	handle /api/* {
-		reverse_proxy app:8080
+		reverse_proxy app:8080 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	# The smoke test and the load test both assert this returns exactly OK.
 	handle /health {
-		reverse_proxy app:8080
+		reverse_proxy app:8080 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	handle {

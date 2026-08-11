@@ -14,6 +14,9 @@ spring:
       # second independent guard: if somebody ever flips application.yml back on, the
       # deployed profile still refuses. Defense in depth, not a single gate.
       enabled: false
+  # eop.web.trusted-proxies is deliberately NOT set here but on the app service in
+  # compose.app.yml, because the value is the proxy's container address and belongs
+  # beside the ipv4_address it must match.
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
@@ -23,6 +26,14 @@ server:
   # isolation — only unreachability from outside the container. Isolation comes
   # from the security group and from which ports are published to the host.
   address: 0.0.0.0
+  # Explicitly pinned (EOP-26, ADR-021). The application resolves the client address itself via
+  # ClientAddressResolver against an explicit allow-list; letting the container or framework
+  # rewrite getRemoteAddr() from headers would undermine that, because both alternatives trust
+  # wide private ranges by default and one of those ranges contains our own Compose subnet;
+  # so the value is pinned rather than left to a default. NONE is already the effective default
+  # and pinning it is the point - the property exists so a future well-intentioned "we're behind
+  # a proxy now" change cannot silently re-open EOP-26.
+  forward-headers-strategy: none
   error:
     include-exception: false
     include-stacktrace: never

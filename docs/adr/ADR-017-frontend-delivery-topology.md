@@ -174,5 +174,11 @@ access itself.
 - [ADR-013: Feature Flags](ADR-013-feature-flags.md) — why this slice ships unflagged
 - [ADR-016: Local Container Runtime](ADR-016-local-container-runtime.md) — the runtime this stack
   is verified on
+- [ADR-021: Trusted Proxy Forwarded-For](ADR-021-trusted-proxy-forwarded-for.md) — qualifies how far
+  the topology below may be relied upon. Nothing here is withdrawn: the application container
+  really does publish no host port. But "only Caddy is reachable" is a deployment arrangement, and
+  code that read it as a guarantee that the peer *is* Caddy trusted `X-Forwarded-For`
+  unconditionally. ADR-021 makes that trust an explicit, default-denied allow-list and pins the
+  proxy to a fixed address so there is something to allow-list
 - [Product requirements](../requirements/PRD-eop-card-game.md) — the assumption this decision
   replaces

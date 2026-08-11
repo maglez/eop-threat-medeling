@@ -237,6 +237,7 @@ status enum so that the concept has somewhere to live when it is needed.
 - [ADR-020](ADR-020-session-concurrency-control.md) — how the seat constraint and the status guard actually serialise concurrent joins, and why `@Version` is not the mechanism
 - [ADR-012](ADR-012-deployment-target.md) — one process, no TLS, restart on deploy; the EC2 target is withdrawn but every premise this ADR borrows from it still holds
 - [ADR-016](ADR-016-local-container-runtime.md) — the local container stack this actually runs in, and the restart that resets the limiter
+- [ADR-021](ADR-021-trusted-proxy-forwarded-for.md) — restores the primary control this ADR depends on. The decision here is unchanged and nothing in it is withdrawn; ADR-021 records that the address the limiter keys on was caller-supplied until EOP-26, so the throttle that makes thirty bits acceptable could be bypassed by rotating one header
 - [Runtime view](../architecture/runtime-view.md) — the reconnect, subscribe and create/join/start sequences
 - [C4 container diagram](../architecture/C4-Diagrams.md) — where the controller, the publisher and the limiter sit
 - [PRD §3, §4, §5](../requirements/PRD-eop-card-game.md) — the workflow, the player range, and the domain model
