@@ -110,7 +110,13 @@ AUDITOR_AGENTS = {
 }
 
 # A *strictly* read-only agent: one whose definition declares `permission.edit:
-# deny`, so any edit it makes is a permission failure. This is deliberately NOT
+# deny`. An edit by one of these is a contract violation, and where the tool
+# used was `edit` it is a permission failure too — but AUTHORING_TOOLS also
+# counts `write`, `patch`, `multiedit` and `notebookedit`, none of which any gate
+# frontmatter denies, so this check is deliberately broader than what the
+# permission layer actually prevents. It fails safe in the right direction:
+# detection over prevention, not detection standing in for prevention.
+# This is deliberately NOT
 # the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
 # independent of the author — family-independent where the invariant holds, and
 # in its two documented exceptions the strongest guarantee still available,
@@ -398,20 +404,40 @@ def conformance(trace: dict) -> list[str]:
         # complete while that gate never reviewed the work at all.
         ambiguous = [agent for agent in present if agent in MULTI_STAGE_AGENTS]
         caveat = (
-            f" (unattributable: {', '.join(ambiguous)} also belongs to another"
+            f" (unattributable: {', '.join(ambiguous)}"
+            f" also {'belongs' if len(ambiguous) == 1 else 'belong'} to another"
             " stage, so this may be one dispatch counted twice)"
             if ambiguous
             else ""
         )
+        # Two ways a stage can have no evidence worth the name. Nobody ran, or
+        # everyone who ran is unattributable — and the second must be as loud as
+        # the first. If every agent credited to this stage also belongs to
+        # another one, the trace contains nothing that places any dispatch here,
+        # so reporting PART would let the worst case (a build-time ADR dispatch
+        # standing in for five gate reviews that never happened) hide behind a
+        # severity readers are told not to act on. MISS is the honest severity;
+        # the message says which agent was seen so the reader is not misled into
+        # thinking the trace was empty.
         if not present:
             findings.append(f"MISS  stage {stage}: none of {', '.join(expected)} ran")
+        elif present == ambiguous:
+            findings.append(
+                f"MISS  stage {stage}: no attributable evidence — only"
+                f" {', '.join(present)} ran, and that dispatch may belong to"
+                f" another stage; absent {', '.join(missing)}"
+                if missing
+                else f"MISS  stage {stage}: no attributable evidence — only"
+                f" {', '.join(present)} ran, and that dispatch may belong to"
+                " another stage"
+            )
         elif missing:
             findings.append(
                 f"PART  stage {stage}: ran {', '.join(present)};"
                 f" absent {', '.join(missing)}{caveat}"
             )
         elif ambiguous:
-            findings.append(f"PART  stage {stage}: {', '.join(present)}{caveat}")
+            findings.append(f"PART  stage {stage}: ran {', '.join(present)}{caveat}")
         else:
             findings.append(f"OK    stage {stage}: {', '.join(present)}")
 
