@@ -1,0 +1,160 @@
+# ADR-022: Model Tiers Are Allocated By Definition-of-Done Role, Not By Artefact Type
+
+**Status:** Accepted
+**Date:** 2026-08-11
+**Deciders:** @architecture-guardian, @tech-lead
+
+## Context
+
+Delivery in this repository is performed by a team of agents defined in `.opencode/agents/`,
+each pinned to one of five abstract model tiers (`MODEL_A`–`MODEL_E`) resolved from the
+environment by `.opencode/opencode.json`. The tiering exists to serve one architectural
+constraint, stated in the Blueprint as the **Separation Invariant**: an artefact must not be
+reviewed by the same model that produced it, because a model asked to find fault with its own
+output reliably finds none.
+
+That invariant was originally operationalised by asking a question about **artefact type** —
+*does this agent write files?* Agents that wrote files were classified "Author" and pinned to
+the coder tier (`MODEL_C`/`MODEL_E`); agents that judged files were classified "Audit" and
+pinned to the reasoning tiers (`MODEL_A`/`MODEL_B`).
+
+Applied to `@tester-unit-and-quality` and `@tester-api`, that question gave the wrong answer.
+Both write files, so both were classified Authors and pinned to `MODEL_C`. But both are also
+named gates in the Definition of Done: a story cannot complete without an explicit verdict from
+each. The classification optimised for the artefact they emit and ignored the authority they
+hold.
+
+The cost was paid twice, in production:
+
+- `@tester-unit-and-quality` on `MODEL_C` needed three dispatches to return a verdict at all,
+  and on one of them recommended merging a red build.
+- `@tester-api` on `MODEL_C`, under story EOP-26, returned `VERDICT: APPROVE` on four
+  consecutive dispatches while producing none of its contracted evidence — no severity-tagged
+  findings, no literal command output, once substituting headings of its own for the brief's
+  required outputs, and once asserting that its evidence had been compiled into a markdown
+  document it had no permission to write.
+
+The second failure is the instructive one, because the remedy for the first was already written
+down. `AGENTS.md` carried the rule *"a review gate must not share weights with an agent that
+writes production code"* before EOP-26 began. The rule existed; the pin contradicted it; nothing
+detected the contradiction. A hollow `APPROVE` is worse than a `REJECT`, because it consumes the
+gate's authority without exercising it — the story proceeds believing it was examined.
+
+The reason the contradiction survived is where the rules were kept. Tier allocation was
+described in four places — `AGENTS.md`, `.env.example`, `.opencode/opencode.json` and
+`.opencode/docs/OpenCode_Autonomous_Engineering_System_Blueprint.md` — and **none of them is an
+ADR**. All four are living reference documents, amended in place. Each describes the current
+state; none records the reasoning that produced it, the alternatives weighed, or the risks
+accepted. So when the classification of the testers was set, and again when it was questioned,
+there was nothing to supersede and nothing to cite: the rationale was overwritten rather than
+revised, which is precisely the drift ADRs exist to prevent. The governance layer that decides
+who is permitted to approve this project's work was the one layer with no decision record.
+
+## Decision
+
+Tier allocation is governed by an agent's **role in the Definition of Done**, not by whether it
+emits files.
+
+1. **Any agent named as a Definition-of-Done gate is pinned to `MODEL_A` or `MODEL_B`. No DoD
+   gate may sit on `MODEL_C` or `MODEL_E`.** This holds regardless of whether the gate also
+   authors artefacts.
+2. The five gates are `@tester-unit-and-quality`, `@tester-api`, `@security-auditor`,
+   `@code-reviewer` and `@architecture-guardian`. `@tester-api` moves to `MODEL_B`, joining
+   `@tester-unit-and-quality`, which moved earlier for the identical reason.
+3. `@performance-engineer` remains on `MODEL_C` and is **not** a gate. It carries no Sign-off
+   Contract, and dispatching it as a gate is unsupported.
+4. Tier is necessary but not sufficient. Each of the five gates additionally carries a
+   **Sign-off Contract** in its own definition — a mandatory terminal `VERDICT:` line,
+   severity-tagged findings citing `file:line`, actual command output rather than stated intent,
+   an obligation to answer a brief's enumerated outputs *in addition to* rather than instead of
+   its own findings, an acknowledgement that its reply is the only deliverable that exists, and
+   a prohibition on approving a red build. These obligations belong in the agent definition
+   because a behaviour enforced only by whatever the dispatching prompt happens to mention is
+   not enforced.
+5. **This narrows the Separation Invariant, and the narrowing is accepted deliberately rather
+   than denied.** The invariant now holds unconditionally for production code and
+   infrastructure. It does **not** hold for test code. The Separation Invariant must be stated
+   with that qualification rather than continuing to claim it holds without exception.
+6. Reversing any part of this allocation requires a superseding ADR. It may not be done by
+   editing the tier tables, which is how the previous classification came to contradict a rule
+   the project had already written down.
+
+```mermaid
+flowchart LR
+    subgraph reasoning["MODEL_A / MODEL_B — reasoning tiers"]
+        G1["@architecture-guardian<br/>@security-auditor<br/>MODEL_A"]
+        G2["@code-reviewer<br/>@tester-api<br/>@tester-unit-and-quality<br/>MODEL_B"]
+    end
+    subgraph coder["MODEL_C / MODEL_E — coder tier (one model)"]
+        A1["@db-designer<br/>@devops-engineer<br/>@performance-engineer<br/>@ui-builder"]
+    end
+    A1 -->|"production code &<br/>infrastructure"| PROD["Production artefacts"]
+    G2 -->|"test code"| TEST["Test artefacts"]
+    PROD -->|"reviewed by — invariant holds"| G1
+    PROD -->|"reviewed by — invariant holds"| G2
+    TEST -->|"reviewed by — independent"| G1
+    TEST -.->|"same model ID —<br/>NOT independent"| G2
+```
+
+## Consequences
+
+**Accepted gains.**
+
+- Gate verdicts are produced by a tier that has demonstrated it can hold the Sign-off Contract.
+  This is the whole point: the gate's output is a decision, and a decision from a model that
+  cannot reliably follow the contract governing it is not a decision.
+- `MODEL_B` authors no production code, so independence of review for production artefacts is
+  untouched by the move.
+- The rule is now numbered and citable. A future pin that puts a gate on the coder tier
+  contradicts ADR-022 rather than contradicting a bullet in a reference manual.
+- Any agent later promoted to gate status inherits the constraint automatically, because the
+  rule is expressed in terms of DoD role rather than as a list of names.
+
+**Accepted costs, stated plainly.**
+
+- **The Separation Invariant is now conditional, and test code is the exception.** With the
+  current Bedrock mapping, `@code-reviewer` and both testers resolve to the *same model ID* —
+  `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` — not merely the same family. Test code
+  authored by a tester and reviewed by `@code-reviewer` is therefore reviewed by identical
+  weights. The mitigation is real but partial: `@architecture-guardian` on `MODEL_A` remains a
+  genuinely independent reviewer of test code, so tests are not wholly unreviewed; but any
+  claim that *both* named reviewers provide independence for tester-authored tests is false.
+  The trade was accepted because a gate that cannot hold its contract blocks or corrupts every
+  story, whereas same-model review of test code degrades one artefact class that is itself
+  never shipped.
+- `/trace` will report that overlap as a `RISK … self-review` line on any story where a tester
+  writes a test. **That finding is a true positive and must not be silenced.** It is the
+  visible price of this decision, and suppressing it would restore the blindness this ADR was
+  written to remove.
+- `AUDITOR_AGENTS` in `tools/agent-trace.py` is consumed for two different purposes: detecting
+  same-model review, and detecting an agent that edited files when its role forbids it. The two
+  testers belong in the first check and not in the second, because they legitimately author
+  files. Holding both meanings in one set makes the permission check emit a false alarm for
+  every tester that does its job. Separating the two sets — ideally deriving the read-only set
+  from the `edit: deny` permission actually declared in each agent's frontmatter — is required
+  follow-up work, not an optional refinement.
+- Gate work runs on more expensive models. Five gates per story on reasoning tiers is a real
+  and recurring cost increase over the coder tier.
+- The guarantee remains a property of the `.env` values rather than of any table. `MODEL_E` is
+  currently the *same model ID* as `MODEL_C`, so "`MODEL_C`/`MODEL_E`" names one model, and a
+  future operator who points `MODEL_C` at an Anthropic model collapses the invariant entirely
+  without editing a single agent definition.
+- Tier changes take effect only after an OpenCode restart, because configuration is read at
+  session start. A pin corrected mid-session is not in force for that session.
+
+## Related
+
+- [ADR-006](ADR-006-build-quality-gates.md) — mechanical build gates; this ADR governs the
+  agent gates that sit alongside them, and the same reasoning applies: a gate that cannot fail
+  is not a gate
+- [ADR-011](ADR-011-graphify-knowledge-graph.md) — precedent for recording a decision about the
+  development toolchain, rather than the application, as an ADR
+- [ADR-003](ADR-003-github-mcp-integration.md) — likewise: agent tooling recorded as an
+  architectural decision
+- [ADR-010](ADR-010-continuous-flow-over-sprints.md) — the delivery process these gates
+  terminate
+- `.opencode/docs/OpenCode_Autonomous_Engineering_System_Blueprint.md` §3.1, §3.4, §12.8 — the
+  Separation Invariant, the tier catalogue, and the Definition of Done that names the five gates
+- `AGENTS.md` — the operational statement of this rule for day-to-day work
+- `tools/agent-trace.py` — `/trace`, which detects violations of the invariant after the fact
+- EOP-46 (this decision), EOP-26 (the `@tester-api` failure that forced it)

@@ -94,6 +94,20 @@ AUDITOR_AGENTS = {
     "tester-unit-and-quality",
 }
 
+# A *strictly* read-only agent: one whose definition declares `edit: deny`, so
+# any edit it makes is a permission failure. This is deliberately NOT the same
+# set as AUDITOR_AGENTS. Gate membership means "this verdict must be
+# independent"; read-only membership means "this agent must never write". Three
+# of the five gates legitimately author files — the two testers write tests and
+# @architecture-guardian writes ADRs — so folding them into the write check
+# would raise a false alarm on every story where a tester does its job, and
+# `/trace` documents a read-only RISK as an urgent configuration defect. Keep
+# this set in step with the `edit: deny` frontmatter in .opencode/agents/.
+READ_ONLY_AGENTS = {
+    "code-reviewer",
+    "security-auditor",
+}
+
 
 def canonical(agent: str | None) -> str:
     """Return an agent name that is stable across the EOP-000 rename.
@@ -386,9 +400,11 @@ def conformance(trace: dict) -> list[str]:
                 f" ({', '.join(culprits)}) - same model, so this is self-review"
             )
 
-    # A read-only agent that edited files is a permission failure.
+    # An agent whose definition denies `edit` but which edited files is a
+    # permission failure. Only the strictly read-only gates are checked here;
+    # see READ_ONLY_AGENTS for why this is not AUDITOR_AGENTS.
     for node in trace["nodes"]:
-        if node["agent"] in AUDITOR_AGENTS and node["authoring"] > 0:
+        if node["agent"] in READ_ONLY_AGENTS and node["authoring"] > 0:
             findings.append(
                 f"RISK  {node['agent']} made {node['authoring']} edits;"
                 " its role is read-only"
