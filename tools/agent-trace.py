@@ -42,8 +42,10 @@ from pathlib import Path
 
 DB_PATH = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
 
-# Tools that change the working tree. An agent declaring `edit: deny` that
-# shows up here is a permission failure, not a style question.
+# Tools that change the working tree. An agent declaring `edit: deny` that shows
+# up here has violated its contract; whether it also defeated the permission
+# layer depends on which tool it used, because only `edit` is actually denied.
+# See READ_ONLY_AGENTS below for why that gap is deliberate.
 AUTHORING_TOOLS = {"edit", "write", "patch", "multiedit", "notebookedit"}
 
 # Built-in agents. They are not team members and should not be judged
@@ -116,12 +118,12 @@ AUDITOR_AGENTS = {
 # frontmatter denies, so this check is deliberately broader than what the
 # permission layer actually prevents. It fails safe in the right direction:
 # detection over prevention, not detection standing in for prevention.
-# This is deliberately NOT
-# the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
-# independent of the author — family-independent where the invariant holds, and
-# in its two documented exceptions the strongest guarantee still available,
-# which is model-independence at best and neither degree where the gate and the
-# author resolve to one model ID (Blueprint §3.1)";
+#
+# This is deliberately NOT the same set as AUDITOR_AGENTS. Gate membership means
+# "this verdict must be independent of the author — family-independent where the
+# invariant holds, and in its two documented exceptions the strongest guarantee
+# still available, which is model-independence at best and neither degree where
+# the gate and the author resolve to one model ID (Blueprint §3.1)";
 # read-only membership means "this agent must never write". Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
@@ -422,14 +424,16 @@ def conformance(trace: dict) -> list[str]:
         if not present:
             findings.append(f"MISS  stage {stage}: none of {', '.join(expected)} ran")
         elif present == ambiguous:
-            findings.append(
+            unattributable = (
                 f"MISS  stage {stage}: no attributable evidence — only"
-                f" {', '.join(present)} ran, and that dispatch may belong to"
-                f" another stage; absent {', '.join(missing)}"
+                f" {', '.join(present)} ran, and"
+                f" {'that dispatch may' if len(present) == 1 else 'those dispatches may'}"
+                f" belong to another stage"
+            )
+            findings.append(
+                f"{unattributable}; absent {', '.join(missing)}"
                 if missing
-                else f"MISS  stage {stage}: no attributable evidence — only"
-                f" {', '.join(present)} ran, and that dispatch may belong to"
-                " another stage"
+                else unattributable
             )
         elif missing:
             findings.append(
