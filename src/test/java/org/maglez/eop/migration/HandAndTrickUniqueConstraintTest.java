@@ -98,12 +98,24 @@ class HandAndTrickUniqueConstraintTest {
     @Test
     @DisplayName("two hands in the same session at the same seat are rejected by uq_hand_session_seat (23505)")
     void twoHandsInSameSessionAtSameSeatAreRejected() throws Exception {
-        // Arrange — one session, two players at different player seats (uq_player_session_seat)
+        // Arrange — the second player is deliberately in a DIFFERENT session, holding the
+        // SAME seat number. Two players in one session cannot both hold seat 0
+        // (uq_player_session_seat), so the obvious setup — a second player at seat 1 whose
+        // hand claims seat 0 — violates fk_hand_player_seat as well as the constraint under
+        // test. H2 reports the unique violation first, so such a test passes here and would
+        // fail on PostgreSQL 17, where evaluation order is not guaranteed to agree. Seats
+        // are numbered from 0 in every session, so a seat-0 player in session B satisfies
+        // fk_hand_player_seat while colliding only on uq_hand_session_seat, whose columns
+        // are (game_session_id, seat_order). That leaves exactly one constraint able to fire
+        // on either engine.
         final UUID sessionId = MigrationTestFixtures.insertMinimalGameSession(connection);
+        final UUID otherSessionId = MigrationTestFixtures.insertMinimalGameSession(connection);
         final UUID player1Id = MigrationTestFixtures.insertMinimalPlayer(connection, sessionId, 0);
-        final UUID player2Id = MigrationTestFixtures.insertMinimalPlayer(connection, sessionId, 1);
+        final UUID player2Id =
+                MigrationTestFixtures.insertMinimalPlayer(connection, otherSessionId, 0);
 
-        // First hand at seat 0 — must succeed
+        // First hand at seat 0 — must succeed. Unwrapped, so a schema that rejected
+        // everything would error here rather than reaching the assertion below.
         MigrationTestFixtures.insertMinimalHand(connection, sessionId, player1Id, 0);
 
         // Act + Assert — second hand in the same session at the same seat must fail

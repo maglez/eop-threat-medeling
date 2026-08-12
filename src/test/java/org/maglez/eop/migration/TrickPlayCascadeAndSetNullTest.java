@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.fail;
  * <p>No Spring context. Owns its own uniquely-named in-memory H2 database.
  * {@code connection.setAutoCommit(true)} is set immediately after Liquibase runs.
  */
-@DisplayName("session-delete cascade and fk_trick_winner_play SET NULL behaviour")
+@DisplayName("session-delete and player-delete cascades, and fk_trick_winner_play SET NULL behaviour")
 class TrickPlayCascadeAndSetNullTest {
 
     private static final String JDBC_URL =
@@ -246,9 +246,136 @@ class TrickPlayCascadeAndSetNullTest {
                 .isFalse();
     }
 
+    /**
+     * Deleting a single {@code player} row must cascade to that player's {@code hand},
+     * {@code hand_card}, {@code trick_play} and {@code trick_play_component} rows, and must
+     * leave every other player's rows and the session's tricks untouched.
+     *
+     * <p>This is the player-delete path of {@code fk_hand_player_seat} and
+     * {@code fk_trick_play_player_seat}, both {@code ON DELETE CASCADE} (changeset 009). It is
+     * a distinct engine path from the session delete covered above, and it was previously
+     * pinned by nothing: the changeset comment asserts that the only path removing a player is
+     * session teardown, which is a claim about application code rather than a tested storage
+     * property. Both the security and unit-test gates raised the gap independently.
+     *
+     * <p>The bystander assertions are the load-bearing half. A cascade that deleted too much
+     * would still satisfy "the departing player's rows are gone", so the test would pass while
+     * destroying a second player's hand. Asserting that the bystander's subtree survives is
+     * what makes this a test of the cascade's scope rather than only of its existence.
+     */
+    @Test
+    @DisplayName("DELETE FROM player cascades to that player's hand and trick_play rows only")
+    void playerDeleteCascadesToThatPlayersRowsOnly() throws Exception {
+        // Arrange — one session, two players, a full subtree for each
+        final UUID sessionId = MigrationTestFixtures.insertMinimalGameSession(connection);
+        final UUID leavingId = MigrationTestFixtures.insertMinimalPlayer(connection, sessionId, 0);
+        final UUID bystanderId = MigrationTestFixtures.insertMinimalPlayer(connection, sessionId, 1);
+
+        final UUID leavingHandId =
+                MigrationTestFixtures.insertMinimalHand(connection, sessionId, leavingId, 0);
+        final UUID bystanderHandId =
+                MigrationTestFixtures.insertMinimalHand(connection, sessionId, bystanderId, 1);
+        final UUID card1Id = MigrationTestFixtures.anyExistingCard(connection);
+        final UUID card2Id = MigrationTestFixtures.secondExistingCard(connection);
+        MigrationTestFixtures.insertHandCard(connection, leavingHandId, card1Id);
+        MigrationTestFixtures.insertHandCard(connection, bystanderHandId, card2Id);
+
+        final UUID trickId = MigrationTestFixtures.insertMinimalTrickInSession(connection, sessionId);
+        final UUID leavingPlayId =
+                MigrationTestFixtures.insertTrickPlay(connection, trickId, card1Id, 0, leavingId);
+        final UUID bystanderPlayId =
+                MigrationTestFixtures.insertTrickPlay(connection, trickId, card2Id, 1, bystanderId);
+        MigrationTestFixtures.insertTrickPlayComponent(connection, leavingPlayId, 0, "Leaving A");
+        MigrationTestFixtures.insertTrickPlayComponent(connection, bystanderPlayId, 0, "Bystander A");
+
+        // Both subtrees must exist before the delete, or the assertions below are vacuous
+        assertThat(countHandsForPlayer(connection, leavingId))
+                .as("the leaving player must hold a hand before the delete").isEqualTo(1);
+        assertThat(countHandsForPlayer(connection, bystanderId))
+                .as("the bystander must hold a hand before the delete").isEqualTo(1);
+
+        // Act — remove one player
+        try {
+            deletePlayer(connection, leavingId);
+        } catch (SQLException e) {
+            fail("DELETE FROM player threw SQLException — a player cannot be removed at all, "
+                    + "which would make session teardown order load-bearing. SQL state: "
+                    + e.getSQLState() + ", message: " + e.getMessage());
+        }
+
+        // Assert — the leaving player's subtree is gone
+        assertThat(countHandsForPlayer(connection, leavingId))
+                .as("hand rows for departed player %s must be 0", leavingId).isEqualTo(0);
+        assertThat(countPlaysForPlayer(connection, leavingId))
+                .as("trick_play rows for departed player %s must be 0", leavingId).isEqualTo(0);
+        assertThat(componentCountForPlay(connection, leavingPlayId))
+                .as("components under the departed player's play must be 0").isEqualTo(0);
+        assertThat(handCardCountForHand(connection, leavingHandId))
+                .as("hand_card rows under the departed player's hand must be 0").isEqualTo(0);
+
+        // Assert — the bystander is untouched, and so is the trick itself
+        assertThat(countHandsForPlayer(connection, bystanderId))
+                .as("the bystander's hand must survive another player leaving").isEqualTo(1);
+        assertThat(countPlaysForPlayer(connection, bystanderId))
+                .as("the bystander's play must survive another player leaving").isEqualTo(1);
+        assertThat(componentCountForPlay(connection, bystanderPlayId))
+                .as("the bystander's components must survive").isEqualTo(1);
+        assertThat(handCardCountForHand(connection, bystanderHandId))
+                .as("the bystander's hand_card rows must survive").isEqualTo(1);
+        assertThat(trickExists(connection, trickId))
+                .as("the trick must survive one of its players leaving").isTrue();
+    }
+
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    private static void deletePlayer(
+            final Connection conn,
+            final UUID playerId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player WHERE id = ?")) {
+            ps.setObject(1, playerId);
+            ps.executeUpdate();
+        }
+    }
+
+    private static int countHandsForPlayer(
+            final Connection conn,
+            final UUID playerId) throws SQLException {
+        return countByUuid(conn, "SELECT COUNT(*) FROM hand WHERE player_id = ?", playerId);
+    }
+
+    private static int countPlaysForPlayer(
+            final Connection conn,
+            final UUID playerId) throws SQLException {
+        return countByUuid(conn, "SELECT COUNT(*) FROM trick_play WHERE player_id = ?", playerId);
+    }
+
+    private static int componentCountForPlay(
+            final Connection conn,
+            final UUID playId) throws SQLException {
+        return countByUuid(
+                conn, "SELECT COUNT(*) FROM trick_play_component WHERE trick_play_id = ?", playId);
+    }
+
+    private static int handCardCountForHand(
+            final Connection conn,
+            final UUID handId) throws SQLException {
+        return countByUuid(conn, "SELECT COUNT(*) FROM hand_card WHERE hand_id = ?", handId);
+    }
+
+    private static int countByUuid(
+            final Connection conn,
+            final String sql,
+            final UUID id) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
 
     private static void setWinnerPlay(
             final Connection conn,
