@@ -30,18 +30,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Proves that the three unique constraints on {@code trick_play} that guard the
+ * Proves that the unique constraints on {@code trick_play} that guard the
  * Slice A security defects are enforced by the database engine, not merely declared.
  *
- * <p>The three constraints under test, read directly from
+ * <p>The constraints under test, read directly from
  * {@code 004-trick-play-schema.xml} changeset 005:
  * <ul>
  *   <li>{@code uq_trick_play_trick_seat} — one seat per trick (ADR-023 concurrent-play gate)</li>
  *   <li>{@code uq_trick_play_trick_card} — one card per trick (stored form of card-forgery defect)</li>
- *   <li>{@code uq_trick_play_trick_player} — one player per trick.  This forbids one player
- *       occupying two seats in a trick.  It is <em>not</em> the seat-impersonation guard, which
- *       is {@code fk_trick_play_player_seat} from changeset 009; see
- *       {@code TrickPlayForeignKeyTest}</li>
+ *   <li>{@code uq_trick_play_trick_player} — one player per trick.  Retained as defence in depth:
+ *       it is what would still forbid one player occupying two seats in a trick if the seat binding
+ *       ({@code fk_trick_play_player_seat}, changeset 009) were ever relaxed.  It is not pinned by
+ *       an independent enforcement test because, with the seat binding in place, every construction
+ *       that would violate it also violates the FK.  On H2 2.4.240 the unique constraint is the one
+ *       reported — measured, not assumed.  Which one PostgreSQL 17 reports has not been measured
+ *       here, and it is not safe to assume it agrees: the engines are free to check in either order,
+ *       which is the whole reason asserting either constraint name would be a portability trap.  See
+ *       {@link #secondPlayBySamePlayerAtAnotherSeatIsRejected} for the deterministic test that
+ *       replaced the former portability-trap form.</li>
  * </ul>
  *
  * <p>Test 1 ({@link #concurrentDoublePlayForSameSeatIsRejected}) is the ADR-023 obligation:
@@ -51,9 +57,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * must fail with a {@link SQLIntegrityConstraintViolationException} (SQL state {@code 23505}).
  * The count for that {@code (trick_id, seat_order)} must be exactly 1 afterwards.
  *
- * <p>Tests 2, 3 and 4 are sequential: they assert that a second play in the same trick is
- * rejected when it reuses the same {@code card_id}, the same {@code player_id}, or the same
- * {@code seat_order} claimed by a player from another session.
+ * <p>Tests 2 and 4 are sequential: they assert that a second play in the same trick is
+ * rejected when it reuses the same {@code card_id} (test 2), or the same {@code seat_order}
+ * claimed by a player from another session (test 4).
+ *
+ * <p>Test 3 ({@link #secondPlayBySamePlayerAtAnotherSeatIsRejected}) asserts that a play
+ * at a seat the player does not hold is rejected by {@code fk_trick_play_player_seat} (SQL
+ * state {@code 23506}).  It uses a fresh trick (no prior play by the same player) so that
+ * {@code uq_trick_play_trick_player} cannot fire, making the FK the only violable constraint
+ * and the constraint name deterministic on both engines.
  *
  * <p>No Spring context.  Owns its own uniquely-named in-memory H2 database.
  * No JPA, no Spring Data, no adapters — JDBC only, as required by Slice B.
@@ -290,38 +302,112 @@ class TrickPlayUniqueConstraintTest {
     }
 
     // =========================================================================
-    // Test 3 — seat-impersonation defect: uq_trick_play_trick_player
+    // Test 3 — seat-impersonation defect: fk_trick_play_player_seat
     // =========================================================================
 
     /**
-     * A second play in the same trick by the same {@code player_id} under a different
-     * {@code seat_order} must be rejected by {@code uq_trick_play_trick_player}.
+     * A play by a player at a seat the player does not hold must be rejected by
+     * {@code fk_trick_play_player_seat} with SQL state {@code 23506}.
      *
-     * <p>This is the stored form of the seat-impersonation defect that Slice A had to
-     * fix twice at the domain level.  The constraint name is read from
-     * {@code 004-trick-play-schema.xml} changeset 005, line 331:
-     * {@code constraintName="uq_trick_play_trick_player"}.
+     * <p>This is the structural closure of the seat-impersonation defect at the storage
+     * layer: {@code fk_trick_play_player_seat} (changeset 009) references
+     * {@code player(id, seat_order)}, so a row whose {@code (player_id, seat_order)} pair
+     * has no matching {@code player} row is rejected by the engine.  Because the player
+     * holds seat 0, the pair {@code (playerId, 1)} has no matching row, and the insert is
+     * rejected regardless of whether seat 1 is occupied by another player.
+     *
+     * <h3>Why {@code uq_trick_play_trick_player} is no longer pinned by this test</h3>
+     * <p>Before changeset 009 added {@code fk_trick_play_player_seat}, the only way to
+     * construct a "same player, different seat" row was to have a prior play by the same
+     * player in the same trick, so {@code uq_trick_play_trick_player} and the FK were
+     * violated simultaneously.  H2 evaluates unique constraints before foreign-key
+     * constraints, so H2 reported {@code 23505} ({@code uq_trick_play_trick_player}) while
+     * PostgreSQL 17 would report {@code 23506} ({@code fk_trick_play_player_seat}) — a
+     * portability trap of the same class as the one fixed in
+     * {@code twoHandsInSameSessionAtSameSeatAreRejected}.
+     *
+     * <p>The correct fix is to isolate the FK as the <em>only</em> violable constraint.
+     * That requires a fresh trick (no prior play by this player), so
+     * {@code uq_trick_play_trick_player} cannot fire.  The non-vacuity insert (the
+     * happy-path play at the player's own seat in a separate trick) proves the schema is
+     * not simply rejecting all inserts.
+     *
+     * <p>{@code uq_trick_play_trick_player} is retained in the schema as defence in depth:
+     * it is what would still forbid one player occupying two seats in a trick if the seat
+     * binding ({@code fk_trick_play_player_seat}) were ever relaxed.  It is not pinned by
+     * an enforcement test here because, with the seat binding in place, every construction
+     * that would violate it also violates the FK, and the FK fires first on PostgreSQL.
+     * If {@code fk_trick_play_player_seat} were ever dropped, this test would need to be
+     * rewritten to assert {@code 23505} and name {@code uq_trick_play_trick_player}.
+     *
+     * <h3>Why naming the constraint is safe here</h3>
+     * <p>Walk every constraint on {@code trick_play} for the second insert:
+     * <ul>
+     *   <li>{@code fk_trick_play_trick} — satisfied: the trick exists.</li>
+     *   <li>{@code fk_trick_play_card} — satisfied: the card is in the seeded catalogue.</li>
+     *   <li>{@code fk_trick_play_player_seat} — <strong>violated</strong>: the player holds
+     *       seat 0; the pair {@code (playerId, 1)} has no matching {@code player(id,
+     *       seat_order)} row.  This is the only constraint the insert can violate.</li>
+     *   <li>{@code uq_trick_play_trick_seat} — not violated: no prior play at seat 1 in
+     *       this trick.</li>
+     *   <li>{@code uq_trick_play_trick_card} — not violated: the card is different from
+     *       the non-vacuity play's card.</li>
+     *   <li>{@code uq_trick_play_trick_player} — not violated: the player has no prior
+     *       play in this trick (the non-vacuity play is in a separate trick).</li>
+     * </ul>
+     * <p>Exactly one constraint can fire, so the constraint name in the exception message
+     * is deterministic on both H2 and PostgreSQL 17.
+     *
+     * <p>Empirically verified: H2 2.4.240 produces the message
+     * {@code Referential integrity constraint violation: "FK_TRICK_PLAY_PLAYER_SEAT:
+     * PUBLIC.TRICK_PLAY FOREIGN KEY(PLAYER_ID, SEAT_ORDER) REFERENCES
+     * PUBLIC.PLAYER(ID, SEAT_ORDER) (UUID '...', 1)"}.
+     * The constraint name {@code FK_TRICK_PLAY_PLAYER_SEAT} appears verbatim in the message.
      */
     @Test
-    @DisplayName("second play in the same trick by the same player_id under a different seat is rejected by uq_trick_play_trick_player")
-    void secondPlayBySamePlayerUnderDifferentSeatIsRejected() throws Exception {
-        // Arrange — one trick, two different cards, same player, two different seats
+    @DisplayName("play at a seat the player does not hold is rejected by fk_trick_play_player_seat (23506)")
+    void secondPlayBySamePlayerAtAnotherSeatIsRejected() throws Exception {
+        // Arrange — player holds seat 0; two separate tricks so uq_trick_play_trick_player
+        // cannot fire on the second insert (the player has no prior play in trick 2).
         final UUID cardId1 = MigrationTestFixtures.anyExistingCard(connection);
         final UUID cardId2 = MigrationTestFixtures.secondExistingCard(connection);
-        final UUID trickId = MigrationTestFixtures.insertMinimalTrick(connection);
-        final UUID sharedPlayerId = MigrationTestFixtures.insertPlayerForTrick(connection, trickId, 0);
 
-        // First play: seat 0, player P, card X — must succeed
-        MigrationTestFixtures.insertTrickPlay(connection, trickId, cardId1, 0, sharedPlayerId);
+        // Session A: player holds seat 0.  Trick 1 is the non-vacuity vehicle.
+        final UUID sessionA = MigrationTestFixtures.insertMinimalGameSession(connection);
+        final UUID trickId1 = MigrationTestFixtures.insertMinimalTrickInSession(connection, sessionA);
+        // Player holds seat 0 in session A.
+        final UUID playerId = MigrationTestFixtures.insertPlayerInSession(connection, sessionA, 0);
 
-        // Act + Assert — second play: seat 1, same player P, different card Y — must fail
+        // Non-vacuity: play at the player's own seat (seat 0) in trick 1 must succeed.
+        // If the schema were rejecting everything, this would fail before the assertion below.
+        MigrationTestFixtures.insertTrickPlay(connection, trickId1, cardId1, 0, playerId);
+
+        // Session B: a separate session so that insertMinimalTrickInSession (which always
+        // uses sequence=1) does not collide with trick 1 on uq_trick_session_sequence.
+        // The player has no prior play in trick 2, so uq_trick_play_trick_player cannot fire.
+        final UUID sessionB = MigrationTestFixtures.insertMinimalGameSession(connection);
+        final UUID trickId2 = MigrationTestFixtures.insertMinimalTrickInSession(connection, sessionB);
+
+        // Act + Assert — play at seat 1 in trick 2 by the same player (who holds seat 0).
+        // (playerId, 1) has no matching player(id, seat_order) row → fk_trick_play_player_seat fires.
+        // Only one constraint can fire here (see Javadoc for the full constraint walk).
         assertThatThrownBy(() ->
-                MigrationTestFixtures.insertTrickPlay(connection, trickId, cardId2, 1, sharedPlayerId))
-                .as("a second play in the same trick by the same player_id under a different seat must be "
-                        + "rejected by uq_trick_play_trick_player (SQL state 23505)")
-                .isInstanceOf(SQLIntegrityConstraintViolationException.class)
-                .extracting(e -> ((SQLException) e).getSQLState())
-                .isEqualTo(SQL_STATE_UNIQUE_VIOLATION);
+                MigrationTestFixtures.insertTrickPlay(connection, trickId2, cardId2, 1, playerId))
+                .as("a play at seat 1 by a player who holds seat 0 must be rejected "
+                        + "by fk_trick_play_player_seat (SQL state 23506, constraint name in message)")
+                .isInstanceOf(SQLException.class)
+                .satisfies(e -> {
+                    final SQLException sqle = (SQLException) e;
+                    assertThat(sqle.getSQLState())
+                            .as("SQL state must be 23506 (FK violation)")
+                            .isEqualTo("23506");
+                    // The constraint name is deterministic here because fk_trick_play_player_seat
+                    // is the only constraint the insert can violate (see Javadoc).
+                    // H2 2.4.240 includes the constraint name verbatim in the exception message.
+                    assertThat(sqle.getMessage())
+                            .as("H2 exception message must name the violated constraint")
+                            .containsIgnoringCase("FK_TRICK_PLAY_PLAYER_SEAT");
+                });
     }
 
     // =========================================================================
