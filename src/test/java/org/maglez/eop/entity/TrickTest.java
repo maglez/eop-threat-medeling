@@ -1,0 +1,525 @@
+package org.maglez.eop.entity;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.maglez.eop.entity.DeckFixture.card;
+import static org.maglez.eop.entity.HandBuilder.aHand;
+import static org.maglez.eop.entity.TrickBuilder.aTrick;
+import static org.maglez.eop.entity.TrickPlayBuilder.aPlayBy;
+
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+@DisplayName("Trick")
+class TrickTest {
+
+    private static final UUID TRICK_ID = new UUID(1000, 3);
+
+    private static final Card SPOOFING_FOUR = card(StrideCategory.SPOOFING, Rank.FOUR);
+    private static final Card SPOOFING_NINE = card(StrideCategory.SPOOFING, Rank.NINE);
+    private static final Card SPOOFING_KING = card(StrideCategory.SPOOFING, Rank.KING);
+    private static final Card SPOOFING_ACE = card(StrideCategory.SPOOFING, Rank.ACE);
+    private static final Card TAMPERING_TWO = card(StrideCategory.TAMPERING, Rank.TWO);
+    private static final Card REPUDIATION_ACE = card(StrideCategory.REPUDIATION, Rank.ACE);
+    private static final Card DENIAL_KING = card(StrideCategory.DENIAL_OF_SERVICE, Rank.KING);
+    private static final Card TRUMP_TWO = card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.TWO);
+    private static final Card TRUMP_FOUR = card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.FOUR);
+    private static final Card TRUMP_TEN = card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.TEN);
+    private static final Card TRUMP_JACK = card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.JACK);
+
+    private static final Set<Integer> FOUR_SEATS = Set.of(0, 1, 2, 3);
+    private static final Set<Integer> THREE_SEATS = Set.of(0, 1, 2);
+
+    @Nested
+    @DisplayName("rejects a trick that could not have arisen from legal play")
+    class Validation {
+
+        @Test
+        @DisplayName("a null identifier or a null list of plays")
+        void shouldRejectNulls() {
+            assertThatNullPointerException().isThrownBy(() -> aTrick().withTrickId(null).build());
+            assertThatNullPointerException().isThrownBy(() -> aTrick().withPlays((List<TrickPlay>) null).build());
+        }
+
+        @Test
+        @DisplayName("a sequence below one, because tricks are numbered from one")
+        void shouldRejectSequenceBelowOne() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick().withSequence(0).build());
+        }
+
+        @Test
+        @DisplayName("a leading seat outside the table")
+        void shouldRejectLeaderSeatOutsideTheTable() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick().withLeaderSeat(-1).build());
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrick().withLeaderSeat(GameSession.MAXIMUM_PLAYERS).build());
+        }
+
+        @Test
+        @DisplayName("one seat playing twice in the same trick")
+        void shouldRejectASeatPlayingTwice() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick()
+                    .withPlays(aPlayBy(0, SPOOFING_FOUR).build(), aPlayBy(0, SPOOFING_NINE).build())
+                    .build());
+        }
+
+        @Test
+        @DisplayName("the same card played twice in the same trick")
+        void shouldRejectTheSameCardTwice() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick()
+                    .withPlays(aPlayBy(0, SPOOFING_FOUR).build(), aPlayBy(1, SPOOFING_FOUR).build())
+                    .build());
+        }
+
+        @Test
+        @DisplayName("a winning play that is not one of the plays in the trick")
+        void shouldRejectAForeignWinner() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick()
+                    .withPlays(aPlayBy(0, SPOOFING_FOUR).build())
+                    .withWinner(aPlayBy(1, SPOOFING_KING).build())
+                    .build());
+        }
+
+        @Test
+        @DisplayName("a first play that does not belong to the leading seat")
+        void shouldRejectAFirstPlayFromTheWrongSeat() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick()
+                    .withLeaderSeat(0)
+                    .withPlays(aPlayBy(1, SPOOFING_FOUR).build())
+                    .build());
+        }
+    }
+
+    @Nested
+    @DisplayName("knows the suit that was led")
+    class LedSuit {
+
+        @Test
+        @DisplayName("nothing is led until the first card is played")
+        void shouldHaveNoLedSuitWhileOpen() {
+            assertThat(Trick.open(TRICK_ID, 1, 2).ledSuit()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("the first card played sets the led suit")
+        void shouldTakeTheLedSuitFromTheFirstPlay() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, TAMPERING_TWO).build());
+
+            assertThat(trick.ledSuit()).contains(StrideCategory.TAMPERING);
+        }
+
+        @Test
+        @DisplayName("and a later card of another suit does not change it")
+        void shouldNotChangeTheLedSuitOnALaterPlay() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, TAMPERING_TWO).build())
+                    .play(aPlayBy(1, TRUMP_TEN).build());
+
+            assertThat(trick.ledSuit()).contains(StrideCategory.TAMPERING);
+        }
+    }
+
+    @Nested
+    @DisplayName("enforces follow-suit against the hand the player actually holds")
+    class FollowingSuit {
+
+        private final Trick spoofingLed =
+                Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+        @Test
+        @DisplayName("refuses a card the hand does not hold, which is what stops a card being played twice")
+        void shouldRefuseACardNotHeld() {
+            final Hand hand = aHand().withCards(SPOOFING_NINE).build();
+
+            assertThatExceptionOfType(CardNotInHandException.class)
+                    .isThrownBy(() -> spoofingLed.assertLegalPlay(SPOOFING_KING, hand))
+                    .satisfies(thrown -> {
+                        assertThat(thrown.handId()).isEqualTo(hand.handId());
+                        assertThat(thrown.cardId()).isEqualTo(SPOOFING_KING.cardId());
+                    });
+        }
+
+        @Test
+        @DisplayName("lets the leader play anything, because no suit has been led yet")
+        void shouldLetTheLeaderPlayAnything() {
+            final Hand hand = aHand().withCards(TRUMP_TWO, SPOOFING_NINE).build();
+
+            Trick.open(TRICK_ID, 1, 0).assertLegalPlay(TRUMP_TWO, hand);
+        }
+
+        @Test
+        @DisplayName("allows a card of the led suit")
+        void shouldAllowFollowingSuit() {
+            final Hand hand = aHand().withCards(SPOOFING_KING, TRUMP_TWO).build();
+
+            spoofingLed.assertLegalPlay(SPOOFING_KING, hand);
+        }
+
+        @Test
+        @DisplayName("refuses another suit while the hand can still follow, naming both suits")
+        void shouldRefuseAnotherSuitWhenAbleToFollow() {
+            final Hand hand = aHand().withCards(SPOOFING_KING, TRUMP_TWO).build();
+
+            assertThatExceptionOfType(MustFollowSuitException.class)
+                    .isThrownBy(() -> spoofingLed.assertLegalPlay(TRUMP_TWO, hand))
+                    .satisfies(thrown -> {
+                        assertThat(thrown.ledSuit()).isEqualTo(StrideCategory.SPOOFING);
+                        assertThat(thrown.attemptedSuit()).isEqualTo(StrideCategory.ELEVATION_OF_PRIVILEGE);
+                    });
+        }
+
+        @Test
+        @DisplayName("allows any card once the hand is void of the led suit, trump included")
+        void shouldAllowAnyCardWhenVoidOfTheLedSuit() {
+            final Hand hand = aHand().withCards(TRUMP_TWO, REPUDIATION_ACE).build();
+
+            spoofingLed.assertLegalPlay(TRUMP_TWO, hand);
+            spoofingLed.assertLegalPlay(REPUDIATION_ACE, hand);
+        }
+
+        @Test
+        @DisplayName("refuses a null card or a null hand")
+        void shouldRefuseNulls() {
+            final Hand hand = aHand().withCards(SPOOFING_KING).build();
+
+            assertThatNullPointerException().isThrownBy(() -> spoofingLed.assertLegalPlay(null, hand));
+            assertThatNullPointerException().isThrownBy(() -> spoofingLed.assertLegalPlay(SPOOFING_KING, null));
+        }
+    }
+
+    @Nested
+    @DisplayName("works out whose turn it is, clockwise, skipping seats out of cards")
+    class TurnOrder {
+
+        @Test
+        @DisplayName("the leading seat plays first")
+        void shouldStartWithTheLeader() {
+            assertThat(Trick.open(TRICK_ID, 1, 2).seatToPlay(FOUR_SEATS)).hasValue(2);
+        }
+
+        @Test
+        @DisplayName("nobody plays if the leading seat holds no cards")
+        void shouldHaveNoSeatToPlayIfTheLeaderIsOutOfCards() {
+            assertThat(Trick.open(TRICK_ID, 1, 3).seatToPlay(THREE_SEATS)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("play passes to the next seat clockwise")
+        void shouldPassClockwise() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThat(trick.seatToPlay(FOUR_SEATS)).hasValue(1);
+        }
+
+        @Test
+        @DisplayName("and wraps back to seat zero from the highest seat")
+        void shouldWrapBackToSeatZero() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 3).play(aPlayBy(3, SPOOFING_FOUR).build());
+
+            assertThat(trick.seatToPlay(FOUR_SEATS)).hasValue(0);
+        }
+
+        @Test
+        @DisplayName("skips a seat that has run out of cards, which is what makes the last trick short")
+        void shouldSkipASeatOutOfCards() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThat(trick.seatToPlay(Set.of(0, 2, 3))).hasValue(2);
+        }
+
+        @Test
+        @DisplayName("skips seats that do not exist at this table, without being told the table size")
+        void shouldSkipSeatsThatDoNotExist() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 2)
+                    .play(aPlayBy(2, SPOOFING_FOUR).build());
+
+            assertThat(trick.seatToPlay(THREE_SEATS)).hasValue(0);
+        }
+
+        @Test
+        @DisplayName("has nobody left to play once every eligible seat has played")
+        void shouldHaveNoSeatLeftWhenComplete() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .play(aPlayBy(1, SPOOFING_KING).build())
+                    .play(aPlayBy(2, REPUDIATION_ACE).build());
+
+            assertThat(trick.seatToPlay(THREE_SEATS)).isEmpty();
+            assertThat(trick.isComplete(THREE_SEATS)).isTrue();
+        }
+
+        @Test
+        @DisplayName("an open trick with no plays is not complete")
+        void shouldNotBeCompleteWhileEmpty() {
+            assertThat(Trick.open(TRICK_ID, 1, 0).isComplete(THREE_SEATS)).isFalse();
+        }
+
+        @Test
+        @DisplayName("is not complete while a seat still owes a card")
+        void shouldNotBeCompleteWhileASeatOwesACard() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .play(aPlayBy(1, SPOOFING_KING).build());
+
+            assertThat(trick.isComplete(THREE_SEATS)).isFalse();
+        }
+
+        @Test
+        @DisplayName("knows which seats have already played")
+        void shouldKnowWhoHasPlayed() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThat(trick.hasPlayed(0)).isTrue();
+            assertThat(trick.hasPlayed(1)).isFalse();
+        }
+
+        @Test
+        @DisplayName("requires the set of seats holding cards, because it cannot count to the table size")
+        void shouldRequireTheSeatsHoldingCards() {
+            assertThatNullPointerException().isThrownBy(() -> Trick.open(TRICK_ID, 1, 0).seatToPlay(null));
+        }
+    }
+
+    @Nested
+    @DisplayName("rejects a play from a seat whose turn it is not")
+    class OutOfTurn {
+
+        @Test
+        @DisplayName("accepts the seat whose turn it is")
+        void shouldAcceptTheSeatInTurn() {
+            Trick.open(TRICK_ID, 1, 1).assertSeatMayPlay(1, THREE_SEATS);
+        }
+
+        @Test
+        @DisplayName("refuses another seat, naming the seat that is actually next")
+        void shouldRefuseAnotherSeat() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThatExceptionOfType(OutOfTurnException.class)
+                    .isThrownBy(() -> trick.assertSeatMayPlay(2, THREE_SEATS))
+                    .satisfies(thrown -> {
+                        assertThat(thrown.expectedSeat()).isEqualTo(1);
+                        assertThat(thrown.attemptedSeat()).isEqualTo(2);
+                    });
+        }
+
+        @Test
+        @DisplayName("refuses any play into a completed trick")
+        void shouldRefuseAPlayIntoACompletedTrick() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .play(aPlayBy(1, SPOOFING_KING).build())
+                    .play(aPlayBy(2, REPUDIATION_ACE).build());
+
+            assertThatIllegalStateException().isThrownBy(() -> trick.assertSeatMayPlay(0, THREE_SEATS));
+        }
+    }
+
+    @Nested
+    @DisplayName("adds a play without mutating the trick that was played into")
+    class Playing {
+
+        @Test
+        @DisplayName("returns a new trick holding the play in order")
+        void shouldReturnANewTrick() {
+            final Trick open = Trick.open(TRICK_ID, 1, 0);
+
+            final Trick after = open.play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .play(aPlayBy(1, SPOOFING_KING).build());
+
+            assertThat(open.plays()).isEmpty();
+            assertThat(after.plays()).extracting(play -> play.card().rank())
+                    .containsExactly(Rank.FOUR, Rank.KING);
+            assertThat(after.trickId()).isEqualTo(TRICK_ID);
+            assertThat(after.sequence()).isEqualTo(1);
+            assertThat(after.leaderSeat()).isZero();
+        }
+
+        @Test
+        @DisplayName("refuses a null play")
+        void shouldRefuseANullPlay() {
+            assertThatNullPointerException().isThrownBy(() -> Trick.open(TRICK_ID, 1, 0).play(null));
+        }
+
+        @Test
+        @DisplayName("refuses a play into a trick that has already been resolved")
+        void shouldRefuseAPlayIntoAResolvedTrick() {
+            final Trick resolved = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .resolved();
+
+            assertThatIllegalStateException()
+                    .isThrownBy(() -> resolved.play(aPlayBy(1, SPOOFING_KING).build()));
+        }
+
+        @Test
+        @DisplayName("exposes an unmodifiable list of plays")
+        void shouldExposeAnUnmodifiableListOfPlays() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThatExceptionOfType(UnsupportedOperationException.class)
+                    .isThrownBy(() -> trick.plays().clear());
+        }
+    }
+
+    @Nested
+    @DisplayName("resolves the winner: highest of the led suit unless trump was played")
+    class Resolution {
+
+        private Trick trickOf(final TrickPlay... plays) {
+            return aTrick().withLeaderSeat(plays[0].seatOrder()).withPlays(plays).build().resolved();
+        }
+
+        @Test
+        @DisplayName("the highest card of the led suit takes the trick")
+        void shouldAwardToTheHighestOfTheLedSuit() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, SPOOFING_FOUR).build(),
+                    aPlayBy(1, SPOOFING_KING).build(),
+                    aPlayBy(2, SPOOFING_NINE).build());
+
+            assertThat(resolved.winner()).isPresent();
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("cards of neither the led suit nor trump cannot take it, however high")
+        void shouldIgnoreOffSuitCards() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, SPOOFING_FOUR).build(),
+                    aPlayBy(1, REPUDIATION_ACE).build(),
+                    aPlayBy(2, DENIAL_KING).build());
+
+            assertThat(resolved.nextLeaderSeat()).isZero();
+        }
+
+        @Test
+        @DisplayName("a single trump beats the highest card of the led suit")
+        void shouldAwardToTrumpOverTheLedSuit() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, SPOOFING_ACE).build(),
+                    aPlayBy(1, TRUMP_TWO).build(),
+                    aPlayBy(2, SPOOFING_KING).build());
+
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("the highest trump takes it when more than one was played")
+        void shouldAwardToTheHighestTrump() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, SPOOFING_ACE).build(),
+                    aPlayBy(1, TRUMP_TEN).build(),
+                    aPlayBy(2, TRUMP_TWO).build());
+
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("and it is the rank that decides, not the order the trumps were played in")
+        void shouldNotAwardToTheFirstTrumpPlayed() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, SPOOFING_ACE).build(),
+                    aPlayBy(1, TRUMP_TWO).build(),
+                    aPlayBy(2, TRUMP_TEN).build());
+
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("works when Elevation of Privilege is itself the led suit")
+        void shouldResolveWhenTrumpIsLed() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, TRUMP_FOUR).build(),
+                    aPlayBy(1, TRUMP_JACK).build(),
+                    aPlayBy(2, SPOOFING_ACE).build());
+
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("a play that linked no threat still takes the trick, because failing to link only scores nothing")
+        void shouldAwardToAnUnlinkedPlay() {
+            final Trick resolved = trickOf(
+                    aPlayBy(0, SPOOFING_FOUR).build(),
+                    aPlayBy(1, SPOOFING_KING).withThreatLinked(false).build());
+
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(1);
+            assertThat(resolved.winner()).get().extracting(TrickPlay::threatLinked).isEqualTo(false);
+        }
+
+        @Test
+        @DisplayName("resolves a short trick, where a seat had already run out of cards")
+        void shouldResolveAShortTrick() {
+            final Trick resolved = trickOf(
+                    aPlayBy(1, SPOOFING_FOUR).build(), aPlayBy(3, SPOOFING_NINE).build());
+
+            assertThat(resolved.nextLeaderSeat()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("refuses to resolve a trick with no plays")
+        void shouldRefuseToResolveAnEmptyTrick() {
+            assertThatIllegalStateException().isThrownBy(() -> Trick.open(TRICK_ID, 1, 0).resolved());
+        }
+
+        @Test
+        @DisplayName("refuses to resolve a trick twice, so a winner cannot be quietly rewritten")
+        void shouldRefuseToResolveTwice() {
+            final Trick resolved = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .resolved();
+
+            assertThatIllegalStateException().isThrownBy(resolved::resolved);
+        }
+
+        @Test
+        @DisplayName("does not know who leads next until it has been resolved")
+        void shouldNotKnowTheNextLeaderWhileUnresolved() {
+            final Trick unresolved = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThat(unresolved.winner()).isEmpty();
+            assertThatIllegalStateException().isThrownBy(unresolved::nextLeaderSeat);
+        }
+    }
+
+    @Nested
+    @DisplayName("compares by value and renders without naming a card")
+    class Representation {
+
+        @Test
+        @DisplayName("two tricks with the same plays are equal and share a hash code")
+        void shouldBeEqualByValue() {
+            final Trick one = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+            final Trick other = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_FOUR).build());
+
+            assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
+            assertThat(one).isNotEqualTo(Trick.open(TRICK_ID, 1, 0));
+        }
+
+        @Test
+        @DisplayName("renders the count and the led suit but no card")
+        void shouldNameNoCard() {
+            final Trick trick = Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, TAMPERING_TWO).build());
+
+            assertThat(trick.toString())
+                    .contains("plays=1")
+                    .contains("ledSuit=TAMPERING")
+                    .contains("resolved=false")
+                    .doesNotContain("There's a way");
+        }
+
+        @Test
+        @DisplayName("renders no led suit while the trick is open")
+        void shouldRenderNoLedSuitWhileOpen() {
+            assertThat(Trick.open(TRICK_ID, 1, 0).toString()).contains("ledSuit=none");
+        }
+    }
+}

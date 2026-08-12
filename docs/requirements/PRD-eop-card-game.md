@@ -78,7 +78,12 @@ The game is a **trick-taking card game**, closest to Spades. The following is so
 system to be threat-modelled. This diagram is held outside the application — see §5 and
 [ASSUMPTION B, now confirmed].
 
-**Dealing:** the whole deck is dealt evenly to all players. There is no shared draw pile. Players
+**Dealing:** the whole deck is dealt out to all players. There is no shared draw pile. At player
+counts where 78 cards do not divide equally — four players and five players — the extra cards go
+to the lowest seat numbers, so hands are unequal and the final trick is short ([ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md)).
+This paragraph previously read "dealt evenly", which cannot hold at those counts: dealing the
+*whole* deck and dealing it *equally* are incompatible unless 78 divides by the number of players.
+Players
 are encouraged to lay their cards face up, arranged by suit. The oversized physical card format
 (12 cm × 7 cm) was chosen deliberately to make holding a hand awkward, so players help each
 other — the digital equivalent is that each player's hand is visible on their own screen.

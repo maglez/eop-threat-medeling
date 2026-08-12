@@ -94,6 +94,16 @@ Play is clockwise. "Who plays next" is derived from the current leader's seat pl
 the number of cards already in the trick, so `seatOrder` is load-bearing domain
 data rather than presentation ordering.
 
+> **Amended 2026-08-12 — see [ADR-023](ADR-023-deal-remainder-and-turn-order.md).**
+> The formula in the paragraph above holds only while every seat still holds a card.
+> EOP-14 deals the whole 78-card deck with the extra cards going to the lowest seats,
+> so at four and five players hands are unequal and the **final trick of a session is
+> short** — fewer cards than there are players. The general form is **the next seat
+> clockwise that still holds a card**. Copying the simpler formula into play-order code
+> will produce a defect that appears only on the last trick, only at four and five
+> players. The decision recorded in this section — that `seatOrder` is assigned once at
+> join, never re-derived, and enforced by a unique constraint — is unchanged.
+
 It is assigned at the moment of joining and **never re-derived** — not from a
 database sort, not from `joined_at`, not from list position. The failure this
 prevents is specific: a player disconnects and reconnects, a read-time derivation
