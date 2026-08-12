@@ -59,6 +59,38 @@ class GameSessionJpaEntity {
     private OffsetDateTime updatedAt;
 
     /**
+     * The seat leading the current trick, or {@code null} before any cards are
+     * dealt.
+     *
+     * <p>Mapped here and nowhere else. The domain {@link GameSession} has no leader
+     * field and must not gain one: the current leader is a fact about the trick in
+     * progress, and {@code Trick} already derives whose turn it is from its own
+     * plays. A copy on the aggregate would be a second authority on a fact the
+     * trick owns, which is the objection ADR-023 raises against storing a player id
+     * beside a seat.
+     *
+     * <p>So why store it at all? Because it is the compare-and-set witness. The
+     * conditional {@code UPDATE} that guards a deal, a play or a resolution names
+     * the leader seat the caller's snapshot showed, and zero rows affected means the
+     * snapshot is stale. As with {@code touchWhileInStatus}, the serialisation rests
+     * on the row lock that update takes and holds — taken on {@code game_session}
+     * before any {@code hand} or {@code trick_play} row is touched, which is both
+     * the concurrency guard and the lock order ADR-023 requires.
+     *
+     * <p>It advances once per trick, not once per play. A play reads it and locks the
+     * row without changing it; a deal writes the opening leader; a resolution writes
+     * the next one.
+     *
+     * <p>{@link Integer} rather than {@code int} because the column is nullable, and
+     * null is meaningful: it is how "no cards dealt yet" is stored, which is what
+     * makes the deal-once guard expressible as {@code current_leader_seat IS NULL}.
+     * The range is bounded in the database by
+     * {@code chk_game_session_current_leader_seat}.
+     */
+    @Column(name = "current_leader_seat")
+    private Integer currentLeaderSeat;
+
+    /**
      * Change counter for this row. <strong>This is not the concurrency
      * control.</strong>
      *
@@ -147,5 +179,14 @@ class GameSessionJpaEntity {
 
     SessionStatus getStatus() {
         return status;
+    }
+
+    /**
+     * The seat leading the current trick, or {@code null} before any cards are dealt.
+     *
+     * @return the current leader's seat, or {@code null} if none has been set
+     */
+    Integer getCurrentLeaderSeat() {
+        return currentLeaderSeat;
     }
 }
