@@ -908,7 +908,7 @@ generally, and it closes impersonation *within* a session only.
 a real risk to carry meanwhile, because that protection rests entirely on one use case being
 written correctly, with no second, independent check behind it — a departure from the
 defence-in-depth this ADR asserts everywhere else, and the reason it is written here in full
-rather than noted in passing. Three obligations follow, and they are Slice C's, not optional:
+rather than noted in passing. Four obligations follow, and they are Slice C's, not optional:
 
 1. Slice C's play use case **must** derive the acting player and seat from the authenticated
    identity, must reject any seat supplied by the caller rather than reconciling it, and must
@@ -917,6 +917,35 @@ rather than noted in passing. Three obligations follow, and they are Slice C's, 
    seat_order)` is genuine, and cannot prove the *caller* is that player. **The dealing use
    case owes the identical check**, because `hand` has the identical gap — see the `S5`/`S5b`
    measurement above; this obligation is not confined to the play path.
+
+   The two refusals are **different exceptions carrying different statuses**, and naming them
+   is part of the obligation rather than a detail left to the implementer:
+
+   - A caller who *is* a member of the session but names a seat it does not hold is refused
+     with the existing `NotYourSeatException` → **403**. 403 and not 400 or 422 because the
+     request is well-formed and every value in it resolves; what fails is the caller's
+     authority to act as that seat, and there is no input for the caller to correct. That type
+     is today thrown only from the domain (`Trick.java:372`), so reaching for it here is reuse
+     of the type at a new call site and **not** evidence the check already exists — the
+     identity-derived refusal is unwritten.
+   - A caller who is **not** a member of the session at all is refused with a new
+     `PlayerNotInSessionException`, and it maps to **404**, deliberately indistinguishable from
+     the 404 `SessionNotFoundException` already produces. 403 would be wrong here even though
+     the fault is authorisation and not absence, because the status is itself the disclosure: a
+     403 tells a stranger that the session id they guessed exists. This is defence in depth
+     applied to the response, and it is what makes the ordering below achievable rather than
+     decorative. (This 404 is @architecture-guardian's; @tester-api named 403 for the
+     forged-seat family and left non-membership open.)
+
+   **Ordering, not merely presence — found by @tester-api.** The membership check must run
+   *before* any response that could reveal the victim session's state, and in particular before
+   the insert whose constraint violation obligation 4 answers with a 409. If Slice C attempts
+   the play and translates `uq_trick_play_trick_card`'s `23505` to a 409 before it has
+   established membership, that 409 confirms to a stranger that the card has been played in a
+   session they should not know exists: the `X1`/`X2` gap re-emerging through the error channel,
+   with the constraint that cannot see across sessions replaced by a status that can. Getting
+   the order right is what makes obligation 4's 409s unreachable except by members, which is in
+   turn what entitles them to be specific.
 2. That behaviour needs tests naming both attacks — a play claiming another player's seat, and
    a play by a player from a different session — so the enforcement has a regression guard in
    the layer that performs it. Add a third: the **cross-session card block** (`X1`/`X2` above),
@@ -928,6 +957,11 @@ rather than noted in passing. Three obligations follow, and they are Slice C's, 
    `handForgedSeatExploitIsRejected`, which assert SQL state `23506`), and the use-case test is
    still owed: a 500 from a constraint violation is not the 403-shaped rejection a forged
    request should get.
+
+   Those use-case tests must assert the **status**, not merely that something was thrown. A test
+   satisfied by any refusal cannot tell the 403 and 404 obligation 1 requires apart from the 500
+   the adapter produces today (obligation 4), which is precisely the failure this list exists to
+   prevent.
 3. Slice C's **resolve-trick** use case must verify that the winning play it records belongs to
    the trick it is resolving. This is the fourth gap named in the blockquote at the head of this
    section, it is **not** an instance of the cross-session deferral — it needs no second session
@@ -935,6 +969,74 @@ rather than noted in passing. Three obligations follow, and they are Slice C's, 
    winner to no trick and no session* below, which is the one authority for it. It is listed here
    because this numbered list is what Slice C will read, and an obligation recorded only beside
    the constraint it protects is an obligation nobody schedules.
+
+   Its refusal is `WinningPlayNotInTrickException` → **422**, and 422 rather than the 409 the
+   duplicate refusals in obligation 4 take. 409 tells a caller that its request conflicts with
+   the current state and could succeed against a different one, which entitles a client to
+   retry; retrying cannot help here, because a play belonging to another trick will never come
+   to belong to this one. 400 is wrong for the same reason as in obligation 1: the identifiers
+   are well-formed and resolve. What fails is a rule of the game, which is where
+   `MustFollowSuitException` and `CardNotInHandException` already sit at 422. Unlike the
+   refusals in obligation 1 this one will have **no** storage backstop in Slice C — the
+   composite key that would provide it collides with the `SET NULL` rule, as recorded below —
+   so the use-case check is the only check there will ever be, and its test is the only guard.
+4. Slice C **must extend the constraint-name translation in the persistence adapters**, and this
+   is a distinct obligation from 1 because a use-case check and a storage backstop are not the
+   same mechanism and only the first was described here. Found by @tester-api against the code:
+   `SessionRepositoryAdapter` catches `DataIntegrityViolationException` and translates exactly
+   two constraint names — `uq_game_session_join_code` → `JoinCodeUnavailableException`
+   (`SessionRepositoryAdapter.java:87-91`) and `uq_player_session_seat` →
+   `SeatAlreadyTakenException` (`:111-115`) — and rethrows everything else.
+   `GlobalExceptionHandler` declares no `DataIntegrityViolationException` handler, so every
+   constraint changeset `004` adds currently falls through to `handleUnexpected`
+   (`GlobalExceptionHandler.java:376-379`) and answers **500**. That is the mechanism by which
+   the gaps above become defects rather than merely unfinished work, and nothing scheduled the
+   catch clauses before this amendment. Each constraint that a client request can reach needs a
+   named translation:
+
+   | Constraint | SQLSTATE | Domain exception | Status |
+   | --- | --- | --- | --- |
+   | `fk_hand_player_seat`, `fk_trick_play_player_seat` | `23506` | `NotYourSeatException` | 403 |
+   | `uq_trick_play_trick_seat`, `uq_trick_play_trick_player` | `23505` | `AlreadyPlayedInTrickException` | 409 |
+   | `uq_trick_play_trick_card` | `23505` | `CardAlreadyPlayedException` | 409 |
+   | `uq_hand_session_seat` | `23505` | `HandAlreadyDealtException` | 409 |
+   | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
+
+   Three things in that table are load-bearing rather than bookkeeping. The `23506` row answers
+   **403** and not 500 even though reaching it means obligation 1's check is missing or wrong:
+   the status owed to a caller is decided by what the caller attempted, not by which layer
+   happened to notice, and the alternative here is exactly the 500 that is the defect. It must
+   also be logged at WARN with the constraint name, because a backstop that fires is a use-case
+   bug and a structured log is where that becomes visible to operations rather than to nobody.
+   The `23505` rows answer **409** and not 422 because a duplicate genuinely *is* a conflict
+   with current state — a double-submit or a race, either of which a different state resolves —
+   and they are answerable that specifically only if obligation 1's ordering holds. The last row
+   keeps its **500** deliberately and is not an oversight: neither constraint can be reached by
+   any legal play, so one firing is a server fault and not a client one, and it takes the same
+   treatment as the reconstitution failure recorded under *Reassigned* above — a fixed detail
+   with no caller input echoed back.
+
+   Every row is a mapped exception type, so `.opencode/rules/error-handling.md` applies to each:
+   "Every known exception must have a unit test verifying its HTTP status mapping" and "The
+   `GlobalExceptionHandler` itself must be unit-tested for every mapped exception type". Each
+   new type is therefore two tests, not one, and the same requirement covers
+   `PlayerNotInSessionException`, `AlreadyPlayedInTrickException`, `CardAlreadyPlayedException`,
+   `HandAlreadyDealtException` and `WinningPlayNotInTrickException`. That requirement is restated
+   inside the obligation on purpose, so it does not depend on a rule file being re-read.
+
+**Amendment, 2026-08-12 — the obligations now name their exceptions and their statuses
+(@tester-api).** As first written this list said "reject" and "verify" and named no exception
+type and no HTTP status. @tester-api's Slice B API review filed that as four MAJOR findings and
+one MINOR: no exception types named, so `error-handling.md`'s per-type handler requirement had
+nothing to bind to; no statuses named, so the 403/409/422 distinctions were lost; the leakage
+ordering unstated; and `SessionRepositoryAdapter`'s two-constraint translation leaving every new
+constraint at 500 — with the missing status for the wrong-trick winner as the MINOR. It approved
+Slice B, on the reasoning that the gaps are in this planning document and not in the tree. That
+reasoning is right, and is why the fix lands here rather than in `src/`. The obligations were
+extended in place instead of appended as a note, because an obligation that names a check but not
+its answer gets discharged as a check that returns 500, and the answer has to be where Slice C
+will actually read it. Obligation 4 is new. The 404 for non-membership in obligation 1 is
+@architecture-guardian's and is attributed there.
 
 If Slice C finds it cannot resolve the acting player from identity for some reason not visible
 today, that reopens this decision rather than excusing it, and the denormalised
@@ -987,11 +1089,11 @@ discharged by it: `W1` needs no second session and no second player at all, only
 one session. (`W2` self-evidently involves two sessions; the point is that the gap does not
 *depend* on a second session, so no cross-session fix bounds it.)
 
-**What confining it in storage would actually cost, because the changeset comment prices it
-wrongly and this ADR is the authority.** The comment added at `004-trick-play-schema.xml:233-247`
-says the fix "needs the trick denormalised onto `trick_play` and a composite key back, which is
-the construction ADR-023 declines". It does not, and this is the *same reusable error* the
-reversal at the head of this section exists to record: **`trick_play.trick_id` already exists**
+**What confining it in storage would actually cost, because an earlier draft of the changeset
+comment priced it wrongly and this ADR is the authority.** That draft said the fix "needs the
+trick denormalised onto `trick_play` and a composite key back, which is the construction ADR-023
+declines". It did not, and this is the *same reusable error* the reversal at the head of this
+section exists to record: **`trick_play.trick_id` already exists**
 — it is `NOT NULL`, it carries `fk_trick_play_trick`, and it is the leading column of
 `uq_trick_play_trick_seat`, `uq_trick_play_trick_card` and `uq_trick_play_trick_player`. Nothing
 would be denormalised. The construction is a composite key from
@@ -1002,7 +1104,10 @@ the winner to its own trick also confines it to its own session as a consequence
 of this trick is in this trick's session by `fk_trick_play_trick`, so one key would close both
 `W1` and `W2`. As with the seat half, the objection about a copy that can disagree with its
 parent does not reach this at all: a composite key here *forbids* the disagreement rather than
-creating room for one.
+creating room for one. The comment itself has since been corrected in place and now carries the
+retraction and the real obstacle rather than the mispricing
+(`004-trick-play-schema.xml:241-255`); this paragraph remains the authority, and the draft is
+quoted above only because the error it made is the reusable one.
 
 **The real obstacle, which is a different one and is unpriced.** It collides with the delete
 rule this ADR decided by measurement. A composite foreign key declared
@@ -1024,8 +1129,8 @@ private) computes the winner from the trick's own plays, `Trick.reconstitute` (`
 is the only caller, and no adapter, repository or entity maps `trick` at all — see the
 containment paragraph at the head of this section. So this is unreachable until Slice C, and
 Slice C's resolve-trick use case owns the check that the winner play belongs to the trick it
-resolves. It is the third obligation in the numbered list above, and it is not a restatement of
-either of the other two.
+resolves. It is the third obligation in the numbered list above, where it now also carries its
+exception type and its 422, and it is not a restatement of any of the other three.
 
 **No range CHECK on any seat or sequence column, which bounds what the composite keys prove.**
 @security-auditor measured `player.seat_order = -7`, `trick.sequence = -5` and

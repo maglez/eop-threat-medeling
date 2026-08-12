@@ -415,8 +415,9 @@ the vector is wider than the seat one. And the seat-binding cascades cross the b
 delete direction too: deleting a foreign player removes its planted play from *this* session's
 trick and nulls that trick's `winner_play_id`, unresolving a trick in a session the deletion never
 named. All three are transient denial rather than loss — no victim's own row is destroyed, and the
-last is self-healing once the attacker's session is torn down. The full measurements, and the three
-Slice C obligations that discharge them, are in
+last is self-healing once the attacker's session is torn down. The full measurements, and the four
+Slice C obligations that discharge them — each of which now names its exception type and the HTTP
+status that refusal carries — are in
 [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).
 
 **One more, which is *not* an instance of the cross-session gap.** `fk_trick_winner_play` proves

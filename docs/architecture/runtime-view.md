@@ -15,9 +15,12 @@ no code performs them yet; Slice C is where that behaviour, and the diagrams for
 one thing Slice B does change about runtime behaviour is the *failure mode* of writes that already
 have sequences below: a forged seat and a ghost player are now rejected by the database rather
 than reaching it, which [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) records — in
-the second of the three Slice C obligations under *What changeset `004` deliberately does not
-enforce* — as still owing a use-case-level rejection, so the caller sees a 403-shaped refusal
-rather than a constraint violation. If a future slice adds or alters an interaction, this
+the second and fourth of the four Slice C obligations under *What changeset `004` deliberately
+does not enforce* — as still owing a use-case-level rejection, so the caller sees a 403-shaped
+refusal rather than a constraint violation. Those obligations now name the refusal: 403 with
+`NotYourSeatException` for a member at a seat it does not hold, and 404 with
+`PlayerNotInSessionException` for a caller outside the session, the 404 chosen so the status does
+not itself disclose that the session exists. If a future slice adds or alters an interaction, this
 sentence is the first thing to correct — the previous version of it claimed EOP-10 two stories
 after that stopped being the whole truth.
 
