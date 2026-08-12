@@ -230,6 +230,21 @@
            null here is also the resolved-or-not flag. A seat number would let the
            column name a seat that never played; a foreign key cannot dangle.
 
+           What fk_trick_winner_play does NOT do, stated because the sentence
+           above is easy to read as more than it says: it proves the winner is
+           some play, not that it is a play of THIS trick. @security-auditor
+           measured both holes on the deployed schema - a trick can be pointed
+           at a play belonging to a different trick (W1), or to a trick in a
+           different session entirely (W2), and both are accepted. Unlike the
+           cross-session gap recorded in ADR-023, this one needs no second
+           session and no second player, so it is not covered by that deferral.
+           Confining it in storage needs the trick denormalised onto trick_play
+           and a composite key back, which is the construction ADR-023 declines.
+           Today nothing can produce it: Trick.winningPlay() computes the winner
+           from its own plays and no adapter exists. Slice C's resolve-trick use
+           case owes the check that the winner play belongs to the trick it
+           resolves - it is not one of ADR-023's two existing obligations.
+
            No resolved_at column: Trick has exactly five fields and no timestamp,
            and resolved() mints none. Under ddl-auto=validate an unmapped column
            passes startup silently, so it would sit permanently NULL. -->
