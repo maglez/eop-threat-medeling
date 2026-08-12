@@ -62,4 +62,28 @@ public record Card(UUID cardId, StrideCategory suit, Rank rank, String threatPro
     public boolean isTrump() {
         return suit == StrideCategory.ELEVATION_OF_PRIVILEGE;
     }
+
+    /**
+     * A rendering that identifies the card without quoting it.
+     *
+     * <p>The record default prints the threat prompt, up to
+     * {@value #MAX_THREAT_PROMPT_LENGTH} characters of it, every time a card is
+     * logged or interpolated into a message. The prompt is not a secret — the deck
+     * is published, and the whole point of the exercise is to read the cards aloud
+     * — so this is bulk rather than disclosure, and dropping it keeps a log line
+     * the length of a log line.
+     *
+     * <p>What <em>is</em> confidential is the association between a player and a
+     * card they have not played yet. This override does not on its own protect
+     * that: a rendered list of a hand's cards still names the hand's contents even
+     * without the prompts. {@code Hand} and {@code Hands} redact their own
+     * {@code toString}, and {@code Hand.cards()} documents the list it returns as
+     * confidential, which is where that guarantee actually lives.
+     *
+     * @return the card's identifier, suit and rank
+     */
+    @Override
+    public String toString() {
+        return "Card[cardId=" + cardId + ", suit=" + suit + ", rank=" + rank.symbol() + "]";
+    }
 }

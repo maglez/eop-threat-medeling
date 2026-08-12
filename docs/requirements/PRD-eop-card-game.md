@@ -78,7 +78,11 @@ The game is a **trick-taking card game**, closest to Spades. The following is so
 system to be threat-modelled. This diagram is held outside the application — see §5 and
 [ASSUMPTION B, now confirmed].
 
-**Dealing:** the whole deck is dealt evenly to all players. There is no shared draw pile. Players
+**Dealing:** the whole deck is dealt out to all players. There is no shared draw pile. At player
+counts where 78 cards do not divide equally — four players and five players — the extra cards go
+to the lowest seat numbers, so hands are unequal and the final trick is short ([ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md)).
+This paragraph previously read "dealt evenly", which cannot hold at those counts: dealing the
+*whole* deck and dealing it *equally* are incompatible unless 78 divides by the number of players. Players
 are encouraged to lay their cards face up, arranged by suit. The oversized physical card format
 (12 cm × 7 cm) was chosen deliberately to make holding a hand awkward, so players help each
 other — the digital equivalent is that each player's hand is visible on their own screen.
@@ -94,6 +98,14 @@ Repudiation went badly.
 up, reading it aloud, and explaining how the threat applies to the system. A player **must follow
 suit** if they hold a card in the led suit. If they hold none, they may play any suit.
 
+> **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** "One
+> time around the table" holds for every trick but the last. Because the whole deck is dealt and 78
+> cards do not divide equally at four or five players, hands are unequal, so a trick is **one card
+> from each player who still holds cards** — not a fixed count, and not one card per seat. Turn
+> order is therefore *the next seat clockwise that still holds a card*, and the final trick at four
+> and five players is short. The sentence above is the shipped instruction card's wording and is
+> right for a game where every hand empties together; it is not the rule the application implements.
+
 **Linking a threat:** playing a card where a compensating control already exists is still valid —
 it lets the group discuss that control. **Critically: if the player cannot link the threat to the
 system, play still proceeds.** A card may be legally played with no valid threat. It scores
@@ -102,6 +114,15 @@ nothing but does not block the trick.
 **Winning a trick:** the highest card of the led suit wins — **unless one or more Elevation of
 Privilege cards were played, in which case the highest EoP card wins. EoP is the trump suit.**
 Only EoP or the led suit can take a trick. The winner of a trick leads the next trick.
+
+> **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** The
+> winner leads the next trick *only if the winner still holds a card*. Unequal hands at four and
+> five players mean a player can play their last card and win the trick they played it into: at four
+> players seats 2 and 3 hold nineteen cards and seats 0 and 1 hold twenty, so a win by seat 2 or 3 on
+> trick nineteen leaves the winner with nothing to lead. The rule the application implements is
+> therefore **the winner if the winner still holds a card, otherwise the next seat clockwise from the
+> winner that does**; when no seat holds a card the game has ended. Taking the sentence above
+> literally opens a trick on a seat that can never play into it, and the game stops with no error.
 
 **Aces — Open Threat cards:** each Ace reads "You've invented a new [Suit] attack." The player
 must identify a threat not printed on any other card, usually prompting a discussion about whether
@@ -122,7 +143,7 @@ in place, not assume card-game literacy. This is an explicit acceptance criterio
 
 The system being threat-modelled is **not** represented inside the application — see
 [ASSUMPTION B, confirmed by source]. Players look at their own architecture diagram on a shared
-screen. All this application stores is the free-text component name(s) typed when a card is played.
+screen. All this application stores is what a player types when a card is played: the free-text component name(s), and the optional note that becomes the Score Card's "Notes on Threat" column (§3.4). It holds no model of the system itself.
 
 ### 3.4 Scoring (sourced)
 
@@ -205,10 +226,12 @@ Player
   playerId                     UUID
   displayName                  free text, validated and bounded
   seatOrder                    integer, assigned on join, stable for the session.
-                               Play is clockwise, so "who plays next" is derived from the
-                               current leader's seat plus the number of plays already in the
-                               trick. Without a stable seat order that question has no answer,
-                               so this field is load-bearing, not bookkeeping.
+                               Play is clockwise, so "who plays next" is the next seat
+                               clockwise that still holds a card. Without a stable seat order
+                               that question has no answer, so this field is load-bearing,
+                               not bookkeeping. See the deviation note below this block:
+                               an earlier wording gave a simpler formula that is wrong on
+                               the last trick at four and five players.
   role                         FACILITATOR | PARTICIPANT
   connectionStatus             CONNECTED | DISCONNECTED
 
@@ -231,14 +254,25 @@ Card                           (reference data; seeded once, never mutated durin
 Trick                          (1:N from Session; ordered)
   trickId                      UUID
   session
-  ledSuit                      StrideCategory — the suit of the first card played
-  sequence                     integer, 1-based within the session
-  winner                       Player (null until trick is resolved)
+  ledSuit                      StrideCategory — the suit of the first card played.
+                               Derived, not stored: Trick.ledSuit() reads it off the first
+                               play, so there is one authority for it rather than two that
+                               could disagree.
+  sequence                     integer, 1-based within the session. A Trick holds no session
+                               reference, so this is enforced by uq_trick_session_sequence
+                               rather than by the entity — see ADR-023.
+  winner                       TrickPlay (null until trick is resolved). The winning play,
+                               not the winning Player: a Player carries its identity-token
+                               digest, which has no business inside gameplay data.
   plays                        1:N TrickPlay, in play order
 
 TrickPlay                      (one player's card in one trick)
   trickPlayId                  UUID
   trick, player, card
+  seatOrder                    integer — the seat the card was played from. A copy of the
+                               player's seat, safe because ADR-019 fixes a seat for the life
+                               of the session, and needed so a Trick can work out who leads
+                               next without loading the session's players.
   threatLinked                 boolean — did the player successfully link the threat to the system?
                                A card may be legally played with threatLinked = false (scores 0,
                                does not block the trick)
@@ -248,10 +282,25 @@ TrickPlay                      (one player's card in one trick)
   playedAt
 
 GameState                      (within a Session)
-  currentLeader                which Player leads the current trick
+  currentLeader                the seat that leads the current trick, stored as
+                               game_session.current_leader_seat. A seat rather than a Player,
+                               because seat order is the constraint-protected value turn order
+                               is computed from — see ADR-023
   currentTrick                 the Trick in progress (null between tricks)
   completedTricks              1:N Trick
 ```
+
+> **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).**
+> The `Player.seatOrder` block above previously stated that *"who plays next" is derived from the
+> current leader's seat plus the number of plays already in the trick*. That formula holds only
+> while every seat still holds a card. EOP-14 deals the whole deck out, so at four and five
+> players the hands are unequal and the final trick is short — and the arithmetic then names a
+> seat that has already run out of cards and cannot play. The general rule is **the next seat
+> clockwise that still holds a card**, which is what `Trick.seatToPlay` implements. The decision
+> this section records is unchanged: a seat is assigned once at join, never re-derived, and
+> enforced by the `uq_player_session_seat` constraint. Only the derivation stated alongside it
+> was wrong, and it was wrong in the one place a reader would copy it from. ADR-019 carries the
+> same correction against the same sentence.
 
 `Card` is reference data and is never mutated by gameplay. Everything else is session-scoped
 and is discarded when retention is eventually defined — see R6.

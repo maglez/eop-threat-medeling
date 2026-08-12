@@ -9,13 +9,20 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.maglez.eop.entity.CardNotFoundException;
+import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.IdentityTokenHash;
+import org.maglez.eop.entity.MustFollowSuitException;
+import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
+import org.maglez.eop.entity.NotYourSeatException;
+import org.maglez.eop.entity.OutOfTurnException;
+import org.maglez.eop.entity.PlayerMismatchException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
+import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.TooFewPlayersException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
@@ -212,5 +219,83 @@ class GlobalExceptionHandlerTest {
         assertThat(details).noneMatch(detail -> detail.contains(plaintext))
                 .noneMatch(detail -> detail.contains(digest))
                 .noneMatch(detail -> detail.matches(".*\\b[0-9a-f]{64}\\b.*"));
+    }
+
+    @Nested
+    @DisplayName("refuses a play without saying more than the refusal needs to")
+    class TrickPlayFailures {
+
+        @Test
+        @DisplayName("a play claiming a seat the caller does not occupy is 403, and names both seats")
+        void shouldMapNotYourSeatToForbidden() {
+            final ProblemDetail problem = handler.handleNotYourSeat(new NotYourSeatException(2, 1));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+            assertThat(problem.getDetail()).contains("2").contains("1");
+        }
+
+        @Test
+        @DisplayName("a play naming someone who does not hold the seat is 403, and discloses neither player")
+        void shouldMapPlayerMismatchToForbiddenWithoutNamingEitherPlayer() {
+            final UUID occupant = UUID.randomUUID();
+            final UUID named = UUID.randomUUID();
+            final PlayerMismatchException exception = new PlayerMismatchException(1, occupant, named);
+
+            final ProblemDetail problem = handler.handlePlayerMismatch();
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+            assertThat(problem.getDetail())
+                    .doesNotContain(occupant.toString())
+                    .doesNotContain(named.toString());
+            assertThat(exception.getMessage())
+                    .doesNotContain(occupant.toString())
+                    .doesNotContain(named.toString());
+            assertThat(exception.occupant()).isEqualTo(occupant);
+            assertThat(exception.namedPlayer()).isEqualTo(named);
+        }
+
+        @Test
+        @DisplayName("a play out of turn is 409, and says whose turn it is so no second request is needed")
+        void shouldMapOutOfTurnToConflict() {
+            final ProblemDetail problem = handler.handleOutOfTurn(new OutOfTurnException(1, 2));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getDetail()).contains("1");
+        }
+
+        @Test
+        @DisplayName("a refusal to follow suit is 422, and names both suits because both are face up")
+        void shouldMapMustFollowSuitToUnprocessable() {
+            final ProblemDetail problem = handler.handleMustFollowSuit(
+                    new MustFollowSuitException(StrideCategory.SPOOFING, StrideCategory.TAMPERING));
+
+            assertThat(problem.getStatus()).isEqualTo(422);
+            assertThat(problem.getDetail()).contains("SPOOFING").contains("TAMPERING");
+        }
+
+        @Test
+        @DisplayName("a card the hand does not hold is 422, naming the card and never the hand")
+        void shouldMapCardNotInHandToUnprocessableWithoutTheHandIdentifier() {
+            final UUID handId = UUID.randomUUID();
+            final UUID cardId = UUID.randomUUID();
+
+            final ProblemDetail problem = handler.handleCardNotInHand(new CardNotInHandException(handId, cardId));
+
+            assertThat(problem.getStatus()).isEqualTo(422);
+            assertThat(problem.getDetail())
+                    .contains(cardId.toString())
+                    .doesNotContain(handId.toString());
+        }
+
+        @Test
+        @DisplayName("a deck holding no tampering card is a server fault, 500, and says nothing about the deck")
+        void shouldMapNoTamperingCardDealtToServerError() {
+            final ProblemDetail problem =
+                    handler.handleNoTamperingCardDealt(new NoTamperingCardDealtException(78));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
+            assertThat(problem.getDetail()).doesNotContain("78");
+        }
     }
 }
