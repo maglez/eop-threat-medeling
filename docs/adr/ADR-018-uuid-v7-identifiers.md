@@ -1,6 +1,6 @@
 # ADR-018: UUID Version 7 Primary Keys Generated Through an Application Port
 
-**Status:** Accepted
+**Status:** Accepted (narrowed 2026-08-12 — see ADR-023)
 **Date:** 2026-08-05
 **Deciders:** @tech-lead, @db-designer
 
@@ -142,9 +142,33 @@ a merged changeset is forbidden in any case. The two schemes coexist for a
 reason that can be stated in one sentence, which is the test this ADR applies to
 mixed conventions.
 
+> **Narrowed 2026-08-12.** "Every runtime-inserted primary key" means every
+> runtime-inserted primary key *of an entity*. The
+> [ADR-023](ADR-023-deal-remainder-and-turn-order.md) amendment of the same date gives
+> `trick_play_component` the composite natural key `(trick_play_id, ordinal)` and no UUID
+> at all, because its rows are values inside a bounded `List<String>` rather than
+> entities: they have no domain identity, nothing can round-trip an identifier for them,
+> and a v7 column there would be written on every insert and read by nothing. Read
+> literally, the rule above would have required that dead column, or made a correct
+> table look like a violation. The rule is unchanged for anything with an identity of its
+> own — `hand`, `trick` and `trick_play` are all v7 from the port.
+>
+> The same narrowing covers `hand_card`, added to changeset `004` in the same slice and
+> keyed on `(hand_id, card_id)` with no UUID. Its case is not identical and is worth
+> distinguishing, because the two show the narrowing is about identity rather than about
+> lists: a `trick_play_component` row is an element of an *ordered* value list, so its key
+> needs a position, while a `hand_card` row records a card's *membership* of a hand, so its
+> key is the two things it relates and it needs no position at all — `Hand` canonicalises
+> its cards in the constructor, so dealing order carries no meaning to preserve. What both
+> share is the part this note turns on: neither row is an entity, neither has identity of
+> its own, and in both the natural key is the whole of what the row is. A join row between
+> two entities is the ordinary case of that, so read this narrowing as covering association
+> and value rows generally, not as two exceptions listed by name.
+
 ## Related
 
 - [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — the story that needed this decision; join codes and tokens are deliberately not UUIDs
+- [ADR-023](ADR-023-deal-remainder-and-turn-order.md) — narrows this ADR to entity rows; `trick_play_component` is keyed on `(trick_play_id, ordinal)` and `hand_card` on `(hand_id, card_id)`, neither carrying a UUID
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase is the only authority on schema; `type="UUID"` is portable across both engines
 - [ADR-012](ADR-012-deployment-target.md) — `postgres:17-alpine`, which is why `uuidv7()` is unavailable server-side
 - [PRD §5](../requirements/PRD-eop-card-game.md) — the domain model whose tables this governs

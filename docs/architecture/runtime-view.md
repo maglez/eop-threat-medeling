@@ -4,8 +4,25 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code after EOP-10. Where a sequence has a weakness, the
-prose says so rather than leaving the diagram to imply everything is fine.
+Everything here reflects the code as it stands after **EOP-14 Slice B** (the trick-play schema,
+Liquibase changeset `004`), including the client-address resolution from EOP-26 (ADR-021). The
+sequences themselves are still the EOP-10 session lifecycle, and that is not staleness: **Slice B
+changes no sequence in this document and adds none.** It is schema-only — five tables created,
+`game_session` altered, one unique constraint added to `player`, six unique constraints and ten
+foreign keys in total — with no use case, controller, adapter or endpoint touched, so there is no
+new runtime interaction to draw. Dealing a hand and playing a card have no sequence here because
+no code performs them yet; Slice C is where that behaviour, and the diagrams for it, arrive. The
+one thing Slice B does change about runtime behaviour is the *failure mode* of writes that already
+have sequences below: a forged seat and a ghost player are now rejected by the database rather
+than reaching it, which [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) records — in
+the second of the two Slice C obligations under *What changeset `004` deliberately does not
+enforce* — as still owing a use-case-level rejection, so the caller sees a 403-shaped refusal
+rather than a constraint violation. If a future slice adds or alters an interaction, this
+sentence is the first thing to correct — the previous version of it claimed EOP-10 two stories
+after that stopped being the whole truth.
+
+Where a sequence has a weakness, the prose says so rather than leaving the diagram to imply
+everything is fine.
 
 ---
 

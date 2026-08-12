@@ -84,9 +84,23 @@ public record TrickPlay(
      * other's words in. None of the three has a legitimate use in a component name
      * or a one-line note, so the boundary refuses them rather than escaping them.
      *
-     * <p>The bounds count {@code char} values, so they are a character budget and
-     * not a byte budget: 200 astral characters are 400 UTF-8 bytes. Any column
-     * sized from these constants has to allow for that.
+     * <p>The bounds count {@code char} values, that is UTF-16 code units, so they
+     * are a code-unit budget and neither a character budget nor a byte budget: an
+     * astral character costs two {@code char} values and four UTF-8 bytes, so a
+     * 200-unit budget spent entirely on astral text holds 100 characters and 400
+     * bytes. A column sized from one of these constants still maps to it directly,
+     * because both PostgreSQL's {@code character varying(n)} and H2's count
+     * characters rather than bytes: a string of 200 code units is at most 200
+     * characters, so {@code varchar(200)} can never refuse a name this constructor
+     * accepted. The domain is the stricter of the two, by up to a factor of two on
+     * astral text, which is the safe direction; widening the columns for multi-byte
+     * text would only make storage looser than the domain (ADR-023).
+     *
+     * <p>The one genuinely byte-denominated limit is elsewhere: PostgreSQL caps a
+     * B-tree index entry at roughly 2704 bytes, which {@link #MAX_NOTES_LENGTH}
+     * characters can exceed once they are multi-byte. That is why the free-text
+     * columns are bounded but deliberately left unindexed, not a reason to resize
+     * them.
      *
      * @throws NullPointerException     if a required component is null
      * @throws IllegalArgumentException if the seat is out of range, or the text is
