@@ -254,6 +254,32 @@ child, in every write path, without exception. The guard has to be taken before
 the insert anyway for the serialisation to mean anything, so the ordering costs
 nothing and removes the only currently constructible lock cycle.
 
+> **Corrected 2026-08-12.** The order is not a chain, and stating it as one left out the
+> branch Slice C writes first. Two amendments in *Consequences* below add tables the
+> original sentence could not have known about: `trick_play_component` as a child of
+> `trick_play`, and `hand_card` as a child of `hand`. What changeset `004` actually builds
+> is a tree rooted on `game_session`, so the acquisition order is a tree too.
+
+```mermaid
+flowchart LR
+    GS["game_session"] --> H["hand"]
+    GS --> T["trick"]
+    H --> HC["hand_card"]
+    T --> TP["trick_play"]
+    TP --> TPC["trick_play_component"]
+```
+
+**Lock order, as amended 2026-08-12: acquire left to right along every path in the tree
+above, and where one transaction touches both branches, take the `hand` branch before the
+`trick` branch.** Parent before child still holds on each path, in every write path,
+without exception; the branch order is fixed by the order in which a session's rows come
+into existence, since a card has to be dealt before it can be played. Naming a four-link
+chain was worse than naming three, not better: it stopped one table short of the schema it
+was written to govern, and "without exception" made the omission look deliberate. The
+omitted `hand` branch is the more damaging of the two, because Slice C's dealing use case
+writes `hand` and `hand_card` *before* anything touches `trick` — so the chain gave the
+next author no order at all for the first transaction they will write.
+
 ## Consequences
 
 **Neutral — `Trick` holds no session reference, so Slice B must carry the session
@@ -263,10 +289,20 @@ foreign keys out of entities is the house style, and `Trick.reconstitute` cannot
 round-trip a column the entity does not carry. The consequence is that `sequence`
 uniqueness is an invariant no entity can check — two tricks in one session can
 share a sequence number with nothing in the domain objecting. Slice B must
-therefore put the session in the port signature (`save(UUID sessionId, Trick)`
-rather than `save(Trick)`) and enforce the invariant with a
-`uq_trick_session_sequence` constraint in changeset `004`. Decide this before the
+therefore enforce the invariant with a `uq_trick_session_sequence` constraint in changeset
+`004`, and the session must reach storage through the port signature
+(`save(UUID sessionId, Trick)` rather than `save(Trick)`). Decide this before the
 changeset is written, not after.
+
+> **Reassigned 2026-08-12.** The constraint is Slice B's and shipped in changeset `004`;
+> the port signature is **Slice C's** and was never deliverable here. Slice B is
+> schema-only — it introduces no port, no adapter and no use case, so there is no signature
+> in the tree for the instruction to bind, and the sentence as written made a schema-only
+> slice look incomplete for declining work it could not do. Slice C owns
+> `save(UUID sessionId, Trick)` because Slice C is where the persistence port and its
+> adapter first exist. What Slice B owed was to leave that decision *takeable*: the column
+> `trick.game_session_id` and the constraint over it are in place, so Slice C adds a
+> parameter rather than a migration.
 
 **Neutral — the rest of what Slice B's changeset owes, decided here rather than
 discovered there.** `Trick.reconstitute` is deliberately not a validating gate for
@@ -280,11 +316,89 @@ at the boundary of whatever the adapter happens to write:
 
 - `hand` unique on `(session_id, seat_order)` — the executable form of the
   seat-collision guard `Hands.deal` now applies in memory.
+- `hand_card` with `PRIMARY KEY (hand_id, card_id)` — the table that stores `Hand.cards`
+  at all, and the composite key is simultaneously the counterpart of one-card-per-hand.
+  Added to this inventory 2026-08-12; see the note below on why it was missing.
 - `trick_play` unique on `(trick_id, seat_order)` and on `(trick_id, card_id)` — the
   counterparts of one-play-per-seat and one-card-per-trick.
 - `trick_play` unique on `(trick_id, player_id)` — the counterpart of one player
   across the plays, which is the stored form of the seat-impersonation defect
   EOP-14 Slice A had to fix twice.
+- `trick_play_component` unique on `(trick_play_id, ordinal)` — the counterpart of the
+  20-element bound on `TrickPlay.components`, and the reason that table exists at all.
+  Decided in the 2026-08-12 amendment below, which this ADR originally left open.
+- `player` unique on `(id, seat_order)` — `uq_player_id_seat`, added 2026-08-12 by changeset
+  `008`. It is the sixth unique constraint and the odd one out in this list, because it is
+  **not** the counterpart of a domain invariant: `player.id` is the primary key, so the pair is
+  unique for free and the constraint forbids nothing that was previously possible. It exists
+  solely to give `fk_hand_player_seat` and `fk_trick_play_player_seat` a referenceable target.
+  Two consequences a reader must not have to work out: it is **not** redundant under the
+  prefix rule below, and because `player` is created by the merged and immutable
+  `003-session-lifecycle.xml`, changeset `004` here constrains **a table it does not own** —
+  so rolling `004` back must drop `uq_player_id_seat` and leave `player` itself standing, which
+  is what `TrickPlaySchemaRoundTripTest.rollbackRemovesSchemaAddedBy004` now asserts in both
+  directions. Ordering is safe because Liquibase executes changesets in document position, not
+  by id, and `008` sits after the tables that reference it.
+- `hand (player_id, seat_order)` and `trick_play (player_id, seat_order)` composite foreign
+  keys to `player (id, seat_order)` — `fk_hand_player_seat` and `fk_trick_play_player_seat`,
+  the storage counterpart of the seat-impersonation defect above, and the two keys that make
+  the bullet before it more than a formality. Enumerated with the referential-integrity
+  paragraph below rather than argued twice.
+
+Referential integrity is a second, separate obligation, and changeset `004` carries ten
+foreign keys in total. Two of them are worth naming here because they close a defect rather
+than merely wiring a child to a parent, and two more because their delete behaviour is a
+decision rather than a default:
+
+- `fk_hand_player_seat` on `hand (player_id, seat_order)` and `fk_trick_play_player_seat` on
+  `trick_play (player_id, seat_order)`, both → `player (id, seat_order)`, both
+  `ON DELETE CASCADE`. Without them a hand or a play could name a player that does not exist —
+  a ghost-player row that every uniqueness constraint above would happily accept, since
+  `uq_trick_play_trick_player` constrains only that the identifier appears once, not that it
+  resolves — and, worse, could name a seat its player does not hold. Added 2026-08-12 in
+  response to @security-auditor's `E3`, `E8`, `S1` and `S2`. The cascade is the same direction
+  as the lock tree: a player's rows have no meaning once the player is gone. They reference
+  `(id, seat_order)` rather than `(id)` because both engines require a referenced column list
+  to be backed by a declared primary key or unique constraint, which is the whole purpose of
+  `uq_player_id_seat` in changeset `008`; neither engine accepts a reference to
+  `(id, seat_order)` on the strength of the primary key on `id` alone.
+  > **Reversed 2026-08-12.** These were single-column keys — `fk_hand_player` and
+  > `fk_trick_play_player`, both `hand.player_id`/`trick_play.player_id` → `player(id)` — and
+  > **the single-column forms are deliberately not declared alongside the composite ones. They
+  > are subsumed, not omitted.** Both columns of each composite key are `NOT NULL`, so the
+  > default `MATCH SIMPLE` semantics offer no partial-null escape: a row that satisfies
+  > `(player_id, seat_order) → player(id, seat_order)` necessarily has a `player_id` that
+  > resolves to a `player` row. **That subsumption is contingent on the `NOT NULL` constraints,
+  > not unconditional:** make either `seat_order` column nullable and `MATCH SIMPLE` will pass a
+  > row with a null seat and an unresolvable `player_id`, at which point the single-column keys
+  > stop being redundant and have to come back. Anyone relaxing a `NOT NULL` here owes that
+  > check. Declaring both today would buy a second referential check on every
+  > insert for no additional enforcement — the same duplication argument that dropped five
+  > indexes further down this document. A reader who finds `hand.player_id` with no key of its
+  > own and "restores" one has added cost and no guarantee; that is what this note exists to
+  > prevent. The reversal itself — why the seat binding these keys carry was first deferred and
+  > then enforced — is recorded in *What changeset `004` deliberately does not enforce* below.
+- `fk_hand_card_card` on `hand_card.card_id` → `card(id)` and `fk_trick_play_card` on
+  `trick_play.card_id` → `card(id)`, both deliberately with **no** `onDelete`. The card
+  catalogue is seeded reference data, inserted by changesets `001`/`002` and never deleted
+  at runtime, so there is no legitimate delete to cascade or nullify. Leaving these at the
+  default `NO ACTION` means an attempt to delete a card that has been dealt or played fails
+  loudly, which is the correct answer to an operation no application path performs.
+
+> **Amendment, 2026-08-12. This inventory omitted `hand_card`, the table that stores the
+> deal this ADR is named after.** It was discovered mid-slice, while changeset `004` was
+> being written, when `Hand.cards` turned out to have nowhere to go: `hand` as enumerated
+> above carries `game_session_id`, `player_id` and `seat_order` and no cards at all. The
+> consequence is sharper than a missing table. This ADR's headline decision is that every
+> card is dealt, `20, 20, 19, 19` across four seats — and with no `hand_card` table that
+> rule was **unstorable**, so the slice would have shipped a schema in which the central
+> decision of the document governing it could not be written down, let alone asserted. The
+> omission is the same class of error as the `trick_play_component` one amended below, and
+> from the same cause: the inventory was assembled by walking `Trick.reconstitute`'s
+> invariants, which is a complete account of what a *trick* must store and silent on hands.
+> Both amendments are recorded rather than quietly folded in, because the pattern — an
+> inventory that looks exhaustive because it was derived exhaustively from the wrong
+> starting point — is the reusable lesson.
 
 Two obligations have no constraint available and must be met in code instead. The
 clockwise-order invariant cannot be expressed as a constraint at all, so row *order*
@@ -328,12 +442,199 @@ corruption and disclose an internal invariant message while doing it. Slice B mu
 reconstitution failures their own type, mapped to 500 with a fixed detail, on the pattern
 of the `NoTamperingCardDealtException` mapping Slice A added.
 
+> **Reassigned 2026-08-12.** This one belongs to **Slice C**, and the premise that dated it
+> to Slice B was wrong. Slice B ships DDL and migration tests only: no adapter reads a row,
+> so nothing calls `Trick.reconstitute`, so the 400-with-internal-message path this
+> paragraph is about is not reachable in the tree Slice B leaves behind. It becomes
+> reachable in Slice C, with the first reading adapter, and that is the slice that must
+> land the exception type, its `GlobalExceptionHandler` mapping to 500 with a fixed detail,
+> and the per-type handler unit test `.opencode/rules/error-handling.md` requires. Slice B
+> creating the exception type early would have shipped an unreachable branch and an
+> untestable mapping. The reassignment changes nothing about the decision itself — a
+> reconstitution failure is still a server fault, and still must not echo its own message.
+
 **`PlayerMismatchException.getMessage()` must never reach a problem detail.** The message
 names a seat and nothing else, precisely so that it is safe to log; the two player
 identifiers are reachable only through the accessors. Slice A's handler returns a fixed
 detail and takes no exception argument at all. A later handler that reached for
 `getMessage()` by reflex would be safe today and would silently become a disclosure the
 moment anyone put an identifier back into the message.
+
+> **Amendment, 2026-08-12. This ADR enumerated everything changeset `004` owes and was
+> silent on `TrickPlay.components`.** That silence was the last open question blocking the
+> changeset: the field is a `List<String>` on a record, and every one of the three
+> obvious storage shapes leads somewhere different. It is answered here rather than in a
+> new ADR because it is the same changeset, the same slice and the same argument as the
+> row-order obligation recorded above — one level deeper — and because a changeset's
+> brief split across two documents is a brief the writer of the changeset reads half of.
+> Nothing above is retracted; this fills a hole this ADR left in itself and dated notes
+> are added where it makes an earlier paragraph incomplete.
+
+Components are stored one row per component in a child table of `trick_play`:
+
+```
+trick_play_component
+  trick_play_id  UUID         NOT NULL  FK -> trick_play(id) ON DELETE CASCADE
+  ordinal        INT          NOT NULL
+  component_name VARCHAR(200) NOT NULL
+  PRIMARY KEY (trick_play_id, ordinal)
+  CHECK  (ordinal >= 0 AND ordinal <= 19)
+```
+
+The 20-element bound is enforced in three layers, deliberately and not by accident:
+
+| Layer | Mechanism | Status |
+|---|---|---|
+| Domain | `TrickPlay`'s compact constructor, `components.size() > MAX_COMPONENTS` | shipped in Slice A |
+| Storage | `PRIMARY KEY (trick_play_id, ordinal)` + `CHECK (ordinal BETWEEN 0 AND 19)` | changeset `004` |
+| Boundary | `@Size(max = 20)` on the request DTO | Slice D |
+
+**The ordinal is load-bearing, and it rests on a premise this ADR must state first:
+component order is preserved as the player typed it, and is never canonicalised.**
+`TrickPlay`'s constructor strips, bounds and character-checks each name and then calls
+`.toList()`, preserving arrival order (`TrickPlay.java:109-123`). Because `TrickPlay` is a
+record, its generated `equals` compares `List<String> components` order-sensitively, and
+`Trick.reconstitute` rebuilds plays from stored rows. So a round trip through a table with
+no ordinal is only equal to what went in if the engine happens to return rows in insertion
+order — which PostgreSQL does not promise and H2 will usually appear to. That is the same
+reasoning applied above to `trick_play` row order, one level down.
+
+The premise has to be written down because the codebase contains the opposite treatment,
+and a reader who finds it will otherwise conclude the ordinal is machinery nobody needed.
+`Hand` canonicalises: it sorts its cards by suit then rank in its constructor
+(`Hand.java:40-44`) precisely so that "two hands holding the same cards compare equal
+whatever order they arrived in" (`Hand.java:54-57`), which is why `hand_card` — created by
+changeset `004`, keyed on `(hand_id, card_id)` — carries **no** ordinal. The two are
+different because dealing order
+carries no meaning and typing order does: the components a facilitator reads back are the
+words a person said, in the order they said them, and this application exists to record
+that conversation. Sorting them instead would have removed this column, and was rejected
+for a second reason as well — ordering user-supplied text requires a collation decision
+(`Café` against `Cafe`) that would have to hold identically in a Java comparator and on two
+database engines, which is a worse cross-engine coupling than an `INT`.
+
+**`PRIMARY KEY` + `CHECK (ordinal <= 19)` enforces "at most 20 rows per parent" with no
+trigger.** No engine expresses a row-count constraint directly; bounding a unique ordinal
+to twenty values achieves exactly that by pigeonhole, which is what makes the storage layer
+cheap enough to be worth having. Two limits of that trick must be recorded with it, because
+both are the kind of thing an adapter author assumes the other way:
+
+- **It does not enforce density.** Ordinals `{0, 5, 17}` satisfy every constraint. The cap
+  and the ordering survive a sparse set, so nothing is unsafe, but the adapter must rebuild
+  the list with `ORDER BY ordinal ASC` and must never treat an ordinal as an index into the
+  reconstituted list. Positional addressing is the defect this permits.
+- **The `19` is a literal derived from a Java constant Liquibase cannot read.** Raising
+  `MAX_COMPONENTS` would leave storage *stricter* than the domain, which turns a legal play
+  into a 500 — the identical failure shape this amendment rejects `(trick_play_id,
+  component_name)` uniqueness for, and the mirror image of the byte-sizing mistake corrected
+  above. A test must pin the changeset's `CHECK` to `TrickPlay.MAX_COMPONENTS` so the two
+  cannot drift; reading a resource file from a test to hold documentation and code together
+  is already house practice (`AdrIndexConsistencyTest`).
+
+**This is defence in depth, not duplication.** The domain check refuses bad input; the
+constraints refuse bad *writes* — a future adapter bug, a hand-run `INSERT`, a repair script
+— none of which pass through `TrickPlay`. This ADR already committed to giving every domain
+invariant a storage counterpart wherever one is expressible, and this is one that is.
+
+**`(trick_play_id, component_name)` must not be unique.** The constructor strips, bounds and
+character-checks each name and never dedupes, so a play naming the same component twice is
+legal domain state. A uniqueness constraint there would be stricter than the domain and would
+convert a legal play into a constraint violation, i.e. a 500 blamed on the server for obeying
+its own rules.
+
+**`varchar(200)` now lands on `trick_play_component.component_name`, not on `trick_play`.**
+The character-sizing instruction above predates this decision and does not say which table
+`varchar(200)` belongs to; a reader would reasonably have put it on `trick_play`. It sizes the
+component name here and `notes` on `trick_play`. The bound is also safe in the one direction
+that matters: `MAX_COMPONENT_NAME_LENGTH` is checked with `String.length()`, which counts
+UTF-16 code units, while both engines count characters — and a string of 200 code units is at
+most 200 characters. `varchar(200)` therefore cannot refuse a name the domain accepted.
+
+**No surrogate identifier, which narrows ADR-018.** ADR-018 requires UUID v7 for "every
+runtime-inserted primary key", and this table's primary key is the composite
+`(trick_play_id, ordinal)`. That is deliberate: a component is a `String` in a bounded list,
+not an entity. It has no domain identity, `List<String>` has nowhere to carry an identifier,
+and a minted UUID here would be a column written on every insert that nothing ever reads and
+no code could round-trip — a second identity for a row already identified by its parent and
+its position. ADR-018 governs the identifiers of rows that *have* one; it is qualified rather
+than broken, and carries a dated note saying so. A table with **no** primary key at all is
+not the alternative and is not sanctioned here: the composite key is the primary key, not
+merely a unique constraint, and a separate index on `trick_play_id` alone is redundant
+because it is the leading column of that key.
+
+**That last clause is the general rule, not an observation about one table: do not create an
+index whose column list is a prefix of an existing primary key or unique constraint on the
+same table.** Both engines can serve such a query from the existing key's B-tree, so the
+extra index buys nothing and costs a write on every insert, update and delete. Applied
+across changeset `004` it removed five indexes that an earlier draft had created —
+`idx_hand_game_session`, `idx_hand_card_hand`, `idx_trick_game_session`,
+`idx_trick_play_trick` and `idx_trick_play_component_trick_play`, each duplicating the
+leading column of `uq_hand_session_seat`, `pk_hand_card`, `uq_trick_session_sequence`,
+`uq_trick_play_trick_seat` and `pk_trick_play_component` respectively. Three indexes survive
+because they are not prefixes of anything: `idx_hand_player` and `idx_trick_play_player`
+(`player_id` is the *trailing* column of `uq_trick_play_trick_player`, so that key cannot
+serve a lookup by player, which is what the cascade from `player` needs), and
+`idx_trick_winner_play` on the nullable `trick.winner_play_id`, which no key covers.
+
+> **Amendment, 2026-08-12. `uq_player_id_seat` does not violate this rule, and must not be
+> deleted by anyone applying it.** The constraint is on `player (id, seat_order)` and
+> `pk_player` is on `(id)`. `(id, seat_order)` is therefore **not a prefix of** the primary
+> key — the containment runs the other way, the primary key is a prefix of *it* — and the rule
+> above forbids only the first direction. The distinction is not pedantry: a B-tree on `(id)`
+> cannot satisfy a foreign-key reference to the *pair*, which is precisely why both engines
+> reject `REFERENCES player (id, seat_order)` until a key over exactly those two columns is
+> declared. Deleting `uq_player_id_seat` as a perceived duplicate does not cost a redundant
+> index; it drops `fk_hand_player_seat` and `fk_trick_play_player_seat` with it and reopens
+> seat forgery. Note also that the rule as stated is about *indexes* and this is a *constraint*
+> carrying an index as a side effect, which is a second reason it falls outside the rule: the
+> index here is not the point of the object.
+
+The rule has a counter-instance already in the tree, and it is recorded here rather than
+smoothed over. Changeset `003` creates `idx_player_game_session` on
+`player(game_session_id)` (`003-session-lifecycle.xml:161-163`) directly beside
+`uq_player_session_seat` on `(game_session_id, seat_order)` (`:146-149`) — a prefix index of
+exactly the kind this rule forbids, justified by a comment observing that PostgreSQL does
+not index a foreign key automatically, which is true and does not bear on whether *this*
+index is needed, because the unique constraint already indexes that column. **Changeset
+`003` is not being changed by this slice**: it is merged, it is a released migration, and
+rewriting history to drop an index is a change with its own risk and its own justification
+to write. So the rule as stated is forward-looking — it binds changeset `004` and every
+changeset after it, and `003` is a known, deliberate exception rather than evidence that the
+rule is already universally observed. A reader comparing the two tables will find the
+inconsistency; this paragraph exists so they find the reason with it.
+
+`ON DELETE CASCADE` because a component row has no meaning outside its play, and cascading
+from parent to child is the same direction as the lock order above.
+
+**Rejected: one delimited column on `trick_play`.** The strongest alternative, and it is
+**not** forgeable — contrary to first impression. `TrickPlay.rejectUnsafeText` refuses every
+`Character.isISOControl` character plus the bidirectional formatting block
+(`TrickPlay.java:239-268`), so a delimiter such as `\u001f` is provably absent from any
+accepted component name.
+
+It loses on two counts. First, it makes both remaining bounds unenforceable in storage: a
+single column cannot constrain the length of an element inside it, nor how many elements it
+holds, so the storage layer of the table above collapses to nothing and the 200- and
+20-limits exist in Java only. Second, and worse, it silently couples the storage format to a
+validation rule in another class. Relax `rejectUnsafeText` one day — for a legitimate reason,
+in a story about text handling, with every test green — and the storage format becomes
+forgeable with nothing anywhere failing. A hidden coupling whose failure mode is a security
+defect is worse than a table. The delimited column would also run to `20 × 200 + 19 = 4019`
+characters, which the B-tree note above puts permanently out of reach of an index.
+
+**Rejected: `jsonb` or a native array column.** Not portable. Tests run on H2 and production
+on PostgreSQL 17, and changeset `003`'s header makes cross-engine validity binding. Neither
+type constrains element length or element count on either engine, so this loses the same
+storage layer as the delimited column while adding custom Hibernate mapping under
+`ddl-auto=validate`. There is also zero precedent to follow:
+
+```
+$ grep -rnE "ElementCollection|JsonType|jsonb|@Convert|columnDefinition" src/main/java src/main/resources
+$ echo $?
+1
+```
+
+A child table, by contrast, is the shape every other relationship in this schema already uses.
 
 **Positive — the *opening*-lead rule is total.** It resolves for every player count
 and every shuffle, with no fallback branch, no unreachable-in-practice code path,
@@ -415,13 +716,502 @@ ADR that is accepted before its schema exists is normal here; the index's
 bearing on fairness, and fairness is a scoring concern. EOP-15 owns it. This ADR
 records the input, not the answer.
 
+### What changeset `004` deliberately does not enforce
+
+*Added 2026-08-12, when changeset `004` was written.* Everything above says what storage
+guarantees. This section says what it does **not**, because three invariants were considered,
+were constructible, and were deliberately left out — and a deferral that lives only in an XML
+comment inside the changeset that declines it is not a record anyone will find. Each entry
+names what is unenforced, why it was declined, and who owns it instead.
+
+**Nothing in this section is reachable by application code today, and the reason is not a
+feature flag.** Slice B ships five tables with no mapping above them: `@Table` appears on
+exactly three classes in the whole source tree — `CardJpaEntity`, `GameSessionJpaEntity` and
+`PlayerJpaEntity` — so `hand`, `hand_card`, `trick`, `trick_play` and `trick_play_component`
+have no entity, no repository, no adapter, no controller and no route, and there is no code
+path that can insert a row into any of them. That is also why `ddl-auto: validate` starts
+clean against them: validation checks mapped tables, and none of these five is mapped. Being
+exact about this matters, because this slice has been described elsewhere as shipping behind
+`eop.features.trick-play`, false by default: **that flag does not exist.** `application.yml`
+declares exactly one flag, `features.session-lifecycle: false`, and the containment a flag
+would give is *weaker* than the containment that actually holds — a flag gates a bean, whereas
+there is no bean, no mapping and no SQL to gate. Every gap measured below was reached through
+a raw JDBC connection the auditor opened itself, which no part of the application can imitate.
+The consequence is a scheduling one and it is the reason to read on: **Slice C adds the flag
+and the entities in the same commit**, at which point every gap in this section becomes
+reachable at once, and the flag will not be the thing holding them shut.
+
+> **Reversed 2026-08-12, on the same day and inside the same slice.** One of those three
+> invariants is no longer deferred: **seat binding is enforced in storage**, by changesets
+> `008` and `009` of `004`. Two remain unenforced — cross-session containment and
+> card-scoping, both below. A **fourth** gap, which this section never considered when it
+> counted three, was found by audit afterwards and is recorded below with the others:
+> nothing confines a trick's winning play to that trick. The entry that follows has been
+> rewritten to show the decision
+> being *corrected* rather than quietly replaced by its outcome, because what went wrong was
+> not a fact about constraints but a fault in reasoning: two protections with different
+> constructions and very different costs were argued as one inseparable problem, so a sound
+> objection to the expensive half silently carried the cheap half with it. A record that
+> shows only the answer teaches nobody how that happens.
+
+**Enforced — a hand or a play cannot claim a seat its player does not hold.** `hand` and
+`trick_play` each carry both `player_id` and `seat_order`, and changeset `004` binds the pair
+rather than constraining the two columns separately: `fk_hand_player_seat` on
+`hand (player_id, seat_order)` and `fk_trick_play_player_seat` on
+`trick_play (player_id, seat_order)`, both referencing `player (id, seat_order)`, both
+`ON DELETE CASCADE`, and both made possible by `uq_player_id_seat` from changeset `008`. A
+stored `seat_order` that disagrees with that player's own `player.seat_order` is now
+structurally unrepresentable rather than merely unlikely. Neither table declares a
+single-column key to `player(id)` as well, because the composite key subsumes it — the
+argument is in the referential-integrity paragraph above, and it is there rather than here so
+that a reader who notices the absence finds the reason beside the other foreign keys.
+
+Neither key declares `ON UPDATE`, so both engines default to `NO ACTION`, and that is the
+deliberate reading of ADR-019's "seat order assigned once at join and never re-derived":
+`PlayerJpaEntity` exposes no setter for `seatOrder` at all, so no write path can change one, and
+a whole-row `UPDATE` on reconnect is unaffected because both engines skip the referential check
+when the referenced key columns do not change value. The cost to name is a *future* one: a story
+that ever reseats a player — filling a vacancy, swapping two seats — now has three tables to
+move rather than one, and a swap needs a temporary seat value or a dropped constraint, because
+`uq_player_session_seat` already forbids the intermediate state where two players share a seat.
+That is the right trade while seats are immutable, and it is the first thing to re-examine if
+they stop being.
+
+**This was deferred first, and the deferral was wrong. Recorded as a reversal, because the
+error is reusable and the outcome is not.** The audit trail, in order:
+
+1. **The original decision.** This section shipped seat forgery and cross-session writes as a
+   *single* deferred entry, headed "nothing binds a play to the seat its player actually
+   holds, and nothing stops a play by a player from another session", on the stated ground
+   that "closing either in storage requires the same construction: denormalise
+   `game_session_id` onto `trick_play` and add a composite foreign key binding
+   `(player_id, seat_order)` back to `player(id, seat_order)`". Against that construction the
+   document raised an objection it had already made once for `hand_card`: **a denormalised
+   column that can disagree with its parent enforces less than it appears to** — a
+   `trick_play.game_session_id` is a second authority for a fact `trick.game_session_id`
+   already holds, so a composite key over it constrains the copy and not the truth. That
+   recommendation was made by @architecture-guardian and **declined by the user**,
+   deliberately, in favour of enforcement in Slice C's play use case.
+2. **The finding.** @architecture-guardian then raised, as a MAJOR finding against its own
+   previously-recorded deferral, that the objection does not reach the seat half, because the
+   seat half **needs no denormalised column at all**. `seat_order` is already on `hand` and on
+   `trick_play`, carried for reasons of their own; nothing new is added. And where
+   `game_session_id` on `trick_play` *would* create a copy that can disagree with its parent,
+   a composite key on `(player_id, seat_order)` is precisely the constraint that **forbids**
+   the disagreement — it answers the objection instead of incurring it. Arguing the two
+   together let a correct objection to the expensive half veto the cheap half without ever
+   being tested against it. A second, smaller defect in the same sentence points the same way:
+   it claimed `uq_player_session_seat` made `player(id, seat_order)` referenceable, which is
+   false — that constraint is on `(game_session_id, seat_order)` — so the record misdescribed
+   the seat half's one real cost as free while stating its construction as unaffordable.
+3. **The reversal.** Put back to the user with the two protections and their costs
+   distinguished, **the user reversed the earlier decision**: seat binding is enforced in
+   storage, cross-session containment stays deferred. The earlier decision is not
+   retrospectively recast as a mistake — it was sound for the half it was actually argued
+   about, and remains in force for that half.
+4. **What it cost.** One unique constraint that adds no invariant — `uq_player_id_seat` on
+   `player (id, seat_order)`, unique for free because `id` is the primary key, and declared
+   only because both engines demand a primary key or unique constraint behind a referenced
+   column list — plus one composite foreign key per table. The per-insert referential check is
+   a *substitution* rather than an addition, since each table would otherwise have carried a
+   single-column check to `player(id)`; the genuine residual costs are one extra B-tree on
+   `player`, maintained on every join, and a changeset that reaches into a table changeset
+   `004` does not own. Against the exploit it closes, that is cheap, and saying so is the
+   point: the cost was never the reason to decline it, and nobody had priced it.
+
+**What the reversal closes, and the one qualification that matters.** @security-auditor's
+`S1`/`S2` chain is closed in storage **against an attacker inside the session**: a player writing
+a play in another player's seat, and then `uq_trick_play_trick_seat` locking the legitimate
+occupant out of a seat they hold — impersonation escalating to denial of service — requires a
+`trick_play` row whose `(player_id, seat_order)` pair does not exist on `player`, which no longer
+inserts. Ghost-player rows go with it as a side effect: an invented `player_id` matches no
+`(id, seat_order)` pair either, which is what the two dropped single-column keys were added for.
+
+It is worth being exact about what the composite key proves, because the flat claim "seat forgery
+is closed" is too strong: it proves the pair exists on *some* `player` row, not that that player
+is at this trick's table. Seats are numbered from `0` in **every** session, over the range
+`0..5` — `GameSession.MAXIMUM_PLAYERS` is 6 (`GameSession.java:35`) and changeset
+`003-session-lifecycle.xml:97` documents the column as "0 through 5"; an earlier revision of
+this paragraph said `0..3`, which understated the shared seat range by two and with it the
+collision surface — so a player who holds seat 2 in session B satisfies
+`fk_trick_play_player_seat` while writing into session A's trick at
+seat 2 — and can therefore still take session A's seat 2 out of play through
+`uq_trick_play_trick_seat`. The seat-lockout denial of service is **narrowed to cross-session
+attackers, not eliminated**, and it is eliminated only when the deferral below is discharged.
+That is the honest reading, and it is here rather than in the deferral because a reader who stops
+after the good news is the one who needs it.
+
+**Still deferred — nothing confines a play to its own session.** `trick_play` has no session
+column at all; it reaches `game_session` only through `trick`. So storage still accepts a play
+by a player belonging to an entirely different session, provided that player exists and holds
+the seat named — seat binding narrows this attack but does not close it, because a player in
+another session can genuinely hold seat 3 there. Closing it in storage does require the
+denormalised `game_session_id` and the objection of step 1 above applies to it undiminished.
+Storage is also the weaker of the two places to enforce it: a constraint can only reject a row
+after the use case has decided to write it, whereas resolving the acting player from the
+identity token means the forged value is never in the row at all, and a request field that is
+never read cannot be forged.
+
+**The same gap on the deal path — `hand` has it identically, and that was recorded nowhere.**
+The paragraph above is written entirely about `trick_play`, because that is where the
+seat-lockout chain was found, and a reader could fairly conclude that `hand` escapes it by
+carrying its own `game_session_id`. It does not. `fk_hand_player_seat` proves the pair
+`(player_id, seat_order)` exists on *some* `player` row, exactly as its `trick_play` twin does,
+and nothing ties `hand.game_session_id` to the session that player actually belongs to.
+Measured by @security-auditor against the deployed schema over raw JDBC: a `hand` row in
+session A, owned by a session-B player holding seat 1, is **accepted** (`S5`); the legitimate
+occupant of session A's seat 1 is then **refused their own deal** (`S5b`, `23505` on
+`uq_hand_session_seat`, whose columns are `(game_session_id, seat_order)`). The availability
+consequence therefore reaches the *deal*, not only the play — and dealing happens once, at the
+start, so this denial blocks a game before it begins rather than stalling one seat mid-trick.
+Slice C's dealing use case owes the same session check as its play use case, for the same
+reason and with no separate argument.
+
+**A second availability vector, and it is not seat-shaped at all — cross-session card
+blocking.** The narrowing above ("cross-session attackers, not eliminated") is about seats, and
+it does not bound the damage, because `uq_trick_play_trick_card` is a second lockout surface
+that seat binding never touched. Measured by @security-auditor: a session-B player, sitting in
+its **own legitimate seat**, plays card K into session A's trick — **accepted** (`X1`); session
+A's seat-0 occupant can then no longer play card K in that trick (`X2`, `23505` on
+`uq_trick_play_trick_card`). Note what this does *not* require: the attacker forges no seat, so
+`fk_trick_play_player_seat` is satisfied honestly, and the seat it denies is **not** the seat it
+occupies. Every card in the deck is a lockout token against any seat at the victim's table, so
+the reachable denial is materially broader than "the same seat number in another session" — a
+single foreign player can exhaust a trick's playable cards rather than one seat of it. This is
+the same class of defect as the deferral above (nothing confines a `trick_play` row to its own
+session) and it closes with the same fix, which is why it is recorded here rather than as a new
+decision; it is recorded *at all* because the narrowing sentence above, read alone, understates
+the blast radius.
+
+**A deletion hazard as well as a write hazard — the player cascade crosses the session
+boundary.** The consequence recorded below is about writes. It is not only writes.
+`fk_trick_play_player_seat` is `ON DELETE CASCADE`, and once a foreign player's row sits inside
+a victim's trick, the cascade follows the *player*, not the session. Measured by
+@security-auditor: a session-B player plants a play in session A's trick, session A's trick
+resolves to that play, and deleting the session-B player then reaches into session A —
+`trick_play` count for session A's trick falls to `0` and its `winner_play_id` becomes `null`,
+so a resolved trick in an untouched session silently reads as unresolved (the `SET NULL`
+recorded further down, firing correctly, on a row that should never have been there). Two
+qualifications, both in the attacker's favour and stated because the finding is weaker without
+them: the victim loses no row of its own — only the foreign row and the resolution that pointed
+at it — and the damage is **self-healing on the attacker's teardown**, so this is a transient
+denial and an integrity surprise rather than data loss. It still belongs on the record: it means
+the cross-session gap must be reasoned about on the *delete* path too, and a use case that
+merely refuses foreign writes at admission is exactly the fix, because a row that never lands
+cannot later be cascaded away.
+
+**Consequence, recorded as a consequence rather than a caveat.** Until Slice C lands that
+resolution, the schema's guarantee about *which session* a play belongs to is weaker than the
+constraint names suggest: `fk_trick_play_player_seat` reads like it closes impersonation
+generally, and it closes impersonation *within* a session only.
+@architecture-guardian's position on record is that this is the right *place* to enforce it and
+a real risk to carry meanwhile, because that protection rests entirely on one use case being
+written correctly, with no second, independent check behind it — a departure from the
+defence-in-depth this ADR asserts everywhere else, and the reason it is written here in full
+rather than noted in passing. Four obligations follow, and they are Slice C's, not optional:
+
+1. Slice C's play use case **must** derive the acting player and seat from the authenticated
+   identity, must reject any seat supplied by the caller rather than reconciling it, and must
+   verify that the resolved player belongs to the same session as the trick. Seat binding in
+   storage does not discharge any of this: a constraint proves the pair `(player_id,
+   seat_order)` is genuine, and cannot prove the *caller* is that player. **The dealing use
+   case owes the identical check**, because `hand` has the identical gap — see the `S5`/`S5b`
+   measurement above; this obligation is not confined to the play path.
+
+   The two refusals are **different exceptions carrying different statuses**, and naming them
+   is part of the obligation rather than a detail left to the implementer:
+
+   - A caller who *is* a member of the session but names a seat it does not hold is refused
+     with the existing `NotYourSeatException` → **403**. 403 and not 400 or 422 because the
+     request is well-formed and every value in it resolves; what fails is the caller's
+     authority to act as that seat, and there is no input for the caller to correct. That type
+     is today thrown only from the domain (`Trick.java:372`), so reaching for it here is reuse
+     of the type at a new call site and **not** evidence the check already exists — the
+     identity-derived refusal is unwritten.
+   - A caller who is **not** a member of the session at all is refused with a new
+     `PlayerNotInSessionException`, and it maps to **404**, deliberately indistinguishable from
+     the 404 `SessionNotFoundException` already produces. 403 would be wrong here even though
+     the fault is authorisation and not absence, because the status is itself the disclosure: a
+     403 tells a stranger that the session id they guessed exists. This is defence in depth
+     applied to the response, and it is what makes the ordering below achievable rather than
+     decorative. (This 404 is @architecture-guardian's; @tester-api named 403 for the
+     forged-seat family and left non-membership open.)
+
+     > **Corrected 2026-08-12 — parity means the body, not only the status.** As first written
+     > this bullet required only that the status match, and grounded itself in "the status is
+     > itself the disclosure". That is a status-only reading, and an author could satisfy it
+     > literally — return 404, title it `"Player not in session"` — and rebuild the very oracle
+     > the 404 was chosen to remove. It is the failure mode this same amendment was written to
+     > fix, one level down: an obligation that names a check but not its answer gets discharged
+     > as a check that returns 500, and an obligation that names a status but not a body gets
+     > discharged as a 404 that is a serviceable oracle. Found by @security-auditor against an
+     > obligation @architecture-guardian wrote; the four requirements below are binding, not
+     > advisory.
+     >
+     > 1. **Body parity.** The `PlayerNotInSessionException` 404 must be identical in `status`,
+     >    `title` **and** `detail` to what a non-existent session produces — title exactly
+     >    `"Session not found"`, detail exactly `"No session found with identifier " + sessionId`,
+     >    matching `GlobalExceptionHandler.handleSessionNotFound` and `SessionNotFoundException`.
+     >    No field may name the player, the seat, membership or authorisation, and no field may
+     >    vary with *why* the lookup failed. The exception must therefore carry the session id
+     >    and nothing else that reaches the response; the only part of the body that varies is
+     >    the id the caller itself supplied.
+     > 2. **Copy the pattern that already exists, and copy the right one.** The shape to follow
+     >    is `handleUnknownJoinCode` (`GlobalExceptionHandler.java:121-127`): fixed strings, the
+     >    exception's own message deliberately unused, and its reasoning at `:100-116` —
+     >    including the `instance` analysis, which applies here for the same reason. Do not mint
+     >    a fresh title. Note the one deliberate difference: that handler blanks the identifier
+     >    because a join code is roughly thirty bits, whereas echoing a session id back is safe
+     >    by its own argument since the caller supplied it, which is what makes exact parity
+     >    with the candid 404 achievable rather than forcing a blanked detail.
+     > 3. **Scope the counter-argument, because it is an argument and not a silence.**
+     >    `GlobalExceptionHandler.java:85-87` and `SessionNotFoundException.java:8-11` both argue
+     >    candour from the same 122-bit premise, and both are correct **in their own scope** — a
+     >    direct lookup of an id the caller supplied tells the caller only what it already had.
+     >    They do **not** govern the membership answer, where the question is whether a
+     >    *different* session exists. The premise the 404 actually rests on is ids that are
+     >    *obtained* — leaked, shared, recycled — rather than guessed, where 404-versus-403 is
+     >    exactly the separation between "names a live session" and "names nothing" that a holder
+     >    of bulk ids is fishing for. Slice C owes a one-line cross-reference in that Javadoc;
+     >    it is deliberately not added here, because `src/main/java` is unchanged since
+     >    `cebd2fb` and editing it would detach the green build from the reviewed tree.
+     > 4. **The test must be able to fail.** The handler unit test `error-handling.md` already
+     >    mandates must assert **equality of the two `ProblemDetail` bodies** — a non-member
+     >    request against a live session, and a request against an unknown session — not merely
+     >    that both are 404. A status-only assertion cannot fail on the single non-compliance
+     >    this bullet exists to prevent, which is the same argument obligation 2 makes about
+     >    asserting the status rather than that something was thrown.
+
+   **Ordering, not merely presence — found by @tester-api.** The membership check must run
+   *before* any response that could reveal the victim session's state, and in particular before
+   the insert whose constraint violation obligation 4 answers with a 409. If Slice C attempts
+   the play and translates `uq_trick_play_trick_card`'s `23505` to a 409 before it has
+   established membership, that 409 confirms to a stranger that the card has been played in a
+   session they should not know exists: the `X1`/`X2` gap re-emerging through the error channel,
+   with the constraint that cannot see across sessions replaced by a status that can. Getting
+   the order right is what makes obligation 4's 409s unreachable except by members, which is in
+   turn what entitles them to be specific.
+2. That behaviour needs tests naming both attacks — a play claiming another player's seat, and
+   a play by a player from a different session — so the enforcement has a regression guard in
+   the layer that performs it. Add a third: the **cross-session card block** (`X1`/`X2` above),
+   which no seat-shaped test would catch, because the attacker's own seat is honest and the
+   seat it denies is someone else's. For the cross-session attacks those tests are the only
+   thing that will notice if the use case stops checking, because storage cannot fail closed
+   there. For the seat attack there is now a second guard as well
+   (`TrickPlayForeignKeyTest.trickPlayForgedSeatExploitIsRejected` and
+   `handForgedSeatExploitIsRejected`, which assert SQL state `23506`), and the use-case test is
+   still owed: a 500 from a constraint violation is not the 403-shaped rejection a forged
+   request should get.
+
+   Those use-case tests must assert the **status**, not merely that something was thrown. A test
+   satisfied by any refusal cannot tell the 403 and 404 obligation 1 requires apart from the 500
+   the adapter produces today (obligation 4), which is precisely the failure this list exists to
+   prevent.
+3. Slice C's **resolve-trick** use case must verify that the winning play it records belongs to
+   the trick it is resolving. This is the fourth gap named in the blockquote at the head of this
+   section, it is **not** an instance of the cross-session deferral — it needs no second session
+   and no second player — and it is recorded in full under *`fk_trick_winner_play` confines the
+   winner to no trick and no session* below, which is the one authority for it. It is listed here
+   because this numbered list is what Slice C will read, and an obligation recorded only beside
+   the constraint it protects is an obligation nobody schedules.
+
+   Its refusal is `WinningPlayNotInTrickException` → **422**, and 422 rather than the 409 the
+   duplicate refusals in obligation 4 take. 409 tells a caller that its request conflicts with
+   the current state and could succeed against a different one, which entitles a client to
+   retry; retrying cannot help here, because a play belonging to another trick will never come
+   to belong to this one. 400 is wrong for the same reason as in obligation 1: the identifiers
+   are well-formed and resolve. What fails is a rule of the game, which is where
+   `MustFollowSuitException` and `CardNotInHandException` already sit at 422. Unlike the
+   refusals in obligation 1 this one will have **no** storage backstop in Slice C — the
+   composite key that would provide it collides with the `SET NULL` rule, as recorded below —
+   so the use-case check is the only check there will ever be, and its test is the only guard.
+4. Slice C **must extend the constraint-name translation in the persistence adapters**, and this
+   is a distinct obligation from 1 because a use-case check and a storage backstop are not the
+   same mechanism and only the first was described here. Found by @tester-api against the code:
+   `SessionRepositoryAdapter` catches `DataIntegrityViolationException` and translates exactly
+   two constraint names — `uq_game_session_join_code` → `JoinCodeUnavailableException`
+   (`SessionRepositoryAdapter.java:87-91`) and `uq_player_session_seat` →
+   `SeatAlreadyTakenException` (`:111-115`) — and rethrows everything else.
+   `GlobalExceptionHandler` declares no `DataIntegrityViolationException` handler, so every
+   constraint changeset `004` adds currently falls through to `handleUnexpected`
+   (`GlobalExceptionHandler.java:376-379`) and answers **500**. That is the mechanism by which
+   the gaps above become defects rather than merely unfinished work, and nothing scheduled the
+   catch clauses before this amendment. Each constraint that a client request can reach needs a
+   named translation:
+
+   | Constraint | SQLSTATE | Domain exception | Status |
+   | --- | --- | --- | --- |
+   | `fk_hand_player_seat`, `fk_trick_play_player_seat` | `23506` | `NotYourSeatException` | 403 |
+   | `uq_trick_play_trick_seat`, `uq_trick_play_trick_player` | `23505` | `AlreadyPlayedInTrickException` | 409 |
+   | `uq_trick_play_trick_card` | `23505` | `CardAlreadyPlayedException` | 409 |
+   | `uq_hand_session_seat` | `23505` | `HandAlreadyDealtException` | 409 |
+   | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
+
+   Three things in that table are load-bearing rather than bookkeeping. The `23506` row answers
+   **403** and not 500 even though reaching it means obligation 1's check is missing or wrong:
+   the status owed to a caller is decided by what the caller attempted, not by which layer
+   happened to notice, and the alternative here is exactly the 500 that is the defect. It must
+   also be logged at WARN with the constraint name, because a backstop that fires is a use-case
+   bug and a structured log is where that becomes visible to operations rather than to nobody.
+   The `23505` rows answer **409** and not 422 because a duplicate genuinely *is* a conflict
+   with current state — a double-submit or a race, either of which a different state resolves —
+   and they are answerable that specifically only if obligation 1's ordering holds. The last row
+   keeps its **500** deliberately and is not an oversight: neither constraint can be reached by
+   any legal play, so one firing is a server fault and not a client one, and it takes the same
+   treatment as the reconstitution failure recorded under *Reassigned* above — a fixed detail
+   with no caller input echoed back.
+
+   Every row is a mapped exception type, so `.opencode/rules/error-handling.md` applies to each:
+   "Every known exception must have a unit test verifying its HTTP status mapping" and "The
+   `GlobalExceptionHandler` itself must be unit-tested for every mapped exception type". Each
+   new type is therefore two tests, not one, and the same requirement covers
+   `PlayerNotInSessionException`, `AlreadyPlayedInTrickException`, `CardAlreadyPlayedException`,
+   `HandAlreadyDealtException` and `WinningPlayNotInTrickException`. That requirement is restated
+   inside the obligation on purpose, so it does not depend on a rule file being re-read.
+
+**Amendment, 2026-08-12 — the obligations now name their exceptions and their statuses
+(@tester-api).** As first written this list said "reject" and "verify" and named no exception
+type and no HTTP status. @tester-api's Slice B API review filed that as four MAJOR findings and
+one MINOR: no exception types named, so `error-handling.md`'s per-type handler requirement had
+nothing to bind to; no statuses named, so the 403/409/422 distinctions were lost; the leakage
+ordering unstated; and `SessionRepositoryAdapter`'s two-constraint translation leaving every new
+constraint at 500 — with the missing status for the wrong-trick winner as the MINOR. It approved
+Slice B, on the reasoning that the gaps are in this planning document and not in the tree. That
+reasoning is right, and is why the fix lands here rather than in `src/`. The obligations were
+extended in place instead of appended as a note, because an obligation that names a check but not
+its answer gets discharged as a check that returns 500, and the answer has to be where Slice C
+will actually read it. Obligation 4 is new. The 404 for non-membership in obligation 1 is
+@architecture-guardian's and is attributed there.
+
+If Slice C finds it cannot resolve the acting player from identity for some reason not visible
+today, that reopens this decision rather than excusing it, and the denormalised
+`game_session_id` plus a composite key to `hand`/`trick` is the fallback to reach for — the
+construction the seat half turned out not to need.
+
+**Deferred — nothing scopes a card to one hand or one trick per session.** `hand_card`'s
+`PRIMARY KEY (hand_id, card_id)` stops a card appearing twice in *one* hand, and
+`uq_trick_play_trick_card` stops a card being played twice in *one* trick. Neither stops the
+same card being dealt into two different hands in the same session, or played in two
+different tricks of it — which is precisely the "every card is dealt, exactly once" property
+decision 1 rests on. Enforcing it in storage needs `game_session_id` denormalised onto
+`hand_card` (or `trick_play`) plus a composite foreign key to `hand(id, game_session_id)`,
+and it is declined for the reason given above: the denormalised copy becomes a second
+authority that can disagree with `hand.game_session_id`. This deferral was previously
+recorded only in a comment in changeset `004` and is repeated here so it survives the file.
+**Slice C's dealing use case owns it**, and this ADR already gives that slice the matching
+obligation to assert the complete seeded deck across the dealt hands — that assertion is what
+substitutes for the missing constraint, so it is load-bearing rather than a nicety.
+
+**Decided by measurement — `fk_trick_winner_play` is `ON DELETE SET NULL`, not `NO ACTION`.**
+`trick.winner_play_id` points at a `trick_play` row, so the two tables reference each other
+and the delete behaviour is a real choice. An earlier revision left it at the default
+`NO ACTION` with a comment claiming the restrict could never fire on a legitimate path. The
+claim was false and measurement falsified it: @security-auditor's `D3` showed that on H2,
+deleting a *resolved* trick failed with `23503`, because the trick's own cascade to
+`trick_play` cannot run while the trick still points at one of those plays. Once
+`fk_trick_play_player_seat` was added, `NO ACTION` broke session deletion too, by the same
+mechanism one level up. `SET NULL` is now verified by test in both directions: deleting a
+resolved trick succeeds, and deleting a winning play while its trick survives nulls
+`winner_play_id` and leaves the trick unresolved.
+
+The cost is stated rather than hidden: **a directly-deleted winning play silently unresolves
+its trick.** `winner_play_id` becomes null and the trick reads as unresolved instead of
+pointing at a row that no longer exists. That is a consistent state rather than a dangling
+pointer, it is the failure mode the alternatives all shared in worse form, and no application
+path deletes a single play — plays are removed only by cascade, when the trick or the session
+above them goes. The lesson worth keeping is the general one: a comment asserting that a
+constraint never fires on the legitimate path is a claim about behaviour, and it needs a test
+rather than a comment.
+
+**Not enforced, and not covered by any deferral above — `fk_trick_winner_play` confines the
+winner to no trick and no session.** The comment above the column argues that a foreign key
+cannot dangle, which is true and is a smaller claim than it reads as. What the key proves is
+that `winner_play_id` names *some* `trick_play` row. Measured by @security-auditor against the
+deployed schema: a trick pointed at a play belonging to a **different trick** is accepted
+(`W1`), and a trick pointed at a play belonging to a trick in a **different session** is
+accepted (`W2`). This is a separate gap from the cross-session deferral above and is not
+discharged by it: `W1` needs no second session and no second player at all, only two tricks in
+one session. (`W2` self-evidently involves two sessions; the point is that the gap does not
+*depend* on a second session, so no cross-session fix bounds it.)
+
+**What confining it in storage would actually cost, because an earlier draft of the changeset
+comment priced it wrongly and this ADR is the authority.** That draft said the fix "needs the
+trick denormalised onto `trick_play` and a composite key back, which is the construction ADR-023
+declines". It did not, and this is the *same reusable error* the reversal at the head of this
+section exists to record: **`trick_play.trick_id` already exists**
+— it is `NOT NULL`, it carries `fk_trick_play_trick`, and it is the leading column of
+`uq_trick_play_trick_seat`, `uq_trick_play_trick_card` and `uq_trick_play_trick_player`. Nothing
+would be denormalised. The construction is a composite key from
+`trick (id, winner_play_id)` to `trick_play (trick_id, id)`, whose referenceable target is a
+unique constraint on `trick_play (trick_id, id)` that is unique **for free** because `id` is
+already the primary key — the identical device `uq_player_id_seat` uses on `player`. Confining
+the winner to its own trick also confines it to its own session as a consequence, since a play
+of this trick is in this trick's session by `fk_trick_play_trick`, so one key would close both
+`W1` and `W2`. As with the seat half, the objection about a copy that can disagree with its
+parent does not reach this at all: a composite key here *forbids* the disagreement rather than
+creating room for one. The comment itself has since been corrected in place and now carries the
+retraction and the real obstacle rather than the mispricing
+(`004-trick-play-schema.xml:241-255`); this paragraph remains the authority, and the draft is
+quoted above only because the error it made is the reusable one.
+
+**The real obstacle, which is a different one and is unpriced.** It collides with the delete
+rule this ADR decided by measurement. A composite foreign key declared
+`ON DELETE SET NULL` nulls **every** referencing column, and one of them here would be
+`trick.id` — the primary key, `NOT NULL` — so deleting a winning play would fail exactly where
+`D3` proved it must succeed. PostgreSQL 15+ can restrict the action to one column
+(`ON DELETE SET NULL (winner_play_id)`); Liquibase cannot express that through
+`addForeignKeyConstraint`, whose `onDelete` is a single-valued attribute of type
+`fkCascadeActionOptions` with no column list (verified in `dbchangelog-latest.xsd` shipped in
+liquibase-core 5.0.3), so it would need raw `<sql>` with a per-engine variant, and whether H2
+accepts the column-list form at all is **not measured**. That is the honest price of this
+constraint: not the denormalisation objection, but an engine-and-tooling collision with the
+`SET NULL` decision above, and it must be *measured* before Slice C chooses storage over the
+use case — which is the same lesson as the paragraph before this one, applied to the fix rather
+than to the defect.
+
+**Owner, and why nothing can produce it today.** `Trick.winningPlay()` (`Trick.java:440`, and
+private) computes the winner from the trick's own plays, `Trick.reconstitute` (`Trick.java:437`)
+is the only caller, and no adapter, repository or entity maps `trick` at all — see the
+containment paragraph at the head of this section. So this is unreachable until Slice C, and
+Slice C's resolve-trick use case owns the check that the winner play belongs to the trick it
+resolves. It is the third obligation in the numbered list above, where it now also carries its
+exception type and its 422, and it is not a restatement of any of the other three.
+
+**No range CHECK on any seat or sequence column, which bounds what the composite keys prove.**
+@security-auditor measured `player.seat_order = -7`, `trick.sequence = -5` and
+`game_session.current_leader_seat = 9999` all **accepted** by storage, while the domain refuses
+every one of them (`GameSession.MAXIMUM_PLAYERS = 6`, and `Trick`/`TrickPlay` reject a seat
+outside `0..5` — `Trick.java:50`, `TrickPlay.java:115`). @architecture-guardian's ruling is that
+this is correctly Slice C's, with the adapter that first writes these columns, and it is recorded
+here rather than left in the audit for one reason the audit did not state: the seat range on
+`hand` and `trick_play` is **inherited**, not independent. `fk_hand_player_seat` and
+`fk_trick_play_player_seat` bind those columns to `player (id, seat_order)`, so whatever
+`player.seat_order` is allowed to hold, a hand and a play are allowed to hold too — a nonsense
+seat on `player` propagates into both child tables *through the very keys this section
+celebrates*. The composite keys therefore prove consistency with the parent, never validity, and
+a `CHECK (seat_order BETWEEN 0 AND 5)` on `player` is the single place that would fix all three.
+That change reaches into a table changeset `004` does not own, which is a real cost and the
+reason it is not smuggled in here; it belongs in a named changeset of its own alongside Slice C's
+adapter, with the domain constant as the authority for the bound.
+
+One qualification on that ownership argument, because it does not cover all three columns:
+`game_session.current_leader_seat` is **added by this changeset**
+(`004-trick-play-schema.xml:38`, nullable `INT`, with the `dropColumn` rollback at line 42), so a
+range CHECK on *that* column would have reached into nothing foreign at all — it is `004`'s own
+column, mapped by no entity, written by no code. Deferring it is therefore a **choice** here and
+not an ownership constraint, and the choice is defensible only on the narrower ground that the
+column is unwritten until Slice C's adapter and that splitting one validity rule across two
+changesets is worse than landing it whole. Slice C should land all three bounds together —
+`player.seat_order`, `trick.sequence` and `current_leader_seat` — and if it lands only some, this
+paragraph is the record of which one had no excuse.
+
 ## Related
 
 - [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — seat order assigned once at join and never re-derived, clockwise play, and the next-player formula this ADR qualifies for the short final trick
 - [ADR-020](ADR-020-session-concurrency-control.md) — compare-and-set on a single row is why the leader's seat is stored rather than derived; the `@Version` warning repeated above; and the deadlock-ordering decision it predicted EOP-14 would have to make
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase owns the schema; `current_leader_seat` arrives in changeset `004` before the entities
-- [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `hand`, `trick` and `trick_play` are minted in the use case, not at flush
-- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. That flag does not exist yet: Slice A is pure domain with nothing to gate, so the flag is created in Slice C when dealing is first wired into session start
+- [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `hand`, `trick` and `trick_play` are minted in the use case, not at flush. Narrowed by the 2026-08-12 amendment above: `trick_play_component` and `hand_card` carry no UUID, because their rows are values in a bounded list and a set membership respectively, rather than entities
+- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. **That flag does not exist**, in this slice or any other: `application.yml` declares one flag, `features.session-lifecycle: false`. Slice A is pure domain with nothing to gate and **Slice B is schema with nothing to gate either** — its five tables have no entity, adapter or route, which is a stronger containment than a flag and is not to be described as one (see the containment paragraph in *What changeset `004` deliberately does not enforce*). The flag is created in Slice C, in the same commit as the entities, when dealing is first wired into session start
 - [ADR-005](ADR-005-error-handling-strategy.md) — where an out-of-turn play and a follow-suit violation become RFC 9457 problem details
 - [ADR-014](ADR-014-realtime-transport.md) — events carry no state and reconnection is a re-read, so the stored leader seat is what a reconnecting client sees
 - [PRD §3.3](../requirements/PRD-eop-card-game.md) — dealing, the derived opening lead, and the "time, cards, or ways to connect" end condition that sanctions the short final trick

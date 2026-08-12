@@ -1,0 +1,701 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  EOP-14 Slice B: Trick play schema additions
+  
+  Implements the persistence model for Hand, Trick, TrickPlay and TrickPlayComponent
+  as decided in ADR-023 and confirmed by the Tech Lead.
+  
+  Tables:
+  - game_session: Adds current_leader_seat column
+  - hand: One per seat per session
+  - hand_card: Cards held in each hand
+  - trick: One per trick per session, 1-based sequence
+  - trick_play: One play per seat per trick
+  - trick_play_component: Ordered components named in a play
+  
+  All identifiers are generated in the application (ADR-018) and passed in,
+  so no column defaults are needed.
+  
+  Every type here must be valid on both engines, because the test suite runs on
+  H2 and production runs on PostgreSQL 17.
+  
+  Changesets are immutable once merged. Later stories add files.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001-add-current-leader-seat-to-game-session" author="eop">
+    <comment>
+      Add the current leader's seat to game_session. Nullable because it is unset
+      in LOBBY and written at deal completion with the derived opening leader's
+      seat, then advanced per trick. Separate changeset from the table creations.
+    </comment>
+
+    <addColumn tableName="game_session">
+      <column name="current_leader_seat" type="INT" />
+    </addColumn>
+
+    <rollback>
+      <dropColumn tableName="game_session" columnName="current_leader_seat" />
+    </rollback>
+  </changeSet>
+
+  <changeSet id="002-create-hand-table" author="eop">
+    <comment>
+      Create the hand table. One row per seat per session; there is no cross-session
+      identity, so a player who joins two games is two rows.
+    </comment>
+
+    <createTable tableName="hand">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_hand" nullable="false"/>
+      </column>
+      <column name="game_session_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="player_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Seat at the table, 0 through 5, assigned once when the player joins.
+           Load-bearing domain data: play is clockwise, so the next player is
+           derived from the current leader's seat plus the cards already in the
+           trick. It is never re-derived from a sort or from joined_at, because
+           a reconnect must not move a player around the table.
+
+           No created_at column: the Hand entity holds only handId, playerId and
+           cards. game_session carries created_at/updated_at because GameSession
+           really has those fields; Hand does not, so a NOT NULL timestamp here
+           would be an insert failure waiting for the first write path. Adding
+           audit timestamps to hand is a new decision and needs an ADR. -->
+      <column name="seat_order" type="INT">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <!-- Deleting a session removes its hands. There is nothing to keep: a
+         hand row has no meaning outside the session it belongs to. -->
+    <addForeignKeyConstraint
+      constraintName="fk_hand_game_session"
+      baseTableName="hand"
+      baseColumnNames="game_session_id"
+      referencedTableName="game_session"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <!-- No single-column foreign key on player_id here. It would be subsumed by
+         fk_hand_player_seat in changeset 009, which references
+         player (id, seat_order): both of this table's columns in that key are NOT
+         NULL, so the default MATCH SIMPLE has no partial-null escape and a row
+         that satisfies the composite key necessarily has a resolvable player_id.
+         Declaring both would buy no enforcement and cost a second referential
+         check on every insert, which is the same duplication this changeset
+         removes five indexes over (ADR-023). -->
+
+    <!-- Two players cannot both take the same seat in the same session.
+         Note precisely what this does and does not do: it makes the seats in a
+         session unique, and it is not by itself what makes them correct. It does
+         not compare hand.seat_order with the seat the same player was given in
+         player.seat_order — that is fk_hand_player_seat's job, in changeset 009.
+         The two are complementary and neither implies the other: this key stops
+         two different players sharing a seat, that key stops one player's hand
+         sitting at a seat the player does not hold. -->
+    <addUniqueConstraint
+      tableName="hand"
+      columnNames="game_session_id, seat_order"
+      constraintName="uq_hand_session_seat"/>
+
+    <!-- No standalone index on game_session_id: uq_hand_session_seat above is a
+         composite key whose leading column it is, and both engines match a
+         leading prefix, so a second index would serve no lookup this one cannot
+         while adding write cost to the deal path. ADR-023 rules this out
+         generally. The FK column is therefore still indexed, by that key. -->
+
+    <!-- player_id leads no key here (uq_hand_session_seat leads with
+         game_session_id), so this index is not redundant and PostgreSQL will not
+         create it automatically for the foreign key. It is what the cascade from
+         a deleted player uses to find this table's rows: the referential check
+         for fk_hand_player_seat (changeset 009) filters on player_id and
+         seat_order, and player_id alone is selective enough to drive it. -->
+    <createIndex tableName="hand" indexName="idx_hand_player">
+      <column name="player_id"/>
+    </createIndex>
+
+    <rollback>
+      <dropTable tableName="hand"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="003-create-hand-card-table" author="eop">
+    <comment>
+      Create the hand_card table. One row per card held in each hand. Without it
+      Hand.cards has nowhere to live, ADR-023's deal rule (4 players -> 20,20,19,19)
+      is unrepresentable, and Hand.resolve/without -- the guard that stops a player
+      playing a card they do not hold -- has nothing to operate on after a reload.
+
+      Deliberately NO ordinal column, unlike trick_play_component. Hand's
+      constructor sorts by suit then rank (Hand.java:40-44) so that two hands
+      holding the same cards compare equal whatever order they arrived in
+      (Hand.java:54-57). Order is canonicalised in the domain, so storage need
+      not preserve it and an ordinal would be a column no reader could justify.
+      The adapter still selects deterministically, but it may order by card_id.
+
+      PRIMARY KEY (hand_id, card_id) is the identity and simultaneously enforces
+      the invariant that matters: a card cannot appear twice in the same hand.
+      There is no surrogate key because List&lt;Card&gt; has nowhere to carry one
+      (ADR-018, as narrowed 2026-08-12).
+
+      NOT enforced here: that a card is dealt into at most one hand per session.
+      Doing it in storage needs game_session_id denormalised onto this table plus
+      a composite foreign key back to hand(id, game_session_id) to stop the two
+      copies drifting -- and a denormalised column that can disagree with its
+      parent enforces less than it appears to. The invariant is owned by Slice C's
+      dealing use case, which ADR-023 already requires to assert it dealt the
+      complete seeded deck. Revisit there, in a new changeset, if that proves thin.
+    </comment>
+
+    <createTable tableName="hand_card">
+      <column name="hand_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="card_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <addPrimaryKey
+      tableName="hand_card"
+      columnNames="hand_id, card_id"
+      constraintName="pk_hand_card"/>
+
+    <!-- Deleting a hand removes its cards. There is nothing to keep: a
+         card row has no meaning outside the hand it belongs to. -->
+    <addForeignKeyConstraint
+      constraintName="fk_hand_card_hand"
+      baseTableName="hand_card"
+      baseColumnNames="hand_id"
+      referencedTableName="hand"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <!-- No onDelete: the card catalogue is seeded reference data (001, 002) and
+         a card that is sitting in someone's hand must not be deletable. -->
+    <addForeignKeyConstraint
+      constraintName="fk_hand_card_card"
+      baseTableName="hand_card"
+      baseColumnNames="card_id"
+      referencedTableName="card"
+      referencedColumnNames="id"/>
+
+    <!-- No standalone index on hand_id: it is the leading column of
+         pk_hand_card, which both engines will use for a hand_id-only lookup and
+         for the cascade from hand. ADR-023 rules the duplicate out. -->
+
+    <rollback>
+      <dropTable tableName="hand_card"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="004-create-trick-table" author="eop">
+    <comment>
+      Create the trick table. One row per trick per session, with a 1-based sequence
+      number unique within the session.
+    </comment>
+
+    <createTable tableName="trick">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_trick" nullable="false"/>
+      </column>
+      <column name="game_session_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <!-- 1-based sequence number within the session. -->
+      <column name="sequence" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <!-- The seat that led this trick. Distinct from game_session.current_leader_seat:
+           that column is the live pointer the compare-and-set write path advances
+           (ADR-020), this one is this trick's historical record of who led it, and
+           it never changes once written. Not re-derived from a sort, because the
+           clockwise order has no storage counterpart. -->
+      <column name="leader_seat" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <!-- The winning play, nullable while the trick is unresolved. Trick's field
+           is a TrickPlay reference, not a seat (Trick.java:35), and
+           Trick.reconstitute documents this as "the stored winning play, or null
+           if the trick is not yet resolved", so it is genuinely persisted, and
+           null here is also the resolved-or-not flag. A seat number would let the
+           column name a seat that never played; a foreign key cannot dangle.
+
+           What fk_trick_winner_play does NOT do, stated because the sentence
+           above is easy to read as more than it says: it proves the winner is
+           some play, not that it is a play of THIS trick. @security-auditor
+           measured both holes on the deployed schema - a trick can be pointed
+           at a play belonging to a different trick (W1), or to a trick in a
+           different session entirely (W2), and both are accepted. Unlike the
+           cross-session gap recorded in ADR-023, this one needs no second
+           session and no second player, so it is not covered by that deferral.
+           An earlier draft of this comment said confining it needs the trick
+           denormalised onto trick_play. That was wrong, and wrong in the way
+           the seat-binding reversal in ADR-023 exists to record - pricing a
+           constraint by analogy instead of by inspection. trick_play.trick_id
+           already exists, NOT NULL, and is the leading column of three unique
+           constraints, so trick (id, winner_play_id) -> trick_play (trick_id,
+           id) denormalises nothing and its target is unique for free, exactly
+           as uq_player_id_seat is on player. One key would close both holes.
+           The real obstacle is elsewhere and is not free: a composite key's
+           onDelete=SET NULL nulls every referencing column, including trick.id,
+           which is the NOT NULL primary key - so deleting a winning play would
+           fail precisely where it must succeed. PostgreSQL 15+ can scope it to
+           one column; Liquibase cannot express that (onDelete is single-valued
+           in the schema), so it needs raw SQL per engine and H2's support is
+           unmeasured. Found by @architecture-guardian; see ADR-023.
+
+           Today nothing can produce it: Trick.winningPlay() computes the winner
+           from its own plays and no adapter exists. Slice C's resolve-trick use
+           case owes the check that the winner play belongs to the trick it
+           resolves - it is ADR-023's third Slice C obligation.
+
+           No resolved_at column: Trick has exactly five fields and no timestamp,
+           and resolved() mints none. Under ddl-auto=validate an unmapped column
+           passes startup silently, so it would sit permanently NULL. -->
+      <column name="winner_play_id" type="UUID" />
+    </createTable>
+
+    <!-- Deleting a session removes its tricks. There is nothing to keep: a
+         trick row has no meaning outside the session it belongs to. -->
+    <addForeignKeyConstraint
+      constraintName="fk_trick_game_session"
+      baseTableName="trick"
+      baseColumnNames="game_session_id"
+      referencedTableName="game_session"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <!-- This constraint ensures that trick sequences are unique within a session. -->
+    <addUniqueConstraint
+      tableName="trick"
+      columnNames="game_session_id, sequence"
+      constraintName="uq_trick_session_sequence"/>
+
+    <!-- No standalone index on game_session_id: it is the leading column of
+         uq_trick_session_sequence above. ADR-023 rules the duplicate out. -->
+
+    <!-- winner_play_id leads no key on this table, so nothing already covers it
+         and ADR-023's prefix rule does not reach it. It is not here for a query
+         pattern either: the winner is read off a trick already loaded by id and
+         is never searched for. It is here because fk_trick_winner_play in
+         changeset 007 is ON DELETE SET NULL, and the engine has to find the
+         referencing trick rows when a winning play is deleted. PostgreSQL does
+         not index a foreign key column automatically, so without this the check
+         is a table scan. This is a different justification from idx_hand_player
+         and idx_trick_play_player, which support a CASCADE rather than a
+         SET NULL; all three are non-redundant, but not for the same reason. -->
+    <createIndex tableName="trick" indexName="idx_trick_winner_play">
+      <column name="winner_play_id"/>
+    </createIndex>
+
+    <rollback>
+      <dropTable tableName="trick"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="005-create-trick-play-table" author="eop">
+    <comment>
+      Create the trick_play table. One row per card played per trick.
+    </comment>
+
+    <createTable tableName="trick_play">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_trick_play" nullable="false"/>
+      </column>
+      <column name="trick_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="player_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <!-- The seat that played the card. Stored alongside player_id, not instead
+           of it, so that uq_trick_play_trick_player below can forbid one player
+           occupying two seats in a trick.
+
+           Two separable protections apply to this column, and only one of them is
+           expensive. They are treated differently, deliberately.
+
+           Seat binding IS enforced, by fk_trick_play_player_seat in changeset
+           009: (player_id, seat_order) references player (id, seat_order), so a
+           play claiming a seat its own player does not hold is rejected by the
+           engine. That is the Slice A seat-impersonation defect, closed in
+           storage. It needed no denormalised column, because seat_order was
+           already here; it needed only UNIQUE (id, seat_order) on player
+           (changeset 008) to give the key a target. The result is structural
+           rather than probabilistic: disagreement between the two tables cannot
+           be represented, so there is nothing to drift.
+
+           Cross-session containment is NOT enforced, and is deliberately
+           deferred. Nothing scopes a play to the session that owns its trick, so
+           at storage level a player of session B can write into a trick of
+           session A. Closing that does need game_session_id denormalised onto
+           this table, and there the objection bites: a denormalised column that
+           can disagree with its parent enforces less than it appears to. It is
+           owned by Slice C's play use case, which resolves the acting player from
+           the identity token and must verify the session. See the deferral
+           section in ADR-023, which records what is enforced here, what is not,
+           and why the two halves were decided differently. -->
+      <column name="seat_order" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="card_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <!-- No default. The domain always supplies threatLinked, and a column
+           default would let a write path that forgets the column record false
+           silently instead of failing. See the file header. -->
+      <column name="threat_linked" type="BOOLEAN">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Free text, bounded at 2000 so that "unbounded" is not also "unlimited"
+           (ADR-023). Not unique: two plays may name the same thing. -->
+      <column name="notes" type="VARCHAR(2000)" />
+      <column name="played_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <!-- Deleting a trick removes its plays. There is nothing to keep: a
+         play row has no meaning outside the trick it belongs to. -->
+    <addForeignKeyConstraint
+      constraintName="fk_trick_play_trick"
+      baseTableName="trick_play"
+      baseColumnNames="trick_id"
+      referencedTableName="trick"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <!-- No onDelete: the card catalogue is seeded reference data (001, 002) and a
+         card that has been played must not be deletable. Without this key card_id
+         is an unconstrained UUID and a play could name a card that does not exist.
+         Note the limit: this proves catalogue membership only. The 78-card
+         catalogue is public and fully enumerable, so it does NOT prove the player
+         held the card, which is what Slice A actually closed by resolving the
+         played card out of the hand (TrickPlay.withCard). Nor does it stop the
+         same card being played again in a later trick of the same session: that
+         needs the play tied back to hand_card, which no key here does. Both are
+         owned by Slice C's play use case. -->
+    <addForeignKeyConstraint
+      constraintName="fk_trick_play_card"
+      baseTableName="trick_play"
+      baseColumnNames="card_id"
+      referencedTableName="card"
+      referencedColumnNames="id"/>
+
+    <!-- No single-column foreign key on player_id here, for the same reason as on
+         hand: fk_trick_play_player_seat in changeset 009 references
+         player (id, seat_order), both columns are NOT NULL, and so it already
+         proves player_id resolves. A second key over a prefix of the same
+         reference would add a referential check to every play insert and enforce
+         nothing the composite key does not. -->
+
+    <!-- This constraint prevents a seat from playing twice in the same trick.
+         With fk_trick_play_player_seat (changeset 009) binding seat to player, two
+         DIFFERENT players can no longer reach this constraint - one of them would
+         have to claim a seat it does not hold, which the foreign key rejects
+         first. What remains is the ordinary double-tap: the same player
+         submitting twice, where this key and uq_trick_play_trick_player are both
+         violated and the engine may report either. It is kept because it is the
+         constraint that states the rule directly, and because it would be the
+         only guard left if the seat binding were ever relaxed. -->
+    <addUniqueConstraint
+      tableName="trick_play"
+      columnNames="trick_id, seat_order"
+      constraintName="uq_trick_play_trick_seat"/>
+
+    <!-- This constraint prevents the same card being played twice in the same trick. -->
+    <addUniqueConstraint
+      tableName="trick_play"
+      columnNames="trick_id, card_id"
+      constraintName="uq_trick_play_trick_card"/>
+
+    <!-- This constraint prevents one player occupying two seats in the same
+         trick. It is not the seat-impersonation guard - that is a play claiming
+         another player's single seat, which this key cannot see, and which
+         fk_trick_play_player_seat in changeset 009 rejects instead. See the
+         seat_order comment above. -->
+    <addUniqueConstraint
+      tableName="trick_play"
+      columnNames="trick_id, player_id"
+      constraintName="uq_trick_play_trick_player"/>
+
+    <!-- No standalone index on trick_id: it is the leading column of all three
+         unique keys above, and the deal-and-play path is write-heavy enough that
+         a fourth structure over the same column is a real cost. ADR-023 rules the
+         duplicate out. -->
+
+    <!-- player_id is the trailing column of uq_trick_play_trick_player, not its
+         leading one, so this index is not redundant with that key, and PostgreSQL
+         will not create it automatically for the foreign key. It is what the
+         cascade from a deleted player uses to find this table's rows. -->
+    <createIndex tableName="trick_play" indexName="idx_trick_play_player">
+      <column name="player_id"/>
+    </createIndex>
+
+    <rollback>
+      <dropTable tableName="trick_play"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="006-create-trick-play-component-table" author="eop">
+    <comment>
+      Create the trick_play_component table. One row per component named in a play.
+      
+      The ordinal column is load-bearing, not decoration. Component order is
+      meaningful -- these are the words a facilitator typed, and they must come
+      back as typed -- whereas dealing order is not, which is why hand_card has no
+      ordinal and this table does. TrickPlay is a Java record, so its generated
+      equals compares List&lt;String&gt; components order-sensitively, and
+      Trick.reconstitute rebuilds plays from stored rows; without an explicit
+      ordinal a reloaded play is only equal to what went in if the engine happens
+      to return rows in insertion order, which PostgreSQL does not promise and H2
+      will usually appear to. Sorting instead was rejected: ordering user text
+      needs a collation decision (Caf&#233; vs Cafe) that holds identically in a Java
+      comparator and on both engines, a worse coupling than an INT.
+
+      PRIMARY KEY (trick_play_id, ordinal) + CHECK (ordinal &gt;= 0 AND ordinal &lt;= 19)
+      together enforce the 20-element cap (TrickPlay.MAX_COMPONENTS = 20) with no
+      trigger, by pigeonhole. This is the storage counterpart of the domain
+      constructor check, not a duplicate of it: the domain stops bad input, the
+      constraints stop bad writes from a future adapter bug or hand-run SQL.
+      Two limits, recorded rather than discovered later. It bounds the count but
+      not density -- ordinals {0, 5, 17} are legal -- so the adapter must rebuild
+      with ORDER BY ordinal ASC and must never treat an ordinal as a list index.
+      And the 19 is a hand-copied Java constant: if MAX_COMPONENTS is ever raised,
+      storage becomes stricter than the domain and a legal play 500s, so ADR-023
+      requires a test pinning this CHECK to TrickPlay.MAX_COMPONENTS.
+
+      component_name VARCHAR(200) matches TrickPlay.MAX_COMPONENT_NAME_LENGTH = 200.
+      Sized in characters, not bytes: PostgreSQL's character varying(n) counts
+      characters, as does H2's (ADR-023, corrected 2026-08-12).
+    </comment>
+
+    <createTable tableName="trick_play_component">
+      <column name="trick_play_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="ordinal" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <!-- Component names are free text, bounded at 200 so that "unbounded" is
+           not also "unlimited" (ADR-023). Not unique: a play may name the same
+           component twice. -->
+      <column name="component_name" type="VARCHAR(200)">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <!-- Deleting a play removes its components. There is nothing to keep: a
+         component row has no meaning outside the play it belongs to. -->
+    <addForeignKeyConstraint
+      constraintName="fk_trick_play_component_trick_play"
+      baseTableName="trick_play_component"
+      baseColumnNames="trick_play_id"
+      referencedTableName="trick_play"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <!-- The composite IS the identity. Declared as a primary key rather than a
+         unique constraint so the table is not the only one in this schema without
+         one, and so no surrogate UUID is invented for rows that have nowhere to
+         carry it (ADR-018, as narrowed 2026-08-12). -->
+    <addPrimaryKey
+      tableName="trick_play_component"
+      columnNames="trick_play_id, ordinal"
+      constraintName="pk_trick_play_component"/>
+
+    <!-- Enforce the 20-element cap on components per play.
+
+         Raw <sql> is mandatory here, not a stylistic choice: addCheckConstraint
+         is a Liquibase Pro change type and is absent from the OSS core this
+         project depends on. Verified against the resolved artifact
+         liquibase-core-5.0.3.jar, which contains AddUniqueConstraintChange but
+         zero classes matching "checkconstraint". Rewriting this as
+         <addCheckConstraint> fails the build at changelog parse time. The
+         ALTER TABLE ... ADD CONSTRAINT ... CHECK form below is standard SQL and
+         portable to both H2 (tests) and PostgreSQL 17 (production).
+
+         The 19 is a hand-copied counterpart of TrickPlay.MAX_COMPONENTS and the
+         drift is asymmetric: raising the constant without editing this line
+         makes storage stricter than the domain, so a legal play fails as a 500
+         rather than a 400. TrickPlayComponentOrdinalConstraintTest pins the two
+         together and fails on drift. -->
+    <sql>
+      ALTER TABLE trick_play_component
+      ADD CONSTRAINT chk_trick_play_component_ordinal
+      CHECK (ordinal >= 0 AND ordinal &lt;= 19)
+    </sql>
+
+    <!-- No standalone index on trick_play_id: it is the leading column of
+         pk_trick_play_component, so the ORDER BY ordinal ASC read the adapter
+         owes is served by that key directly. ADR-023 rules the duplicate out
+         explicitly for this table. -->
+
+    <!-- Dropping the table drops its check constraint with it, so the rollback
+         needs no raw SQL counterpart to the <sql> above. -->
+    <rollback>
+      <dropTable tableName="trick_play_component"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="007-add-trick-winner-play-foreign-key" author="eop">
+    <comment>
+      Point trick.winner_play_id at trick_play. A separate changeset because the
+      column is created in 004 and the table it references in 005, so the key can
+      only be added once both exist. Nullable, because a trick has no winner until
+      it is resolved, and Trick.reconstitute reads null as "not yet resolved".
+
+      ON DELETE SET NULL, and the reason is measured rather than assumed. This key
+      first shipped with no onDelete, i.e. NO ACTION, on the argument that when a
+      whole trick goes the plays cascade away and the referencing trick row is
+      already gone, so the restrict never fires on the legitimate path. That is
+      false on H2: deleting a resolved trick is rejected outright with 23503,
+      because the row-at-a-time check sees the trick still pointing at a play the
+      cascade has just removed. NO ACTION also makes a session undeletable once
+      fk_trick_play_player_seat cascades plays away with their player.
+
+      SET NULL costs one thing, stated plainly: deleting a winning play directly
+      while its trick survives now clears the winner instead of refusing, which
+      leaves the trick unresolved. That is a consistent state rather than a
+      dangling pointer, and no application path deletes a single play -- plays are
+      removed only by the cascade from their trick, their player or the session.
+      Nothing depends on the delete path being restrictive; the resolved-or-not
+      flag is written by the domain, not defended by this key.
+    </comment>
+
+    <addForeignKeyConstraint
+      constraintName="fk_trick_winner_play"
+      baseTableName="trick"
+      baseColumnNames="winner_play_id"
+      referencedTableName="trick_play"
+      referencedColumnNames="id"
+      onDelete="SET NULL"/>
+
+    <rollback>
+      <dropForeignKeyConstraint
+        baseTableName="trick"
+        constraintName="fk_trick_winner_play"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="008-add-player-seat-composite-unique" author="eop">
+    <comment>
+      Add UNIQUE (id, seat_order) to player, so that a foreign key can reference a
+      player together with the seat that player holds.
+
+      This is not a new invariant. player.id is already the primary key, so
+      (id, seat_order) is unique for free -- every row is the only row with its
+      id. The constraint exists solely to give a composite foreign key a target,
+      because both engines require the referenced column list to be backed by a
+      declared primary key or unique constraint, and neither will accept a
+      reference to (id, seat_order) on the strength of the primary key on id
+      alone.
+
+      It is not redundant under the rule ADR-023 states for indexes, which bars a
+      structure whose column list is a prefix of an existing key: (id, seat_order)
+      is not a prefix of pk_player(id) -- the containment runs the other way, and
+      the extra column is the whole point.
+
+      player is created by changeset 003 of 003-session-lifecycle.xml, which is
+      merged and therefore immutable, so a new changeset is the only lawful way to
+      add this. It must run before changeset 009 below, which references it.
+      Liquibase executes changesets in document order, so its position in this
+      file is what orders it, not its id.
+    </comment>
+
+    <addUniqueConstraint
+      tableName="player"
+      columnNames="id, seat_order"
+      constraintName="uq_player_id_seat"/>
+
+    <rollback>
+      <dropUniqueConstraint
+        tableName="player"
+        constraintName="uq_player_id_seat"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="009-bind-stored-seats-to-player-seat" author="eop">
+    <comment>
+      Bind every stored seat to the seat its player actually holds.
+
+      hand and trick_play each carry both a player_id and a seat_order, and until
+      now nothing compared the two. That gap is the Slice A seat-impersonation
+      defect in storage form: a player could write a play claiming another
+      player's seat, and because uq_trick_play_trick_seat then holds that seat,
+      the legitimate occupant was locked out of it -- impersonation escalating to
+      denial of service against the victim. The same shape applied to hand, where
+      a hand could be dealt to a seat its owner does not occupy.
+
+      These two keys close it structurally rather than probabilistically. A row
+      whose seat_order disagrees with its player's seat_order cannot be
+      represented at all, so unlike a denormalised copy of the parent's value
+      there is nothing that can drift out of agreement and no reconciliation to
+      get wrong.
+
+      Both are ON DELETE CASCADE. The only path that removes a player is session
+      teardown, which removes that player's hands, tricks and plays anyway; NO
+      ACTION would instead make a session undeletable whenever the engine happened
+      to remove player rows before their children.
+
+      No ON UPDATE clause, so both engines default to NO ACTION and a change to
+      player.seat_order is refused while a hand or a play exists. That is the
+      wanted behaviour and not a restriction on any live path: a seat is assigned
+      at join and never reassigned -- PlayerJpaEntity holds seatOrder as a field
+      set only through its constructor, with a getter and no setter, and no write
+      path anywhere updates it. A whole-row UPDATE from JPA (a reconnect changing
+      connection_status, for instance) does not trip the check either, because
+      both engines skip the referential test when the referenced key columns do
+      not actually change value.
+
+      These keys replace the single-column player keys an earlier draft of this
+      changeset declared. A composite key over (player_id, seat_order) subsumes
+      one over (player_id): both columns are NOT NULL, so the default MATCH SIMPLE
+      has no partial-null escape and any row satisfying the composite key
+      necessarily has a resolvable player_id. Declaring both would cost a second
+      referential check per insert and enforce nothing further.
+
+      What this does NOT do is scope a play to the session that owns its trick: a
+      player of one session can still write into another session's trick, because
+      closing that needs game_session_id denormalised onto trick_play, which is a
+      copy that can disagree with its parent. That half is deliberately deferred
+      to Slice C's play use case. See the deferral section in ADR-023.
+    </comment>
+
+    <addForeignKeyConstraint
+      constraintName="fk_hand_player_seat"
+      baseTableName="hand"
+      baseColumnNames="player_id, seat_order"
+      referencedTableName="player"
+      referencedColumnNames="id, seat_order"
+      onDelete="CASCADE"/>
+
+    <addForeignKeyConstraint
+      constraintName="fk_trick_play_player_seat"
+      baseTableName="trick_play"
+      baseColumnNames="player_id, seat_order"
+      referencedTableName="player"
+      referencedColumnNames="id, seat_order"
+      onDelete="CASCADE"/>
+
+    <rollback>
+      <dropForeignKeyConstraint
+        baseTableName="hand"
+        constraintName="fk_hand_player_seat"/>
+      <dropForeignKeyConstraint
+        baseTableName="trick_play"
+        constraintName="fk_trick_play_player_seat"/>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>
