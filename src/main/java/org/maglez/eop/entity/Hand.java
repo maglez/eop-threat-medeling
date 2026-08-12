@@ -96,9 +96,16 @@ public final class Hand {
      * returned card is the one the deal put in this hand, so every rule downstream
      * — follow-suit, trump, rank — is applied to server-held state.
      *
+     * <p>A null candidate is answered the same way rather than with a
+     * {@link NullPointerException}. A request that named no card has named no card
+     * this hand holds, and routing it through the same refusal keeps one code path
+     * for one question and makes a missing card field a client error at the
+     * boundary rather than a server one.
+     *
      * @param candidate the card a caller named; only its identifier is trusted
      * @return the card as dealt to this hand
-     * @throws CardNotInHandException if this hand does not hold that card
+     * @throws CardNotInHandException if this hand does not hold that card, including
+     *         when the candidate is {@code null} and so names no card at all
      */
     public Card resolve(final Card candidate) {
         final UUID candidateId = candidate == null ? null : candidate.cardId();

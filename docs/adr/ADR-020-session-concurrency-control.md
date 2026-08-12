@@ -1,6 +1,6 @@
 # ADR-020: Concurrency Control by Compare-and-Set on `status`, Not by Optimistic Locking
 
-**Status:** Accepted
+**Status:** Accepted (lock ordering decided 2026-08-12 — see ADR-023)
 **Date:** 2026-08-10
 **Deciders:** @tech-lead, @architecture-guardian, @db-designer
 
@@ -279,6 +279,13 @@ constructible. EOP-14 adds `trick` and `trick_play` and will touch two tables in
 one transaction, at which point a consistent lock-acquisition order becomes a real
 decision. Recorded here so that story does not discover it by observing an
 intermittent deadlock.
+
+> **Amended 2026-08-12 — see [ADR-023](ADR-023-deal-remainder-and-turn-order.md).** The
+> policy is now written down: `game_session`, then `trick`, then `trick_play`, parent
+> before child in every write path. EOP-14 decided it ahead of the schema rather than
+> after the first deadlock, so this consequence is discharged. The paragraph above is
+> left as written, because its reasoning for why the question was still open at the time
+> remains accurate — only its status has changed.
 
 **Neutral — this is settled per aggregate, not globally.** `game_session` is the
 only contended aggregate today. EOP-14's card-playing path has a different shape

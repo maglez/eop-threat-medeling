@@ -21,6 +21,15 @@ import java.util.UUID;
  * condition is only describable by naming two player identifiers. Carrying them as fields lets the
  * boundary report the refusal without putting either identifier in the response body.
  *
+ * <p>Which is why the message names neither of them. Interpolating both into the
+ * message and then arguing the fields exist to keep them out of a response would
+ * be an argument the class itself defeats: the established way to render a domain
+ * refusal here is to copy its message into the problem detail, so an identifier in
+ * the message is an identifier one careless handler away from the wire. The seat is
+ * named because every player already receives every seat number; the identifiers
+ * are reachable through the accessors, for a log line or an incident, and nowhere
+ * else.
+ *
  * <p>The condition it guards is not reachable through ordinary play, because the seat determines
  * which hand is fetched and a hand carries the identifier of the player it was dealt to. It becomes
  * reachable if hands are ever filed against the wrong seats, and then this exception is the
@@ -42,8 +51,7 @@ public class PlayerMismatchException extends RuntimeException {
      * @param namedPlayer the identifier the play claimed to come from
      */
     public PlayerMismatchException(final int seatOrder, final UUID occupant, final UUID namedPlayer) {
-        super("Seat " + seatOrder + " is held by player " + occupant
-                + ", but the play claims to come from player " + namedPlayer);
+        super("The play made from seat " + seatOrder + " names a player who does not hold that seat");
         this.seatOrder = seatOrder;
         this.occupant = occupant;
         this.namedPlayer = namedPlayer;

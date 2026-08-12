@@ -352,8 +352,10 @@ public final class Trick {
      * @throws OutOfTurnException if it is another seat's turn
      * @throws CardNotInHandException if the hand does not hold the card
      * @throws MustFollowSuitException if the hand holds the led suit and the card is of another suit
-     * @throws IllegalArgumentException if no hand was dealt to the acting seat, or if that hand
-     *     belongs to a different player than the play claims
+     * @throws PlayerMismatchException if the play names a player other than the one holding
+     *         the acting seat's hand
+     * @throws IllegalArgumentException if the acting seat is not a seat at this table, or if
+     *         no hand was dealt to it
      */
     public Trick acceptPlay(final int actingSeat,
                             final TrickPlay candidate,

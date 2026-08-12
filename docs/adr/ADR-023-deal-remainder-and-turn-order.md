@@ -289,11 +289,51 @@ at the boundary of whatever the adapter happens to write:
 Two obligations have no constraint available and must be met in code instead. The
 clockwise-order invariant cannot be expressed as a constraint at all, so row *order*
 is load-bearing: the adapter must select `trick_play` in a deterministic order rather
-than relying on insertion order. And the text bounds on `TrickPlay` count `char`
-values, not bytes — `MAX_COMPONENT_NAME_LENGTH` of 200 characters is up to 800 UTF-8
-bytes and `MAX_NOTES_LENGTH` of 2000 is up to 8000 — so columns sized from those
-constants in characters will reject rows the domain accepted, and will do it on
-PostgreSQL while passing on H2. Size them in bytes.
+than relying on insertion order. And the text columns must be sized in
+*characters*, matching `MAX_COMPONENT_NAME_LENGTH` and `MAX_NOTES_LENGTH` directly:
+`varchar(200)` and `varchar(2000)`.
+
+> **Corrected 2026-08-12.** An earlier revision of this ADR said the bounds count `char`
+> values rather than bytes, that 200 characters is up to 800 UTF-8 bytes, and therefore
+> that the columns should be sized *in bytes*. The premise is wrong and the instruction
+> that followed from it was worse. PostgreSQL's `character varying(n)` counts characters,
+> not bytes, and so does H2 — so there is no asymmetry between the test database and the
+> production one, and `varchar(200)` accepts a 200-character name whatever those
+> characters cost to encode. Had Slice B followed the old instruction it would have
+> written columns four times looser than the domain, on a false premise, out of the one
+> document that exists to stop it guessing. Caught by @architecture-guardian.
+>
+> The genuine byte-denominated limit nearby is a different one: PostgreSQL refuses a
+> B-tree index entry over roughly 2704 bytes, which `MAX_NOTES_LENGTH` can exceed once
+> multi-byte characters are involved. So the real obligation is the opposite of the old
+> one — size in characters, and do not index the free-text columns.
+
+Three further questions belong to that changeset and are answered here rather than
+discovered there.
+
+**`trick` gets no `led_suit` column.** `Trick.ledSuit()` reads the suit off the first
+play, so a stored column would be a second authority for a fact the domain already
+derives — and one no write path would ever populate, because the entity has no setter for
+it and is not going to acquire one. PRD §5 modelled it as stored and has been corrected
+to say derived. If a later story wants it stored for query performance it needs a
+constraint tying it to the first play's suit, and that is a new decision rather than an
+oversight to fill in.
+
+**A reconstitution-invariant failure is a server fault, not a client error.**
+`Trick.reconstitute` throws `IllegalArgumentException` when a stored row set is one no
+legal play could have produced, and `GlobalExceptionHandler` maps
+`IllegalArgumentException` to 400 with the exception's own message as the detail. Once
+Slice B makes that path reachable, corrupt data would blame the caller for the server's
+corruption and disclose an internal invariant message while doing it. Slice B must give
+reconstitution failures their own type, mapped to 500 with a fixed detail, on the pattern
+of the `NoTamperingCardDealtException` mapping Slice A added.
+
+**`PlayerMismatchException.getMessage()` must never reach a problem detail.** The message
+names a seat and nothing else, precisely so that it is safe to log; the two player
+identifiers are reachable only through the accessors. Slice A's handler returns a fixed
+detail and takes no exception argument at all. A later handler that reached for
+`getMessage()` by reflex would be safe today and would silently become a disclosure the
+moment anyone put an identifier back into the message.
 
 **Positive — the *opening*-lead rule is total.** It resolves for every player count
 and every shuffle, with no fallback branch, no unreachable-in-practice code path,
