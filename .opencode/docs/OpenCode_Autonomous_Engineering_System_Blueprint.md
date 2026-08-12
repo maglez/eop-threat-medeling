@@ -609,11 +609,15 @@ Three profiles are in force across the 15 agents:
 
 | Profile | Agents | Jira reads | Jira writes |
 |---|---|---|---|
-| **Write-capable** | `product-owner`, `tech-lead` | allow | **ask** (human confirms each) |
+| **Write-capable** | `product-owner`, `tech-lead` | allow | **allow** (unattended) |
 | **Read-only** | the 9 delivery agents — architecture-guardian, code-reviewer, db-designer, devops-engineer, performance-engineer, security-auditor, tester-api, tester-unit-and-quality, ui-builder | allow | **deny** |
 | **No access** | the 4 expert advisers — alex-xu, dave-farley, kent-beck, uncle-bod | deny | deny |
 
 Rationale: the backlog is a shared source of truth, so *narrating* work into it is a product decision, not an engineering one. Delivery agents read tickets freely but cannot alter them; advisory experts have no business touching a tracker at all. Two write-capable agents keeps accountability legible.
+
+> **Jira writes are unattended as of 2026-08-12 — the guarantee moved server-side.** They were previously `ask`, one confirmation per call. Under `/goal` that made autonomy fictional: the Tech Lead cannot narrate a story into the tracker while the loop is paused waiting on a human, so a long unattended run stalled on the first `transition_issue`. The gate was removed on the reasoning that **`ask` was never the thing making Jira writes safe** — §7.2's bot-account controls are, and they hold whether or not a human is watching: delete rights are revoked (403 on any attempt), the reporter cannot be spoofed, and the token is scoped to Browse/Create/Edit/Transition on this project only. Everything an agent can now do unattended is an operation a human could undo in the Jira UI, and every one of them is attributed to the bot in the issue history.
+>
+> What this trades away is real and worth naming: an erroneous `update_issue` can overwrite a description or summary with no prompt, and Jira's own field history is the only way back. That is recoverable, which is the line being drawn — irreversible operations stay blocked at the server, reversible ones run free. Restoring the prompts means re-adding `"atlassian_jira_update_*": "ask"` and its siblings *after* the `atlassian_jira_*` catch-all, since the last matching rule wins.
 
 > **`deny` and `ask` are not the same mechanism.** `deny` removes the tool from the model's toolset entirely — the agent cannot see or name it, and no request ever reaches Jira. `ask` keeps the tool and gates each individual call on human approval. Only `deny` is a hard guarantee: `opencode --auto` auto-approves everything that is not explicitly denied.
 
@@ -621,8 +625,9 @@ Rationale: the backlog is a shared source of truth, so *narrating* work into it 
 
 Keys are glob patterns (`*` = zero or more characters) matched against tool names, and **the last matching rule wins** — so the broad catch-all goes first and exceptions come after. Two traps, both of which bit us during implementation:
 
-- **Exact names silently under-match.** `atlassian_jira_move_issue` does not cover `atlassian_jira_move_issues_to_backlog` — and `atlassian_jira_delete_issue` names no tool at all, because this MCP server exposes no delete verb. Both keys were pinned to `deny`, and both matched nothing: the config *read* as though destructive moves and deletions were hard-blocked while the only real move tool fell through to `atlassian_jira_move_*: ask`. Fixed on 2026-08-02 — the two dead keys were deleted outright and `atlassian_jira_move_*` now carries `deny`. Prefer a glob over an exact name whenever the tool family might grow, and remember that a `deny` on a non-existent tool is indistinguishable from a working control by inspection.
-- **Broad patterns over-match reads.** `atlassian_jira_batch_*` wrongly caught the read-only `atlassian_jira_batch_get_changelogs`, which now carries an explicit `allow` after it.
+- **Exact names silently under-match.** `atlassian_jira_move_issue` does not cover `atlassian_jira_move_issues_to_backlog`. The key was pinned to `deny` and matched nothing: the config *read* as though destructive moves were hard-blocked while the only real move tool fell through to `atlassian_jira_move_*: ask`. Fixed on 2026-08-02 — the dead key was deleted outright and `atlassian_jira_move_*` now carries `deny`. Prefer a glob over an exact name whenever the tool family might grow, and remember that a `deny` on a non-existent tool is indistinguishable from a working control by inspection.
+- **The tool surface moves under you.** `atlassian_jira_delete_issue` was also pinned to `deny` and also matched nothing, on the then-correct reading that the server exposed no delete verb — but `mcp-atlassian==0.23.0` *does* expose it, so that key would work today while the deletion it guards is refused by the bot account anyway (403, per §7.2). The lesson is that a rule list validated against one pinned server version is not validated against the next: re-enumerate the tools whenever the `uvx mcp-atlassian==` pin changes.
+- **Broad patterns over-match reads.** `atlassian_jira_batch_*: ask` wrongly caught the read-only `atlassian_jira_batch_get_changelogs`, which needed an explicit `allow` after it. Both keys are gone now that writes are `allow` — the trap is dormant, not solved, and returns the moment any `*` write rule is reintroduced.
 
 Neither trap is visible by inspection. When adding rules, enumerate every `atlassian_jira_*` tool, resolve each against the rule list with last-match-wins semantics, and confirm that reads and writes land where intended. Verify at runtime with a fresh `opencode run` process — permission config is read at process start, so an already-running session will not pick up changes.
 

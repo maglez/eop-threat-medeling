@@ -35,7 +35,7 @@ Working code and tooling that exists in the repository today.
 - `AGENTS.md` plus `.opencode/rules/` covering Clean Architecture, Security by Design and project conventions
 - Product requirements: `docs/requirements/PRD-eop-card-game.md` defines the game, its scope, its trick-taking domain model and its open risks, and is backed by epic EOP-5. The rules are sourced from Microsoft's shipped instructions, score sheet and the author's whitepaper, all committed under `docs/EoP_Microsoft_Docs/` with their CC-BY-3.0 US licence recorded
 - Commit convention enforcement: `.githooks/commit-msg` requires `[EOP-NNN] <type>: <summary>`, activated per clone via `core.hooksPath`
-- Tool governance: explicit deny-then-allow-lists for `github_*` and `graphify_*` in `.opencode/opencode.json`
+- Tool governance: explicit deny-then-allow-lists for `github_*` and `graphify_*` in `.opencode/opencode.json`. Jira writes run unattended for the two write-capable agents — the confirmation prompts were removed on 2026-08-12 because they stalled `/goal` runs, and the real guarantee is the bot account's revoked delete rights rather than a human clicking approve (Blueprint §7.2)
 
 ### Fixed
 
