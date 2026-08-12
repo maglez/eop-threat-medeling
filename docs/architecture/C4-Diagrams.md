@@ -393,16 +393,44 @@ worth its space:
 **What this schema deliberately does not enforce.** Nothing confines a play to its own session:
 `trick_play` has no session column and reaches `game_session` only through `trick`, so storage
 accepts a play by a player from a different session, provided that player exists and holds the
-seat named there — and since seats are numbered `0..3` in every session, that is an easy
-condition to meet, so such a play can still take this session's occupant of that seat out of play
-through `uq_trick_play_trick_seat`. Seat binding narrows the seat-lockout denial of service to
-cross-session attackers; it does not eliminate it. Closing it needs `game_session_id` denormalised
-onto `trick_play`, which was
+seat named there — and since seats are numbered `0..5` in every session
+(`GameSession.MAXIMUM_PLAYERS = 6`), that is an easy condition to meet, so such a play can still
+take this session's occupant of that seat out of play through `uq_trick_play_trick_seat`. Seat
+binding narrows the seat-lockout denial of service to cross-session attackers; it does not
+eliminate it. Closing it needs `game_session_id` denormalised onto `trick_play`, which was
 constructible and was declined, because a copy that can disagree with `trick.game_session_id`
 constrains the copy rather than the truth; enforcement is Slice C's play use case, which resolves
 the acting player from the identity token instead of trusting a request field. Nor is a card
 scoped to one hand or one trick *per session* — only per hand and per trick — which is the other
 half of the same hand-off.
+
+**Three further consequences of that same gap, measured rather than reasoned, because "narrowed
+to the same seat number" reads as narrower than it is.** `hand` has the identical shape and the
+identical gap — it carries `game_session_id`, but nothing ties that column to the player's own
+session, so a foreign player can hold a seat in this session's deal and lock its legitimate
+occupant out through `uq_hand_session_seat`. The lockout is also **not seat-shaped only**: because
+`uq_trick_play_trick_card` is keyed on `(trick_id, card_id)`, an attacker playing from its *own*
+honest seat can block a *different* seat's card, so every card in a trick is a lockout token and
+the vector is wider than the seat one. And the seat-binding cascades cross the boundary in the
+delete direction too: deleting a foreign player removes its planted play from *this* session's
+trick and nulls that trick's `winner_play_id`, unresolving a trick in a session the deletion never
+named. All three are transient denial rather than loss — no victim's own row is destroyed, and the
+last is self-healing once the attacker's session is torn down. The full measurements, and the three
+Slice C obligations that discharge them, are in
+[ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).
+
+**One more, which is *not* an instance of the cross-session gap.** `fk_trick_winner_play` proves
+only that `trick.winner_play_id` names some `trick_play` row — not one of *this* trick's plays, and
+not one from this session. That needs neither a second session nor a second player, so no
+cross-session fix bounds it, and Slice C's resolve-trick use case owes the check.
+
+**What contains all of this today, and it is not a feature flag.** None of the five new tables has
+a JPA entity — `@Table` appears on `PlayerJpaEntity`, `GameSessionJpaEntity` and `CardJpaEntity`
+and nowhere else — so no repository, adapter, controller or route can reach them and no
+application code can write them at all. Every probe above required a raw JDBC connection. That is
+strictly stronger than a disabled flag, and no flag guards this slice: `application.yml` declares
+one, `features.session-lifecycle`. Slice C adds the entities and the flag together, at which point
+every gap above becomes reachable in a single commit.
 
 > **Reversed 2026-08-12.** This block previously listed seat binding here too, as constructible
 > and declined for the same reason. **Seat binding is now enforced**, by the composite foreign

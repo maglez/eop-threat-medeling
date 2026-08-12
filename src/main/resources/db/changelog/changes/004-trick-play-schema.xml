@@ -238,12 +238,26 @@
            different session entirely (W2), and both are accepted. Unlike the
            cross-session gap recorded in ADR-023, this one needs no second
            session and no second player, so it is not covered by that deferral.
-           Confining it in storage needs the trick denormalised onto trick_play
-           and a composite key back, which is the construction ADR-023 declines.
+           An earlier draft of this comment said confining it needs the trick
+           denormalised onto trick_play. That was wrong, and wrong in the way
+           the seat-binding reversal in ADR-023 exists to record - pricing a
+           constraint by analogy instead of by inspection. trick_play.trick_id
+           already exists, NOT NULL, and is the leading column of three unique
+           constraints, so trick (id, winner_play_id) -> trick_play (trick_id,
+           id) denormalises nothing and its target is unique for free, exactly
+           as uq_player_id_seat is on player. One key would close both holes.
+           The real obstacle is elsewhere and is not free: a composite key's
+           onDelete=SET NULL nulls every referencing column, including trick.id,
+           which is the NOT NULL primary key - so deleting a winning play would
+           fail precisely where it must succeed. PostgreSQL 15+ can scope it to
+           one column; Liquibase cannot express that (onDelete is single-valued
+           in the schema), so it needs raw SQL per engine and H2's support is
+           unmeasured. Found by @architecture-guardian; see ADR-023.
+
            Today nothing can produce it: Trick.winningPlay() computes the winner
            from its own plays and no adapter exists. Slice C's resolve-trick use
            case owes the check that the winner play belongs to the trick it
-           resolves - it is not one of ADR-023's two existing obligations.
+           resolves - it is ADR-023's third Slice C obligation.
 
            No resolved_at column: Trick has exactly five fields and no timestamp,
            and resolved() mints none. Under ddl-auto=validate an unmapped column

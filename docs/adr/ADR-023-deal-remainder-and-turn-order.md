@@ -724,10 +724,30 @@ were constructible, and were deliberately left out — and a deferral that lives
 comment inside the changeset that declines it is not a record anyone will find. Each entry
 names what is unenforced, why it was declined, and who owns it instead.
 
+**Nothing in this section is reachable by application code today, and the reason is not a
+feature flag.** Slice B ships five tables with no mapping above them: `@Table` appears on
+exactly three classes in the whole source tree — `CardJpaEntity`, `GameSessionJpaEntity` and
+`PlayerJpaEntity` — so `hand`, `hand_card`, `trick`, `trick_play` and `trick_play_component`
+have no entity, no repository, no adapter, no controller and no route, and there is no code
+path that can insert a row into any of them. That is also why `ddl-auto: validate` starts
+clean against them: validation checks mapped tables, and none of these five is mapped. Being
+exact about this matters, because this slice has been described elsewhere as shipping behind
+`eop.features.trick-play`, false by default: **that flag does not exist.** `application.yml`
+declares exactly one flag, `features.session-lifecycle: false`, and the containment a flag
+would give is *weaker* than the containment that actually holds — a flag gates a bean, whereas
+there is no bean, no mapping and no SQL to gate. Every gap measured below was reached through
+a raw JDBC connection the auditor opened itself, which no part of the application can imitate.
+The consequence is a scheduling one and it is the reason to read on: **Slice C adds the flag
+and the entities in the same commit**, at which point every gap in this section becomes
+reachable at once, and the flag will not be the thing holding them shut.
+
 > **Reversed 2026-08-12, on the same day and inside the same slice.** One of those three
 > invariants is no longer deferred: **seat binding is enforced in storage**, by changesets
 > `008` and `009` of `004`. Two remain unenforced — cross-session containment and
-> card-scoping, both below. The entry that follows has been rewritten to show the decision
+> card-scoping, both below. A **fourth** gap, which this section never considered when it
+> counted three, was found by audit afterwards and is recorded below with the others:
+> nothing confines a trick's winning play to that trick. The entry that follows has been
+> rewritten to show the decision
 > being *corrected* rather than quietly replaced by its outcome, because what went wrong was
 > not a fact about constraints but a fault in reasoning: two protections with different
 > constructions and very different costs were argued as one inseparable problem, so a sound
@@ -809,8 +829,12 @@ inserts. Ghost-player rows go with it as a side effect: an invented `player_id` 
 
 It is worth being exact about what the composite key proves, because the flat claim "seat forgery
 is closed" is too strong: it proves the pair exists on *some* `player` row, not that that player
-is at this trick's table. Seats are numbered `0..3` in **every** session, so a player who holds
-seat 2 in session B satisfies `fk_trick_play_player_seat` while writing into session A's trick at
+is at this trick's table. Seats are numbered from `0` in **every** session, over the range
+`0..5` — `GameSession.MAXIMUM_PLAYERS` is 6 (`GameSession.java:35`) and changeset
+`003-session-lifecycle.xml:97` documents the column as "0 through 5"; an earlier revision of
+this paragraph said `0..3`, which understated the shared seat range by two and with it the
+collision surface — so a player who holds seat 2 in session B satisfies
+`fk_trick_play_player_seat` while writing into session A's trick at
 seat 2 — and can therefore still take session A's seat 2 out of play through
 `uq_trick_play_trick_seat`. The seat-lockout denial of service is **narrowed to cross-session
 attackers, not eliminated**, and it is eliminated only when the deferral below is discharged.
@@ -828,6 +852,54 @@ after the use case has decided to write it, whereas resolving the acting player 
 identity token means the forged value is never in the row at all, and a request field that is
 never read cannot be forged.
 
+**The same gap on the deal path — `hand` has it identically, and that was recorded nowhere.**
+The paragraph above is written entirely about `trick_play`, because that is where the
+seat-lockout chain was found, and a reader could fairly conclude that `hand` escapes it by
+carrying its own `game_session_id`. It does not. `fk_hand_player_seat` proves the pair
+`(player_id, seat_order)` exists on *some* `player` row, exactly as its `trick_play` twin does,
+and nothing ties `hand.game_session_id` to the session that player actually belongs to.
+Measured by @security-auditor against the deployed schema over raw JDBC: a `hand` row in
+session A, owned by a session-B player holding seat 1, is **accepted** (`S5`); the legitimate
+occupant of session A's seat 1 is then **refused their own deal** (`S5b`, `23505` on
+`uq_hand_session_seat`, whose columns are `(game_session_id, seat_order)`). The availability
+consequence therefore reaches the *deal*, not only the play — and dealing happens once, at the
+start, so this denial blocks a game before it begins rather than stalling one seat mid-trick.
+Slice C's dealing use case owes the same session check as its play use case, for the same
+reason and with no separate argument.
+
+**A second availability vector, and it is not seat-shaped at all — cross-session card
+blocking.** The narrowing above ("cross-session attackers, not eliminated") is about seats, and
+it does not bound the damage, because `uq_trick_play_trick_card` is a second lockout surface
+that seat binding never touched. Measured by @security-auditor: a session-B player, sitting in
+its **own legitimate seat**, plays card K into session A's trick — **accepted** (`X1`); session
+A's seat-0 occupant can then no longer play card K in that trick (`X2`, `23505` on
+`uq_trick_play_trick_card`). Note what this does *not* require: the attacker forges no seat, so
+`fk_trick_play_player_seat` is satisfied honestly, and the seat it denies is **not** the seat it
+occupies. Every card in the deck is a lockout token against any seat at the victim's table, so
+the reachable denial is materially broader than "the same seat number in another session" — a
+single foreign player can exhaust a trick's playable cards rather than one seat of it. This is
+the same class of defect as the deferral above (nothing confines a `trick_play` row to its own
+session) and it closes with the same fix, which is why it is recorded here rather than as a new
+decision; it is recorded *at all* because the narrowing sentence above, read alone, understates
+the blast radius.
+
+**A deletion hazard as well as a write hazard — the player cascade crosses the session
+boundary.** The consequence recorded below is about writes. It is not only writes.
+`fk_trick_play_player_seat` is `ON DELETE CASCADE`, and once a foreign player's row sits inside
+a victim's trick, the cascade follows the *player*, not the session. Measured by
+@security-auditor: a session-B player plants a play in session A's trick, session A's trick
+resolves to that play, and deleting the session-B player then reaches into session A —
+`trick_play` count for session A's trick falls to `0` and its `winner_play_id` becomes `null`,
+so a resolved trick in an untouched session silently reads as unresolved (the `SET NULL`
+recorded further down, firing correctly, on a row that should never have been there). Two
+qualifications, both in the attacker's favour and stated because the finding is weaker without
+them: the victim loses no row of its own — only the foreign row and the resolution that pointed
+at it — and the damage is **self-healing on the attacker's teardown**, so this is a transient
+denial and an integrity surprise rather than data loss. It still belongs on the record: it means
+the cross-session gap must be reasoned about on the *delete* path too, and a use case that
+merely refuses foreign writes at admission is exactly the fix, because a row that never lands
+cannot later be cascaded away.
+
 **Consequence, recorded as a consequence rather than a caveat.** Until Slice C lands that
 resolution, the schema's guarantee about *which session* a play belongs to is weaker than the
 constraint names suggest: `fk_trick_play_player_seat` reads like it closes impersonation
@@ -836,22 +908,33 @@ generally, and it closes impersonation *within* a session only.
 a real risk to carry meanwhile, because that protection rests entirely on one use case being
 written correctly, with no second, independent check behind it — a departure from the
 defence-in-depth this ADR asserts everywhere else, and the reason it is written here in full
-rather than noted in passing. Two obligations follow, and they are Slice C's, not optional:
+rather than noted in passing. Three obligations follow, and they are Slice C's, not optional:
 
 1. Slice C's play use case **must** derive the acting player and seat from the authenticated
    identity, must reject any seat supplied by the caller rather than reconciling it, and must
    verify that the resolved player belongs to the same session as the trick. Seat binding in
    storage does not discharge any of this: a constraint proves the pair `(player_id,
-   seat_order)` is genuine, and cannot prove the *caller* is that player.
+   seat_order)` is genuine, and cannot prove the *caller* is that player. **The dealing use
+   case owes the identical check**, because `hand` has the identical gap — see the `S5`/`S5b`
+   measurement above; this obligation is not confined to the play path.
 2. That behaviour needs tests naming both attacks — a play claiming another player's seat, and
    a play by a player from a different session — so the enforcement has a regression guard in
-   the layer that performs it. For the cross-session attack that test is the only thing that
-   will notice if the use case stops checking, because storage cannot fail closed there. For
-   the seat attack there is now a second guard as well
+   the layer that performs it. Add a third: the **cross-session card block** (`X1`/`X2` above),
+   which no seat-shaped test would catch, because the attacker's own seat is honest and the
+   seat it denies is someone else's. For the cross-session attacks those tests are the only
+   thing that will notice if the use case stops checking, because storage cannot fail closed
+   there. For the seat attack there is now a second guard as well
    (`TrickPlayForeignKeyTest.trickPlayForgedSeatExploitIsRejected` and
    `handForgedSeatExploitIsRejected`, which assert SQL state `23506`), and the use-case test is
    still owed: a 500 from a constraint violation is not the 403-shaped rejection a forged
    request should get.
+3. Slice C's **resolve-trick** use case must verify that the winning play it records belongs to
+   the trick it is resolving. This is the fourth gap named in the blockquote at the head of this
+   section, it is **not** an instance of the cross-session deferral — it needs no second session
+   and no second player — and it is recorded in full under *`fk_trick_winner_play` confines the
+   winner to no trick and no session* below, which is the one authority for it. It is listed here
+   because this numbered list is what Slice C will read, and an obligation recorded only beside
+   the constraint it protects is an obligation nobody schedules.
 
 If Slice C finds it cannot resolve the acting player from identity for some reason not visible
 today, that reopens this decision rather than excusing it, and the denormalised
@@ -893,13 +976,92 @@ above them goes. The lesson worth keeping is the general one: a comment assertin
 constraint never fires on the legitimate path is a claim about behaviour, and it needs a test
 rather than a comment.
 
+**Not enforced, and not covered by any deferral above — `fk_trick_winner_play` confines the
+winner to no trick and no session.** The comment above the column argues that a foreign key
+cannot dangle, which is true and is a smaller claim than it reads as. What the key proves is
+that `winner_play_id` names *some* `trick_play` row. Measured by @security-auditor against the
+deployed schema: a trick pointed at a play belonging to a **different trick** is accepted
+(`W1`), and a trick pointed at a play belonging to a trick in a **different session** is
+accepted (`W2`). This is a separate gap from the cross-session deferral above and is not
+discharged by it: `W1` needs no second session and no second player at all, only two tricks in
+one session. (`W2` self-evidently involves two sessions; the point is that the gap does not
+*depend* on a second session, so no cross-session fix bounds it.)
+
+**What confining it in storage would actually cost, because the changeset comment prices it
+wrongly and this ADR is the authority.** The comment added at `004-trick-play-schema.xml:233-247`
+says the fix "needs the trick denormalised onto `trick_play` and a composite key back, which is
+the construction ADR-023 declines". It does not, and this is the *same reusable error* the
+reversal at the head of this section exists to record: **`trick_play.trick_id` already exists**
+— it is `NOT NULL`, it carries `fk_trick_play_trick`, and it is the leading column of
+`uq_trick_play_trick_seat`, `uq_trick_play_trick_card` and `uq_trick_play_trick_player`. Nothing
+would be denormalised. The construction is a composite key from
+`trick (id, winner_play_id)` to `trick_play (trick_id, id)`, whose referenceable target is a
+unique constraint on `trick_play (trick_id, id)` that is unique **for free** because `id` is
+already the primary key — the identical device `uq_player_id_seat` uses on `player`. Confining
+the winner to its own trick also confines it to its own session as a consequence, since a play
+of this trick is in this trick's session by `fk_trick_play_trick`, so one key would close both
+`W1` and `W2`. As with the seat half, the objection about a copy that can disagree with its
+parent does not reach this at all: a composite key here *forbids* the disagreement rather than
+creating room for one.
+
+**The real obstacle, which is a different one and is unpriced.** It collides with the delete
+rule this ADR decided by measurement. A composite foreign key declared
+`ON DELETE SET NULL` nulls **every** referencing column, and one of them here would be
+`trick.id` — the primary key, `NOT NULL` — so deleting a winning play would fail exactly where
+`D3` proved it must succeed. PostgreSQL 15+ can restrict the action to one column
+(`ON DELETE SET NULL (winner_play_id)`); Liquibase cannot express that through
+`addForeignKeyConstraint`, whose `onDelete` is a single-valued attribute of type
+`fkCascadeActionOptions` with no column list (verified in `dbchangelog-latest.xsd` shipped in
+liquibase-core 5.0.3), so it would need raw `<sql>` with a per-engine variant, and whether H2
+accepts the column-list form at all is **not measured**. That is the honest price of this
+constraint: not the denormalisation objection, but an engine-and-tooling collision with the
+`SET NULL` decision above, and it must be *measured* before Slice C chooses storage over the
+use case — which is the same lesson as the paragraph before this one, applied to the fix rather
+than to the defect.
+
+**Owner, and why nothing can produce it today.** `Trick.winningPlay()` (`Trick.java:440`, and
+private) computes the winner from the trick's own plays, `Trick.reconstitute` (`Trick.java:437`)
+is the only caller, and no adapter, repository or entity maps `trick` at all — see the
+containment paragraph at the head of this section. So this is unreachable until Slice C, and
+Slice C's resolve-trick use case owns the check that the winner play belongs to the trick it
+resolves. It is the third obligation in the numbered list above, and it is not a restatement of
+either of the other two.
+
+**No range CHECK on any seat or sequence column, which bounds what the composite keys prove.**
+@security-auditor measured `player.seat_order = -7`, `trick.sequence = -5` and
+`game_session.current_leader_seat = 9999` all **accepted** by storage, while the domain refuses
+every one of them (`GameSession.MAXIMUM_PLAYERS = 6`, and `Trick`/`TrickPlay` reject a seat
+outside `0..5` — `Trick.java:50`, `TrickPlay.java:115`). @architecture-guardian's ruling is that
+this is correctly Slice C's, with the adapter that first writes these columns, and it is recorded
+here rather than left in the audit for one reason the audit did not state: the seat range on
+`hand` and `trick_play` is **inherited**, not independent. `fk_hand_player_seat` and
+`fk_trick_play_player_seat` bind those columns to `player (id, seat_order)`, so whatever
+`player.seat_order` is allowed to hold, a hand and a play are allowed to hold too — a nonsense
+seat on `player` propagates into both child tables *through the very keys this section
+celebrates*. The composite keys therefore prove consistency with the parent, never validity, and
+a `CHECK (seat_order BETWEEN 0 AND 5)` on `player` is the single place that would fix all three.
+That change reaches into a table changeset `004` does not own, which is a real cost and the
+reason it is not smuggled in here; it belongs in a named changeset of its own alongside Slice C's
+adapter, with the domain constant as the authority for the bound.
+
+One qualification on that ownership argument, because it does not cover all three columns:
+`game_session.current_leader_seat` is **added by this changeset**
+(`004-trick-play-schema.xml:38`, nullable `INT`, with the `dropColumn` rollback at line 42), so a
+range CHECK on *that* column would have reached into nothing foreign at all — it is `004`'s own
+column, mapped by no entity, written by no code. Deferring it is therefore a **choice** here and
+not an ownership constraint, and the choice is defensible only on the narrower ground that the
+column is unwritten until Slice C's adapter and that splitting one validity rule across two
+changesets is worse than landing it whole. Slice C should land all three bounds together —
+`player.seat_order`, `trick.sequence` and `current_leader_seat` — and if it lands only some, this
+paragraph is the record of which one had no excuse.
+
 ## Related
 
 - [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — seat order assigned once at join and never re-derived, clockwise play, and the next-player formula this ADR qualifies for the short final trick
 - [ADR-020](ADR-020-session-concurrency-control.md) — compare-and-set on a single row is why the leader's seat is stored rather than derived; the `@Version` warning repeated above; and the deadlock-ordering decision it predicted EOP-14 would have to make
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase owns the schema; `current_leader_seat` arrives in changeset `004` before the entities
 - [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `hand`, `trick` and `trick_play` are minted in the use case, not at flush. Narrowed by the 2026-08-12 amendment above: `trick_play_component` and `hand_card` carry no UUID, because their rows are values in a bounded list and a set membership respectively, rather than entities
-- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. That flag does not exist yet: Slice A is pure domain with nothing to gate, so the flag is created in Slice C when dealing is first wired into session start
+- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. **That flag does not exist**, in this slice or any other: `application.yml` declares one flag, `features.session-lifecycle: false`. Slice A is pure domain with nothing to gate and **Slice B is schema with nothing to gate either** — its five tables have no entity, adapter or route, which is a stronger containment than a flag and is not to be described as one (see the containment paragraph in *What changeset `004` deliberately does not enforce*). The flag is created in Slice C, in the same commit as the entities, when dealing is first wired into session start
 - [ADR-005](ADR-005-error-handling-strategy.md) — where an out-of-turn play and a follow-suit violation become RFC 9457 problem details
 - [ADR-014](ADR-014-realtime-transport.md) — events carry no state and reconnection is a re-read, so the stored leader seat is what a reconnecting client sees
 - [PRD §3.3](../requirements/PRD-eop-card-game.md) — dealing, the derived opening lead, and the "time, cards, or ways to connect" end condition that sanctions the short final trick
