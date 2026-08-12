@@ -1,19 +1,25 @@
 package org.maglez.eop.adapter.web;
 
+import org.maglez.eop.entity.AlreadyPlayedInTrickException;
+import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
+import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
 import org.maglez.eop.entity.NotYourSeatException;
 import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerMismatchException;
+import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.TooFewPlayersException;
+import org.maglez.eop.entity.TrickAlreadyOpenException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
+import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,11 +92,56 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * unguessable UUID, so concealing whether one exists protects nothing and only
      * makes a genuine bug harder to diagnose.
      *
+     * <p>Scoped to existence. The argument above is about whether a session can be
+     * found, not about who may see it, and it does not license candour on a
+     * caller's membership: an identifier being unguessable says nothing about a
+     * stranger who legitimately holds one. Membership is answered by
+     * {@link #handlePlayerNotInSession}, whose body this one must match field for
+     * field, so that a caller cannot tell a session it may not see from a session
+     * that does not exist.
+     *
      * @param exception the domain exception
      * @return a 404 problem detail
      */
     @ExceptionHandler(SessionNotFoundException.class)
     public ProblemDetail handleSessionNotFound(final SessionNotFoundException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Session not found");
+        problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * The caller is not a player in the session it is acting on.
+     *
+     * <p>Answered as a 404 that is indistinguishable from
+     * {@link #handleSessionNotFound}, and not as a 403. A 403 would confirm that
+     * the session exists, which tells a stranger holding a guessed or leaked
+     * identifier that it guessed correctly — the one thing this response must not
+     * reveal. A caller that is genuinely a member never reaches here, so nothing
+     * legitimate is made harder to diagnose.
+     *
+     * <p>The parity is field for field and not merely status for status: the title
+     * is the same fixed string and the detail is
+     * {@link PlayerNotInSessionException}'s message, which that class constructs to
+     * be identical to {@link SessionNotFoundException}'s for the same identifier.
+     * No field may name a player, a seat, membership or authorisation, or vary with
+     * why the lookup failed, because any such difference is the oracle the 404 was
+     * chosen to deny. The unit test asserts equality of the two bodies rather than
+     * equality of the two statuses, since two 404s with different titles would leak
+     * just as effectively (ADR-023).
+     *
+     * <p>This follows {@link #handleUnknownJoinCode} and its reasoning rather than
+     * minting a fresh shape, with one deliberate difference: that handler blanks the
+     * identifier because a six-character join code is guessable, whereas the session
+     * identifier echoed here is a value the caller supplied and cannot learn
+     * anything from.
+     *
+     * @param exception the refusal, carrying the session identifier and nothing else
+     * @return a 404 problem detail equal to the one for a session that does not exist
+     */
+    @ExceptionHandler(PlayerNotInSessionException.class)
+    public ProblemDetail handlePlayerNotInSession(final PlayerNotInSessionException exception) {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
         problem.setTitle("Session not found");
         problem.setDetail(exception.getMessage());
@@ -314,6 +365,131 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
         problem.setTitle("Card not in hand");
         problem.setDetail("Your hand does not hold card " + exception.cardId() + ".");
+        return problem;
+    }
+
+    /**
+     * Hands have already been dealt in this session.
+     *
+     * <p>A conflict rather than a rejected argument: the request was well formed and
+     * would have succeeded a moment earlier. Two facilitators dealing at once is the
+     * ordinary way to reach this, and the loser is told the state of the world
+     * changed rather than that it asked for something impossible.
+     *
+     * <p>The detail names the session, which the caller supplied, and nothing about
+     * who dealt or when.
+     *
+     * @param exception the refusal, carrying the session identifier
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(HandAlreadyDealtException.class)
+    public ProblemDetail handleHandAlreadyDealt(final HandAlreadyDealtException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Hands already dealt");
+        problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * A trick with this sequence number is already open in the session.
+     *
+     * <p>Reached when two requests race to open the next trick: both compute the
+     * same sequence number and the loser collides. A 409 and not a 422, because a
+     * different state resolves it — the winner's trick is now the open one, and
+     * re-reading the session shows a trick to play into.
+     *
+     * <p>Distinct from {@link #handleAlreadyPlayedInTrick} even though both are
+     * conflicts on the same table: no play is involved here, and telling the two
+     * apart is the difference between somebody else having opened the trick and the
+     * caller having already played into it.
+     *
+     * @param exception the refusal, carrying the session and the sequence number
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(TrickAlreadyOpenException.class)
+    public ProblemDetail handleTrickAlreadyOpen(final TrickAlreadyOpenException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Trick already open");
+        problem.setDetail("Trick " + exception.sequence() + " is already open in this session.");
+        return problem;
+    }
+
+    /**
+     * A seat has already played into this trick.
+     *
+     * <p>A 409 rather than the 422 that {@link #handleOutOfTurn} returns, because
+     * this is not a turn-order mistake: the seat's play is already recorded, so the
+     * request lost a race with an identical one rather than arriving in the wrong
+     * order. A retry cannot succeed, but re-reading the trick shows the play the
+     * caller was trying to make.
+     *
+     * <p>The detail names the seat and not the trick. A seat number is something
+     * every player at the table can already see; the trick identifier is an internal
+     * key that would widen the response without helping whoever reads it, on the
+     * same reasoning as {@link #handleCardNotInHand}.
+     *
+     * @param exception the refusal, carrying the trick and the seat
+     * @return a 409 problem detail naming only the seat
+     */
+    @ExceptionHandler(AlreadyPlayedInTrickException.class)
+    public ProblemDetail handleAlreadyPlayedInTrick(final AlreadyPlayedInTrickException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Already played in this trick");
+        problem.setDetail("Seat " + exception.seatOrder() + " has already played into this trick.");
+        return problem;
+    }
+
+    /**
+     * The card named has already been played into this trick.
+     *
+     * <p>Separate from {@link #handleAlreadyPlayedInTrick} because the two answer
+     * different questions: that one refuses a second play from one seat, this one
+     * refuses one card appearing twice in a trick whichever seat played it.
+     * Collapsing them would tell a caller that something conflicted without saying
+     * whether its own earlier play or somebody else's is the reason.
+     *
+     * <p>The card identifier is echoed because the caller supplied it.
+     *
+     * @param exception the refusal, carrying the trick and the card
+     * @return a 409 problem detail naming only the card
+     */
+    @ExceptionHandler(CardAlreadyPlayedException.class)
+    public ProblemDetail handleCardAlreadyPlayed(final CardAlreadyPlayedException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Card already played");
+        problem.setDetail("Card " + exception.cardId() + " has already been played into this trick.");
+        return problem;
+    }
+
+    /**
+     * The play named as the winner was not made into the trick being resolved.
+     *
+     * <p>A 422 and deliberately not a 409. A conflict entitles the caller to retry
+     * once the state has moved on, and no state this application can reach makes a
+     * play from one trick the winner of another — so a status that invites a retry
+     * would be an invitation to a request that can never succeed.
+     *
+     * <p>Logged at warning level with both identifiers, because there is no storage
+     * constraint behind this check and there is not going to be one: the composite
+     * key that would provide it collides with the rule that lets a winning play be
+     * deleted (ADR-023). This handler firing is therefore the only evidence that
+     * will ever exist, and it means either a defect in resolution or a request that
+     * reached the use case naming a play it had no business naming.
+     *
+     * <p>The response carries neither identifier. The caller cannot act on them, and
+     * a trick or play identifier belonging to somebody else's session is exactly the
+     * sort of internal key that should not be echoed back to whoever guessed it.
+     *
+     * @param exception the refusal, carrying the trick and the play
+     * @return a 422 problem detail whose detail is a fixed string
+     */
+    @ExceptionHandler(WinningPlayNotInTrickException.class)
+    public ProblemDetail handleWinningPlayNotInTrick(final WinningPlayNotInTrickException exception) {
+        LOG.warn("Play {} was named as the winner of trick {}, which it was not played into",
+                exception.playId(), exception.trickId(), exception);
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        problem.setTitle("That play is not in this trick");
+        problem.setDetail("The play named as the winner was not made into the trick being resolved.");
         return problem;
     }
 

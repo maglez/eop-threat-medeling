@@ -1045,6 +1045,7 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
    | `uq_trick_play_trick_seat`, `uq_trick_play_trick_player` | `23505` | `AlreadyPlayedInTrickException` | 409 |
    | `uq_trick_play_trick_card` | `23505` | `CardAlreadyPlayedException` | 409 |
    | `uq_hand_session_seat` | `23505` | `HandAlreadyDealtException` | 409 |
+   | `uq_trick_session_sequence` | `23505` | `TrickAlreadyOpenException` | 409 |
    | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
 
    Three things in that table are load-bearing rather than bookkeeping. The `23506` row answers
@@ -1068,6 +1069,33 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
    `PlayerNotInSessionException`, `AlreadyPlayedInTrickException`, `CardAlreadyPlayedException`,
    `HandAlreadyDealtException` and `WinningPlayNotInTrickException`. That requirement is restated
    inside the obligation on purpose, so it does not depend on a rule file being re-read.
+
+   **Amended 2026-08-12 — the table was one row short (@architecture-guardian).** The
+   `uq_trick_session_sequence` row above was added by this amendment; as first written the table
+   omitted it, while stating the rule that catches it — "each constraint that a client request can
+   reach needs a named translation". `004-trick-play-schema.xml:280-282` creates that constraint on
+   `trick (game_session_id, sequence)`, and a request can reach it: two concurrent requests that
+   both try to open trick *N+1* for one session both insert `sequence = N+1`, and the loser raises
+   `23505`. Untranslated it falls through to `handleUnexpected` and answers **500**, which is
+   precisely the defect this obligation exists to close. It is a conflict a different state
+   resolves, so it is a **409**, and `AlreadyPlayedInTrickException` is the wrong type for it
+   because no play is involved — hence a sixth type, `TrickAlreadyOpenException`, with the two
+   tests `error-handling.md` requires.
+
+   The constraints the table still omits are omitted deliberately, and the reasoning is the last
+   row's: `pk_hand_card`, `fk_hand_card_card`, `fk_trick_play_card`, `pk_hand`, `pk_trick` and
+   `pk_trick_play` cannot be reached by a client, because a card arriving at storage was resolved
+   out of a hand (`Trick.java:375-383`) and `Hands.java:57-64` already refuses one card at two
+   seats. One of those firing is a server fault, so 500 is the correct answer for them.
+
+   A second correction to this table's SQLSTATE column, measured rather than argued while
+   implementing changeset `005`: **H2 reports a CHECK violation as `23513`, not `23514`.**
+   PostgreSQL uses `23514`. The last row names only `23514`, so translation code written against
+   this table alone would fail to recognise the H2 case and every migration test would be asserting
+   a code production never sees. Any translation of a CHECK violation must accept both codes. The
+   value is pinned by `SeatAndSequenceBoundsTest`, which asserts `23513` directly against H2, and
+   the same pair applies to `chk_player_seat_order`, `chk_trick_sequence` and
+   `chk_game_session_current_leader_seat` when they are reached from the adapter.
 
 **Amendment, 2026-08-12 — the obligations now name their exceptions and their statuses
 (@tester-api).** As first written this list said "reject" and "verify" and named no exception
@@ -1218,3 +1246,52 @@ paragraph is the record of which one had no excuse.
 - [PRD §5](../requirements/PRD-eop-card-game.md) — the `GameState` block with no entity, and `seatOrder` described as load-bearing
 - [PRD §9](../requirements/PRD-eop-card-game.md) — why "decision 017" in EOP-14's description means ADR-020
 - EOP-13 (the 78-card deck this arithmetic depends on), EOP-14 (this story), EOP-15 (scoring, which inherits the unequal-hand consequence)
+
+## Amendment, 2026-08-12 — the flag lands with the route, not with the entities
+
+The ADR-013 bullet above dates `eop.features.trick-play` to "the same commit as the entities", and
+the containment paragraph in *What changeset `004` deliberately does not enforce* repeats it more
+strongly still. Slice C was subsequently split for reviewability into **C1** — the JPA entities, the
+persistence ports and adapter, the constraint-name translation, the new exception types and their
+handler mappings, and changeset `005` — and **C2**, the dealing, play and resolve-trick use cases
+with the controller and its DTOs. The flag is created in **C2**. This is a deliberate deviation from
+the wording above rather than an oversight, and both sentences stand unedited so the record shows
+what was decided and what changed.
+
+The wording above pinned the flag to the entities because, when it was written, the entities and the
+route were expected to arrive together. Once they do not, the entities are the wrong anchor.
+ADR-013 settles which anchor is right: a flag "protects a live production surface from a
+half-finished feature" (`ADR-013:50-53`), and flagging begins with "the first story with a
+user-visible write surface" (`ADR-013:55-57`). C1 adds no controller, no route and no bean a request
+can reach, so a flag there would gate nothing. Worse, it could not be tested as the rules require:
+`.opencode/rules/feature-flags.md:13` mandates that the off-position test assert the bean is absent
+*and* the routes 404, and C1 has neither a controller bean nor a route, so the mandated test cannot
+be written at all. A flag whose off-position test cannot be written is not containment.
+
+The containment argument this ADR already makes for Slice B therefore extends to C1 in the one
+respect that matters — no player-reachable path exists — but with one narrower claim than Slice B's.
+C1 does add JPA mappings, so `ddl-auto: validate` stops being free: from C1 onwards Hibernate
+validates five more tables and every column and type on them at every context start, on H2 in the
+suite and PostgreSQL in production. C1 owns proving the context still starts, and that proof is a
+first-class deliverable of C1 rather than something an existing context test covers incidentally.
+
+The clause "when dealing is first wired into session start" is also withdrawn as a dating anchor,
+independently of the split. `StartSessionUseCase.java:10-13` records the merged decision that
+dealing is deliberately *not* behind the start call, because "putting it behind the same call would
+make two very different failures indistinguishable to the caller". Dealing arrives as its own call.
+The flag is dated by **the first player-reachable trick-play route**, whichever call that turns out
+to be, and that route may not be merged unflagged. Amending the bullet to say "C2" while leaving
+this clause intact would have left a second contradiction behind.
+
+One live fact for whoever writes C2: `SessionController.java:51` already carries
+`@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle")`. Routes added to that
+class would inherit that gate, and inheriting it is not a substitute for `trick-play` —
+`ADR-013:44-48` deletes a flag once its feature ships, so `session-lifecycle` will be removed and
+take the inherited gate with it. C2 needs its own flag, and its own `@ConditionalOnProperty` class
+if the controllers are separate beans.
+
+Binding consequence: C2 may not merge without `eop.features.trick-play` present in
+`application.yml` defaulted to `false`, recorded in ADR-013 per `.opencode/rules/feature-flags.md:16`,
+and covered by an off-position test asserting the controller bean is absent as well as the routes
+404-ing.
+
