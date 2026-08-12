@@ -220,4 +220,116 @@ class TrickPlayTest {
             assertThat(play.canTakeTrick(StrideCategory.REPUDIATION)).isFalse();
         }
     }
+
+    @Nested
+    @DisplayName("refuses text that would break something downstream")
+    class UnsafeText {
+
+        @Test
+        @DisplayName("a NUL byte in a component name, which PostgreSQL cannot store at all")
+        void shouldRejectNulByteInComponent() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withComponents(List.of("payments\u0000api")).build())
+                    .withMessageContaining("control characters");
+        }
+
+        @Test
+        @DisplayName("a NUL byte in a note")
+        void shouldRejectNulByteInNotes() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withNotes("the token\u0000is never checked").build())
+                    .withMessageContaining("control characters");
+        }
+
+        @Test
+        @DisplayName("a carriage return in a note, because a player must not be able to forge a log line")
+        void shouldRejectCarriageReturnInNotes() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withNotes("ok\r\nWARN  admin granted").build())
+                    .withMessageContaining("control characters");
+        }
+
+        @Test
+        @DisplayName("a newline in a component name")
+        void shouldRejectNewlineInComponent() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withComponents(List.of("payments\napi")).build())
+                    .withMessageContaining("control characters");
+        }
+
+        @Test
+        @DisplayName("a right-to-left override, which would display a component name other than the one stored")
+        void shouldRejectBidiOverrideInComponent() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withComponents(List.of("safe\u202eelbisiv")).build())
+                    .withMessageContaining("bidirectional");
+        }
+
+        @Test
+        @DisplayName("a right-to-left mark in a note")
+        void shouldRejectBidiMarkInNotes() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withNotes("looks\u200fharmless").build())
+                    .withMessageContaining("bidirectional");
+        }
+
+        @Test
+        @DisplayName("names the position, so a player can find the character they cannot see")
+        void shouldNameThePosition() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrickPlay().withComponents(List.of("ab\u0000cd")).build())
+                    .withMessageContaining("position 2");
+        }
+
+        @Test
+        @DisplayName("still accepts ordinary punctuation and accented letters")
+        void shouldAcceptOrdinaryText() {
+            final TrickPlay play = aTrickPlay()
+                    .withComponents(List.of("Café-Payments API (v2), \"edge\""))
+                    .withNotes("Réf: the caller's identity is never verified — see §3.")
+                    .build();
+
+            assertThat(play.components()).containsExactly("Café-Payments API (v2), \"edge\"");
+            assertThat(play.notesIfGiven()).isPresent();
+        }
+    }
+
+    @Nested
+    @DisplayName("renders itself without repeating what a player typed")
+    class Privacy {
+
+        @Test
+        @DisplayName("names neither the note, nor any component, nor the threat prompt")
+        void shouldNotRenderPlayerText() {
+            final Card played = card(StrideCategory.TAMPERING, Rank.NINE);
+            final TrickPlay play = aTrickPlay()
+                    .withCard(played)
+                    .withComponents(List.of("Ledger writer"))
+                    .withNotes("Anyone can rewrite a settled entry.")
+                    .build();
+
+            final String rendered = play.toString();
+
+            assertThat(rendered)
+                    .doesNotContain("Ledger writer")
+                    .doesNotContain("Anyone can rewrite a settled entry.")
+                    .doesNotContain(played.threatPrompt())
+                    .contains("components=1")
+                    .contains("notes=given");
+        }
+
+        @Test
+        @DisplayName("says so plainly when no note was given")
+        void shouldSayWhenNoNoteWasGiven() {
+            assertThat(aTrickPlay().withNotes(null).build().toString()).contains("notes=none");
+        }
+
+        @Test
+        @DisplayName("still names the card, because a played card is face up on the table")
+        void shouldNameTheCard() {
+            final TrickPlay play = aTrickPlay().withCard(card(StrideCategory.SPOOFING, Rank.KING)).build();
+
+            assertThat(play.toString()).contains("SPOOFING K");
+        }
+    }
 }

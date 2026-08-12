@@ -96,4 +96,24 @@ class CardTest {
             }
         }
     }
+
+    @Nested
+    @DisplayName("renders itself without carrying its threat prompt into every log line")
+    class Representation {
+
+        @Test
+        @DisplayName("names the suit and rank but not the prompt")
+        void shouldNotRenderTheThreatPrompt() {
+            final Card subject = aCard()
+                    .withSuit(StrideCategory.TAMPERING)
+                    .withRank(Rank.NINE)
+                    .withThreatPrompt("An attacker could rewrite a settled ledger entry.")
+                    .build();
+
+            assertThat(subject.toString())
+                    .contains("TAMPERING")
+                    .contains("9")
+                    .doesNotContain("An attacker could rewrite a settled ledger entry.");
+        }
+    }
 }

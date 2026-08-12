@@ -1,6 +1,6 @@
 # ADR-019: Session Lifecycle, Join Codes, and How the Stream Is Authenticated
 
-**Status:** Accepted
+**Status:** Accepted (next-player formula amended 2026-08-12 — see ADR-023)
 **Date:** 2026-08-05
 **Deciders:** @tech-lead, @security-auditor
 

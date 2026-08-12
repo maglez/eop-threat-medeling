@@ -459,6 +459,8 @@ class HandsTest {
                     .isThrownBy(() -> hands.handsBySeat().clear());
             assertThatExceptionOfType(UnsupportedOperationException.class)
                     .isThrownBy(() -> hands.seatsHoldingCards().clear());
+            assertThatExceptionOfType(UnsupportedOperationException.class)
+                    .isThrownBy(() -> hands.seats().clear());
         }
 
         @Test
@@ -469,6 +471,64 @@ class HandsTest {
 
             assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
             assertThat(one).isNotEqualTo(Hands.deal(fullDeck(), seats(4)));
+        }
+    }
+
+    @Nested
+    @DisplayName("derives the opening lead from the cards in play, not from a rank written down")
+    class DerivedOpeningLead {
+
+        @Test
+        @DisplayName("leads from the lowest tampering card dealt even when it is neither a two nor a three")
+        void shouldLeadFromWhateverTheLowestTamperingCardIs() {
+            final List<Card> deck = List.of(
+                    DeckFixture.card(StrideCategory.SPOOFING, Rank.TWO),
+                    DeckFixture.card(StrideCategory.TAMPERING, Rank.NINE),
+                    DeckFixture.card(StrideCategory.TAMPERING, Rank.SEVEN),
+                    DeckFixture.card(StrideCategory.TAMPERING, Rank.JACK),
+                    DeckFixture.card(StrideCategory.SPOOFING, Rank.THREE),
+                    DeckFixture.card(StrideCategory.SPOOFING, Rank.FOUR));
+
+            final Hands hands = Hands.deal(deck, seats(3));
+            final int leader = hands.openingLeaderSeat();
+
+            assertThat(hands.handOf(leader).lowestOf(StrideCategory.TAMPERING))
+                    .map(Card::rank)
+                    .contains(Rank.SEVEN);
+            assertThat(leader).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("picks the lowest even when that card sorts first in its holder's hand")
+        void shouldPickTheLowestWhateverTheOrderInHand() {
+            final Hands hands = Hands.reconstitute(at(
+                    handAt(0, DeckFixture.card(StrideCategory.TAMPERING, Rank.TWO),
+                            DeckFixture.card(StrideCategory.TAMPERING, Rank.NINE)),
+                    handAt(1, DeckFixture.card(StrideCategory.TAMPERING, Rank.FIVE)),
+                    handAt(2, DeckFixture.card(StrideCategory.SPOOFING, Rank.ACE))));
+
+            assertThat(hands.openingLeaderSeat()).isZero();
+        }
+    }
+
+    @Nested
+    @DisplayName("refuses a seat that is not at the table")
+    class SeatBounds {
+
+        @Test
+        @DisplayName("a negative seat in a reconstituted set of hands")
+        void shouldRejectNegativeSeatKey() {
+            final Hand hand = handAt(0, DeckFixture.card(StrideCategory.SPOOFING, Rank.TWO));
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> Hands.reconstitute(Map.of(-1, hand)));
+        }
+
+        @Test
+        @DisplayName("a negative seat on a dealing seat")
+        void shouldRejectNegativeSeatOrder() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> new Hands.Seat(-1, new UUID(700, 0), new UUID(800, 0)));
         }
     }
 }

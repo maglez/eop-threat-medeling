@@ -84,18 +84,49 @@ public final class Hand {
     }
 
     /**
+     * The card this hand holds under a candidate's identifier, as it was dealt.
+     *
+     * <p>This is the only safe way to turn a card named by a request into a card
+     * a rule may be applied to. {@link #holds(Card)} matches on the identifier
+     * alone, so a caller that then reads {@code candidate.suit()} or
+     * {@code candidate.rank()} is trusting values the caller supplied: a player
+     * holding the two of tampering could name that identifier while labelling it
+     * the ace of elevation of privilege, pass the possession check, escape the
+     * follow-suit rule and take the trick with a card that was never dealt.
+     *
+     * <p>Resolving through the hand makes the submitted suit and rank inert. The
+     * returned card is the one the deal put in this hand, so every rule downstream
+     * — follow-suit, trump, rank — is applied to server-held state.
+     *
+     * @param candidate the card a caller named; only its identifier is trusted
+     * @return the card as dealt to this hand
+     * @throws CardNotInHandException if this hand does not hold that card
+     */
+    public Card resolve(final Card candidate) {
+        final UUID candidateId = candidate == null ? null : candidate.cardId();
+        return cards.stream()
+                .filter(held -> held.cardId().equals(candidateId))
+                .findFirst()
+                .orElseThrow(() -> new CardNotInHandException(handId, candidateId));
+    }
+
+    /**
      * Whether this hand holds any card of a suit.
      *
      * <p>This is the question the follow-suit rule turns on: a player holding the
      * led suit must play it, and a player holding none of it may play anything.
      *
+     * <p>A null suit is rejected rather than answered false. False here means "this
+     * player cannot follow, so any card is legal" — the permissive branch of the
+     * follow-suit rule — so answering a malformed question with a default would
+     * fail open on the one predicate the rule turns on.
+     *
      * @param suit the suit to look for
      * @return true if the hand holds at least one card of that suit
+     * @throws NullPointerException if the suit is null
      */
     public boolean holdsSuit(final StrideCategory suit) {
-        if (suit == null) {
-            return false;
-        }
+        Objects.requireNonNull(suit, "suit is required");
         return cards.stream().anyMatch(card -> card.suit() == suit);
     }
 
@@ -122,16 +153,18 @@ public final class Hand {
     /**
      * This hand with a card removed, as it stands after that card is played.
      *
-     * @param card the card being played
+     * <p>Resolves the card through {@link #resolve(Card)} first, so a candidate
+     * carrying a held identifier but a forged suit or rank removes the card that
+     * was actually dealt and cannot smuggle its own values onward.
+     *
+     * @param card the card being played; only its identifier is trusted
      * @return a new hand without that card
      * @throws CardNotInHandException if the hand does not hold the card
      */
     public Hand without(final Card card) {
-        if (!holds(card)) {
-            throw new CardNotInHandException(handId, card == null ? null : card.cardId());
-        }
+        final Card held = resolve(card);
         final List<Card> remaining = cards.stream()
-                .filter(held -> !held.cardId().equals(card.cardId()))
+                .filter(other -> !other.cardId().equals(held.cardId()))
                 .toList();
         return new Hand(handId, playerId, remaining);
     }
@@ -160,6 +193,13 @@ public final class Hand {
 
     /**
      * The cards held, in canonical suit-then-rank order.
+     *
+     * <p>Confidential. Knowing which cards a player holds is knowing what they can
+     * and cannot follow with, so this list must not be logged, interpolated into an
+     * exception message, or returned to any player other than the one who holds it.
+     * {@link #toString()} on this hand is redacted precisely so that a hand cannot
+     * leak by accident; calling this accessor and rendering the result is the way
+     * round that, and is a deliberate act.
      *
      * @return an unmodifiable list
      */

@@ -173,9 +173,11 @@ class HandTest {
         }
 
         @Test
-        @DisplayName("holds no suit when asked about a null suit")
-        void shouldNotHoldNullSuit() {
-            assertThat(aHand().build().holdsSuit(null)).isFalse();
+        @DisplayName("refuses a null suit rather than answering false, which would fail open on the follow-suit rule")
+        void shouldRejectNullSuit() {
+            assertThatNullPointerException()
+                    .isThrownBy(() -> aHand().build().holdsSuit(null))
+                    .withMessageContaining("suit");
         }
     }
 
@@ -297,6 +299,59 @@ class HandTest {
             assertThat(rendered).doesNotContain(StrideCategory.TAMPERING.name());
             assertThat(rendered).doesNotContain(held.rank().symbol());
             assertThat(rendered).contains("cards=1");
+        }
+    }
+
+    @Nested
+    @DisplayName("resolves a card a request only named, so a claimed suit and rank cannot be believed")
+    class Resolving {
+
+        @Test
+        @DisplayName("hands back the card as it was dealt")
+        void shouldResolveToTheDealtCard() {
+            final Card held = card(StrideCategory.TAMPERING, Rank.TWO);
+            final Hand hand = aHand().withCards(held).build();
+
+            assertThat(hand.resolve(held)).isEqualTo(held);
+        }
+
+        @Test
+        @DisplayName("ignores a suit and rank the caller relabelled onto a card they do hold")
+        void shouldIgnoreARelabelledSuitAndRank() {
+            final Card held = card(StrideCategory.TAMPERING, Rank.TWO);
+            final Hand hand = aHand().withCards(held).build();
+            final Card forged = CardBuilder.aCard()
+                    .withCardId(held.cardId())
+                    .withSuit(StrideCategory.ELEVATION_OF_PRIVILEGE)
+                    .withRank(Rank.ACE)
+                    .build();
+
+            final Card resolved = hand.resolve(forged);
+
+            assertThat(resolved.suit()).isEqualTo(StrideCategory.TAMPERING);
+            assertThat(resolved.rank()).isEqualTo(Rank.TWO);
+            assertThat(resolved.isTrump()).isFalse();
+        }
+
+        @Test
+        @DisplayName("refuses a card the hand was never dealt")
+        void shouldRefuseACardNotHeld() {
+            final Hand hand = aHand().withCards(card(StrideCategory.TAMPERING, Rank.TWO)).build();
+            final Card elsewhere = card(StrideCategory.SPOOFING, Rank.KING);
+
+            assertThatExceptionOfType(CardNotInHandException.class)
+                    .isThrownBy(() -> hand.resolve(elsewhere))
+                    .satisfies(thrown -> {
+                        assertThat(thrown.handId()).isEqualTo(hand.handId());
+                        assertThat(thrown.cardId()).isEqualTo(elsewhere.cardId());
+                    });
+        }
+
+        @Test
+        @DisplayName("refuses a null candidate rather than resolving something arbitrary")
+        void shouldRefuseNull() {
+            assertThatExceptionOfType(CardNotInHandException.class)
+                    .isThrownBy(() -> aHand().build().resolve(null));
         }
     }
 }

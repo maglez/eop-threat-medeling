@@ -5,14 +5,24 @@ import java.util.UUID;
 /**
  * Raised when a player tries to play a card that is not in their hand.
  *
- * <p>This is the check that stops a card being played twice, and it is the
- * domain half of a defence that has a database half too: the unique constraint
- * on a played card is what settles two simultaneous requests for the same card,
- * because both of them can pass this check against the same starting hand
- * (ADR-020). Neither half is sufficient alone.
+ * <p>This is the check that stops a card being played twice, and today it is
+ * the only such check: it compares a request against a hand held in memory, so
+ * two simultaneous requests can both pass it against the same starting hand and
+ * both be accepted. It is therefore not yet a concurrency control. The second,
+ * independent half — a database unique constraint on a played card, which is
+ * what will actually settle two simultaneous requests under ADR-020 — arrives
+ * with the {@code trick_play} table in EOP-14 Slice B. There is no such table
+ * at the time of writing, and this Javadoc previously described that constraint
+ * as though it already existed.
  *
  * <p>It is also the check that stops a player playing a card that was dealt to
  * somebody else, so a hand identifier is carried alongside the card.
+ *
+ * <p>A candidate card naming no identifier at all is reported through this
+ * exception too, rather than as a null-argument programming error: a request
+ * that names nothing has named no card this hand holds, and routing both
+ * through one fail-closed path means the boundary answers a missing card field
+ * with a client error rather than a server one.
  */
 public class CardNotInHandException extends RuntimeException {
 

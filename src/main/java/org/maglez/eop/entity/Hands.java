@@ -279,25 +279,22 @@ public final class Hands {
     /**
      * The next seat clockwise from the given one that still holds a card.
      *
-     * <p>Needed when the seat that took a trick has just played its last card: the winner leads the
-     * next trick, but a seat with no cards cannot lead, so the lead passes on clockwise.
-     *
      * <p>The starting seat is considered last, after every other seat has been tried. So if it is the
      * only seat still holding cards it leads again, which is the right answer rather than a special
      * case.
+     *
+     * <p>This is the primitive, not the rule. The lead-passing rule — the winner leads next unless the
+     * winner has just played its last card, in which case the lead passes on clockwise — belongs to
+     * {@code Trick.nextLeaderSeat(Collection)}, and both it and {@code Trick.seatToPlay} walk the
+     * circle through the same {@link SeatOrder} helper this method delegates to. One rule, one
+     * implementation: an earlier version of this class carried its own copy of the loop, which is how
+     * two implementations of a rule that is subtly wrong in its naive form end up disagreeing.
      *
      * @param seatOrder the seat to start from
      * @return the next seat clockwise holding at least one card, or empty if no seat holds any
      */
     public OptionalInt nextSeatAfter(final int seatOrder) {
-        final Set<Integer> holding = seatsHoldingCards();
-        for (int step = 1; step <= GameSession.MAXIMUM_PLAYERS; step++) {
-            final int candidate = (seatOrder + step) % GameSession.MAXIMUM_PLAYERS;
-            if (holding.contains(candidate)) {
-                return OptionalInt.of(candidate);
-            }
-        }
-        return OptionalInt.empty();
+        return SeatOrder.nextClockwise(seatOrder, seatsHoldingCards());
     }
 
     /**

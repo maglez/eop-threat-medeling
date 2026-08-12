@@ -150,31 +150,36 @@ public final class Trick {
      * is a courtesy; the cards a client is willing to offer say nothing about the request a client is
      * able to send.
      *
-     * @param card the card the player is attempting to play
+     * <p>The card is resolved out of the hand before any rule is applied to it, and the resolved card
+     * is what this method returns and what the caller must go on to play. This matters more than it
+     * looks. A card is named in a request by identifier, and the suit and rank that arrive alongside
+     * that identifier are the caller's claim, not the deck's fact. Checking possession by identifier
+     * and then reading the suit off the submitted object would let a player who holds the two of
+     * Tampering submit that identifier labelled as the ace of Elevation of Privilege: possession
+     * passes, follow-suit is escaped because the claimed suit is trump, and the trick is taken by a
+     * card that was never dealt. Resolving first makes the submitted suit and rank inert.
+     *
+     * @param card the card the player is attempting to play, named by identifier
      * @param hand the hand the player actually holds
+     * @return the card as it was actually dealt, which is the card that may be played
      * @throws CardNotInHandException if the hand does not hold the card
      * @throws MustFollowSuitException if the hand holds the led suit and the card is of another suit
      */
-    public void assertLegalPlay(final Card card, final Hand hand) {
-        Objects.requireNonNull(card, "card is required");
+    public Card assertLegalPlay(final Card card, final Hand hand) {
         Objects.requireNonNull(hand, "hand is required");
 
-        if (!hand.holds(card)) {
-            throw new CardNotInHandException(hand.handId(), card.cardId());
-        }
+        final Card resolved = hand.resolve(card);
 
         final Optional<StrideCategory> led = ledSuit();
         if (led.isEmpty()) {
-            return;
+            return resolved;
         }
 
         final StrideCategory ledSuit = led.get();
-        if (card.suit() == ledSuit) {
-            return;
+        if (resolved.suit() != ledSuit && hand.holdsSuit(ledSuit)) {
+            throw new MustFollowSuitException(ledSuit, resolved.suit());
         }
-        if (hand.holdsSuit(ledSuit)) {
-            throw new MustFollowSuitException(ledSuit, card.suit());
-        }
+        return resolved;
     }
 
     /**
@@ -187,13 +192,18 @@ public final class Trick {
      * @param seatOrder the seat attempting to play
      * @param seatsHoldingCards the seats that still hold at least one card
      * @throws OutOfTurnException if it is another seat's turn
-     * @throws IllegalStateException if the trick is already complete
+     * @throws IllegalStateException if the trick is complete, or was opened on a seat that holds no cards
      */
     public void assertSeatMayPlay(final int seatOrder, final Collection<Integer> seatsHoldingCards) {
         final OptionalInt expected = seatToPlay(seatsHoldingCards);
         if (expected.isEmpty()) {
-            throw new IllegalStateException(
-                    describe() + " is complete, so seat " + seatOrder + " cannot play into it");
+            // Two different states both leave no seat to play, and saying "complete" for the second
+            // sends a reader looking in the wrong place: a trick with no plays at all is not complete,
+            // it was opened on a seat that holds no cards and can never be played into.
+            final String reason = plays.isEmpty()
+                    ? " was opened on seat " + leaderSeat + ", which holds no cards, so no seat can play into it"
+                    : " is complete, so seat " + seatOrder + " cannot play into it";
+            throw new IllegalStateException(describe() + reason);
         }
         if (expected.getAsInt() != seatOrder) {
             throw new OutOfTurnException(expected.getAsInt(), seatOrder);
@@ -224,18 +234,25 @@ public final class Trick {
                     : OptionalInt.empty();
         }
 
-        final int from = plays.get(plays.size() - 1).seatOrder();
-        for (int step = 1; step <= GameSession.MAXIMUM_PLAYERS; step++) {
-            final int candidate = (from + step) % GameSession.MAXIMUM_PLAYERS;
-            if (seatsHoldingCards.contains(candidate) && !hasPlayed(candidate)) {
-                return OptionalInt.of(candidate);
-            }
-        }
-        return OptionalInt.empty();
+        final List<Integer> waiting = seatsHoldingCards.stream()
+                .filter(seat -> !hasPlayed(seat))
+                .toList();
+        return SeatOrder.nextClockwise(plays.get(plays.size() - 1).seatOrder(), waiting);
     }
 
     /**
      * Whether every seat eligible to play in this trick has played.
+     *
+     * <p>The seat set is the <em>current</em> one, taken after each played card has been removed from
+     * its hand — not a snapshot of who held cards when the trick opened. ADR-023 describes completion
+     * in terms of the start of the trick, which this signature cannot express; the two readings happen
+     * to agree, because a seat that has just emptied its hand is excluded by having already played
+     * rather than by still holding a card. Pinning it here so that whoever wires this up does not have
+     * to work that out, and does not have to guess which of the two the method meant.
+     *
+     * <p>A trick with no plays at all is never complete, even if no seat can play into it. That state
+     * means the trick was opened on a seat holding no cards, which is a different problem with a
+     * different answer, and {@link #assertSeatMayPlay(int, Collection)} names it as such.
      *
      * @param seatsHoldingCards the seats that still hold at least one card
      * @return true when no seat is left to play
@@ -255,19 +272,68 @@ public final class Trick {
     }
 
     /**
+     * Plays a card into the trick, having first checked every rule that governs doing so.
+     *
+     * <p>This is the only way in from outside the domain, and it exists because the alternative did
+     * not work. The three steps below used to be three separate public calls that a caller was trusted
+     * to make in the right order, documented and nothing more; a caller who forgot one got an illegal
+     * play accepted in silence. Two optional checks in front of an unguarded mutator are not defence
+     * in depth, so the guard now owns the sequence and {@link #play(TrickPlay)} is package-private.
+     *
+     * <p>The order is deliberate: turn order first, because a player who is not to play has no
+     * business learning anything about the state of their own hand from the response; then the card is
+     * resolved out of the hand and follow-suit is judged on the card as dealt rather than as claimed.
+     *
+     * <p>The seat is taken from the candidate play, and the caller is responsible for having derived
+     * that seat from the credential the request presented — never from a player identifier the request
+     * supplied, or a caller could play on another player's behalf simply by naming them. As a second,
+     * independent check on the same question, the hand handed in must belong to the player the play
+     * claims to come from: the hand is fetched server-side by seat, so a mismatch means the seat and
+     * the claimed player disagree, and that is not a request to guess at.
+     *
+     * @param candidate the play as the request described it
+     * @param hand the hand held by the seat that is playing, fetched server-side
+     * @param seatsHoldingCards the seats that still hold at least one card
+     * @return a new trick with the play appended, carrying the card as it was dealt
+     * @throws OutOfTurnException if it is another seat's turn
+     * @throws CardNotInHandException if the hand does not hold the card
+     * @throws MustFollowSuitException if the hand holds the led suit and the card is of another suit
+     * @throws IllegalArgumentException if the hand belongs to a different player than the play claims
+     */
+    public Trick acceptPlay(final TrickPlay candidate,
+                            final Hand hand,
+                            final Collection<Integer> seatsHoldingCards) {
+        Objects.requireNonNull(candidate, "candidate is required");
+        Objects.requireNonNull(hand, "hand is required");
+
+        if (!hand.playerId().equals(candidate.playerId())) {
+            throw new IllegalArgumentException(
+                    "The hand handed in belongs to player " + hand.playerId()
+                            + ", but the play claims to come from player " + candidate.playerId());
+        }
+
+        assertSeatMayPlay(candidate.seatOrder(), seatsHoldingCards);
+        final Card dealt = assertLegalPlay(candidate.card(), hand);
+        return play(candidate.withCard(dealt));
+    }
+
+    /**
      * Adds a play to the trick, returning the new trick.
      *
-     * <p>Legality is not re-checked here: {@link #assertLegalPlay(Card, Hand)} and
-     * {@link #assertSeatMayPlay(int, Collection)} answer those questions and need the player's hand
-     * and the seats still holding cards to do it, neither of which a trick knows. What this method
-     * does enforce, through the constructor, is the pair of invariants that hold regardless of any
-     * hand: one play per seat, and one play per card.
+     * <p>Package-private on purpose. Legality cannot be re-checked here, because the questions
+     * {@link #assertLegalPlay(Card, Hand)} and {@link #assertSeatMayPlay(int, Collection)} answer need
+     * the player's hand and the seats still holding cards, neither of which a trick knows or should
+     * hold — a trick is one round, a hand spans the session. Since this method therefore cannot
+     * defend itself, it is not reachable from the use-case or adapter packages at all;
+     * {@link #acceptPlay(TrickPlay, Hand, Collection)} is the way in. What this method does enforce,
+     * through the constructor, is the pair of invariants that hold regardless of any hand: one play
+     * per seat, and one play per card.
      *
      * @param play the play to add
      * @return a new trick with the play appended
      * @throws IllegalStateException if the trick has already been resolved
      */
-    public Trick play(final TrickPlay play) {
+    Trick play(final TrickPlay play) {
         Objects.requireNonNull(play, "play is required");
         if (winner != null) {
             throw new IllegalStateException(
@@ -333,17 +399,54 @@ public final class Trick {
     }
 
     /**
-     * The seat that leads the next trick, which is the seat that took this one.
+     * The seat that took this trick.
      *
-     * @return the seat that leads next
+     * <p>A fact about this trick and nothing more. It is deliberately <em>not</em> called
+     * {@code nextLeaderSeat}, because the winner is not always able to lead: see
+     * {@link #nextLeaderSeat(Collection)}.
+     *
+     * @return the seat whose play took the trick
      * @throws IllegalStateException if this trick has not been resolved
      */
-    public int nextLeaderSeat() {
+    public int winningSeat() {
         if (winner == null) {
             throw new IllegalStateException(
-                    describe() + " is unresolved, so the seat that leads next is not yet known");
+                    describe() + " is unresolved, so the seat that took it is not yet known");
         }
         return winner.seatOrder();
+    }
+
+    /**
+     * The seat that leads the next trick, or empty if there is no next trick.
+     *
+     * <p>The winner leads next — but only if the winner still holds a card, and under ADR-023 that is
+     * not always true. Hands are unequal at four and five players, so a seat can play its last card
+     * and win the trick it played it into. At four players seats 2 and 3 hold nineteen cards and seats
+     * 0 and 1 hold twenty, so if seat 2 or 3 takes trick nineteen, the winner is out of cards while two
+     * other seats each still hold one.
+     *
+     * <p>Handing back the winner's seat regardless would open the next trick on a seat that can never
+     * play into it: {@link #seatToPlay(Collection)} would report no seat to play while
+     * {@link #isComplete(Collection)} reported the trick incomplete, and the game would simply stop
+     * with no exception thrown. That is precisely the shape of defect ADR-023 was written to prevent —
+     * visible only on the last trick, only at four and five players — so the rule is stated here
+     * rather than left for whoever wires trick resolution to infer: <em>the lead passes to the winner
+     * if the winner still holds a card, and otherwise to the next seat clockwise from the winner that
+     * does</em>. Empty means nobody holds a card, which is one of PRD §3.3's end conditions.
+     *
+     * @param seatsHoldingCards the seats that still hold at least one card, after this trick's cards
+     *                          have been removed from their hands
+     * @return the seat that leads the next trick, or empty if the game is out of cards
+     * @throws IllegalStateException if this trick has not been resolved
+     */
+    public OptionalInt nextLeaderSeat(final Collection<Integer> seatsHoldingCards) {
+        final int won = winningSeat();
+        Objects.requireNonNull(seatsHoldingCards, "seatsHoldingCards is required");
+
+        if (seatsHoldingCards.contains(won)) {
+            return OptionalInt.of(won);
+        }
+        return SeatOrder.nextClockwise(won, seatsHoldingCards);
     }
 
     /**

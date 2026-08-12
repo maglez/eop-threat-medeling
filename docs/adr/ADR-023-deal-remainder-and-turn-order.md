@@ -66,7 +66,7 @@ is no draw pile and no discard.
 | 3 | 26, 26, 26 |
 | 4 | **20, 20**, 19, 19 |
 | 5 | **16, 16, 16**, 15, 15 |
-| 6 | 13, 13, 13, 13, 13 |
+| 6 | 13, 13, 13, 13, 13, 13 |
 
 **The reason is that the rejected alternative makes the opening-lead rule
 partial.** Dealing evenly and setting the remainder aside undealt is the obvious
@@ -102,9 +102,19 @@ The direct domain consequence must be built in from the first line of Slice A:
 
 A reader who assumes trick size equals player count will write a defect that
 appears only in the last trick of a four- or five-player game. Trick completion is
-therefore "every player who held a card at the start of this trick has played
-one", and the same qualifier applies to turn advancement — see the note on
-ADR-019's formula below.
+therefore "no seat that still holds a card is yet to play into this trick", and the
+same qualifier applies to turn advancement — see the note on ADR-019's formula
+below.
+
+An earlier revision of this ADR phrased completion as "every player who held a
+card *at the start of this trick* has played one". That is the same rule but it
+cannot be expressed by the domain, because `Trick.isComplete` is handed the set of
+seats holding cards *now* rather than a snapshot taken when the trick opened. The
+two readings agree — a seat that has just emptied its hand is excluded by having
+already played, not by still holding a card — but the at-start-of-trick phrasing
+invited an implementer to build a snapshot that nothing needs. The current-set
+semantics are pinned in `Trick.isComplete`'s Javadoc so the choice is not left to
+be inferred a third time.
 
 ### The opening lead is derived from the cards dealt, never written down
 
@@ -132,8 +142,28 @@ player.
 
 The seat of the player leading the current trick is persisted as a column on
 `game_session`. It is unset while the session is in `LOBBY`, written when the deal
-completes with the derived opening leader's seat, and advanced to the winner's
-seat as each trick resolves.
+completes with the derived opening leader's seat, and advanced as each trick
+resolves — to the winner's seat when the winner still holds a card, and otherwise
+to the next seat clockwise from the winner that does.
+
+> **The winner does not always lead the next trick, and an earlier revision of
+> this ADR said it did.** It read "advanced to the winner's seat as each trick
+> resolves", full stop. Decision 1 makes hands unequal, so a seat can play its
+> final card into a trick and win that trick. At four players seats 2 and 3 hold
+> nineteen cards while seats 0 and 1 hold twenty: if seat 2 or seat 3 takes trick
+> nineteen, the winner is out of cards while two other seats each still hold one.
+> Handing the lead to the winner regardless would open trick twenty on a seat that
+> can never play into it. `Trick.seatToPlay` would report that nobody may play,
+> `isComplete` would report the trick incomplete because it holds no plays, and the
+> game would simply stop — with no exception, no error and nothing to log. That is
+> precisely the failure profile this ADR exists to prevent: correct at three and
+> six players, correct for every trick but the last, wrong only at four and five.
+> The rule is therefore stated as a rule and implemented as one, in
+> `Trick.nextLeaderSeat(Collection<Integer> seatsHoldingCards)`, which returns no
+> seat at all when nobody holds a card — one of PRD §3.3's three end conditions,
+> rather than a state to recover from. The bare `winningSeat()` accessor is
+> deliberately *not* called `nextLeaderSeat`, so that reaching for the winner and
+> using it as the next leader is no longer the path of least resistance.
 
 **Rejected: derive the current leader from the winner of the last resolved
 trick.** It looks like the cheaper option — no schema change, no mutable state,
@@ -226,10 +256,36 @@ nothing and removes the only currently constructible lock cycle.
 
 ## Consequences
 
-**Positive — the opening-lead rule is total.** It resolves for every player count
+**Neutral — `Trick` holds no session reference, so Slice B must carry the session
+explicitly.** PRD §5 gives `Trick` a `session` field and specifies `sequence` as
+1-based *within the session*. The domain type deliberately holds neither: keeping
+foreign keys out of entities is the house style, and `Trick.reconstitute` cannot
+round-trip a column the entity does not carry. The consequence is that `sequence`
+uniqueness is an invariant no entity can check — two tricks in one session can
+share a sequence number with nothing in the domain objecting. Slice B must
+therefore put the session in the port signature (`save(UUID sessionId, Trick)`
+rather than `save(Trick)`) and enforce the invariant with a
+`uq_trick_session_sequence` constraint in changeset `004`. Decide this before the
+changeset is written, not after.
+
+**Positive — the *opening*-lead rule is total.** It resolves for every player count
 and every shuffle, with no fallback branch, no unreachable-in-practice code path,
 and nothing that behaves differently at four players than at six. The rule that
 would have been hardest to debug is now the one that cannot fail.
+
+The emphasis is load-bearing, and an earlier revision of this section did not
+carry it. Totality was achieved for the *opening* lead, not for turn order in
+general: the lead-*passing* rule is the partial one, because the winner of a trick
+may hold no cards, and it was the sentence above — read as though it covered turn
+order generally — that let that gap sit unnoticed one section away from where it
+was described. Both rules are now total, but they are two rules and only one of
+them was ever argued for here. Nothing enforces that `Hands.deal` is handed the
+*whole* deck either: `deal` accepts any list of cards and only checks it is at
+least as large as the seat count, so "the lowest Tampering card present in the
+deck" and "the lowest Tampering card actually dealt" coincide by convention rather
+than by construction. Slice C's dealing use case must assert that the deck it
+fetched is the complete seeded deck; until it does, this ADR's central argument for
+decision 1 lives in prose and in no executable place.
 
 **Positive — the deck is fully in play.** All 78 threat prompts are held by
 someone, so the group's threat coverage is maximal at every table size. Nothing is
@@ -254,12 +310,21 @@ trick as one card from each player who *still holds cards*.
 facilitator.** Ascending seat order was chosen for determinism and testability,
 but it means the facilitator systematically receives one of the extra cards at
 four and five players. Under EOP-15's scoring (1 point per linked threat, +1 for
-taking the trick) an extra card is a small structural advantage, and it always
-falls to the same person. Accepted for now: the effect is one card in nineteen, it
-is visible rather than hidden, and the alternative — rotating the start seat, as a
-physical dealer would — adds state that has to be persisted and reasoned about for
-a fairness gain nobody has measured. If EOP-15 shows it matters, rotate the start
-seat in a new ADR rather than by quietly changing the deal.
+taking the trick) the extra card is worth up to **2** points, not the 1 point an
+earlier revision of this section implied by calling it "one card in nineteen": an
+extra card is an extra chance to link a threat *and* an extra chance to take a
+trick. The shape of the effect also differs by player count, which that phrasing
+obscured. At four players seats 0 and 1 gain a card and seats 2 and 3 do not; at
+five players seats 0, 1 and 2 gain one, so it is the *minority* — seats 3 and 4 —
+who are disadvantaged rather than one person who is favoured. What is constant is
+that the facilitator is never on the losing side of it, because the facilitator
+always holds seat 0. Accepted for now: the effect is small against a 60–90 minute
+collaborative exercise whose scoring exists to drive participation rather than to
+be won, it is visible rather than hidden, and the alternative — rotating the start
+seat, as a physical dealer would — adds state that has to be persisted and
+reasoned about for a fairness gain nobody has measured. If EOP-15 shows it
+matters, rotate the start seat in a new ADR rather than by quietly changing the
+deal.
 
 **Negative — a mutable turn pointer now sits beside a `@Version` column that is
 not the gate.** ADR-020 already named this hazard for `status`; decision 2
