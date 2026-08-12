@@ -261,7 +261,7 @@ public record TrickPlay(
      * @return true if the character is a bidirectional formatting control
      */
     private static boolean isBidirectionalFormatting(final char character) {
-        return character == '\u200e' || character == '\u200f'
+        return character == '\u061c' || character == '\u200e' || character == '\u200f'
                 || (character >= '\u202a' && character <= '\u202e')
                 || (character >= '\u2066' && character <= '\u2069');
     }

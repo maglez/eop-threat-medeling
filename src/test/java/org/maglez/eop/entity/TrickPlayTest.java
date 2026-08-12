@@ -274,6 +274,23 @@ class TrickPlayTest {
         }
 
         @Test
+        @DisplayName("every character Unicode marks as a bidirectional control, not merely the override")
+        void shouldRejectEveryBidirectionalControl() {
+            final char[] controls = {
+                '\u061c', '\u200e', '\u200f',
+                '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+                '\u2066', '\u2067', '\u2068', '\u2069',
+            };
+
+            for (final char control : controls) {
+                assertThatIllegalArgumentException()
+                        .as("component containing U+%04X", (int) control)
+                        .isThrownBy(() -> aTrickPlay().withComponents(List.of("a" + control + "b")).build())
+                        .withMessageContaining("bidirectional");
+            }
+        }
+
+        @Test
         @DisplayName("names the position, so a player can find the character they cannot see")
         void shouldNameThePosition() {
             assertThatIllegalArgumentException()

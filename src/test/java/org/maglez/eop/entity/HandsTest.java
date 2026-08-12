@@ -211,17 +211,17 @@ class HandsTest {
         }
 
         @Test
-        @DisplayName("derives a leader from a real deal without any rank being written down")
+        @DisplayName("derives a leader from a real deal such that no other seat holds a lower tampering card")
         void shouldDeriveALeaderFromARealDeal() {
             final Hands hands = Hands.deal(fullDeck(), seats(4));
 
             final int leader = hands.openingLeaderSeat();
 
-            assertThat(hands.handOf(leader).lowestOf(StrideCategory.TAMPERING))
-                    .isPresent()
-                    .get()
-                    .extracting(Card::rank)
-                    .isEqualTo(Rank.TWO);
+            final Card led = hands.handOf(leader).lowestOf(StrideCategory.TAMPERING).orElseThrow();
+            assertThat(hands.seats())
+                    .allSatisfy(seat -> hands.handOf(seat)
+                            .lowestOf(StrideCategory.TAMPERING)
+                            .ifPresent(lowest -> assertThat(led.rank().beats(lowest.rank())).isFalse()));
         }
     }
 

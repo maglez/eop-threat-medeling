@@ -158,9 +158,11 @@ class HandTest {
         }
 
         @Test
-        @DisplayName("holds nothing when asked about a null card")
-        void shouldNotHoldNull() {
-            assertThat(aHand().build().holds(null)).isFalse();
+        @DisplayName("refuses a null card rather than answering false, so no rule can be asked a malformed question")
+        void shouldRejectNullCard() {
+            assertThatNullPointerException()
+                    .isThrownBy(() -> aHand().build().holds(null))
+                    .withMessageContaining("card");
         }
 
         @Test
@@ -210,9 +212,25 @@ class HandTest {
         }
 
         @Test
-        @DisplayName("returns nothing for a null suit")
-        void shouldReturnEmptyForNullSuit() {
-            assertThat(aHand().build().lowestOf(null)).isEmpty();
+        @DisplayName("keeps the lower card when the next one it looks at is higher")
+        void shouldKeepTheLowerCardWhenTheNextIsHigher() {
+            final Hand hand = aHand()
+                    .withCards(
+                            card(StrideCategory.TAMPERING, Rank.TWO),
+                            card(StrideCategory.TAMPERING, Rank.NINE))
+                    .build();
+
+            assertThat(hand.lowestOf(StrideCategory.TAMPERING))
+                    .map(Card::rank)
+                    .contains(Rank.TWO);
+        }
+
+        @Test
+        @DisplayName("refuses a null suit rather than answering empty, which would silently lose the opening lead")
+        void shouldRejectNullSuit() {
+            assertThatNullPointerException()
+                    .isThrownBy(() -> aHand().build().lowestOf(null))
+                    .withMessageContaining("suit");
         }
     }
 

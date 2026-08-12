@@ -76,6 +76,19 @@ public final class Trick {
                             + ", not to seat "
                             + this.plays.get(0).seatOrder());
         }
+        int previousOffset = -1;
+        for (final TrickPlay played : this.plays) {
+            final int offset = (played.seatOrder() - leaderSeat + GameSession.MAXIMUM_PLAYERS)
+                    % GameSession.MAXIMUM_PLAYERS;
+            if (offset <= previousOffset) {
+                throw new IllegalArgumentException(
+                        "Plays run clockwise from the leading seat, so seat "
+                                + played.seatOrder()
+                                + " cannot play after a seat that is further round the table from seat "
+                                + leaderSeat);
+            }
+            previousOffset = offset;
+        }
     }
 
     /**
@@ -96,6 +109,16 @@ public final class Trick {
 
     /**
      * Rebuilds a trick from stored state.
+     *
+     * <p><strong>This is not a validating gate for the rules of play, and must not be mistaken for
+     * one.</strong> The constructor invariants it runs are the ones a trick can check on its own: one
+     * play per seat, one play per card, plays running clockwise from the leading seat, a first play
+     * belonging to that seat, and a winner drawn from the plays. It cannot check follow-suit, because
+     * follow-suit is a question about a hand and a trick holds no hands — so a stored row set in which
+     * a player failed to follow suit will rehydrate without complaint and will then resolve a winner.
+     * The place that refuses an illegal play is {@link #acceptPlay(int, TrickPlay, Hands)}, once, on
+     * the way in. Slice B's persistence adapter therefore has to be trusted to store only what
+     * {@code acceptPlay} produced, rather than relying on this method to re-check it.
      *
      * <p>This is the only path used when a client reconnects or refreshes, because the database is the
      * only authority on where a game has got to (ADR-014). The invariants in the constructor run
@@ -284,35 +307,59 @@ public final class Trick {
      * business learning anything about the state of their own hand from the response; then the card is
      * resolved out of the hand and follow-suit is judged on the card as dealt rather than as claimed.
      *
-     * <p>The seat is taken from the candidate play, and the caller is responsible for having derived
-     * that seat from the credential the request presented — never from a player identifier the request
-     * supplied, or a caller could play on another player's behalf simply by naming them. As a second,
-     * independent check on the same question, the hand handed in must belong to the player the play
-     * claims to come from: the hand is fetched server-side by seat, so a mismatch means the seat and
-     * the claimed player disagree, and that is not a request to guess at.
+     * <p>The acting seat is a parameter in its own right, and the caller must derive it from the
+     * credential the request presented. It is deliberately <em>not</em> read out of the candidate play,
+     * and an earlier version of this method that did read it from there was broken. Every player is
+     * told every other player's seat and identifier, because the session state has to publish them for
+     * a client to draw the table, so a play describing someone else needs no guesswork. Trusting the
+     * seat in the payload let a player claim the seat whose turn it was, play out of turn, and then
+     * play a second card from their own hand at their real seat later in the same trick — taking the
+     * trick and locking that seat's real occupant out of it, since a seat already played for cannot
+     * play again. Neither trick invariant catches that: two distinct seats and two distinct cards is
+     * precisely what they allow.
      *
+     * <p>The hand and the seats still holding cards are likewise derived here rather than accepted,
+     * both read out of {@code hands} against the acting seat. A caller that could hand in the hand
+     * would be a caller that could hand in someone else's, and a caller that could hand in the seat
+     * set could hand in a permissive one that made an out-of-turn play look like its turn. Passing
+     * {@link Hands} as an argument rather than holding it is the boundary: a trick is one round, a
+     * hand spans the session, so a trick must be able to ask about hands without owning them.
+     *
+     * <p>What remains caller-supplied on the candidate is the player identifier, and it is checked
+     * against the player the acting seat's hand belongs to rather than believed. That is a second,
+     * independent check on the same question, and a mismatch is a disagreement to refuse rather than
+     * to guess at.
+     *
+     * @param actingSeat the seat of the player making the request, derived from their credential
      * @param candidate the play as the request described it
-     * @param hand the hand held by the seat that is playing, fetched server-side
-     * @param seatsHoldingCards the seats that still hold at least one card
+     * @param hands every hand in the session, from which the acting seat's hand is read
      * @return a new trick with the play appended, carrying the card as it was dealt
+     * @throws NotYourSeatException if the play claims a seat other than the acting seat
      * @throws OutOfTurnException if it is another seat's turn
      * @throws CardNotInHandException if the hand does not hold the card
      * @throws MustFollowSuitException if the hand holds the led suit and the card is of another suit
-     * @throws IllegalArgumentException if the hand belongs to a different player than the play claims
+     * @throws IllegalArgumentException if no hand was dealt to the acting seat, or if that hand
+     *     belongs to a different player than the play claims
      */
-    public Trick acceptPlay(final TrickPlay candidate,
-                            final Hand hand,
-                            final Collection<Integer> seatsHoldingCards) {
+    public Trick acceptPlay(final int actingSeat,
+                            final TrickPlay candidate,
+                            final Hands hands) {
         Objects.requireNonNull(candidate, "candidate is required");
-        Objects.requireNonNull(hand, "hand is required");
+        Objects.requireNonNull(hands, "hands is required");
+
+        if (candidate.seatOrder() != actingSeat) {
+            throw new NotYourSeatException(actingSeat, candidate.seatOrder());
+        }
+
+        final Hand hand = hands.handOf(actingSeat);
 
         if (!hand.playerId().equals(candidate.playerId())) {
             throw new IllegalArgumentException(
-                    "The hand handed in belongs to player " + hand.playerId()
+                    "Seat " + actingSeat + " is held by player " + hand.playerId()
                             + ", but the play claims to come from player " + candidate.playerId());
         }
 
-        assertSeatMayPlay(candidate.seatOrder(), seatsHoldingCards);
+        assertSeatMayPlay(actingSeat, hands.seatsHoldingCards());
         final Card dealt = assertLegalPlay(candidate.card(), hand);
         return play(candidate.withCard(dealt));
     }
@@ -325,7 +372,7 @@ public final class Trick {
      * the player's hand and the seats still holding cards, neither of which a trick knows or should
      * hold — a trick is one round, a hand spans the session. Since this method therefore cannot
      * defend itself, it is not reachable from the use-case or adapter packages at all;
-     * {@link #acceptPlay(TrickPlay, Hand, Collection)} is the way in. What this method does enforce,
+     * {@link #acceptPlay(int, TrickPlay, Hands)} is the way in. What this method does enforce,
      * through the constructor, is the pair of invariants that hold regardless of any hand: one play
      * per seat, and one play per card.
      *
@@ -440,8 +487,8 @@ public final class Trick {
      * @throws IllegalStateException if this trick has not been resolved
      */
     public OptionalInt nextLeaderSeat(final Collection<Integer> seatsHoldingCards) {
-        final int won = winningSeat();
         Objects.requireNonNull(seatsHoldingCards, "seatsHoldingCards is required");
+        final int won = winningSeat();
 
         if (seatsHoldingCards.contains(won)) {
             return OptionalInt.of(won);

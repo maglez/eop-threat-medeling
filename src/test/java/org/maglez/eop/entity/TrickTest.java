@@ -10,7 +10,9 @@ import static org.maglez.eop.entity.HandBuilder.aHand;
 import static org.maglez.eop.entity.TrickBuilder.aTrick;
 import static org.maglez.eop.entity.TrickPlayBuilder.aPlayBy;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -94,6 +96,32 @@ class TrickTest {
                     .withLeaderSeat(0)
                     .withPlays(aPlayBy(1, SPOOFING_FOUR).build())
                     .build());
+        }
+
+        @Test
+        @DisplayName("plays that do not run clockwise from the leading seat, which no legal trick can produce")
+        void shouldRejectPlaysOutOfClockwiseOrder() {
+            assertThatIllegalArgumentException().isThrownBy(() -> aTrick()
+                    .withLeaderSeat(0)
+                    .withPlays(
+                            aPlayBy(0, SPOOFING_KING).build(),
+                            aPlayBy(3, SPOOFING_NINE).build(),
+                            aPlayBy(1, SPOOFING_FOUR).build())
+                    .build())
+                    .withMessageContaining("clockwise");
+        }
+
+        @Test
+        @DisplayName("but accepts a clockwise run that skips a seat, because a seat out of cards is skipped")
+        void shouldAcceptAClockwiseRunThatSkipsASeat() {
+            final Trick trick = aTrick()
+                    .withLeaderSeat(1)
+                    .withPlays(
+                            aPlayBy(1, SPOOFING_KING).build(),
+                            aPlayBy(3, SPOOFING_NINE).build())
+                    .build();
+
+            assertThat(trick.plays()).hasSize(2);
         }
     }
 
@@ -332,6 +360,19 @@ class TrickTest {
 
             assertThatIllegalStateException().isThrownBy(() -> trick.assertSeatMayPlay(0, THREE_SEATS));
         }
+
+        @Test
+        @DisplayName("says the trick was opened on a cardless seat rather than calling it complete, "
+                + "because those are different faults and the message decides where a reader looks")
+        void shouldSayWhenOpenedOnACardlessSeat() {
+            final Trick openedOnAnEmptySeat = Trick.open(TRICK_ID, 20, 3);
+
+            assertThatIllegalStateException()
+                    .isThrownBy(() -> openedOnAnEmptySeat.assertSeatMayPlay(3, THREE_SEATS))
+                    .satisfies(thrown -> assertThat(thrown.getMessage())
+                            .contains("holds no cards")
+                            .doesNotContain("is complete"));
+        }
     }
 
     @Nested
@@ -533,20 +574,57 @@ class TrickTest {
         void shouldRenderNoLedSuitWhileOpen() {
             assertThat(Trick.open(TRICK_ID, 1, 0).toString()).contains("ledSuit=none");
         }
+
+        @Test
+        @DisplayName("says so once the trick has been resolved")
+        void shouldRenderResolved() {
+            final Trick resolved = aTrick()
+                    .withLeaderSeat(0)
+                    .withPlays(aPlayBy(0, SPOOFING_KING).build())
+                    .build()
+                    .resolved();
+
+            assertThat(resolved.toString()).contains("resolved=true");
+        }
     }
 
     @Nested
     @DisplayName("accepts a play only through the one guarded entry point")
     class GuardedEntryPoint {
 
-        private static final UUID SEAT_ONE_PLAYER = new UUID(700, 1);
-
         private Trick spoofingLed() {
             return Trick.open(TRICK_ID, 1, 0).play(aPlayBy(0, SPOOFING_KING).build());
         }
 
-        private Hand seatOneHolding(final Card... cards) {
-            return aHand().withPlayerId(SEAT_ONE_PLAYER).withCards(cards).build();
+        /**
+         * A hand whose identifiers match what {@link TrickPlayBuilder#aPlayBy(int, Card)} derives for the same
+         * seat, so a play and the hand it is checked against agree on who owns them without either test
+         * restating the identifier.
+         */
+        private Hand handFor(final int seat, final Card... cards) {
+            return aHand()
+                    .withHandId(new UUID(800, seat))
+                    .withPlayerId(new UUID(700, seat))
+                    .withCards(cards)
+                    .build();
+        }
+
+        /** Files the given hands at seats zero upwards, which is the only seating a session can produce. */
+        private Hands table(final Hand... hands) {
+            final Map<Integer, Hand> bySeat = new LinkedHashMap<>();
+            for (int seat = 0; seat < hands.length; seat++) {
+                bySeat.put(seat, hands[seat]);
+            }
+            return Hands.reconstitute(bySeat);
+        }
+
+        /** A full table where only seat one's holding varies, since seat one is the seat to play. */
+        private Hands tableWithSeatOneHolding(final Card... cards) {
+            return table(
+                    handFor(0, SPOOFING_NINE),
+                    handFor(1, cards),
+                    handFor(2, DENIAL_KING),
+                    handFor(3, TRUMP_TEN));
         }
 
         private Card relabelled(final Card held, final StrideCategory suit, final Rank rank) {
@@ -560,23 +638,40 @@ class TrickTest {
         @Test
         @DisplayName("accepts a card the player was dealt, played in turn")
         void shouldAcceptALegalPlay() {
-            final Hand hand = seatOneHolding(SPOOFING_FOUR, TAMPERING_TWO);
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR, TAMPERING_TWO);
 
-            final Trick after = spoofingLed()
-                    .acceptPlay(aPlayBy(1, SPOOFING_FOUR).build(), hand, FOUR_SEATS);
+            final Trick after = spoofingLed().acceptPlay(1, aPlayBy(1, SPOOFING_FOUR).build(), hands);
 
             assertThat(after.plays()).hasSize(2);
             assertThat(after.plays().get(1).card()).isEqualTo(SPOOFING_FOUR);
+            assertThat(after.plays().get(1).seatOrder()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("refuses a play that claims a seat other than the one the caller is acting for")
+        void shouldRefuseAClaimedSeat() {
+            final Hands hands = table(
+                    handFor(0, SPOOFING_NINE),
+                    handFor(1, SPOOFING_FOUR),
+                    handFor(2, DENIAL_KING),
+                    handFor(3, TRUMP_TEN));
+
+            assertThatExceptionOfType(NotYourSeatException.class)
+                    .isThrownBy(() -> spoofingLed().acceptPlay(2, aPlayBy(1, SPOOFING_FOUR).build(), hands))
+                    .satisfies(thrown -> {
+                        assertThat(thrown.occupiedSeat()).isEqualTo(2);
+                        assertThat(thrown.claimedSeat()).isEqualTo(1);
+                    });
         }
 
         @Test
         @DisplayName("refuses a card relabelled as the led suit to escape following suit")
         void shouldRefuseAForgedLedSuit() {
-            final Hand hand = seatOneHolding(SPOOFING_FOUR, TAMPERING_TWO);
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR, TAMPERING_TWO);
             final Card forged = relabelled(TAMPERING_TWO, StrideCategory.SPOOFING, Rank.ACE);
 
             assertThatExceptionOfType(MustFollowSuitException.class)
-                    .isThrownBy(() -> spoofingLed().acceptPlay(aPlayBy(1, forged).build(), hand, FOUR_SEATS))
+                    .isThrownBy(() -> spoofingLed().acceptPlay(1, aPlayBy(1, forged).build(), hands))
                     .satisfies(thrown -> {
                         assertThat(thrown.ledSuit()).isEqualTo(StrideCategory.SPOOFING);
                         assertThat(thrown.attemptedSuit()).isEqualTo(StrideCategory.TAMPERING);
@@ -586,10 +681,10 @@ class TrickTest {
         @Test
         @DisplayName("records the card that was dealt, not the card the request described")
         void shouldRecordTheDealtCard() {
-            final Hand hand = seatOneHolding(TAMPERING_TWO);
+            final Hands hands = tableWithSeatOneHolding(TAMPERING_TWO);
             final Card forged = relabelled(TAMPERING_TWO, StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.ACE);
 
-            final Trick after = spoofingLed().acceptPlay(aPlayBy(1, forged).build(), hand, FOUR_SEATS);
+            final Trick after = spoofingLed().acceptPlay(1, aPlayBy(1, forged).build(), hands);
 
             assertThat(after.plays().get(1).card()).isEqualTo(TAMPERING_TWO);
             assertThat(after.plays().get(1).card().isTrump()).isFalse();
@@ -598,11 +693,11 @@ class TrickTest {
         @Test
         @DisplayName("so a relabelled card cannot take a trick it was never able to take")
         void shouldNotLetAForgedCardWin() {
-            final Hand hand = seatOneHolding(TAMPERING_TWO);
+            final Hands hands = table(handFor(0, SPOOFING_NINE), handFor(1, TAMPERING_TWO));
             final Card forged = relabelled(TAMPERING_TWO, StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.ACE);
 
             final Trick resolved = spoofingLed()
-                    .acceptPlay(aPlayBy(1, forged).build(), hand, Set.of(0, 1))
+                    .acceptPlay(1, aPlayBy(1, forged).build(), hands)
                     .resolved();
 
             assertThat(resolved.winningSeat()).isZero();
@@ -610,33 +705,48 @@ class TrickTest {
         }
 
         @Test
-        @DisplayName("refuses a hand that belongs to somebody other than the player making the play")
-        void shouldRefuseAnotherPlayersHand() {
-            final Hand someoneElse = aHand().withPlayerId(new UUID(700, 2)).withCards(SPOOFING_FOUR).build();
+        @DisplayName("refuses a play naming a player other than the one who occupies the seat")
+        void shouldRefuseAnotherPlayersIdentifier() {
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
+            final TrickPlay impersonating = TrickPlayBuilder.aTrickPlay()
+                    .withTrickPlayId(new UUID(900, 9))
+                    .withPlayerId(new UUID(700, 2))
+                    .withSeatOrder(1)
+                    .withCard(SPOOFING_FOUR)
+                    .build();
 
             assertThatIllegalArgumentException()
-                    .isThrownBy(() -> spoofingLed()
-                            .acceptPlay(aPlayBy(1, SPOOFING_FOUR).build(), someoneElse, FOUR_SEATS))
-                    .withMessageContaining("belongs to player");
+                    .isThrownBy(() -> spoofingLed().acceptPlay(1, impersonating, hands))
+                    .withMessageContaining("is held by player");
+        }
+
+        @Test
+        @DisplayName("refuses an acting seat that was never dealt a hand")
+        void shouldRefuseAnUnseatedActingSeat() {
+            final Hands hands = table(handFor(0, SPOOFING_NINE), handFor(1, SPOOFING_FOUR), handFor(2, DENIAL_KING));
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> spoofingLed().acceptPlay(4, aPlayBy(4, TRUMP_TEN).build(), hands))
+                    .withMessageContaining("No hand was dealt to seat 4");
         }
 
         @Test
         @DisplayName("refuses a card the player does not hold")
         void shouldRefuseACardNotHeld() {
-            final Hand hand = seatOneHolding(TAMPERING_TWO);
+            final Hands hands = tableWithSeatOneHolding(TAMPERING_TWO);
 
             assertThatExceptionOfType(CardNotInHandException.class)
-                    .isThrownBy(() -> spoofingLed().acceptPlay(aPlayBy(1, SPOOFING_FOUR).build(), hand, FOUR_SEATS))
+                    .isThrownBy(() -> spoofingLed().acceptPlay(1, aPlayBy(1, SPOOFING_FOUR).build(), hands))
                     .satisfies(thrown -> assertThat(thrown.cardId()).isEqualTo(SPOOFING_FOUR.cardId()));
         }
 
         @Test
         @DisplayName("refuses a play from a seat whose turn it is not")
         void shouldRefuseOutOfTurn() {
-            final Hand hand = aHand().withPlayerId(new UUID(700, 2)).withCards(SPOOFING_FOUR).build();
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
 
             assertThatExceptionOfType(OutOfTurnException.class)
-                    .isThrownBy(() -> spoofingLed().acceptPlay(aPlayBy(2, SPOOFING_FOUR).build(), hand, FOUR_SEATS))
+                    .isThrownBy(() -> spoofingLed().acceptPlay(2, aPlayBy(2, DENIAL_KING).build(), hands))
                     .satisfies(thrown -> {
                         assertThat(thrown.expectedSeat()).isEqualTo(1);
                         assertThat(thrown.attemptedSeat()).isEqualTo(2);
@@ -644,23 +754,37 @@ class TrickTest {
         }
 
         @Test
-        @DisplayName("checks the turn before the hand, so a player out of turn learns nothing about their cards")
-        void shouldCheckTurnBeforeHand() {
-            final Hand emptyish = aHand().withPlayerId(new UUID(700, 2)).withCards(TAMPERING_TWO).build();
+        @DisplayName("works out whose turn it is from the hands, not from anything the caller supplied")
+        void shouldDeriveTheSeatsHoldingCards() {
+            final Hands seatOneOutOfCards = table(
+                    handFor(0, SPOOFING_NINE),
+                    handFor(1),
+                    handFor(2, DENIAL_KING),
+                    handFor(3, TRUMP_TEN));
 
             assertThatExceptionOfType(OutOfTurnException.class)
-                    .isThrownBy(() -> spoofingLed().acceptPlay(aPlayBy(2, SPOOFING_ACE).build(), emptyish, FOUR_SEATS));
+                    .isThrownBy(() -> spoofingLed().acceptPlay(1, aPlayBy(1, SPOOFING_FOUR).build(), seatOneOutOfCards))
+                    .satisfies(thrown -> assertThat(thrown.expectedSeat()).isEqualTo(2));
         }
 
         @Test
-        @DisplayName("refuses a null play or a null hand")
+        @DisplayName("checks the turn before the hand, so a player out of turn learns nothing about their cards")
+        void shouldCheckTurnBeforeHand() {
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
+
+            assertThatExceptionOfType(OutOfTurnException.class)
+                    .isThrownBy(() -> spoofingLed().acceptPlay(2, aPlayBy(2, SPOOFING_ACE).build(), hands));
+        }
+
+        @Test
+        @DisplayName("refuses a null play or a null set of hands")
         void shouldRefuseNulls() {
-            final Hand hand = seatOneHolding(SPOOFING_FOUR);
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
 
             assertThatNullPointerException()
-                    .isThrownBy(() -> spoofingLed().acceptPlay(null, hand, FOUR_SEATS));
+                    .isThrownBy(() -> spoofingLed().acceptPlay(1, null, hands));
             assertThatNullPointerException()
-                    .isThrownBy(() -> spoofingLed().acceptPlay(aPlayBy(1, SPOOFING_FOUR).build(), null, FOUR_SEATS));
+                    .isThrownBy(() -> spoofingLed().acceptPlay(1, aPlayBy(1, SPOOFING_FOUR).build(), null));
         }
     }
 

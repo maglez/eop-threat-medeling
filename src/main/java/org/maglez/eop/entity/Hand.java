@@ -77,9 +77,7 @@ public final class Hand {
      * @return true if the hand holds it
      */
     public boolean holds(final Card card) {
-        if (card == null) {
-            return false;
-        }
+        Objects.requireNonNull(card, "card is required");
         return cards.stream().anyMatch(held -> held.cardId().equals(card.cardId()));
     }
 
@@ -142,9 +140,7 @@ public final class Hand {
      * @return the lowest card of that suit, or empty if the hand holds none
      */
     public Optional<Card> lowestOf(final StrideCategory suit) {
-        if (suit == null) {
-            return Optional.empty();
-        }
+        Objects.requireNonNull(suit, "suit is required");
         return cards.stream()
                 .filter(card -> card.suit() == suit)
                 .reduce((lower, candidate) -> lower.rank().beats(candidate.rank()) ? candidate : lower);

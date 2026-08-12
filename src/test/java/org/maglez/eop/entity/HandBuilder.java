@@ -13,6 +13,13 @@ import java.util.UUID;
  * <p>The default holding is deliberately mixed-suit and small: three cards in
  * three different suits, which is the shape most follow-suit tests need. A test
  * about following suit states the holding it needs and nothing else.
+ *
+ * <p>One of those three defaults is a trump — the seven of Elevation of Privilege —
+ * and that is deliberate rather than an oversight. A hand that cannot follow suit
+ * may play anything including trump, so the default holding has to contain one for
+ * that branch to be reachable without every test restating it. The cost is that a
+ * test which takes the default and then asks who won a trick is asking about a hand
+ * that holds trump, so a test about winning states its own holding.
  */
 public final class HandBuilder {
 
