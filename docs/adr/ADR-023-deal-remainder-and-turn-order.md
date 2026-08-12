@@ -268,6 +268,33 @@ rather than `save(Trick)`) and enforce the invariant with a
 `uq_trick_session_sequence` constraint in changeset `004`. Decide this before the
 changeset is written, not after.
 
+**Neutral — the rest of what Slice B's changeset owes, decided here rather than
+discovered there.** `Trick.reconstitute` is deliberately not a validating gate for
+the rules of play: it re-runs the invariants a trick can check from its plays alone
+— one play per seat, one card per trick, one player across the plays, one identifier
+per play, the first play belonging to the leading seat, plays running clockwise from
+it, and a winner drawn from the plays — and it cannot check follow-suit, because that
+is a question about a hand and a trick holds no hands. Every one of those invariants
+that *can* have a storage counterpart must get one, or the domain's guarantee stops
+at the boundary of whatever the adapter happens to write:
+
+- `hand` unique on `(session_id, seat_order)` — the executable form of the
+  seat-collision guard `Hands.deal` now applies in memory.
+- `trick_play` unique on `(trick_id, seat_order)` and on `(trick_id, card_id)` — the
+  counterparts of one-play-per-seat and one-card-per-trick.
+- `trick_play` unique on `(trick_id, player_id)` — the counterpart of one player
+  across the plays, which is the stored form of the seat-impersonation defect
+  EOP-14 Slice A had to fix twice.
+
+Two obligations have no constraint available and must be met in code instead. The
+clockwise-order invariant cannot be expressed as a constraint at all, so row *order*
+is load-bearing: the adapter must select `trick_play` in a deterministic order rather
+than relying on insertion order. And the text bounds on `TrickPlay` count `char`
+values, not bytes — `MAX_COMPONENT_NAME_LENGTH` of 200 characters is up to 800 UTF-8
+bytes and `MAX_NOTES_LENGTH` of 2000 is up to 8000 — so columns sized from those
+constants in characters will reject rows the domain accepted, and will do it on
+PostgreSQL while passing on H2. Size them in bytes.
+
 **Positive — the *opening*-lead rule is total.** It resolves for every player count
 and every shuffle, with no fallback branch, no unreachable-in-practice code path,
 and nothing that behaves differently at four players than at six. The rule that
@@ -354,7 +381,7 @@ records the input, not the answer.
 - [ADR-020](ADR-020-session-concurrency-control.md) — compare-and-set on a single row is why the leader's seat is stored rather than derived; the `@Version` warning repeated above; and the deadlock-ordering decision it predicted EOP-14 would have to make
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase owns the schema; `current_leader_seat` arrives in changeset `004` before the entities
 - [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `hand`, `trick` and `trick_play` are minted in the use case, not at flush
-- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 ships behind `eop.features.trick-play`, false by default
+- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. That flag does not exist yet: Slice A is pure domain with nothing to gate, so the flag is created in Slice C when dealing is first wired into session start
 - [ADR-005](ADR-005-error-handling-strategy.md) — where an out-of-turn play and a follow-suit violation become RFC 9457 problem details
 - [ADR-014](ADR-014-realtime-transport.md) — events carry no state and reconnection is a re-read, so the stored leader seat is what a reconnecting client sees
 - [PRD §3.3](../requirements/PRD-eop-card-game.md) — dealing, the derived opening lead, and the "time, cards, or ways to connect" end condition that sanctions the short final trick

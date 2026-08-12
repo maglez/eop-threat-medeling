@@ -365,76 +365,6 @@ class HandsTest {
     }
 
     @Nested
-    @DisplayName("passes the lead on clockwise, skipping seats that are out of cards")
-    class NextSeat {
-
-        @Test
-        @DisplayName("the next seat clockwise leads when it still holds a card")
-        void shouldPassToTheNextSeat() {
-            final Hands hands = Hands.reconstitute(at(
-                    handAt(0, card(StrideCategory.TAMPERING, Rank.TWO)),
-                    handAt(1, card(StrideCategory.SPOOFING, Rank.KING)),
-                    handAt(2, card(StrideCategory.REPUDIATION, Rank.FOUR))));
-
-            assertThat(hands.nextSeatAfter(0)).hasValue(1);
-        }
-
-        @Test
-        @DisplayName("wraps round the table from the highest seat")
-        void shouldWrapAroundTheTable() {
-            final Hands hands = Hands.reconstitute(at(
-                    handAt(0, card(StrideCategory.TAMPERING, Rank.TWO)),
-                    handAt(1, card(StrideCategory.SPOOFING, Rank.KING)),
-                    handAt(2, card(StrideCategory.REPUDIATION, Rank.FOUR))));
-
-            assertThat(hands.nextSeatAfter(2)).hasValue(0);
-        }
-
-        @Test
-        @DisplayName("skips an empty hand, because a seat with no cards cannot lead")
-        void shouldSkipAnEmptySeat() {
-            final Card spoofingKing = card(StrideCategory.SPOOFING, Rank.KING);
-            final Hands hands = Hands.reconstitute(at(
-                            handAt(0, card(StrideCategory.TAMPERING, Rank.TWO)),
-                            handAt(1, spoofingKing),
-                            handAt(2, card(StrideCategory.REPUDIATION, Rank.FOUR))))
-                    .withCardPlayed(1, spoofingKing);
-
-            assertThat(hands.nextSeatAfter(0)).hasValue(2);
-        }
-
-        @Test
-        @DisplayName("returns the starting seat when it is the only one left holding cards")
-        void shouldReturnTheStartingSeatWhenItIsTheOnlyOneLeft() {
-            final Card spoofingKing = card(StrideCategory.SPOOFING, Rank.KING);
-            final Card repudiationFour = card(StrideCategory.REPUDIATION, Rank.FOUR);
-            final Hands hands = Hands.reconstitute(at(
-                            handAt(0, card(StrideCategory.TAMPERING, Rank.TWO)),
-                            handAt(1, spoofingKing),
-                            handAt(2, repudiationFour)))
-                    .withCardPlayed(1, spoofingKing)
-                    .withCardPlayed(2, repudiationFour);
-
-            assertThat(hands.nextSeatAfter(0)).hasValue(0);
-        }
-
-        @Test
-        @DisplayName("has no answer once every hand is empty, which is how the game ends")
-        void shouldHaveNoNextSeatWhenEveryHandIsEmpty() {
-            final Card tamperingTwo = card(StrideCategory.TAMPERING, Rank.TWO);
-            final Card spoofingKing = card(StrideCategory.SPOOFING, Rank.KING);
-            final Card repudiationFour = card(StrideCategory.REPUDIATION, Rank.FOUR);
-            final Hands hands = Hands.reconstitute(
-                            at(handAt(0, tamperingTwo), handAt(1, spoofingKing), handAt(2, repudiationFour)))
-                    .withCardPlayed(0, tamperingTwo)
-                    .withCardPlayed(1, spoofingKing)
-                    .withCardPlayed(2, repudiationFour);
-
-            assertThat(hands.nextSeatAfter(0)).isEmpty();
-        }
-    }
-
-    @Nested
     @DisplayName("keeps hands private and exposes no mutable state")
     class Privacy {
 
@@ -529,6 +459,24 @@ class HandsTest {
         void shouldRejectNegativeSeatOrder() {
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> new Hands.Seat(-1, new UUID(700, 0), new UUID(800, 0)));
+        }
+    }
+
+    @Nested
+    @DisplayName("refuses a seating that could not have come from a real session")
+    class SeatCollisions {
+
+        @Test
+        @DisplayName("refuses two seat assignments sharing a seat order, rather than silently dealing one seat two shares")
+        void shouldRejectDuplicateSeatOrders() {
+            final List<Hands.Seat> colliding = List.of(
+                    new Hands.Seat(0, new UUID(700, 0), new UUID(800, 0)),
+                    new Hands.Seat(1, new UUID(700, 1), new UUID(800, 1)),
+                    new Hands.Seat(1, new UUID(700, 2), new UUID(800, 2)));
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> Hands.deal(DeckFixture.fullDeck(), colliding))
+                    .withMessageContaining("share a seat order");
         }
     }
 }

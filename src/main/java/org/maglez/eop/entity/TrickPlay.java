@@ -109,7 +109,7 @@ public record TrickPlay(
         components = components.stream()
                 .map(component -> Objects.requireNonNull(component, "a component name must not be null"))
                 .map(String::strip)
-                .peek(component -> {
+                .map(component -> {
                     if (component.isEmpty()) {
                         throw new IllegalArgumentException("A component name must not be blank");
                     }
@@ -118,6 +118,7 @@ public record TrickPlay(
                                 + MAX_COMPONENT_NAME_LENGTH + " characters, was " + component.length());
                     }
                     rejectUnsafeText(component, "A component name");
+                    return component;
                 })
                 .toList();
         if (notes != null) {

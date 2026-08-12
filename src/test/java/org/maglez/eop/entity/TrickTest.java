@@ -715,9 +715,34 @@ class TrickTest {
                     .withCard(SPOOFING_FOUR)
                     .build();
 
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(PlayerMismatchException.class)
                     .isThrownBy(() -> spoofingLed().acceptPlay(1, impersonating, hands))
-                    .withMessageContaining("is held by player");
+                    .satisfies(thrown -> {
+                        assertThat(thrown.seatOrder()).isEqualTo(1);
+                        assertThat(thrown.occupant()).isEqualTo(new UUID(700, 1));
+                        assertThat(thrown.namedPlayer()).isEqualTo(new UUID(700, 2));
+                    });
+        }
+
+        @Test
+        @DisplayName("refuses a negative acting seat as a broken credential mapping, not as impersonation")
+        void shouldRefuseNegativeActingSeat() {
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> spoofingLed().acceptPlay(-1, aPlayBy(1, SPOOFING_FOUR).build(), hands))
+                    .withMessageContaining("not a seat at this table");
+        }
+
+        @Test
+        @DisplayName("refuses an acting seat beyond the six the game seats")
+        void shouldRefuseActingSeatBeyondTable() {
+            final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> spoofingLed()
+                            .acceptPlay(GameSession.MAXIMUM_PLAYERS, aPlayBy(1, SPOOFING_FOUR).build(), hands))
+                    .withMessageContaining("not a seat at this table");
         }
 
         @Test
@@ -844,6 +869,54 @@ class TrickTest {
             final Trick resolved = wonBy(0, aPlayBy(0, SPOOFING_FOUR).build());
 
             assertThatNullPointerException().isThrownBy(() -> resolved.nextLeaderSeat(null));
+        }
+    }
+
+    @Nested
+    @DisplayName("refuses a stored play list that no legal play could have produced")
+    class StoredInvariants {
+
+        @Test
+        @DisplayName("refuses one player holding two seats, which is the stored form of a seat claimed by impersonation")
+        void shouldRefuseOnePlayerAtTwoSeats() {
+            final TrickPlay first = aPlayBy(0, SPOOFING_KING).build();
+            final TrickPlay second = TrickPlayBuilder.aTrickPlay()
+                    .withTrickPlayId(new UUID(900, 21))
+                    .withPlayerId(first.playerId())
+                    .withSeatOrder(1)
+                    .withCard(SPOOFING_FOUR)
+                    .build();
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrick().withLeaderSeat(0).withPlays(first, second).build())
+                    .withMessageContaining("two seats");
+        }
+
+        @Test
+        @DisplayName("refuses two plays sharing an identifier, which no primary key would have allowed")
+        void shouldRefuseDuplicatePlayIdentifiers() {
+            final TrickPlay first = aPlayBy(0, SPOOFING_KING).build();
+            final TrickPlay second = TrickPlayBuilder.aTrickPlay()
+                    .withTrickPlayId(first.trickPlayId())
+                    .withPlayerId(new UUID(700, 1))
+                    .withSeatOrder(1)
+                    .withCard(SPOOFING_FOUR)
+                    .build();
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> aTrick().withLeaderSeat(0).withPlays(first, second).build())
+                    .withMessageContaining("share an identifier");
+        }
+
+        @Test
+        @DisplayName("still accepts an ordinary trick in which every play differs in seat, player and identifier")
+        void shouldAcceptAWellFormedTrick() {
+            final Trick trick = aTrick()
+                    .withLeaderSeat(0)
+                    .withPlays(aPlayBy(0, SPOOFING_KING).build(), aPlayBy(1, SPOOFING_FOUR).build())
+                    .build();
+
+            assertThat(trick.plays()).hasSize(2);
         }
     }
 }

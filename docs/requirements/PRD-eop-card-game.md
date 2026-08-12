@@ -98,6 +98,14 @@ Repudiation went badly.
 up, reading it aloud, and explaining how the threat applies to the system. A player **must follow
 suit** if they hold a card in the led suit. If they hold none, they may play any suit.
 
+> **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** "One
+> time around the table" holds for every trick but the last. Because the whole deck is dealt and 78
+> cards do not divide equally at four or five players, hands are unequal, so a trick is **one card
+> from each player who still holds cards** — not a fixed count, and not one card per seat. Turn
+> order is therefore *the next seat clockwise that still holds a card*, and the final trick at four
+> and five players is short. The sentence above is the shipped instruction card's wording and is
+> right for a game where every hand empties together; it is not the rule the application implements.
+
 **Linking a threat:** playing a card where a compensating control already exists is still valid —
 it lets the group discuss that control. **Critically: if the player cannot link the threat to the
 system, play still proceeds.** A card may be legally played with no valid threat. It scores
@@ -106,6 +114,15 @@ nothing but does not block the trick.
 **Winning a trick:** the highest card of the led suit wins — **unless one or more Elevation of
 Privilege cards were played, in which case the highest EoP card wins. EoP is the trump suit.**
 Only EoP or the led suit can take a trick. The winner of a trick leads the next trick.
+
+> **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** The
+> winner leads the next trick *only if the winner still holds a card*. Unequal hands at four and
+> five players mean a player can play their last card and win the trick they played it into: at four
+> players seats 2 and 3 hold nineteen cards and seats 0 and 1 hold twenty, so a win by seat 2 or 3 on
+> trick nineteen leaves the winner with nothing to lead. The rule the application implements is
+> therefore **the winner if the winner still holds a card, otherwise the next seat clockwise from the
+> winner that does**; when no seat holds a card the game has ended. Taking the sentence above
+> literally opens a trick on a seat that can never play into it, and the game stops with no error.
 
 **Aces — Open Threat cards:** each Ace reads "You've invented a new [Suit] attack." The player
 must identify a threat not printed on any other card, usually prompting a discussion about whether

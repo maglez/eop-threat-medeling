@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -151,6 +150,11 @@ public final class Hands {
                             + " players, because a player would be dealt no card at all");
         }
 
+        final long distinctSeatOrders = ordered.stream().map(Seat::seatOrder).distinct().count();
+        if (distinctSeatOrders != ordered.size()) {
+            throw new IllegalArgumentException("Two seat assignments cannot share a seat order");
+        }
+
         final Map<Integer, List<Card>> dealt = new TreeMap<>();
         ordered.forEach(seat -> dealt.put(seat.seatOrder(), new ArrayList<>()));
         for (int index = 0; index < orderedDeck.size(); index++) {
@@ -274,27 +278,6 @@ public final class Hands {
             }
         });
         return Collections.unmodifiableSet(holding);
-    }
-
-    /**
-     * The next seat clockwise from the given one that still holds a card.
-     *
-     * <p>The starting seat is considered last, after every other seat has been tried. So if it is the
-     * only seat still holding cards it leads again, which is the right answer rather than a special
-     * case.
-     *
-     * <p>This is the primitive, not the rule. The lead-passing rule — the winner leads next unless the
-     * winner has just played its last card, in which case the lead passes on clockwise — belongs to
-     * {@code Trick.nextLeaderSeat(Collection)}, and both it and {@code Trick.seatToPlay} walk the
-     * circle through the same {@link SeatOrder} helper this method delegates to. One rule, one
-     * implementation: an earlier version of this class carried its own copy of the loop, which is how
-     * two implementations of a rule that is subtly wrong in its naive form end up disagreeing.
-     *
-     * @param seatOrder the seat to start from
-     * @return the next seat clockwise holding at least one card, or empty if no seat holds any
-     */
-    public OptionalInt nextSeatAfter(final int seatOrder) {
-        return SeatOrder.nextClockwise(seatOrder, seatsHoldingCards());
     }
 
     /**

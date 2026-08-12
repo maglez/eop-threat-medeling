@@ -66,6 +66,16 @@ public final class Trick {
         if (distinctCards != this.plays.size()) {
             throw new IllegalArgumentException("The same card cannot be played twice in the same trick");
         }
+        final long distinctPlayers = this.plays.stream().map(TrickPlay::playerId).distinct().count();
+        if (distinctPlayers != this.plays.size()) {
+            throw new IllegalArgumentException("A player cannot hold two seats in the same trick");
+        }
+
+        final long distinctPlayIds = this.plays.stream().map(TrickPlay::trickPlayId).distinct().count();
+        if (distinctPlayIds != this.plays.size()) {
+            throw new IllegalArgumentException("Two plays in the same trick cannot share an identifier");
+        }
+
         if (winner != null && !this.plays.contains(winner)) {
             throw new IllegalArgumentException("The winning play must be one of the plays in the trick");
         }
@@ -113,7 +123,8 @@ public final class Trick {
      * <p><strong>This is not a validating gate for the rules of play, and must not be mistaken for
      * one.</strong> The constructor invariants it runs are the ones a trick can check on its own: one
      * play per seat, one play per card, plays running clockwise from the leading seat, a first play
-     * belonging to that seat, and a winner drawn from the plays. It cannot check follow-suit, because
+     * belonging to that seat, one player across the plays, one identifier per play, and a winner drawn
+     * from the plays. It cannot check follow-suit, because
      * follow-suit is a question about a hand and a trick holds no hands — so a stored row set in which
      * a player failed to follow suit will rehydrate without complaint and will then resolve a winner.
      * The place that refuses an illegal play is {@link #acceptPlay(int, TrickPlay, Hands)}, once, on
@@ -151,8 +162,8 @@ public final class Trick {
     }
 
     /**
-     * Checks that a card may legally be played into this trick from the given hand, and does nothing
-     * if it may.
+     * Checks that a card may legally be played into this trick from the given hand, and returns the
+     * card as it was actually dealt if it may.
      *
      * <p>The whole follow-suit rule lives here, in four branches:
      *
@@ -303,9 +314,12 @@ public final class Trick {
      * play accepted in silence. Two optional checks in front of an unguarded mutator are not defence
      * in depth, so the guard now owns the sequence and {@link #play(TrickPlay)} is package-private.
      *
-     * <p>The order is deliberate: turn order first, because a player who is not to play has no
-     * business learning anything about the state of their own hand from the response; then the card is
-     * resolved out of the hand and follow-suit is judged on the card as dealt rather than as claimed.
+     * <p>The order is deliberate. The seat is settled first — is it a seat at all, does the play claim
+     * it, and does the player named occupy it — because those three questions are answered entirely
+     * from facts the requester already has, so a refusal tells them nothing they did not send. Turn
+     * order comes next, before the card is looked at, because a player who is not to play has no
+     * business learning anything about the state of their own hand from the response. Only then is the
+     * card resolved out of the hand and follow-suit judged on the card as dealt rather than as claimed.
      *
      * <p>The acting seat is a parameter in its own right, and the caller must derive it from the
      * credential the request presented. It is deliberately <em>not</em> read out of the candidate play,
@@ -347,6 +361,11 @@ public final class Trick {
         Objects.requireNonNull(candidate, "candidate is required");
         Objects.requireNonNull(hands, "hands is required");
 
+        if (actingSeat < 0 || actingSeat >= GameSession.MAXIMUM_PLAYERS) {
+            throw new IllegalArgumentException("Seat " + actingSeat
+                    + " is not a seat at this table, which seats at most " + GameSession.MAXIMUM_PLAYERS);
+        }
+
         if (candidate.seatOrder() != actingSeat) {
             throw new NotYourSeatException(actingSeat, candidate.seatOrder());
         }
@@ -354,9 +373,7 @@ public final class Trick {
         final Hand hand = hands.handOf(actingSeat);
 
         if (!hand.playerId().equals(candidate.playerId())) {
-            throw new IllegalArgumentException(
-                    "Seat " + actingSeat + " is held by player " + hand.playerId()
-                            + ", but the play claims to come from player " + candidate.playerId());
+            throw new PlayerMismatchException(actingSeat, hand.playerId(), candidate.playerId());
         }
 
         assertSeatMayPlay(actingSeat, hands.seatsHoldingCards());

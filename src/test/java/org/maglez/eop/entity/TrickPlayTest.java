@@ -349,4 +349,25 @@ class TrickPlayTest {
             assertThat(play.toString()).contains("SPOOFING K");
         }
     }
+
+    @Nested
+    @DisplayName("bounds the bidirectional refusal to the characters that actually reorder text")
+    class BidiBoundaries {
+
+        @Test
+        @DisplayName("accepts the character just above the isolate range, so the upper bound is a bound and not an open end")
+        void shouldAcceptJustAboveTheIsolateRange() {
+            final TrickPlay play = aTrickPlay().withComponents(List.of("gateway\u206a")).build();
+
+            assertThat(play.components()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("accepts the character just below the embedding range")
+        void shouldAcceptJustBelowTheEmbeddingRange() {
+            final TrickPlay play = aTrickPlay().withComponents(List.of("gateway\u2029")).build();
+
+            assertThat(play.components()).hasSize(1);
+        }
+    }
 }

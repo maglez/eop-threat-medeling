@@ -372,4 +372,32 @@ class HandTest {
                     .isThrownBy(() -> aHand().build().resolve(null));
         }
     }
+
+    @Nested
+    @DisplayName("finds the lowest card of a suit whichever way round the comparison falls")
+    class LowestIsOrderIndependent {
+
+        @Test
+        @DisplayName("keeps the running lowest when the next card is higher")
+        void shouldKeepTheRunningLowest() {
+            final Hand hand = aHand()
+                    .withCards(DeckFixture.card(StrideCategory.TAMPERING, Rank.TWO),
+                            DeckFixture.card(StrideCategory.TAMPERING, Rank.NINE))
+                    .build();
+
+            assertThat(hand.lowestOf(StrideCategory.TAMPERING)).map(Card::rank).contains(Rank.TWO);
+        }
+
+        @Test
+        @DisplayName("takes the next card when it is lower than the running lowest, so the answer does not depend on order")
+        void shouldTakeTheLowerCandidate() {
+            final Hand hand = aHand()
+                    .withCards(DeckFixture.card(StrideCategory.TAMPERING, Rank.NINE),
+                            DeckFixture.card(StrideCategory.TAMPERING, Rank.THREE),
+                            DeckFixture.card(StrideCategory.TAMPERING, Rank.KING))
+                    .build();
+
+            assertThat(hand.lowestOf(StrideCategory.TAMPERING)).map(Card::rank).contains(Rank.THREE);
+        }
+    }
 }
