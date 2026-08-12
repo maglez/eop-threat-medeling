@@ -42,8 +42,14 @@ from pathlib import Path
 
 DB_PATH = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
 
-# Tools that change the working tree. An agent declaring `edit: deny` that
-# shows up here is a permission failure, not a style question.
+# Tools that change the working tree. An agent declaring `edit: deny` that shows
+# up here has violated its contract; whether it also defeated the permission
+# layer depends on which tool it used, because `edit` is the only write-class
+# key any agent actually declares. That last point is inferred from the
+# declarations in `.opencode/agents/*.md`, not confirmed against the OpenCode
+# runtime — the runtime may withhold the whole write class from an `edit: deny`
+# agent, in which case there is no gap. Erring toward the wider check is the
+# safe direction. See READ_ONLY_AGENTS below for why it is deliberate.
 AUTHORING_TOOLS = {"edit", "write", "patch", "multiedit", "notebookedit"}
 
 # Built-in agents. They are not team members and should not be judged
@@ -63,7 +69,8 @@ BUILTIN_AGENTS = {
 # Definition-of-Done gates and nothing else: performance-engineer is advisory and
 # carries no Sign-off Contract, so dispatching it as a gate is unsupported.
 # architecture-guardian appears in both stages by design — it authors ADRs during
-# build and gates the PR — so it is not double-counted in error.
+# build and gates the PR. The roster is right, but the arithmetic below cannot
+# tell those two dispatches apart, so see MULTI_STAGE_AGENTS.
 PIPELINE = {
     "0 requirements": ["product-owner"],
     "1 build": [
@@ -79,6 +86,19 @@ PIPELINE = {
         "code-reviewer",
         "architecture-guardian",
     ],
+}
+
+# Agents the pipeline expects in more than one stage. Derived from PIPELINE
+# rather than hand-listed, so it cannot drift out of step with the rosters above.
+# These are the agents whose mere presence in a trace is not evidence that any
+# particular stage was served, because the trace records no stage attribution.
+# Under the rosters above this resolves to `architecture-guardian` alone, so the
+# plural wording downstream is currently unreachable; it is kept so a second
+# multi-stage agent does not silently produce a grammatically wrong finding.
+MULTI_STAGE_AGENTS = {
+    agent
+    for agent in {name for stage in PIPELINE.values() for name in stage}
+    if sum(agent in stage for stage in PIPELINE.values()) > 1
 }
 
 # Agents whose job is to judge someone else's work. If one of these ran on the
@@ -99,15 +119,24 @@ AUDITOR_AGENTS = {
 }
 
 # A *strictly* read-only agent: one whose definition declares `permission.edit:
-# deny`, so any edit it makes is a permission failure. This is deliberately NOT
-# the same set as AUDITOR_AGENTS. Gate membership means "this verdict must be
-# independent of the author — family-independent where the invariant holds, at
-# worst model-independent in its two documented exceptions (Blueprint §3.1)";
+# deny`. An edit by one of these is a contract violation, and where the tool
+# used was `edit` it is a permission failure too — but AUTHORING_TOOLS also
+# counts `write`, `patch`, `multiedit` and `notebookedit`, none of which any gate
+# frontmatter denies, so this check is deliberately broader than what the
+# permission layer actually prevents. It fails safe in the right direction:
+# detection over prevention, not detection standing in for prevention.
+#
+# This is deliberately NOT the same set as AUDITOR_AGENTS. Gate membership means
+# "this verdict must be independent of the author — family-independent where the
+# invariant holds, and in its two documented exceptions the strongest guarantee
+# still available, which is model-independence at best and neither degree where
+# the gate and the author resolve to one model ID (Blueprint §3.1)";
 # read-only membership means "this agent must never write". Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and
-# `/trace` documents a read-only RISK as an urgent configuration defect.
+# `/trace` documents a read-only RISK as a Sign-off Contract breach worth
+# fixing immediately.
 #
 # Scope: the DoD gates that declare `permission.edit: deny`, and only those. The
 # four advisory experts declare it too but are not gates and never carry a
@@ -375,13 +404,52 @@ def conformance(trace: dict) -> list[str]:
     for stage, expected in PIPELINE.items():
         present = [agent for agent in expected if agent in ran]
         missing = [agent for agent in expected if agent not in ran]
+        # `ran` carries no stage attribution: the trace records that an agent was
+        # dispatched, never which pipeline stage the dispatch served. So an agent
+        # listed in two stages is credited to both on the strength of a single
+        # dispatch, and this stage's evidence is not proof it ran *here*. Say so
+        # rather than printing an unqualified OK over evidence that cannot bear
+        # it — @architecture-guardian authors ADRs at stage 1 and gates the PR at
+        # stage 2, so one build-time dispatch would otherwise report stage 2
+        # complete while that gate never reviewed the work at all.
+        ambiguous = [agent for agent in present if agent in MULTI_STAGE_AGENTS]
+        caveat = (
+            f" (unattributable: {', '.join(ambiguous)}"
+            f" also {'belongs' if len(ambiguous) == 1 else 'belong'} to another"
+            " stage, so this may be one dispatch counted twice)"
+            if ambiguous
+            else ""
+        )
+        # Two ways a stage can have no evidence worth the name. Nobody ran, or
+        # everyone who ran is unattributable — and the second must be as loud as
+        # the first. If every agent credited to this stage also belongs to
+        # another one, the trace contains nothing that places any dispatch here,
+        # so reporting PART would let the worst case (a build-time ADR dispatch
+        # standing in for five gate reviews that never happened) hide behind a
+        # severity readers are told not to act on. MISS is the honest severity;
+        # the message says which agent was seen so the reader is not misled into
+        # thinking the trace was empty.
         if not present:
             findings.append(f"MISS  stage {stage}: none of {', '.join(expected)} ran")
+        elif present == ambiguous:
+            unattributable = (
+                f"MISS  stage {stage}: no attributable evidence — only"
+                f" {', '.join(present)} ran, and"
+                f" {'that dispatch may' if len(present) == 1 else 'those dispatches may'}"
+                f" belong to another stage"
+            )
+            findings.append(
+                f"{unattributable}; absent {', '.join(missing)}"
+                if missing
+                else unattributable
+            )
         elif missing:
             findings.append(
                 f"PART  stage {stage}: ran {', '.join(present)};"
-                f" absent {', '.join(missing)}"
+                f" absent {', '.join(missing)}{caveat}"
             )
+        elif ambiguous:
+            findings.append(f"PART  stage {stage}: ran {', '.join(present)}{caveat}")
         else:
             findings.append(f"OK    stage {stage}: {', '.join(present)}")
 
@@ -411,9 +479,11 @@ def conformance(trace: dict) -> list[str]:
                 f" ({', '.join(culprits)}) - same model, so this is self-review"
             )
 
-    # An agent whose definition denies `edit` but which edited files is a
-    # permission failure. Only the strictly read-only gates are checked here;
-    # see READ_ONLY_AGENTS for why this is not AUDITOR_AGENTS.
+    # An agent whose definition denies `edit` but which edited files has broken
+    # its Sign-off Contract. Whether it also defeated the permission layer
+    # depends on which tool it used — see AUTHORING_TOOLS. Only the strictly
+    # read-only gates are checked here; see READ_ONLY_AGENTS for why this is
+    # not AUDITOR_AGENTS.
     for node in trace["nodes"]:
         if node["agent"] in READ_ONLY_AGENTS and node["authoring"] > 0:
             findings.append(

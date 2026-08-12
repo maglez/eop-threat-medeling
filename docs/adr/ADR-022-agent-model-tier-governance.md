@@ -11,7 +11,8 @@ each pinned to one of five abstract model tiers (`MODEL_A`–`MODEL_E`) resolved
 environment by `.opencode/opencode.json`. The tiering exists to serve one architectural
 constraint, stated in the Blueprint as the **Separation Invariant**: an artefact must not be
 reviewed by the same model *family* that produced it, because a model asked to find fault with
-its own output reliably finds none.
+its own output reliably finds none. Blueprint §12.8 carries the full rationale, including the
+completion auditor's own shortfall against it.
 
 Throughout this ADR, **"independent" is never used unqualified**, because the word covers two
 degrees of protection that the current pins deliver very differently. The definitions are

@@ -71,7 +71,7 @@ When you are dispatched to audit or sign off on work, you are a one-shot gate: y
 - Never end with a question or an offer of further work — nobody is listening for the reply.
 - If something is genuinely undecidable, `REJECT` and state precisely what is missing.
 - Never recommend merging a red build. A non-green `./mvnw verify` is a CRITICAL finding however sound the change looks.
-- An approval attaches to a specific tree. If the working tree changes under you, or you cannot establish what you are looking at, `REJECT` and say so rather than approving a state you could not verify.
+- An approval attaches to a specific tree. Establish which commit you are looking at before you judge it, and re-check at the end. If the working tree changes under you, or you cannot establish what you are looking at, `REJECT` and say so rather than approving a state you could not verify.
 
 ## Read-only While Auditing
 While auditing, you share one working tree with the agent whose work you are judging, and that work is usually uncommitted. An auditor that mutates the tree can destroy work held nowhere else.

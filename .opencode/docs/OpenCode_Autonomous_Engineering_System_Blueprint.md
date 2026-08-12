@@ -133,7 +133,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @devops-engineer | Terraform, CDK & CI/CD | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
 | @architecture-guardian | C4 Models, Domain Boundaries & ADRs | `{env:MODEL_A}` | Anthropic | Audit | 0.2 |
 | @db-designer | Schemas, DDL Migrations & Queries | `{env:MODEL_C}` | OpenAI | Author | 0.1 |
-| @ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_C}` | OpenAI | Author | 0.3 |
+| @ui-builder | Frontend & WCAG 2.2 AA Standards | `{env:MODEL_E}` | Google | Author | 0.3 |
 | @tester-unit-and-quality | Unit Tests, Coverage & Mutation Testing | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
 | @tester-api | API Contract & Payload Verification | `{env:MODEL_B}` | Anthropic | Audit | 0.1 |
 | @security-auditor (Audit) | Cybersecurity Audit & OWASP Top 10 | `{env:MODEL_A}` | Anthropic | Audit | 0.0 |
@@ -358,8 +358,9 @@ MODEL_E=opencode/gemini-3.1-pro
 |---|---|
 | `MODEL_A` (best) | Main model, @tech-lead, @architecture-guardian, @security-auditor, @expert-alex-xu, @expert-uncle-bod |
 | `MODEL_B` (mid) | @code-reviewer, @tester-api, @tester-unit-and-quality, @expert-kent-beck, @expert-dave-farley, @product-owner |
-| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer, @ui-builder |
+| `MODEL_C` (coder) | @devops-engineer, @db-designer, @performance-engineer |
 | `MODEL_D` (small) | `small_model` — titles and summaries |
+| `MODEL_E` (front end) | @ui-builder — on Bedrock this is the same model ID as `MODEL_C`; the separate variable exists so the front end can be repointed without disturbing the back end |
 
 > **Migration note:** Previously each agent referenced a hardcoded model ID (e.g. `opencode/claude-sonnet-4-6`) in its `model:` frontmatter. These were replaced with `{env:MODEL_B}` etc. in a single batch update — no per-agent changes are needed to switch providers going forward.
 

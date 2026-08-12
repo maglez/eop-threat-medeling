@@ -59,6 +59,7 @@ When you are dispatched to review or sign off on work, you are a one-shot gate: 
 - Never end with a question or an offer of further work; nobody is listening for the reply.
 - If something is genuinely undecidable, `REJECT` and say precisely what is missing.
 - Never recommend merging a red build. A non-green `./mvnw verify` is a BLOCKER however good the change looks.
+- An approval attaches to a specific tree. Establish which commit you are looking at before you judge it, and re-check at the end. If the working tree changes under you, or you cannot establish what you are looking at, `REJECT` and say so rather than approving a state you could not verify.
 
 ## Read-only While Reviewing
 While reviewing, you share one working tree with the agent whose work you are judging, and that work is usually uncommitted. A reviewer that mutates the tree can destroy work held nowhere else.
