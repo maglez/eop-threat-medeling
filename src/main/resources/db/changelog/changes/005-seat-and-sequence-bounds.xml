@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  EOP-14 Slice C: Range CHECK constraints for seat and sequence columns
+  
+  Implements the range bounds from ADR-023 lines 1180-1206 that were deliberately
+  deferred from changeset 004. All three constraints must land together in one
+  changeset because they close related security gaps measured by @security-auditor:
+  
+  1. player.seat_order = -7 was accepted (should be 0..5)
+  2. trick.sequence = -5 was accepted (should be >= 1)  
+  3. game_session.current_leader_seat = 9999 was accepted (should be 0..5 or NULL)
+  
+  The seat_order bound on player is inherited by hand and trick_play through their
+  composite foreign keys to player (id, seat_order), so only one CHECK is needed
+  for three tables. See ADR-023 line 1192.
+  
+  All types here must be valid on both engines, because the test suite runs on
+  H2 and production runs on PostgreSQL 17.
+  
+  Changesets are immutable once merged. Later stories add files.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001-add-player-seat-order-check" author="eop">
+    <comment>
+      Add CHECK constraint to ensure player.seat_order is within the valid range 0..5.
+      This bound is derived from GameSession.MAXIMUM_PLAYERS = 6, so valid seats are
+      0 through 5 inclusive. This single CHECK fixes the seat range on hand and
+      trick_play too, because fk_hand_player_seat and fk_trick_play_player_seat bind
+      those columns to player (id, seat_order) and therefore inherit whatever player
+      permits. See ADR-023 line 1192.
+    </comment>
+
+    <!-- Raw <sql> is mandatory here, not a stylistic choice: addCheckConstraint
+         is a Liquibase Pro change type and is absent from the OSS core this
+         project depends on. Verified against the resolved artifact
+         liquibase-core-5.0.3.jar, which contains AddUniqueConstraintChange but
+         zero classes matching "checkconstraint". Rewriting this as
+         <addCheckConstraint> fails the build at changelog parse time. The
+         ALTER TABLE ... ADD CONSTRAINT ... CHECK form below is standard SQL and
+         portable to both H2 (tests) and PostgreSQL 17 (production). -->
+    <sql>
+      ALTER TABLE player
+      ADD CONSTRAINT chk_player_seat_order
+      CHECK (seat_order BETWEEN 0 AND 5)
+    </sql>
+
+    <rollback>
+      <sql>
+        ALTER TABLE player
+        DROP CONSTRAINT chk_player_seat_order
+      </sql>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="002-add-trick-sequence-check" author="eop">
+    <comment>
+      Add CHECK constraint to ensure trick.sequence is 1-based as documented in
+      changeset 004. No upper bound is derivable: at three players a session has
+      26 tricks, but no domain constant bounds it.
+    </comment>
+
+    <!-- Raw <sql> is mandatory here, not a stylistic choice: addCheckConstraint
+         is a Liquibase Pro change type and is absent from the OSS core this
+         project depends on. The ALTER TABLE ... ADD CONSTRAINT ... CHECK form
+         below is standard SQL and portable to both H2 (tests) and PostgreSQL 17
+         (production). -->
+    <sql>
+      ALTER TABLE trick
+      ADD CONSTRAINT chk_trick_sequence
+      CHECK (sequence >= 1)
+    </sql>
+
+    <rollback>
+      <sql>
+        ALTER TABLE trick
+        DROP CONSTRAINT chk_trick_sequence
+      </sql>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="003-add-game-session-current-leader-seat-check" author="eop">
+    <comment>
+      Add CHECK constraint to ensure game_session.current_leader_seat is within
+      the valid range 0..5, or NULL. The column was added in changeset 004 and is
+      nullable because it is unset in LOBBY and written at deal completion.
+    </comment>
+
+    <!-- Raw <sql> is mandatory here, not a stylistic choice: addCheckConstraint
+         is a Liquibase Pro change type and is absent from the OSS core this
+         project depends on. The ALTER TABLE ... ADD CONSTRAINT ... CHECK form
+         below is standard SQL and portable to both H2 (tests) and PostgreSQL 17
+         (production). -->
+    <sql>
+      ALTER TABLE game_session
+      ADD CONSTRAINT chk_game_session_current_leader_seat
+      CHECK (current_leader_seat IS NULL OR current_leader_seat BETWEEN 0 AND 5)
+    </sql>
+
+    <rollback>
+      <sql>
+        ALTER TABLE game_session
+        DROP CONSTRAINT chk_game_session_current_leader_seat
+      </sql>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>
