@@ -284,9 +284,16 @@
     <!-- No standalone index on game_session_id: it is the leading column of
          uq_trick_session_sequence above. ADR-023 rules the duplicate out. -->
 
-    <!-- winner_play_id is a foreign key, and PostgreSQL does not index one
-         automatically. Same reason as the FK index above, not a query pattern:
-         the winner is read off a trick already loaded by id, never searched for. -->
+    <!-- winner_play_id leads no key on this table, so nothing already covers it
+         and ADR-023's prefix rule does not reach it. It is not here for a query
+         pattern either: the winner is read off a trick already loaded by id and
+         is never searched for. It is here because fk_trick_winner_play in
+         changeset 007 is ON DELETE SET NULL, and the engine has to find the
+         referencing trick rows when a winning play is deleted. PostgreSQL does
+         not index a foreign key column automatically, so without this the check
+         is a table scan. This is a different justification from idx_hand_player
+         and idx_trick_play_player, which support a CASCADE rather than a
+         SET NULL; all three are non-redundant, but not for the same reason. -->
     <createIndex tableName="trick" indexName="idx_trick_winner_play">
       <column name="winner_play_id"/>
     </createIndex>
@@ -456,7 +463,7 @@
       needs a collation decision (Caf&#233; vs Cafe) that holds identically in a Java
       comparator and on both engines, a worse coupling than an INT.
 
-      PRIMARY KEY (trick_play_id, ordinal) + CHECK (ordinal BETWEEN 0 AND 19)
+      PRIMARY KEY (trick_play_id, ordinal) + CHECK (ordinal &gt;= 0 AND ordinal &lt;= 19)
       together enforce the 20-element cap (TrickPlay.MAX_COMPONENTS = 20) with no
       trigger, by pigeonhole. This is the storage counterpart of the domain
       constructor check, not a duplicate of it: the domain stops bad input, the
