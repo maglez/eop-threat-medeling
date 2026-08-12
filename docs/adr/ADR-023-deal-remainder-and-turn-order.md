@@ -937,6 +937,51 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
      decorative. (This 404 is @architecture-guardian's; @tester-api named 403 for the
      forged-seat family and left non-membership open.)
 
+     > **Corrected 2026-08-12 — parity means the body, not only the status.** As first written
+     > this bullet required only that the status match, and grounded itself in "the status is
+     > itself the disclosure". That is a status-only reading, and an author could satisfy it
+     > literally — return 404, title it `"Player not in session"` — and rebuild the very oracle
+     > the 404 was chosen to remove. It is the failure mode this same amendment was written to
+     > fix, one level down: an obligation that names a check but not its answer gets discharged
+     > as a check that returns 500, and an obligation that names a status but not a body gets
+     > discharged as a 404 that is a serviceable oracle. Found by @security-auditor against an
+     > obligation @architecture-guardian wrote; the four requirements below are binding, not
+     > advisory.
+     >
+     > 1. **Body parity.** The `PlayerNotInSessionException` 404 must be identical in `status`,
+     >    `title` **and** `detail` to what a non-existent session produces — title exactly
+     >    `"Session not found"`, detail exactly `"No session found with identifier " + sessionId`,
+     >    matching `GlobalExceptionHandler.handleSessionNotFound` and `SessionNotFoundException`.
+     >    No field may name the player, the seat, membership or authorisation, and no field may
+     >    vary with *why* the lookup failed. The exception must therefore carry the session id
+     >    and nothing else that reaches the response; the only part of the body that varies is
+     >    the id the caller itself supplied.
+     > 2. **Copy the pattern that already exists, and copy the right one.** The shape to follow
+     >    is `handleUnknownJoinCode` (`GlobalExceptionHandler.java:121-127`): fixed strings, the
+     >    exception's own message deliberately unused, and its reasoning at `:100-116` —
+     >    including the `instance` analysis, which applies here for the same reason. Do not mint
+     >    a fresh title. Note the one deliberate difference: that handler blanks the identifier
+     >    because a join code is roughly thirty bits, whereas echoing a session id back is safe
+     >    by its own argument since the caller supplied it, which is what makes exact parity
+     >    with the candid 404 achievable rather than forcing a blanked detail.
+     > 3. **Scope the counter-argument, because it is an argument and not a silence.**
+     >    `GlobalExceptionHandler.java:85-87` and `SessionNotFoundException.java:8-11` both argue
+     >    candour from the same 122-bit premise, and both are correct **in their own scope** — a
+     >    direct lookup of an id the caller supplied tells the caller only what it already had.
+     >    They do **not** govern the membership answer, where the question is whether a
+     >    *different* session exists. The premise the 404 actually rests on is ids that are
+     >    *obtained* — leaked, shared, recycled — rather than guessed, where 404-versus-403 is
+     >    exactly the separation between "names a live session" and "names nothing" that a holder
+     >    of bulk ids is fishing for. Slice C owes a one-line cross-reference in that Javadoc;
+     >    it is deliberately not added here, because `src/main/java` is unchanged since
+     >    `cebd2fb` and editing it would detach the green build from the reviewed tree.
+     > 4. **The test must be able to fail.** The handler unit test `error-handling.md` already
+     >    mandates must assert **equality of the two `ProblemDetail` bodies** — a non-member
+     >    request against a live session, and a request against an unknown session — not merely
+     >    that both are 404. A status-only assertion cannot fail on the single non-compliance
+     >    this bullet exists to prevent, which is the same argument obligation 2 makes about
+     >    asserting the status rather than that something was thrown.
+
    **Ordering, not merely presence — found by @tester-api.** The membership check must run
    *before* any response that could reveal the victim session's state, and in particular before
    the insert whose constraint violation obligation 4 answers with a 409. If Slice C attempts
