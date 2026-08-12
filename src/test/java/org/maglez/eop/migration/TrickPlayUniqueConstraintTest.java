@@ -42,7 +42,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       it is what would still forbid one player occupying two seats in a trick if the seat binding
  *       ({@code fk_trick_play_player_seat}, changeset 009) were ever relaxed.  It is not pinned by
  *       an independent enforcement test because, with the seat binding in place, every construction
- *       that would violate it also violates the FK.  On H2 2.4.240 the unique constraint is the one
+ *       that would violate it also violates one of two other constraints — and it is worth being
+ *       precise about which, because the obvious answer is wrong.  A player holds exactly one seat
+ *       ({@code player.id} is the primary key), so two plays by one player in one trick either name
+ *       that same seat, in which case {@code uq_trick_play_trick_seat} is what fires, or name a
+ *       different seat the player does not hold, in which case {@code fk_trick_play_player_seat}
+ *       fires.  It is not the FK in both cases.  On H2 2.4.240 the unique constraint is the one
  *       reported — measured, not assumed.  Which one PostgreSQL 17 reports has not been measured
  *       here, and it is not safe to assume it agrees: the engines are free to check in either order,
  *       which is the whole reason asserting either constraint name would be a portability trap.  See
@@ -89,6 +94,16 @@ class TrickPlayUniqueConstraintTest {
      * the class assertion and the SQL-state assertion are reliable on H2.
      */
     private static final String SQL_STATE_UNIQUE_VIOLATION = "23505";
+
+    /**
+     * SQL state for a referential-integrity (foreign-key) violation.
+     *
+     * <p>Measured on H2 2.4.240, which throws
+     * {@code org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException} with
+     * {@code getSQLState() == "23506"} for a violated foreign key — a different state from
+     * {@link #SQL_STATE_UNIQUE_VIOLATION}, which is what makes the two distinguishable.
+     */
+    private static final String SQL_STATE_FK_VIOLATION = "23506";
 
     private Connection connection;
     private Liquibase liquibase;
@@ -336,7 +351,11 @@ class TrickPlayUniqueConstraintTest {
      * it is what would still forbid one player occupying two seats in a trick if the seat
      * binding ({@code fk_trick_play_player_seat}) were ever relaxed.  It is not pinned by
      * an enforcement test here because, with the seat binding in place, every construction
-     * that would violate it also violates the FK, and the FK fires first on PostgreSQL.
+     * that would violate it also violates either {@code uq_trick_play_trick_seat} (the same
+     * player naming its own seat twice in one trick) or {@code fk_trick_play_player_seat} (the
+     * same player naming a seat it does not hold).  It is not the FK in both cases: a player
+     * holds exactly one seat, so the double-tap at that seat satisfies the FK and collides on
+     * the seat unique instead.
      * If {@code fk_trick_play_player_seat} were ever dropped, this test would need to be
      * rewritten to assert {@code 23505} and name {@code uq_trick_play_trick_player}.
      *
@@ -395,12 +414,12 @@ class TrickPlayUniqueConstraintTest {
                 MigrationTestFixtures.insertTrickPlay(connection, trickId2, cardId2, 1, playerId))
                 .as("a play at seat 1 by a player who holds seat 0 must be rejected "
                         + "by fk_trick_play_player_seat (SQL state 23506, constraint name in message)")
-                .isInstanceOf(SQLException.class)
+                .isInstanceOf(SQLIntegrityConstraintViolationException.class)
                 .satisfies(e -> {
                     final SQLException sqle = (SQLException) e;
                     assertThat(sqle.getSQLState())
                             .as("SQL state must be 23506 (FK violation)")
-                            .isEqualTo("23506");
+                            .isEqualTo(SQL_STATE_FK_VIOLATION);
                     // The constraint name is deterministic here because fk_trick_play_player_seat
                     // is the only constraint the insert can violate (see Javadoc).
                     // H2 2.4.240 includes the constraint name verbatim in the exception message.
