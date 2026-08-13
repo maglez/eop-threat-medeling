@@ -57,13 +57,22 @@ import org.springframework.transaction.annotation.Transactional;
  * boundary, for the reason above. The second is translating a constraint violation
  * into a domain exception: Spring Data types and JPA entities stop at this class, and
  * what continues inwards is a domain exception the web layer already knows how to
- * answer. One deliberate exception to that, which an earlier version of this paragraph
- * denied by saying {@link DataIntegrityViolationException} stops here too: a violation
- * whose constraint name is not recognised is <em>rethrown as it is</em>, so that a
- * constraint added later fails loudly as a 500 rather than being answered as whichever
- * domain exception happened to be tested first. That is argued where it happens, on
- * {@code backstopFired}. So the rule is that every violation this class has been taught
- * to name is translated, and no other.
+ * answer. {@link DataIntegrityViolationException} is the exception to that, which an
+ * earlier version of this paragraph wrongly denied by saying it stops here too.
+ *
+ * <p>The translation is three-way, not two-way, and the two-way version of this
+ * sentence was wrong in both of its previous forms. Five of the seven constraint names
+ * this class knows are translated into a domain exception. Two — {@code
+ * fk_hand_player_seat} and {@code fk_trick_play_player_seat}, both marked {@code
+ * Backstop only} where they are declared — are recognised by name and deliberately
+ * <em>not</em> translated: they go to {@code backstopFired}, which logs the name at
+ * {@code WARN} and hands the violation back to be rethrown as a 500, because
+ * {@code assertSeated} passed on the same facts moments earlier and a caller who did
+ * nothing wrong should not be told they did. Anything whose name this class does not
+ * know is rethrown unlogged, so a constraint added later fails loudly rather than being
+ * answered as whichever domain exception happened to be tested first — that is argued on
+ * {@code mentions}, where it happens, and not on {@code backstopFired}, which an earlier
+ * version of this paragraph cited instead.
  *
  * <p>Every write begins with a conditional update on {@code game_session}. That is
  * two things at once. It is the compare-and-set that ADR-020 makes the concurrency
