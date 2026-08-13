@@ -409,10 +409,17 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * <p>Raised as a server fault rather than as a refusal aimed at the caller. An
      * out-of-range seat in one of our columns is our corruption, not their request.
      *
+     * <p>Package private rather than private so that a test can reach it. That is not
+     * a convenience: {@code chk_game_session_current_leader_seat} refuses the very row
+     * this guard exists to survive, so an integration test cannot manufacture one and
+     * the refusal is only observable by calling the function. Testing it through the
+     * adapter would mean dropping the constraint, which would leave the suite proving
+     * the guard against a schema the application never runs on.
+     *
      * @param seatOrder the seat the column holds
      * @return that seat
      */
-    private static OptionalInt seatRead(final int seatOrder) {
+    static OptionalInt seatRead(final int seatOrder) {
         if (seatOrder < 0 || seatOrder >= GameSession.MAXIMUM_PLAYERS) {
             throw new IllegalStateException(
                     "Leader seat " + seatOrder + " is outside the seats a session has");
@@ -435,11 +442,15 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * outcome, and the caller is then told which seat actually leads. Only seats that
      * reach a column are checked here.
      *
+     * <p>Package private for the same reason as {@link #seatRead(int)}: the negative
+     * seat limb is unreachable through the adapter, because every caller of this in
+     * production hands it a seat a domain object already bounded.
+     *
      * @param seatOrder the seat about to be written
      * @param name      the parameter it arrived as
      * @return that seat
      */
-    private static int seatToWrite(final int seatOrder, final String name) {
+    static int seatToWrite(final int seatOrder, final String name) {
         if (seatOrder < 0 || seatOrder >= GameSession.MAXIMUM_PLAYERS) {
             throw new IllegalArgumentException(
                     name + " " + seatOrder + " is outside the seats a session has");
