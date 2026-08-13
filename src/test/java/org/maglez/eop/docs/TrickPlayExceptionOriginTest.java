@@ -46,7 +46,7 @@ import org.junit.jupiter.api.Test;
  * cannot see it. A construction moved into a helper called <em>from</em> a translation would be
  * classified wrongly.
  *
- * <p>No account here of which assertion a given mutation trips, and no tally of anything. Earlier
+ * <p>No account here of which assertion a given mutation trips, and no tally of attack shapes or assertion counts. Earlier
  * versions of this comment gave both, and each was left behind by the next change to the code it
  * described. The assertion messages are the record: they cannot go stale, because they are what
  * fires.
@@ -130,7 +130,7 @@ class TrickPlayExceptionOriginTest {
      * prose invents, a name the prose deletes, and a name that moves between groups. A duplicated
      * heading, and a rewording that leaves no block matching, are caught by {@link #namedInBlock}'s
      * requirement of exactly one match. No total is given here on purpose — a count of attack shapes is one more
-     * number to get wrong, and this slice has spent nine rounds proving that.
+     * number to get wrong.
      */
     @Test
     @DisplayName("maps each origin to the mechanism that raises it, group by group")
@@ -205,10 +205,8 @@ class TrickPlayExceptionOriginTest {
      * method even if it was <em>also</em> constructed at a rows-affected position. Cutting regions
      * rather than names is what makes the two groups independently derived.
      *
-     * <p>Deliberately no account here of which assertion a given mutation trips. The previous
-     * version of this comment gave one, described a disjointness check as live, and was left behind
-     * when that check was deleted one commit later — the eighth instance in this slice of a comment
-     * outliving the mechanism it described. The assertion messages are the record of what fails and
+     * <p>Deliberately no account here of which assertion a given mutation trips.
+     * The assertion messages are the record of what fails and
      * where; they cannot go stale, because they are the thing that fires.
      */
     private static Set<String> rowCountOrigins(final String adapter) {
@@ -252,10 +250,10 @@ class TrickPlayExceptionOriginTest {
         return kept;
     }
 
-    /** Prefix of the block that enumerates the rows-affected group. Load-bearing. */
+    /** Invariant half of the lead-in of the block enumerating the rows-affected group. */
     private static final String ROWS_BLOCK = "are raised from a rows-affected count of zero";
 
-    /** Prefix of the block that enumerates the read group. Load-bearing. */
+    /** Invariant half of the lead-in of the block enumerating the read group. */
     private static final String READ_BLOCK = "are raised from a read this adapter makes itself";
 
     /**
@@ -283,8 +281,8 @@ class TrickPlayExceptionOriginTest {
         }
         assertThat(blocks)
                 .as(
-                        "exactly one block must begin '%s'. Zero means the heading was reworded and "
-                                + "this check would go vacuous; more than one means the paragraph was "
+                        "exactly one block's lead-in must contain '%s'. Zero means the heading was "
+                                + "reworded and this check would go vacuous; more than one means it was "
                                 + "duplicated, which has happened once already in this slice",
                         prefix)
                 .isEqualTo(1);
