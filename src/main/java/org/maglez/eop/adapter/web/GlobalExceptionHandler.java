@@ -19,6 +19,7 @@ import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.TooFewPlayersException;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
+import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
@@ -440,6 +441,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Trick already open");
         problem.setDetail("Trick " + exception.sequence() + " is already open in this session.");
+        return problem;
+    }
+
+    /**
+     * This trick already has a winner recorded.
+     *
+     * <p>A 409 rather than a 500. The path is a replayed resolution: recording a
+     * resolution advances the session's leader seat and then stamps the winner, and
+     * when the seat that led the trick also won it the leader-seat update is
+     * idempotent, so a repeat gets past it and the winner update is the first
+     * statement to notice the work is done. Nothing is corrupt and nothing was
+     * written twice, so billing the caller for a server fault was wrong; a security
+     * review of EOP-14 Slice C1 found the adapter doing exactly that.
+     *
+     * <p>The detail names the trick and not the winner. A caller resolving a trick
+     * supplied the trick identifier itself, so naming it discloses nothing, whereas
+     * the seat that won is the answer to the question the caller was asking and is
+     * for the read model to give once, not for a refusal to leak.
+     *
+     * @param exception the refusal, carrying the trick
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(TrickAlreadyResolvedException.class)
+    public ProblemDetail handleTrickAlreadyResolved(final TrickAlreadyResolvedException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Trick already resolved");
+        problem.setDetail("Trick " + exception.trickId() + " already has a winner.");
         return problem;
     }
 

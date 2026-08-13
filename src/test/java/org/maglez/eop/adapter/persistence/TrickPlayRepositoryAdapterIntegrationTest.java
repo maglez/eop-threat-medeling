@@ -33,6 +33,7 @@ import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
+import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickPlay;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -755,6 +756,59 @@ class TrickPlayRepositoryAdapterIntegrationTest {
                                             leader,
                                             nextLeader,
                                             RESOLVED_AT));
+        }
+
+        /**
+         * The case {@link #refusesASecondResolution()} cannot reach, and the reason this
+         * test exists. That test is only refused by the compare-and-set because its
+         * fixture happens to produce a winner who is not the leader, so the second call
+         * witnesses a leader seat that has already moved. When the seat that led the
+         * trick also wins it the lead does not move: {@code advanceLeaderSeat} sets the
+         * column to the very value it compared against, the statement is idempotent, and
+         * a replay sails through the guard and returns one row. The winner update is then
+         * the first statement to notice, and it matches nothing because
+         * {@code winner_play_id} is no longer null.
+         *
+         * <p>A security review found that limb mapped to {@link IllegalStateException},
+         * which meant an ordinary replay of a perfectly ordinary hand answered 500, ten
+         * lines below a class comment promising that a zero row count is never rethrown
+         * as a server fault. It now answers {@link TrickAlreadyResolvedException}, and so
+         * 409.
+         *
+         * <p>Passing {@code leader} as the next leader is not a contrivance to reach the
+         * branch. It is what the rule produces whenever the leader wins their own trick
+         * and still holds a card, which is the common case rather than the exotic one.
+         *
+         * <p>The test cannot pass vacuously. If the guard were removed the second call
+         * would succeed and no exception would be thrown; if the old mapping were
+         * restored the thrown type would be Spring's
+         * {@link org.springframework.dao.InvalidDataAccessApiUsageException} rather than
+         * this one, because {@link IllegalStateException} is translated on the way out of
+         * a {@code @Repository}. Both mutations fail here.
+         */
+        @Test
+        @DisplayName(
+                "refuses a replay with a conflict, not a fault, when its leader won it")
+        void refusesAReplayWhenTheLeaderWonTheirOwnTrick() {
+            final Table table = dealtTable();
+            final Trick resolved = table.playAndResolveFirstTrick();
+            final int leader = table.leaderSeat();
+
+            adapter.recordResolution(table.sessionId(), resolved, leader, leader, RESOLVED_AT);
+            assertThat(adapter.findCurrentLeaderSeat(table.sessionId()))
+                    .as("the lead stays put, which is what makes the guard idempotent")
+                    .hasValue(leader);
+
+            assertThatExceptionOfType(TrickAlreadyResolvedException.class)
+                    .isThrownBy(
+                            () ->
+                                    adapter.recordResolution(
+                                            table.sessionId(),
+                                            resolved,
+                                            leader,
+                                            leader,
+                                            RESOLVED_AT))
+                    .withMessageContaining(resolved.trickId().toString());
         }
 
         /**

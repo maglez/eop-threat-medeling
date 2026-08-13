@@ -30,6 +30,7 @@ import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.TooFewPlayersException;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
+import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
@@ -418,6 +419,42 @@ class GlobalExceptionHandlerTest {
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
             assertThat(problem.getTitle()).isEqualTo("Trick already open");
             assertThat(problem.getDetail()).contains("3");
+        }
+
+        /**
+         * A security review found this case answering 500. The winner update is guarded by
+         * {@code winner_play_id IS NULL}, and when the seat that led a trick also wins it
+         * the leader-seat compare-and-set above becomes idempotent, so a replayed
+         * resolution gets past the guard that is supposed to stop it and this statement is
+         * the first to notice. That is a conflict the caller can understand and not a
+         * fault of ours, so it is a 409.
+         */
+        @Test
+        @DisplayName("a replayed resolution is a 409 naming the trick and never the winning seat")
+        void shouldMapTrickAlreadyResolvedToConflictWithoutTheWinningSeat() {
+            final ProblemDetail problem =
+                    handler.handleTrickAlreadyResolved(new TrickAlreadyResolvedException(TRICK_ID));
+
+            assertThat(problem.getStatus())
+                    .as("a replay is a conflict, not the 500 this used to answer")
+                    .isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Trick already resolved");
+            assertThat(problem.getDetail()).contains(TRICK_ID.toString());
+        }
+
+        @Test
+        @DisplayName("the two conflicts on a trick's lifecycle are told apart, open from resolved")
+        void shouldNotCollapseTheOpenConflictIntoTheResolvedConflict() {
+            final ProblemDetail openConflict =
+                    handler.handleTrickAlreadyOpen(new TrickAlreadyOpenException(SESSION_ID, 3));
+            final ProblemDetail resolvedConflict =
+                    handler.handleTrickAlreadyResolved(new TrickAlreadyResolvedException(TRICK_ID));
+
+            assertThat(openConflict.getStatus()).isEqualTo(resolvedConflict.getStatus());
+            assertThat(openConflict.getTitle())
+                    .as("one refuses opening a trick that exists, the other resolving one that is done")
+                    .isNotEqualTo(resolvedConflict.getTitle());
+            assertThat(openConflict.getDetail()).isNotEqualTo(resolvedConflict.getDetail());
         }
 
         @Test

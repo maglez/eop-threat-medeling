@@ -31,6 +31,7 @@ import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
+import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickPlay;
 import org.maglez.eop.usecase.HandRepository;
 import org.maglez.eop.usecase.TrickRepository;
@@ -86,9 +87,13 @@ import org.springframework.transaction.annotation.Transactional;
  * tell the two apart.
  *
  * <p>Zero rows changed is never treated as success and never rethrown as a server
- * fault. It means the world moved underneath the request, and {@link
- * #sessionMoved(UUID, Integer)} spends one extra read on the already-failing path to
- * say which way it moved.
+ * fault. It means the world moved underneath the request. For the four session
+ * compare-and-sets {@link #sessionMoved(UUID, Integer)} spends one extra read on the
+ * already-failing path to say which way it moved; for the winner update in {@link
+ * #recordResolution} no read is needed, because the only thing zero can mean there is
+ * that the trick is already resolved, and {@link TrickAlreadyResolvedException} says
+ * so. That last case was an {@code IllegalStateException}, and so a 500, until a
+ * security review of this slice noticed it contradicted this paragraph.
  */
 @Repository
 public class TrickPlayRepositoryAdapter implements HandRepository, TrickRepository {
@@ -356,9 +361,14 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
             throw sessionMoved(sessionId, expectedLeaderSeat);
         }
 
+        // Zero here is a conflict and not a fault. When the seat that led the trick also won
+        // it, advanceLeaderSeat above sets the column to the value it compared against, so it
+        // is idempotent and a replayed request gets past it. This statement is then the first
+        // one to notice the resolution already happened. Mapping that to IllegalStateException
+        // billed an ordinary replay as a 500 and contradicted this class's own comment.
         final int recorded = trickRows.recordWinner(resolved.trickId(), winner.trickPlayId());
         if (recorded == 0) {
-            throw new IllegalStateException("Trick " + resolved.trickId() + " has a winner already, or no longer exists");
+            throw new TrickAlreadyResolvedException(resolved.trickId());
         }
     }
 
