@@ -123,9 +123,15 @@ class TrickPlayExceptionOriginTest {
      * The assertion every previous version should have made: each block's names equal <em>its own</em>
      * derived group.
      *
-     * <p>This one test replaces four — a whole-set equality, a union, a disjointness check and a pair
-     * of size assertions — and is strictly stronger than all of them together, which is the tell that
-     * the earlier ones were the wrong shape. A review gate diagnosed it exactly: the paragraph asserts
+     * <p>What it does not cover, disclosed here because nothing else discloses it and an earlier
+     * version of this comment asserted the opposite. A type constructed <em>both</em> inside
+     * {@code assertSeated} and at a rows-affected position belongs to both derived groups, and if the
+     * prose lists it in both blocks then both equalities hold and nothing fires — no assertion
+     * anywhere sums the two heading numbers against {@link #EXPECTED_ORIGIN_COUNT}. A review gate
+     * proved that green. The deleted disjointness check caught that shape; per-group equality does
+     * not, so this is a real narrowing and not a strict improvement.
+     *
+     * <p>A review gate diagnosed the shape of the problem exactly: the paragraph asserts
      * a <em>mapping</em> from name to mechanism, and every check built for it verified
      * <em>aggregates</em> of that mapping. Aggregates over a mapping leave every permutation green by
      * construction, however many you add, which is why strengthening the total, then the padding
@@ -417,9 +423,9 @@ class TrickPlayExceptionOriginTest {
      * mismatch it is.
      */
     private static String headlineOf(final String block) {
-        final String trimmed = block.trim();
-        final int stop = trimmed.indexOf(":**");
-        return stop < 0 ? trimmed : trimmed.substring(0, stop);
+        final String firstLine = block.trim().split("\\n", 2)[0];
+        final int stop = firstLine.indexOf(":**");
+        return stop < 0 ? firstLine : firstLine.substring(0, stop);
     }
 
     /** The paragraph the count lives in, anchored on text rather than a line number. */
