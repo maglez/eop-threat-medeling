@@ -123,13 +123,13 @@ class TrickPlayExceptionOriginTest {
      * The assertion every previous version should have made: each block's names equal <em>its own</em>
      * derived group.
      *
-     * <p>What it does not cover, disclosed here because nothing else discloses it and an earlier
-     * version of this comment asserted the opposite. A type constructed <em>both</em> inside
-     * {@code assertSeated} and at a rows-affected position belongs to both derived groups, and if the
-     * prose lists it in both blocks then both equalities hold and nothing fires — no assertion
-     * anywhere sums the two heading numbers against {@link #EXPECTED_ORIGIN_COUNT}. A review gate
-     * proved that green. The deleted disjointness check caught that shape; per-group equality does
-     * not, so this is a real narrowing and not a strict improvement.
+     * <p>The disjointness of the two groups is asserted separately. Per-group equality alone does
+     * not imply it: a type constructed both inside {@code assertSeated} and at a rows-affected
+     * position belongs to both derived groups, and if the prose lists it in both blocks then both
+     * equalities hold and the headings sum to more than the derived total with nothing firing. A
+     * review gate proved that green after the aggregate assertions were deleted, so the disjointness
+     * check is reinstated rather than the gap disclosed — it was doing real work, and it is three
+     * lines.
      *
      * <p>A review gate diagnosed the shape of the problem exactly: the paragraph asserts
      * a <em>mapping</em> from name to mechanism, and every check built for it verified
@@ -144,9 +144,9 @@ class TrickPlayExceptionOriginTest {
      * guard built to stop it recurring could not see it recurring.
      *
      * <p>Per-group equality catches an origin the adapter gains and the prose omits, a name the
-     * prose invents, a name the prose deletes, and a name that moves between groups. It does not
-     * catch a reworded or duplicated heading; {@link #namedInBlock} does that, by requiring exactly
-     * one matching block. No total is given here on purpose — a count of attack shapes is one more
+     * prose invents, a name the prose deletes, and a name that moves between groups. A duplicated
+     * heading, and a rewording that leaves no block matching, are caught by {@link #namedInBlock}'s
+     * requirement of exactly one match. No total is given here on purpose — a count of attack shapes is one more
      * number to get wrong, and this slice has spent nine rounds proving that.
      */
     @Test
@@ -168,6 +168,15 @@ class TrickPlayExceptionOriginTest {
                                 + "Moving a name between the two blocks was green until this "
                                 + "assertion existed")
                 .isEqualTo(seatReadOrigins(adapter));
+
+        assertThat(rowCountOrigins(adapter))
+                .as(
+                        "the two groups must be disjoint. A type constructed both inside "
+                                + "assertSeated and at a rows-affected position belongs to both, and "
+                                + "both per-group equalities then hold while the headings sum to more "
+                                + "than the derived total. A review gate proved that green, which is "
+                                + "why this assertion is back rather than the gap being disclosed")
+                .doesNotContainAnyElementsOf(seatReadOrigins(adapter));
 
         assertThat(paragraph)
                 .as("the rows-affected heading must state its own group's size")
@@ -414,18 +423,27 @@ class TrickPlayExceptionOriginTest {
     }
 
     /**
-     * The bolded lead-in of a block, which is where a group block declares what it is.
+     * The bolded lead-in of a block — the run between the opening {@code **} and its closing
+     * {@code **} — or the block's first line when it has no bolded lead-in.
      *
-     * <p>Matching a group block on this rather than on a prefix containing the number word is
-     * deliberate. The prefixes used to read {@code "**Seven are raised from"}, so a legitimate change
-     * in a group's size made the block unfindable and reported as a reworded heading — fail-safe, but
-     * with the wrong diagnosis. Matching the invariant half means a size change now fails as the size
-     * mismatch it is.
+     * <p>Matching a group block on its lead-in rather than on its whole text is what stops a phrase
+     * matching inside some other block's body. An earlier version cut at {@code ":**"}, which occurs
+     * nowhere in this document — the headings end {@code ",**"} — so it never cut anything and
+     * matching was block-wide. A review gate proved that live: rewording the rows heading while
+     * planting its phrase in the read block's body made {@code namedInBlock} match the wrong block
+     * with {@code blocks == 1}, so the vacuity guard stayed silent and the failure arrived as a
+     * confusing equality mismatch instead.
+     *
+     * <p>Matching on the invariant half of the lead-in, rather than on one containing the number
+     * word, is what makes a wrong heading number fail as the size mismatch it is.
      */
     private static String headlineOf(final String block) {
-        final String firstLine = block.trim().split("\\n", 2)[0];
-        final int stop = firstLine.indexOf(":**");
-        return stop < 0 ? firstLine : firstLine.substring(0, stop);
+        final String trimmed = block.trim();
+        if (!trimmed.startsWith("**")) {
+            return trimmed.split("\\n", 2)[0];
+        }
+        final int close = trimmed.indexOf("**", 2);
+        return close < 0 ? trimmed.split("\\n", 2)[0] : trimmed.substring(2, close);
     }
 
     /** The paragraph the count lives in, anchored on text rather than a line number. */
