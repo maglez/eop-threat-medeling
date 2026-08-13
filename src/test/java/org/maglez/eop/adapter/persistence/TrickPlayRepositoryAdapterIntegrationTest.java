@@ -313,6 +313,55 @@ class TrickPlayRepositoryAdapterIntegrationTest {
         }
 
         @Test
+        @DisplayName("is refused when a seat is out of range before any row is written")
+        void refusesAnOpeningLeaderSeatOutOfRange() {
+            final Table table = startedTable();
+
+            assertThatExceptionOfType(DataAccessException.class)
+                    .as("the CHECK would catch it, but only as an opaque violation "
+                            + "several frames from the call that supplied the seat")
+                    .isThrownBy(
+                            () ->
+                                    adapter.recordDeal(
+                                            table.sessionId(), table.hands(), 9, DEALT_AT))
+                    .withMessageContaining("openingLeaderSeat 9")
+                    .isNotInstanceOf(IllegalArgumentException.class);
+
+            assertThat(adapter.findCurrentLeaderSeat(table.sessionId()))
+                    .as("refused at the boundary means refused before the claim")
+                    .isEmpty();
+            assertThat(adapter.findBySessionId(table.sessionId())).isEmpty();
+        }
+
+        @Test
+        @DisplayName("is refused on the way back out when one card sits in two hands")
+        void refusesReadingACardThatSitsInTwoHands() {
+            final Table table = dealtTable();
+            final Card contested = table.cardHeldAt(0, 0);
+
+            // The one Hands invariant with no constraint behind it: pk_hand_card stops a
+            // card appearing twice in one hand and uq_trick_play_trick_card stops it
+            // being played twice into one trick, but nothing stops it being dealt to two
+            // hands of a session. Its enforcement is entirely in the domain, and this is
+            // the only test that walks that enforcement through the adapter's read.
+            jdbc.update(
+                    "INSERT INTO hand_card (hand_id, card_id) VALUES (?, ?)",
+                    table.hands().handOf(1).handId(),
+                    contested.cardId());
+
+            // Not an IllegalArgumentException by the time it leaves, and that matters
+            // more than the type it started as. Hands.reconstitute raises one, but this
+            // adapter is a @Repository, so Spring rewrites it to
+            // InvalidDataAccessApiUsageException on the way out — which reaches the
+            // catch-all 500 rather than the handler that answers 400. A corrupt row is
+            // our fault, and a 400 would bill the caller for it.
+            assertThatExceptionOfType(DataAccessException.class)
+                    .isThrownBy(() -> adapter.findBySessionId(table.sessionId()))
+                    .withMessageContaining("The same card cannot be dealt to two seats")
+                    .isNotInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
         @DisplayName("writes nothing when a seated player is dealt somebody else's seat")
         void refusesADealAtTheWrongSeat() {
             final Table table = startedTable();

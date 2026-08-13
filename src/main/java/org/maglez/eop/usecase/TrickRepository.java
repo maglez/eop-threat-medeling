@@ -42,6 +42,16 @@ import org.maglez.eop.entity.TrickPlay;
  * admit a card gone from a hand with no play recorded, or a play recorded for a card the
  * player still holds, and a single transaction spanning two port calls would put
  * {@code org.springframework.transaction} into this package.
+ *
+ * <p><strong>Authorising the requester is the caller's obligation, not this port's.</strong>
+ * Nothing here takes an acting player, so no implementation can check one. {@code
+ * appendPlay} is the single exception and only partly: the play it is handed names a
+ * player and a seat, and the implementation asserts those agree with the session's
+ * seating — a check on the play, not on the requester. {@code openTrick} and {@code
+ * recordResolution} carry no player at all, so for them there is no check to make here
+ * and the use case is the only place one can happen. {@code expectedLeaderSeat} is a
+ * turn-order witness and must never be read from a request body; it is not a substitute
+ * for membership, since a stranger who guesses it correctly still passes it.
  */
 public interface TrickRepository {
 

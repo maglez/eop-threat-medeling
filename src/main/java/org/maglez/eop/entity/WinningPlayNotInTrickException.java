@@ -27,6 +27,16 @@ import java.util.UUID;
  * is repeated. The request is well-formed and its content is wrong, which is what 422
  * means.
  *
+ * <p>Nothing throws this yet. The trick-play error vocabulary was shipped as one piece,
+ * ahead of the use cases that raise it, and {@code ResolveTrickUseCase} is the intended
+ * and only thrower. Recorded here so that a reader does not mistake a declared exception
+ * and a mapped status for a guard that is already running.
+ *
+ * <p>The storage adapter's own detection of a corrupt {@code winner_play_id} is
+ * deliberately <em>not</em> this exception. That case is a column of ours holding a play
+ * from another trick, which is our corruption and answered as a server fault; raising a
+ * 422 for it would blame the caller for a request that was well-formed and honest.
+ *
  * <p>A plain Java exception with no Spring imports, per ADR-005.
  */
 public class WinningPlayNotInTrickException extends RuntimeException {

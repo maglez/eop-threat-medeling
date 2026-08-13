@@ -38,6 +38,15 @@ import org.maglez.eop.entity.SessionNotJoinableException;
  * rather than applied. No method returns a row count: how many rows a conditional
  * statement changed is the storage layer's private protocol, and a port that leaked it
  * would oblige every caller to know what zero means.
+ *
+ * <p><strong>Authorising the requester is the caller's obligation, not this port's.</strong>
+ * Nothing here takes an acting player, so no implementation can check one, and the read
+ * cannot check one even in principle. {@code recordDeal} does assert that each player a
+ * dealt hand names is seated at the seat that hand claims, but that is a check on the
+ * rows being written, not on whoever asked for them to be written. Establish that the
+ * requester belongs in the session before calling either method: the refusals below
+ * distinguish a session that does not exist from one that exists, from one already dealt,
+ * and those are the right answers to give a member and an oracle to give a stranger.
  */
 public interface HandRepository {
 

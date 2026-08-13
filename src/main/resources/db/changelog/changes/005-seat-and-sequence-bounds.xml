@@ -26,6 +26,22 @@
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
   <changeSet id="001-add-player-seat-order-check" author="eop">
+    <!-- ADD CONSTRAINT ... CHECK validates the rows already in the table, on both H2
+         and PostgreSQL. That is the behaviour we want — coercing or skipping a bad row
+         would be worse than refusing to deploy — but on its own it means a database
+         holding one of the values the comment below says were previously accepted fails
+         this changeset with an engine-level constraint error that names neither the
+         offending row nor the reason. The precondition turns that into a diagnosable
+         halt: it fails before the ALTER runs and says what to go and look for. It is
+         deliberately HALT and not MARK_RAN or CONTINUE, both of which would leave the
+         column unbounded while recording the migration as done. -->
+    <preConditions onFail="HALT"
+                   onFailMessage="player holds seat_order values outside 0..5, which this changeset is about to forbid. Find them with: SELECT id, game_session_id, seat_order FROM player WHERE seat_order NOT BETWEEN 0 AND 5. Correct or remove those rows, then deploy again.">
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM player WHERE seat_order NOT BETWEEN 0 AND 5
+      </sqlCheck>
+    </preConditions>
+
     <comment>
       Add CHECK constraint to ensure player.seat_order is within the valid range 0..5.
       This bound is derived from GameSession.MAXIMUM_PLAYERS = 6, so valid seats are
@@ -58,6 +74,15 @@
   </changeSet>
 
   <changeSet id="002-add-trick-sequence-check" author="eop">
+    <!-- Same reasoning as changeset 001: fail before the ALTER, and say what to look
+         for, rather than after it with an engine error that names neither. -->
+    <preConditions onFail="HALT"
+                   onFailMessage="trick holds sequence values below 1, which this changeset is about to forbid. Find them with: SELECT id, game_session_id, sequence FROM trick WHERE sequence &lt; 1. Correct or remove those rows, then deploy again.">
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM trick WHERE sequence &lt; 1
+      </sqlCheck>
+    </preConditions>
+
     <comment>
       Add CHECK constraint to ensure trick.sequence is 1-based as documented in
       changeset 004. No upper bound is derivable: at three players a session has
@@ -84,6 +109,17 @@
   </changeSet>
 
   <changeSet id="003-add-game-session-current-leader-seat-check" author="eop">
+    <!-- Same reasoning as changeset 001. NULL is legal here and means "not yet dealt",
+         so the precondition has to exempt it exactly as the CHECK below does. -->
+    <preConditions onFail="HALT"
+                   onFailMessage="game_session holds current_leader_seat values outside 0..5, which this changeset is about to forbid. Find them with: SELECT id, status, current_leader_seat FROM game_session WHERE current_leader_seat IS NOT NULL AND current_leader_seat NOT BETWEEN 0 AND 5. Correct or remove those rows, then deploy again.">
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM game_session
+        WHERE current_leader_seat IS NOT NULL
+        AND current_leader_seat NOT BETWEEN 0 AND 5
+      </sqlCheck>
+    </preConditions>
+
     <comment>
       Add CHECK constraint to ensure game_session.current_leader_seat is within
       the valid range 0..5, or NULL. The column was added in changeset 004 and is

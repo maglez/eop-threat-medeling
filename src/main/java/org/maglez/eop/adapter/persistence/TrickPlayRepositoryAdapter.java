@@ -58,13 +58,31 @@ import org.springframework.transaction.annotation.Transactional;
  * inwards is a domain exception the web layer already knows how to answer.
  *
  * <p>Every write begins with a conditional update on {@code game_session}. That is
- * three things at once. It is the compare-and-set that ADR-020 makes the concurrency
+ * two things at once. It is the compare-and-set that ADR-020 makes the concurrency
  * protocol, so a request carrying a stale view of the leader seat changes no rows and
- * is refused rather than applied. It takes the row lock on the session before any
+ * is refused rather than applied. And it takes the row lock on the session before any
  * hand or trick row is touched, which is the lock order ADR-023 fixes and therefore
- * what makes two simultaneous requests serialise rather than deadlock. And because
- * that statement runs first, a caller who has no business in this session is refused
- * before any row that would confirm the session exists is read or written.
+ * what makes two simultaneous requests serialise rather than deadlock.
+ *
+ * <p>It is emphatically <em>not</em> an authorisation check, and this class does not
+ * perform one on the caller's behalf. None of the conditional statements takes a
+ * player identifier, so none of them can refuse a caller on the grounds of who they
+ * are; they refuse on the grounds of what the session's state is. Two of the four
+ * writes, {@link #recordDeal} and {@link #appendPlay}, additionally assert that the
+ * player a row names is seated at the seat that row claims — but that is a check on
+ * the <em>row</em>, not on the requester, and it is the only membership check in the
+ * class. {@link #openTrick} and {@link #recordResolution} make none. Neither do any
+ * of the three reads, and there they are not merely absent but impossible: the ports
+ * carry no acting-player parameter for a read to check against.
+ *
+ * <p>Establishing that the requester belongs in this session is therefore the use
+ * case's obligation, and it has to be discharged before any method on either port is
+ * called. Undischarged, the failure paths are an oracle: a caller who has done no
+ * more than guess a session identifier learns from {@link #sessionMoved(UUID,
+ * Integer)} that the session exists, what status it is in, whether hands have been
+ * dealt, and which seat currently leads. Every one of those is the right answer to
+ * give a member and the wrong answer to give a stranger, and only the layer above can
+ * tell the two apart.
  *
  * <p>Zero rows changed is never treated as success and never rethrown as a server
  * fault. It means the world moved underneath the request, and {@link
@@ -190,7 +208,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
         return sessionRows
                 .findById(sessionId)
                 .map(GameSessionJpaEntity::getCurrentLeaderSeat)
-                .map(OptionalInt::of)
+                .map(TrickPlayRepositoryAdapter::seatRead)
                 .orElseGet(OptionalInt::empty);
     }
 
@@ -202,7 +220,8 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
         Objects.requireNonNull(hands, "hands is required");
         Objects.requireNonNull(occurredAt, OCCURRED_AT_REQUIRED);
 
-        final int claimed = sessionRows.claimDeal(sessionId, openingLeaderSeat, PLAYABLE, at(occurredAt));
+        final int claimed = sessionRows.claimDeal(
+                sessionId, seatToWrite(openingLeaderSeat, "openingLeaderSeat"), PLAYABLE, at(occurredAt));
         if (claimed == 0) {
             throw sessionMoved(sessionId, null);
         }
@@ -223,7 +242,12 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
             final List<HandCardJpaEntity> held = hand.cards().stream()
                     .map(card -> HandCardJpaEntity.of(hand.handId(), card.cardId()))
                     .toList();
-            handCardRows.saveAllAndFlush(held);
+            try {
+                handCardRows.saveAllAndFlush(held);
+            }
+            catch (final DataIntegrityViolationException collision) {
+                throw dealFailure(sessionId, collision);
+            }
         }
     }
 
@@ -318,7 +342,11 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
                 .orElseThrow(() -> new IllegalStateException("Trick " + resolved.trickId() + " is not resolved"));
 
         final int advanced = sessionRows.advanceLeaderSeat(
-                sessionId, expectedLeaderSeat, nextLeaderSeat, PLAYABLE, at(occurredAt));
+                sessionId,
+                expectedLeaderSeat,
+                seatToWrite(nextLeaderSeat, "nextLeaderSeat"),
+                PLAYABLE,
+                at(occurredAt));
         if (advanced == 0) {
             throw sessionMoved(sessionId, expectedLeaderSeat);
         }
@@ -367,6 +395,59 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
     }
 
     /**
+     * Revalidates a leader seat read out of {@code game_session}.
+     *
+     * <p>The other three reads hand every row to a domain factory that re-runs the
+     * invariants, so a tampered or pre-migration row is refused rather than believed.
+     * This one returns a bare column and had no such gate, and it is the column that
+     * can least afford to be missing one: the value drives the rotation arithmetic in
+     * {@link #assemble(TrickJpaEntity)} and, one layer up, becomes the {@code
+     * expectedLeaderSeat} witness that is the whole turn-order guard. {@code
+     * chk_game_session_current_leader_seat} bounds it from changeset 005 onwards, but a
+     * database provisioned before that changeset holds rows the constraint never saw.
+     *
+     * <p>Raised as a server fault rather than as a refusal aimed at the caller. An
+     * out-of-range seat in one of our columns is our corruption, not their request.
+     *
+     * @param seatOrder the seat the column holds
+     * @return that seat
+     */
+    private static OptionalInt seatRead(final int seatOrder) {
+        if (seatOrder < 0 || seatOrder >= GameSession.MAXIMUM_PLAYERS) {
+            throw new IllegalStateException(
+                    "Leader seat " + seatOrder + " is outside the seats a session has");
+        }
+        return OptionalInt.of(seatOrder);
+    }
+
+    /**
+     * Bounds a leader seat this class is about to write.
+     *
+     * <p>{@code chk_game_session_current_leader_seat} would catch an out-of-range
+     * value, but it would catch it as an untranslated constraint violation on the way
+     * out: a bare 500 naming a database object, several frames from the call that
+     * supplied the seat. Refusing it here is the explicit rejection at the boundary the
+     * project rules ask for, and it costs one comparison.
+     *
+     * <p>{@code expectedLeaderSeat} is deliberately not bounded the same way, which is
+     * why this takes the parameter name. That one is a witness rather than a value to
+     * store: an out-of-range witness matches no row, which is already the right
+     * outcome, and the caller is then told which seat actually leads. Only seats that
+     * reach a column are checked here.
+     *
+     * @param seatOrder the seat about to be written
+     * @param name      the parameter it arrived as
+     * @return that seat
+     */
+    private static int seatToWrite(final int seatOrder, final String name) {
+        if (seatOrder < 0 || seatOrder >= GameSession.MAXIMUM_PLAYERS) {
+            throw new IllegalArgumentException(
+                    name + " " + seatOrder + " is outside the seats a session has");
+        }
+        return seatOrder;
+    }
+
+    /**
      * Finds the recorded winner among the plays of the trick that recorded it.
      *
      * <p>An unresolved trick has no winner and that is the ordinary case. A resolved
@@ -409,6 +490,14 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * updatable and a seat is fixed when a player is seated. Allocating a seat is the
      * racy operation, and that one is still settled by the database in {@code
      * SessionRepositoryAdapter}.
+     *
+     * <p>The keys are also weaker than this map on one dimension, so the two are not
+     * redundant and the second is not a substitute for the first. Both bind {@code
+     * (player_id, seat_order)} to {@code player (id, seat_order)}, and nothing binds
+     * that player row to the session the hand belongs to. A hand naming a player from a
+     * <em>different</em> session, at a seat that player legitimately holds there,
+     * satisfies both keys. This map is session scoped, so it is the only thing that
+     * refuses it.
      *
      * @param sessionId the session
      * @return each seated player's identifier against the seat they occupy
