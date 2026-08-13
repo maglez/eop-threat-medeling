@@ -168,17 +168,38 @@ class SessionBearingExceptionTest {
     }
 
     /**
-     * Pins the two refusals that must not name a player or a seat in their own message,
-     * because the handler for one of them returns a fixed sentence and the other's message
-     * is logged. Asserting the accessors alone would let a message start echoing a player
-     * identifier without any test noticing.
+     * Pins what each refusal's own message carries, because a message is what the handler
+     * returns and what a log line records, and asserting the accessors alone would let one
+     * start echoing an identifier with no test noticing.
+     *
+     * <p>An earlier version of this comment claimed these were "two refusals that must not
+     * name a player, because the handler for one of them returns a fixed sentence". Both
+     * halves were false, and a code review caught it. Neither
+     * {@code handlePlayerNotRecognised} nor {@code handleNotFacilitator} returns a fixed
+     * sentence — both pass {@code exception.getMessage()} straight into the problem detail —
+     * and the test body only ever asserted one of the two.
+     *
+     * <p>The truth is an asymmetry worth pinning rather than papering over.
+     * {@link PlayerNotRecognisedException} takes only a session identifier, so it *cannot*
+     * name a player; that is structural and the assertion below merely records it.
+     * {@link NotFacilitatorException} does the opposite: it takes a player identifier and
+     * puts it in its message, and the handler returns that message verbatim, so the player
+     * identifier reaches the response body. That is deliberate — the caller is the player in
+     * question, so it is their own identifier being handed back and no third party learns
+     * anything — but it is the sort of deliberate choice that should fail a test if someone
+     * changes it by accident, in either direction.
      */
     @Test
-    @DisplayName("keeps a player identifier out of the message a log line will carry")
-    void shouldKeepThePlayerIdentifierOutOfTheMessage() {
+    @DisplayName("carries a player identifier in its message only where that is intended")
+    void shouldCarryAPlayerIdentifierOnlyWhereIntended() {
         final UUID playerId = UUID.fromString("00000000-0000-7000-8000-0000000000f1");
 
         assertThat(new PlayerNotRecognisedException(SESSION_ID).getMessage())
+                .as("this type takes no player identifier, so it cannot name one")
                 .doesNotContain(playerId.toString());
+
+        assertThat(new NotFacilitatorException(SESSION_ID, playerId).getMessage())
+                .as("this one does name the requester's own identifier, and the handler returns it")
+                .contains(playerId.toString());
     }
 }

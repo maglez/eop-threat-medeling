@@ -3,7 +3,10 @@ package org.maglez.eop.entity;
 import java.util.UUID;
 
 /**
- * Raised when a trick that already carries a winner is resolved a second time.
+ * Raised when a trick that already carries a winner is resolved a second time, or when
+ * the trick row is gone. The storage predicate cannot tell those two apart, and both
+ * answer 409; see {@code TrickPlayRepositoryAdapter}'s class comment for why conflating
+ * them is safe only while nothing deletes a single trick row.
  *
  * <p>Signalled by the persistence layer, from the conditional update that records the
  * winner matching no row, and translated here so the use case layer never sees a

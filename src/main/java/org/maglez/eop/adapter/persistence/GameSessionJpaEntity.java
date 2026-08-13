@@ -98,12 +98,15 @@ class GameSessionJpaEntity {
      * {@code OptimisticLockingFailureException}, and all five of the conditional
      * writes increment this column by hand in JPQL rather than going through
      * Hibernate's dirty-check path, which is what leaves the annotation inert.
-     * Serialisation actually rests on the row lock that
-     * {@code GameSessionJpaRepository.touchWhileInStatus} acquires and holds to
-     * the end of the transaction, together with the unique constraints. ADR-020
-     * records why, and warns that {@code touchWhileInStatus} reads like a
-     * timestamp bump while being the mechanism the story depends on — do not
-     * delete it on the grounds that the framework has locking covered.
+     * Serialisation actually rests on the row lock that whichever of those five
+     * statements runs first acquires and holds to the end of the transaction,
+     * together with the unique constraints. ADR-020 records why, and warns that
+     * {@code touchWhileInStatus} reads like a timestamp bump while being the
+     * mechanism the session lifecycle depends on — do not delete it on the grounds
+     * that the framework has locking covered. One caveat ADR-020 spells out: a
+     * compare-and-set on this row is not automatically a replay guard.
+     * {@code advanceLeaderSeat} is idempotent when a trick's leader wins it, so
+     * trick resolution is serialised by the trick row instead.
      *
      * <p>The domain aggregate has no version field, because a version is a
      * statement about a row rather than about a game. Keeping it inside this

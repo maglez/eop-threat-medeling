@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.maglez.eop.entity.AlreadyPlayedInTrickException;
 import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotInHandException;
+import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.NotYourSeatException;
 import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
@@ -77,6 +78,9 @@ public interface TrickRepository {
      * @param expectedLeaderSeat the leader seat the caller's snapshot showed
      * @throws SessionNotFoundException if the session no longer exists
      * @throws SessionNotJoinableException if the session is not in play
+     * @throws HandNotDealtException if no deal has established a leader seat yet, so there is
+     *     no turn order for a trick to be opened against
+     * @throws OutOfTurnException if the leader seat has moved on since the caller's snapshot
      * @throws TrickAlreadyOpenException if a trick with that sequence is already open in
      *     the session, which is how two requests opening the same trick are resolved
      */
@@ -95,6 +99,8 @@ public interface TrickRepository {
      * @param play the play to record, carrying the seat, the card and the instant
      * @throws SessionNotFoundException if the session no longer exists
      * @throws SessionNotJoinableException if the session is not in play
+     * @throws HandNotDealtException if no deal has established a leader seat yet
+     * @throws OutOfTurnException if the leader seat has moved on since the caller's snapshot
      * @throws PlayerNotInSessionException if the play names a player who does not sit in
      *     that session
      * @throws NotYourSeatException if the play names a seat its player does not occupy
@@ -121,6 +127,7 @@ public interface TrickRepository {
      * @param occurredAt the instant recorded as the session's last update
      * @throws SessionNotFoundException if the session no longer exists
      * @throws SessionNotJoinableException if the session is no longer in play
+     * @throws HandNotDealtException if no deal has established a leader seat yet
      * @throws OutOfTurnException if the leader seat has already moved on — which is what a
      *     second resolution looks like whenever the lead changed hands
      * @throws TrickAlreadyResolvedException if the trick already carries a winner. This is the

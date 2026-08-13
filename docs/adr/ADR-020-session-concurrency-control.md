@@ -287,9 +287,11 @@ session row, and it is worth paying; this paragraph is the mitigation.
 **Why the session row and not the `hand` table.** The seat the deal opens on is
 derived from the cards actually dealt (`Hands.openingLeaderSeat()`), so the deal has
 to write `current_leader_seat` anyway. Making that same write the gate costs nothing
-and means there is exactly one row whose lock serialises dealing — which is also the
-row that serialises every other transition in the session, so the lock ordering in
-the amendment below stays a tree rather than becoming a graph.
+and means there is exactly one row whose lock serialises dealing — the same row whose
+lock serialises every other transition in the session, so the lock ordering in the
+amendment below stays a tree rather than becoming a graph. Note the claim is about the
+*lock*, not about the *guard*: every write still takes this row's lock first, but that
+does not make every write replay-safe, and the next section is the exception.
 
 ### One of the five is not a replay guard: trick resolution serialises on the trick row
 
@@ -325,8 +327,9 @@ billed as a server fault, which is the defect that made this decision visible.
 genuinely different and both are tested: when the lead *did* move, the session
 compare-and-set refuses with `OutOfTurnException`; when it did not, the trick
 predicate refuses with `TrickAlreadyResolvedException`. Neither subsumes the other.
-Second, `TrickAlreadyResolvedException` joins `HandAlreadyDealtException` as an
-exception whose origin is not a constraint violation, so it is a second thing
+Second, `TrickAlreadyResolvedException` joins `HandAlreadyDealtException` and its
+mirror `HandNotDealtException` as exceptions whose origin is not a constraint
+violation, so it is a third thing
 [ADR-023](ADR-023-deal-remainder-and-turn-order.md)'s constraint-name translation
 table structurally cannot cover. Third, this is the one place in the design where the
 contended row is *not* the session row, which is why it is recorded rather than left

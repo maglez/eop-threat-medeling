@@ -16,7 +16,7 @@ import org.springframework.data.repository.query.Param;
  * {@link SessionRepositoryAdapter} wraps it, so nothing above this package can
  * reach a Spring Data type.
  *
- * <p>The two update methods are deliberately conditional. Each carries the status
+ * <p>All five update methods are deliberately conditional. Each carries the status
  * the caller believed the session was in, and reports how many rows it changed, so
  * a caller that read {@code LOBBY} and acted on it cannot have its write applied to
  * a session that has since started. Zero rows changed is not a failure of the

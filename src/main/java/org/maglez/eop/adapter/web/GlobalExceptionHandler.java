@@ -474,11 +474,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * A seat has already played into this trick.
      *
-     * <p>A 409 rather than the 422 that {@link #handleOutOfTurn} returns, because
-     * this is not a turn-order mistake: the seat's play is already recorded, so the
-     * request lost a race with an identical one rather than arriving in the wrong
-     * order. A retry cannot succeed, but re-reading the trick shows the play the
-     * caller was trying to make.
+     * <p>A 409, like {@link #handleOutOfTurn}, but for a different reason and with a
+     * different title — an earlier version of this sentence claimed that one returned a
+     * 422, which it never did. This is not a turn-order mistake: the seat's play is
+     * already recorded, so the request lost a race with an identical one rather than
+     * arriving in the wrong order. A retry cannot succeed, but re-reading the trick
+     * shows the play the caller was trying to make.
      *
      * <p>The detail names the seat and not the trick. A seat number is something
      * every player at the table can already see; the trick identifier is an internal
