@@ -8,8 +8,12 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.entity.AlreadyPlayedInTrickException;
+import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
+import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.IdentityTokenHash;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
@@ -17,6 +21,7 @@ import org.maglez.eop.entity.NotFacilitatorException;
 import org.maglez.eop.entity.NotYourSeatException;
 import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerMismatchException;
+import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
@@ -24,7 +29,10 @@ import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.TooFewPlayersException;
+import org.maglez.eop.entity.TrickAlreadyOpenException;
+import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
+import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -174,6 +182,58 @@ class GlobalExceptionHandlerTest {
     }
 
     @Nested
+    @DisplayName("answering a caller who is not in the session")
+    class Membership {
+
+        @Test
+        @DisplayName("a stranger acting on a session is a 404, not a 403")
+        void shouldMapPlayerNotInSessionTo404() {
+            final ProblemDetail problem = handler.handlePlayerNotInSession(new PlayerNotInSessionException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+            assertThat(problem.getTitle()).isEqualTo("Session not found");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("the whole body equals the body for a session that does not exist, not merely the status")
+        void shouldAnswerAStrangerExactlyAsAMissingSessionIsAnswered() {
+            final ProblemDetail missing = handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID));
+            final ProblemDetail stranger = handler.handlePlayerNotInSession(new PlayerNotInSessionException(SESSION_ID));
+
+            assertThat(stranger)
+                    .as("two 404s with different titles or details would be as good an oracle as a 403")
+                    .isEqualTo(missing);
+            assertThat(stranger.getStatus()).isEqualTo(missing.getStatus());
+            assertThat(stranger.getTitle()).isEqualTo(missing.getTitle());
+            assertThat(stranger.getDetail()).isEqualTo(missing.getDetail());
+            assertThat(stranger.getType()).isEqualTo(missing.getType());
+            assertThat(stranger.getProperties()).isEqualTo(missing.getProperties());
+        }
+
+        @Test
+        @DisplayName("the two exceptions carry identical messages, which is what keeps the two details equal")
+        void shouldCarryTheSameMessageAsAMissingSession() {
+            assertThat(new PlayerNotInSessionException(SESSION_ID).getMessage())
+                    .as("both handlers use getMessage() as the detail, so parity is decided here")
+                    .isEqualTo(new SessionNotFoundException(SESSION_ID).getMessage());
+        }
+
+        @Test
+        @DisplayName("no field says why the lookup failed")
+        void shouldNameNeitherPlayerNorSeatNorMembership() {
+            final ProblemDetail problem = handler.handlePlayerNotInSession(new PlayerNotInSessionException(SESSION_ID));
+
+            assertThat(problem.getTitle() + " " + problem.getDetail())
+                    .doesNotContainIgnoringCase("player")
+                    .doesNotContainIgnoringCase("seat")
+                    .doesNotContainIgnoringCase("member")
+                    .doesNotContainIgnoringCase("authoris")
+                    .doesNotContainIgnoringCase("forbidden");
+        }
+    }
+
+    @Nested
     @DisplayName("throttling a guesser")
     class Throttling {
 
@@ -296,6 +356,163 @@ class GlobalExceptionHandlerTest {
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
             assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
             assertThat(problem.getDetail()).doesNotContain("78");
+        }
+    }
+
+    @Nested
+    @DisplayName("refuses a request that lost a race, without saying who won it")
+    class TrickPlayConflicts {
+
+        /** A trick identifier, which is an internal key no response should echo. */
+        private static final UUID TRICK_ID = UUID.fromString("00000000-0000-7000-8000-0000000000b2");
+
+        @Test
+        @DisplayName("dealing twice is a 409 naming the session the caller supplied")
+        void shouldMapHandAlreadyDealtToConflict() {
+            final ProblemDetail problem = handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Hands already dealt");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("acting before the deal is a 409 naming the session the caller supplied")
+        void shouldMapHandNotDealtToConflict() {
+            final ProblemDetail problem = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Hands not dealt");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("acting before the deal says nothing but the session, so it cannot report the seat it was refused for")
+        void shouldNotLeakAnythingBeyondTheSessionWhenNoHandsAreDealt() {
+            final ProblemDetail problem = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+
+            assertThat(problem.getDetail())
+                    .as("the only identifier in the body is the one the caller sent")
+                    .isEqualTo("No hands have been dealt in session " + SESSION_ID);
+            assertThat(problem.getProperties()).isNull();
+        }
+
+        @Test
+        @DisplayName("the two states of the deal are told apart, because one is over and the other has not begun")
+        void shouldNotCollapseTheTwoDealConflicts() {
+            final ProblemDetail alreadyDealt =
+                    handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID));
+            final ProblemDetail notDealt = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+
+            assertThat(notDealt.getStatus()).isEqualTo(alreadyDealt.getStatus());
+            assertThat(notDealt.getTitle())
+                    .as("both are 409s on one column, so the title is the only thing that says which way it went")
+                    .isNotEqualTo(alreadyDealt.getTitle());
+            assertThat(notDealt.getDetail()).isNotEqualTo(alreadyDealt.getDetail());
+        }
+
+        @Test
+        @DisplayName("losing the race to open a trick is a 409 naming the sequence, because re-reading the session fixes it")
+        void shouldMapTrickAlreadyOpenToConflict() {
+            final ProblemDetail problem = handler.handleTrickAlreadyOpen(new TrickAlreadyOpenException(SESSION_ID, 3));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Trick already open");
+            assertThat(problem.getDetail()).contains("3");
+        }
+
+        /**
+         * A security review found this case answering 500. The winner update is guarded by
+         * {@code winner_play_id IS NULL}, and when the seat that led a trick also wins it
+         * the leader-seat compare-and-set above becomes idempotent, so a replayed
+         * resolution gets past the guard that is supposed to stop it and this statement is
+         * the first to notice. That is a conflict the caller can understand and not a
+         * fault of ours, so it is a 409.
+         */
+        @Test
+        @DisplayName("a replayed resolution is a 409 naming the trick and never the winning seat")
+        void shouldMapTrickAlreadyResolvedToConflictWithoutTheWinningSeat() {
+            final ProblemDetail problem =
+                    handler.handleTrickAlreadyResolved(new TrickAlreadyResolvedException(TRICK_ID));
+
+            assertThat(problem.getStatus())
+                    .as("a replay is a conflict, not the 500 this used to answer")
+                    .isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Trick already resolved");
+            assertThat(problem.getDetail()).contains(TRICK_ID.toString());
+        }
+
+        @Test
+        @DisplayName("the two conflicts on a trick's lifecycle are told apart, open from resolved")
+        void shouldNotCollapseTheOpenConflictIntoTheResolvedConflict() {
+            final ProblemDetail openConflict =
+                    handler.handleTrickAlreadyOpen(new TrickAlreadyOpenException(SESSION_ID, 3));
+            final ProblemDetail resolvedConflict =
+                    handler.handleTrickAlreadyResolved(new TrickAlreadyResolvedException(TRICK_ID));
+
+            assertThat(openConflict.getStatus()).isEqualTo(resolvedConflict.getStatus());
+            assertThat(openConflict.getTitle())
+                    .as("one refuses opening a trick that exists, the other resolving one that is done")
+                    .isNotEqualTo(resolvedConflict.getTitle());
+            assertThat(openConflict.getDetail()).isNotEqualTo(resolvedConflict.getDetail());
+        }
+
+        @Test
+        @DisplayName("a second play from one seat is a 409 naming the seat and never the trick")
+        void shouldMapAlreadyPlayedInTrickToConflictWithoutTheTrickIdentifier() {
+            final ProblemDetail problem =
+                    handler.handleAlreadyPlayedInTrick(new AlreadyPlayedInTrickException(TRICK_ID, 2));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Already played in this trick");
+            assertThat(problem.getDetail()).contains("2").doesNotContain(TRICK_ID.toString());
+        }
+
+        @Test
+        @DisplayName("a card played twice into one trick is a 409 naming the card and never the trick")
+        void shouldMapCardAlreadyPlayedToConflictWithoutTheTrickIdentifier() {
+            final UUID cardId = UUID.fromString("00000000-0000-7000-8000-0000000000c3");
+
+            final ProblemDetail problem =
+                    handler.handleCardAlreadyPlayed(new CardAlreadyPlayedException(TRICK_ID, cardId));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Card already played");
+            assertThat(problem.getDetail()).contains(cardId.toString()).doesNotContain(TRICK_ID.toString());
+        }
+
+        @Test
+        @DisplayName("the two conflicts on a trick are told apart, so a caller learns which of them it hit")
+        void shouldNotCollapseTheSeatConflictIntoTheCardConflict() {
+            final UUID cardId = UUID.fromString("00000000-0000-7000-8000-0000000000c3");
+
+            final ProblemDetail seatConflict =
+                    handler.handleAlreadyPlayedInTrick(new AlreadyPlayedInTrickException(TRICK_ID, 2));
+            final ProblemDetail cardConflict =
+                    handler.handleCardAlreadyPlayed(new CardAlreadyPlayedException(TRICK_ID, cardId));
+
+            assertThat(seatConflict.getStatus()).isEqualTo(cardConflict.getStatus());
+            assertThat(seatConflict.getTitle())
+                    .as("one refuses a second play from a seat, the other one card appearing twice")
+                    .isNotEqualTo(cardConflict.getTitle());
+            assertThat(seatConflict.getDetail()).isNotEqualTo(cardConflict.getDetail());
+        }
+
+        @Test
+        @DisplayName("a winner from another trick is 422 and not 409, because no later state makes a retry work")
+        void shouldMapWinningPlayNotInTrickToUnprocessableWithoutEitherIdentifier() {
+            final UUID playId = UUID.fromString("00000000-0000-7000-8000-0000000000d4");
+
+            final ProblemDetail problem =
+                    handler.handleWinningPlayNotInTrick(new WinningPlayNotInTrickException(TRICK_ID, playId));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
+            assertThat(problem.getStatus()).isNotEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("That play is not in this trick");
+            assertThat(problem.getDetail())
+                    .isEqualTo("The play named as the winner was not made into the trick being resolved.")
+                    .doesNotContain(TRICK_ID.toString())
+                    .doesNotContain(playId.toString());
         }
     }
 }

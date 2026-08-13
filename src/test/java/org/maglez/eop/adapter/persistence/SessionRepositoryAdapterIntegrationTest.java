@@ -25,6 +25,7 @@ import org.maglez.eop.entity.SessionStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -311,6 +312,19 @@ class SessionRepositoryAdapterIntegrationTest {
          * that violates a domain invariant is a server fault, not something the
          * caller did wrong. Wrapped, it reaches the catch-all handler and is
          * reported as 500 with no detail, which is the correct answer.
+         *
+         * <p>The tampering vector is a blank display name, and the choice is
+         * deliberate. This test used to widen {@code seat_order} to 9, which
+         * changeset {@code 005} now refuses outright — see
+         * {@link #shouldNoLongerAllowTheSeatVectorToReachTheDomain()}, which pins
+         * that refusal. A test of revalidation-on-read needs a vector storage does
+         * <em>not</em> constrain, or it stops testing the domain and starts
+         * testing the constraint. {@code display_name} is
+         * {@code VARCHAR(40) NOT NULL}, so its length and its nullness are the
+         * database's business, but its blankness is nobody's but
+         * {@link org.maglez.eop.entity.DisplayName}'s. That makes it the one
+         * remaining column on {@code player} where the domain is the only
+         * authority, which is precisely the condition this test needs.
          */
         @Test
         @DisplayName("refuses a row edited outside the application, as a server fault rather than a bad request")
@@ -319,12 +333,46 @@ class SessionRepositoryAdapterIntegrationTest {
             adapter.createLobby(lobby);
             final UUID facilitatorId = lobby.players().getFirst().playerId();
 
-            jdbc.update("UPDATE player SET seat_order = 9 WHERE id = ?", facilitatorId);
+            jdbc.update("UPDATE player SET display_name = ? WHERE id = ?", "   ", facilitatorId);
 
             assertThatExceptionOfType(DataAccessException.class)
                     .isThrownBy(() -> adapter.findById(lobby.sessionId()))
-                    .withMessageContaining("A seat is 0 through 5")
+                    .withMessageContaining("A display name must not be blank")
                     .isNotInstanceOf(IllegalArgumentException.class);
+        }
+
+        /**
+         * The seat vector the test above used to rely on is now stopped a layer
+         * earlier, and that is worth its own assertion rather than a comment.
+         *
+         * <p>Changeset {@code 005} added {@code chk_player_seat_order}, so the
+         * impossible row can no longer be written at all: the tampering
+         * {@code UPDATE} itself fails. Both halves of the defence are real and
+         * both are now pinned — storage refuses the write here, and the domain
+         * refuses the read above — which is what defence in depth means in
+         * practice. Without this test the seat guard would exist only in a
+         * migration and in a comment explaining why the neighbouring test stopped
+         * using it, and ADR-023 records the lesson that a claim about a constraint
+         * needs a test rather than a comment.
+         *
+         * <p>Asserted as {@link org.springframework.dao.DataIntegrityViolationException}
+         * rather than on a SQLSTATE because this test goes through
+         * {@link JdbcTemplate}, which translates. The SQLSTATE itself — {@code 23513}
+         * on H2, {@code 23514} on PostgreSQL — is pinned by
+         * {@code SeatAndSequenceBoundsTest}, which drives JDBC directly.
+         */
+        @Test
+        @DisplayName("no longer lets the seat tampering vector reach the domain, because storage refuses the write")
+        void shouldNoLongerAllowTheSeatVectorToReachTheDomain() {
+            final GameSession lobby = freshLobby();
+            adapter.createLobby(lobby);
+            final UUID facilitatorId = lobby.players().getFirst().playerId();
+
+            assertThatExceptionOfType(DataIntegrityViolationException.class)
+                    .isThrownBy(() -> jdbc.update("UPDATE player SET seat_order = 9 WHERE id = ?", facilitatorId))
+                    .withMessageContaining("CHK_PLAYER_SEAT_ORDER");
+
+            assertThat(adapter.findById(lobby.sessionId())).isPresent();
         }
     }
 

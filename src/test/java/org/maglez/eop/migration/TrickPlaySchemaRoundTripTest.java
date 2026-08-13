@@ -85,9 +85,14 @@ class TrickPlaySchemaRoundTripTest {
      *
      * <p>This constant is guarded by {@link #changesetCountMatchesXml()}: the classpath
      * resource is read and the number of {@code <changeSet} occurrences is counted and
-     * asserted to equal this value. If a new changeset is added to the file without
-     * updating this constant, that test fails loudly rather than silently rolling back
-     * too few changesets and leaving the schema in a partially-rolled-back state.
+     * asserted to equal this value.
+     *
+     * <p>It does <em>not</em> drive the rollback tests. Rolling back all of 004 means rolling
+     * back every changeset applied at or after 004's first, which is more than 004's own once
+     * any later changelog file exists — see {@link #changesetsAppliedFrom004(Connection)}. This
+     * constant instead pins 004's own size, which is what {@link #UNIQUE_CONSTRAINTS_004} and
+     * {@link #FOREIGN_KEYS_004} are built on, and it is the floor the derived rollback count is
+     * checked against.
      *
      * <p>The file now contains 9 changesets: 001–007 (original) plus 008
      * ({@code uq_player_id_seat} on {@code player}) and 009
@@ -102,6 +107,13 @@ class TrickPlaySchemaRoundTripTest {
      */
     private static final String CHANGESET_CLASSPATH =
             "db/changelog/changes/004-trick-play-schema.xml";
+
+    /**
+     * Bare file name of 004, used to locate its rows in {@code DATABASECHANGELOG}.
+     * Liquibase records the changelog-relative path, so this is matched with a trailing
+     * {@code LIKE '%...'} rather than compared for equality.
+     */
+    private static final String CHANGESET_FILENAME_004 = "004-trick-play-schema.xml";
 
     /**
      * The six unique constraints that 004 declares.
@@ -200,19 +212,19 @@ class TrickPlaySchemaRoundTripTest {
     }
 
     @Test
-    @DisplayName("rollback of all 9 changesets in 004 removes the five tables and the column")
+    @DisplayName("rollback of every changeset from 004 onward removes the five tables and the column")
     void rollbackRemovesSchemaAddedBy004() throws Exception {
         // Arrange — apply the full migration first
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Act — roll back exactly the 9 changesets that 004 added
-        liquibase.rollback(CHANGESET_COUNT_004, new Contexts(), new LabelExpression());
+        // Act — roll back every changeset applied at or after 004's first
+        liquibase.rollback(changesetsAppliedFrom004(connection), new Contexts(), new LabelExpression());
 
         // Assert — all five tables are gone
         final Set<String> tables = tableNames(connection);
         assertThat(tables)
-                .as("tables introduced by 004 must be absent after rolling back all 9 changesets")
+                .as("tables introduced by 004 must be absent after rolling back every changeset from 004 onward")
                 .doesNotContainAnyElementsOf(TABLES_004);
 
         // Assert — game_session.current_leader_seat is gone
@@ -245,7 +257,7 @@ class TrickPlaySchemaRoundTripTest {
         // Arrange — apply, roll back, then apply again
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(CHANGESET_COUNT_004, new Contexts(), new LabelExpression());
+        liquibase.rollback(changesetsAppliedFrom004(connection), new Contexts(), new LabelExpression());
 
         // Act
         liquibase.update(new Contexts(), new LabelExpression());
@@ -284,7 +296,7 @@ class TrickPlaySchemaRoundTripTest {
         // Arrange — apply, roll back, then apply again
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(CHANGESET_COUNT_004, new Contexts(), new LabelExpression());
+        liquibase.rollback(changesetsAppliedFrom004(connection), new Contexts(), new LabelExpression());
 
         // Act
         liquibase.update(new Contexts(), new LabelExpression());
@@ -333,7 +345,7 @@ class TrickPlaySchemaRoundTripTest {
         assertThat(count)
                 .as("CHANGESET_COUNT_004 (%d) must equal the number of <changeSet> elements in %s (%d). "
                         + "If a changeset was added or removed, update CHANGESET_COUNT_004 to match, "
-                        + "or the rollback tests will roll back the wrong number of changesets.",
+                        + "or the constraint expectations built on 004's size will drift from the file.",
                         CHANGESET_COUNT_004, CHANGESET_CLASSPATH, count)
                 .isEqualTo(CHANGESET_COUNT_004);
     }
@@ -341,6 +353,49 @@ class TrickPlaySchemaRoundTripTest {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Number of changesets that must be rolled back to undo all of {@code 004} — which is
+     * every changeset applied at or after 004's first, not merely 004's own nine.
+     *
+     * <p>Liquibase's count-based rollback undoes the <em>last N applied</em> changesets, so
+     * rolling back {@link #CHANGESET_COUNT_004} reaches all of 004 only while 004 is the final
+     * changelog file. It stopped being final when {@code 005-seat-and-sequence-bounds.xml}
+     * landed: rolling back 9 then undid 005's three and only six of 004's, leaving {@code hand}
+     * and {@code hand_card} behind and failing this class with a table-existence assertion that
+     * pointed nowhere near the cause.
+     *
+     * <p>Hardcoding 12 would fix today and re-arm the identical trap for {@code 006}. So the
+     * count is read from {@code DATABASECHANGELOG}, which records what Liquibase actually applied
+     * and in what order. Any changelog file added after 004 is counted automatically, and these
+     * tests keep testing what their names say without a constant to remember to bump.
+     *
+     * <p>{@link #CHANGESET_COUNT_004} is deliberately still asserted against the XML by
+     * {@link #changesetCountMatchesXml()}: it no longer drives the rollback, but it pins 004's
+     * own size, which is what the unique-constraint and foreign-key expectations are built on.
+     */
+    private static int changesetsAppliedFrom004(final Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM DATABASECHANGELOG "
+                        + "WHERE ORDEREXECUTED >= ("
+                        + "  SELECT MIN(ORDEREXECUTED) FROM DATABASECHANGELOG "
+                        + "  WHERE FILENAME LIKE ?)")) {
+            ps.setString(1, "%" + CHANGESET_FILENAME_004);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next())
+                        .as("DATABASECHANGELOG must be queryable after update() — "
+                                + "a missing row set means Liquibase never ran")
+                        .isTrue();
+                final int count = rs.getInt(1);
+                assertThat(count)
+                        .as("rolling back all of %s requires at least its own %d changesets; "
+                                + "a smaller count means DATABASECHANGELOG was not populated as expected",
+                                CHANGESET_FILENAME_004, CHANGESET_COUNT_004)
+                        .isGreaterThanOrEqualTo(CHANGESET_COUNT_004);
+                return count;
+            }
+        }
+    }
 
     /**
      * Returns the upper-cased names of all user tables visible in the connection's schema.

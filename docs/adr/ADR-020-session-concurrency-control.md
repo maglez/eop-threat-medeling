@@ -1,6 +1,6 @@
 # ADR-020: Concurrency Control by Compare-and-Set on `status`, Not by Optimistic Locking
 
-**Status:** Accepted (lock ordering decided 2026-08-12 — see ADR-023)
+**Status:** Accepted (lock ordering decided 2026-08-12, corrected from a chain to a tree 2026-08-13 — see ADR-023)
 **Date:** 2026-08-10
 **Deciders:** @tech-lead, @architecture-guardian, @db-designer
 
@@ -53,6 +53,17 @@ compare-and-set on `status` — plus unique constraints. The `@Version` column i
 retained as bookkeeping, not as a gate.**
 
 ### The mechanism: two conditional updates that report rows affected
+
+> **Amended 2026-08-13, EOP-14 Slice C1 — there are now five.** The count in the
+> heading and in the sentence below was true when written and is not any more.
+> `claimDeal`, `touchWhileLeaderSeatIs` and `advanceLeaderSeat` join them, all three
+> compare-and-set, all three hand-incrementing `version`, all three checked for rows
+> affected at every call site. Two of them witness `current_leader_seat` rather than
+> `status`, which is a widening of this decision recorded in *The deal-once gate*
+> below. Read "two" here as "the first two". One caution: all five compare-and-set,
+> but that does **not** make all five replay guards — `advanceLeaderSeat` is
+> idempotent when the leader wins their own trick, and the section *One of the five is
+> not a replay guard* records what serialises trick resolution instead.
 
 `GameSessionJpaRepository` — package private, deliberately not the application's
 port — declares exactly two writes:
@@ -226,6 +237,106 @@ entity's own javadoc gives the reason, and it is the right formulation:
 contended-on as rows — their contention is settled by
 `uq_player_session_seat` instead.
 
+### The deal-once gate: a null column, not a count of rows — amended 2026-08-13, EOP-14 Slice C1
+
+This decision is a widening of the one above and was made in code during Slice C1
+without an ADR to carry it. @architecture-guardian's gate graded that a MAJOR
+finding, correctly: the *rationale* was in a Javadoc comment
+(`GameSessionJpaRepository.java:76-91`) and nowhere in `docs/`, and this ADR — which
+owns session concurrency control, and which that same slice amended for lock
+ordering — is where it belonged.
+
+**Dealing is serialised on the session row, and `current_leader_seat IS NULL` is the
+definition of "not yet dealt".**
+
+```java
+@Modifying(clearAutomatically = true)
+@Query("UPDATE GameSessionJpaEntity s SET s.currentLeaderSeat = :leaderSeat, "
+     + "s.updatedAt = :now, s.version = s.version + 1 "
+     + "WHERE s.id = :sessionId AND s.status = :required "
+     + "AND s.currentLeaderSeat IS NULL")
+int claimDeal(UUID sessionId, int leaderSeat, SessionStatus required,
+              OffsetDateTime now);
+```
+
+The predicate does two jobs in one statement: it is the status compare-and-set this
+ADR already mandates, *and* it is the deal-once gate. The first caller to set the
+column wins; every subsequent caller matches zero rows and is refused with
+`HandAlreadyDealtException`, a 409.
+
+**The alternative was counting `hand` rows first, and it is strictly worse.** A
+`SELECT COUNT(*) FROM hand WHERE session_id = ?` followed by an insert is a
+check-then-act across two statements: two concurrent deals both count zero, both
+proceed, and both insert. `uq_hand_session_seat` would catch the collision, so the
+outcome is not corrupt — but it is a race decided by a unique-constraint violation
+translated back into a conflict, which is exactly the pattern this ADR exists to
+avoid. Counting first would only *narrow* the window, never close it, at the cost of
+an extra round trip. The single conditional `UPDATE` closes it, because the row lock
+serialises the two callers and the column's nullness is the state being contended.
+
+**The cost, which is real:** `HandAlreadyDealtException` now has two distinct
+origins. It arises from this gate, via `sessionMoved(sessionId, null)` when the
+column is already set, and it arises from `uq_hand_session_seat` when a second deal
+somehow reaches the insert. The constraint-name-to-exception translation table in
+[ADR-023](ADR-023-deal-remainder-and-turn-order.md) covers only the second, and
+structurally cannot cover the first, because the first is not a constraint violation
+at all. A reader who uses that table as the complete inventory of how each exception
+is raised will be wrong about this one. That is the price of putting the gate on the
+session row, and it is worth paying; this paragraph is the mitigation.
+
+**Why the session row and not the `hand` table.** The seat the deal opens on is
+derived from the cards actually dealt (`Hands.openingLeaderSeat()`), so the deal has
+to write `current_leader_seat` anyway. Making that same write the gate costs nothing
+and means there is exactly one row whose lock serialises dealing — the same row whose
+lock serialises every other transition in the session, so the lock ordering in the
+amendment below stays a tree rather than becoming a graph. Note the claim is about the
+*lock*, not about the *guard*: every write still takes this row's lock first, but that
+does not make every write replay-safe, and the next section is the exception.
+
+### One of the five is not a replay guard: trick resolution serialises on the trick row
+
+Recorded 2026-08-13, EOP-14 Slice C1, in the same breath as the gate above and for
+the same reason — @architecture-guardian's gate observed that this slice remediated
+one decision-in-a-Javadoc while introducing another, and that the new one qualifies
+the guarantee the subsection above asserts. It does, and the qualification belongs
+here.
+
+**Compare-and-set on the session row does not stop a trick being resolved twice.
+The `winner_play_id IS NULL` predicate on the trick row does.**
+
+`advanceLeaderSeat` is a compare-and-set like the other four, and the sentence above
+that "one means the caller's assumption held, zero means it did not" is still true of
+it. What is *not* true is the inference that it therefore refuses a replay. It sets
+`current_leader_seat = :nextLeaderSeat WHERE ... current_leader_seat =
+:expectedLeaderSeat`, so whenever the caller's next leader equals the leader it
+witnessed the statement writes the value it just compared against and is
+**idempotent**. A replayed resolution matches the row, changes one row, and passes
+the guard.
+
+That is not an edge case. It is what happens whenever the seat that led a trick also
+wins it and still holds a card, which is an ordinary outcome rather than a rare one.
+
+So the serialisation point for resolution is one statement further in:
+`TrickJpaRepository.recordWinner` carries `AND t.winnerPlayId IS NULL`, and it is the
+first statement that can distinguish a first resolution from a replay. Zero rows
+there raises `TrickAlreadyResolvedException`, and so a 409. Until this slice it
+raised `IllegalStateException`, and so a 500 — an ordinary replay of an ordinary hand
+billed as a server fault, which is the defect that made this decision visible.
+
+**Three consequences worth naming.** First, the two second-resolution shapes are
+genuinely different and both are tested: when the lead *did* move, the session
+compare-and-set refuses with `OutOfTurnException`; when it did not, the trick
+predicate refuses with `TrickAlreadyResolvedException`. Neither subsumes the other.
+Second, `TrickAlreadyResolvedException` joins `HandAlreadyDealtException` and its
+mirror `HandNotDealtException` as exceptions whose origin is not a constraint
+violation, so it is a third thing
+[ADR-023](ADR-023-deal-remainder-and-turn-order.md)'s constraint-name translation
+table structurally cannot cover. Third, this is the one place in the design where the
+contended row is *not* the session row, which is why it is recorded rather than left
+to be rediscovered: a reader who takes "every write compare-and-sets the session row,
+therefore every write is replay-safe" from the section above would be wrong here, and
+wrong in the direction of removing the predicate that is actually doing the work.
+
 ## Consequences
 
 **Positive:** the guard and the write are one statement, so the success path has no
@@ -286,6 +397,18 @@ intermittent deadlock.
 > after the first deadlock, so this consequence is discharged. The paragraph above is
 > left as written, because its reasoning for why the question was still open at the time
 > remains accurate — only its status has changed.
+
+> **Amended 2026-08-13, EOP-14 Slice C1.** The policy is a tree, not the chain named
+> above: `game_session` → `hand` → `hand_card` and `game_session` → `trick` →
+> `trick_play` → `trick_play_component`, acquired left to right along every path, and
+> where one transaction touches both branches the `hand` branch is taken first.
+> [ADR-023](ADR-023-deal-remainder-and-turn-order.md) carries the diagram. EOP-14 Slice
+> C1's `TrickPlayRepositoryAdapter.appendPlay` is the first code to walk both branches —
+> it takes the session row, reads `hand`, deletes from `hand_card`, then inserts into
+> `trick_play` and `trick_play_component` — so it is also the first place the difference
+> between a chain and a tree could have mattered. The 2026-08-12 note above summarised
+> the policy more narrowly than the policy it points at, which was harmless while no code
+> walked the `hand` branch and is not harmless now.
 
 **Neutral — this is settled per aggregate, not globally.** `game_session` is the
 only contended aggregate today. EOP-14's card-playing path has a different shape

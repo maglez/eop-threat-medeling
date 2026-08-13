@@ -110,6 +110,36 @@ prescribed shape did not fit: `@ConditionalOnProperty` is evaluated before any
 `@ConfigurationProperties` bean is bound, so a flag that decides whether a bean
 exists cannot also be read through a typed properties class.
 
+**2026-08-13 — a second flag is owed, and it is owed by EOP-14 Slice C2 rather than
+Slice C1.** `.opencode/rules/feature-flags.md` makes this ADR and
+`src/main/resources/application.yml` the flag register and says there is no separate
+catalogue, so the second flag belongs here even before it exists. It does not exist
+yet. `eop.features.trick-play` will withhold the deal, play and resolve-trick routes,
+and [ADR-023](./ADR-023-deal-remainder-and-turn-order.md) makes it a **merge
+precondition** for Slice C2: defaulted to `false`, recorded here, and covered by an
+off-position test that asserts the bean is absent as well as the routes answering 404.
+
+Slice C1 shipped without it, and the reason is worth stating in the register rather
+than only in the ADR that argued it. C1 is the persistence layer — five JPA entities,
+five Spring Data interfaces, two ports and one adapter — with no controller, no route
+and no bean that injects a port. There is nothing for a flag to withhold, so the
+off-position test this ADR requires cannot be written: there is no bean to assert
+absent and no route to assert 404. **A flag whose off-position test cannot be written
+is not containment**, and a `@ConditionalOnProperty` on an adapter nothing injects
+would be worse than nothing, because it would produce a passing test that proved only
+that an unused bean can be switched off. What contains C1 is structural: the absence
+of a caller. From C2 onwards the containment is a flag, which is exactly when the flag
+arrives.
+
+Inheriting `eop.features.session-lifecycle` is not an option, for the reason this ADR
+gives above: a flag is deleted once its feature is released, so borrowing one that is
+due for deletion would tie the removal of a shipped flag to the readiness of an
+unshipped feature. The full argument, including the one respect in which C1's
+containment is *weaker* than the schema-only slice before it — mapping five tables
+makes `ddl-auto: validate` load-bearing, which
+`MappedSchemaValidationIntegrationTest` is the answer to — is at the end of
+[ADR-023](./ADR-023-deal-remainder-and-turn-order.md). It is not restated here.
+
 ## Related
 
 - [ADR-012: Deployment to a Single EC2 Instance with Terraform](./ADR-012-deployment-target.md)

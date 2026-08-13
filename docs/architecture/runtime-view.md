@@ -4,15 +4,20 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-14 Slice B** (the trick-play schema,
-Liquibase changeset `004`), including the client-address resolution from EOP-26 (ADR-021). The
-sequences themselves are still the EOP-10 session lifecycle, and that is not staleness: **Slice B
-changes no sequence in this document and adds none.** It is schema-only — five tables created,
+Everything here reflects the code as it stands after **EOP-14 Slice C1** (the trick-play
+persistence layer, Liquibase changeset `005`), including the trick-play schema from Slice B
+(changeset `004`) and the client-address resolution from EOP-26 (ADR-021). The sequences
+themselves are still the EOP-10 session lifecycle, and that is not staleness: **neither Slice B
+nor Slice C1 changes a sequence in this document, and neither adds one.** Slice B was schema-only — five tables created,
 `game_session` altered, one unique constraint added to `player`, six unique constraints and ten
 foreign keys in total — with no use case, controller, adapter or endpoint touched, so there is no
 new runtime interaction to draw. Dealing a hand and playing a card have no sequence here because
-no code performs them yet; Slice C is where that behaviour, and the diagrams for it, arrive. The
-one thing Slice B does change about runtime behaviour is the *failure mode* of writes that already
+no code performs them yet. Slice C1 changed that only halfway: it added the persistence layer that
+*can* deal a hand and play a card — the `HandRepository` and `TrickRepository` ports and the one
+`TrickPlayRepositoryAdapter` behind them — but no use case, controller or route calls either port,
+so there is still no interaction to draw and no participant to draw it between. **Slice C2 is where
+the three sequences arrive**, and it owes this document one each for dealing, playing and resolving.
+The one thing Slice B does change about runtime behaviour is the *failure mode* of writes that already
 have sequences below: a forged seat and a ghost player are now rejected by the database rather
 than reaching it, which [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) records — in
 the second and fourth of the four Slice C obligations under *What changeset `004` deliberately
