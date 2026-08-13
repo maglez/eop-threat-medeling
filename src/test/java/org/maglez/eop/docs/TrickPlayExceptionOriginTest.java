@@ -46,7 +46,8 @@ import org.junit.jupiter.api.Test;
  * cannot see it. A construction moved into a helper called <em>from</em> a translation would be
  * classified wrongly.
  *
- * <p>No account here of which assertion a given mutation trips, and no tally of attack shapes or assertion counts. Earlier
+ * <p>No account here of which assertion a given mutation trips, and no tally of attack
+ * shapes or assertion counts. Earlier
  * versions of this comment gave both, and each was left behind by the next change to the code it
  * described. The assertion messages are the record: they cannot go stale, because they are what
  * fires.
@@ -111,8 +112,7 @@ class TrickPlayExceptionOriginTest {
      * position belongs to both derived groups, and if the prose lists it in both blocks then both
      * equalities hold and the headings sum to more than the derived total with nothing firing. A
      * review gate proved that green after the aggregate assertions were deleted, so the disjointness
-     * check is reinstated rather than the gap disclosed — it was doing real work, and it is three
-     * lines.
+     * check is reinstated rather than the gap disclosed — it was doing real work.
      *
      * <p>A review gate diagnosed the shape of the problem exactly: the paragraph asserts
      * a <em>mapping</em> from name to mechanism, and every check built for it verified
@@ -205,9 +205,9 @@ class TrickPlayExceptionOriginTest {
      * method even if it was <em>also</em> constructed at a rows-affected position. Cutting regions
      * rather than names is what makes the two groups independently derived.
      *
-     * <p>Deliberately no account here of which assertion a given mutation trips.
-     * The assertion messages are the record of what fails and
-     * where; they cannot go stale, because they are the thing that fires.
+     * <p>Deliberately no account here of which assertion a given mutation trips. The
+     * assertion messages are the record of what fails and where; they cannot go stale,
+     * because they are the thing that fires.
      */
     private static Set<String> rowCountOrigins(final String adapter) {
         final Set<String> found =
@@ -257,7 +257,7 @@ class TrickPlayExceptionOriginTest {
     private static final String READ_BLOCK = "are raised from a read this adapter makes itself";
 
     /**
-     * The exception types named in the one block beginning {@code prefix}.
+     * The exception types named in the one block whose lead-in contains {@code leadIn}.
      *
      * <p>Scoped to a single block, which is what makes the mapping checkable. An earlier version
      * unioned the tokens of <em>both</em> group blocks and so could never tell which mechanism the
@@ -266,11 +266,11 @@ class TrickPlayExceptionOriginTest {
      * backticks {@code IllegalStateException} and {@code IllegalArgumentException} precisely in order
      * to exclude them, and a whole-paragraph sweep flagged those two as padding.
      */
-    private static Set<String> namedInBlock(final String paragraph, final String prefix) {
+    private static Set<String> namedInBlock(final String paragraph, final String leadIn) {
         final Set<String> found = new TreeSet<>();
         int blocks = 0;
         for (final String block : paragraph.split("\\n\\s*\\n")) {
-            if (!headlineOf(block).contains(prefix)) {
+            if (!headlineOf(block).contains(leadIn)) {
                 continue;
             }
             blocks++;
@@ -283,11 +283,11 @@ class TrickPlayExceptionOriginTest {
                 .as(
                         "exactly one block's lead-in must contain '%s'. Zero means the heading was "
                                 + "reworded and this check would go vacuous; more than one means it was "
-                                + "duplicated, which has happened once already in this slice",
-                        prefix)
+                                + "duplicated",
+                        leadIn)
                 .isEqualTo(1);
         assertThat(found)
-                .as("the block beginning '%s' must name its members in backticks", prefix)
+                .as("the block whose lead-in contains '%s' must name its members in backticks", leadIn)
                 .isNotEmpty();
         return found;
     }
