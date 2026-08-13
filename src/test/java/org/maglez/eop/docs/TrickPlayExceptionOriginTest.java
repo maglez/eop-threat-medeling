@@ -6,7 +6,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -46,11 +49,10 @@ import org.junit.jupiter.api.Test;
  * cannot see it. A construction moved into a helper called <em>from</em> a translation would be
  * classified wrongly.
  *
- * <p>No account here of which assertion a given mutation trips, and no tally of attack
- * shapes or assertion counts. Earlier
- * versions of this comment gave both, and each was left behind by the next change to the code it
- * described. The assertion messages are the record: they cannot go stale, because they are what
- * fires.
+ * <p>No account here of which assertion a given mutation trips, and no tally of attack shapes or
+ * assertion counts. Earlier versions of this comment gave both, and each was left behind by the
+ * next change to the code it described. The assertion messages are the record: they cannot go
+ * stale, because they are what fires.
  */
 @DisplayName("ADR-023's non-constraint exception origins, derived from the adapter")
 class TrickPlayExceptionOriginTest {
@@ -341,9 +343,9 @@ class TrickPlayExceptionOriginTest {
         return keep;
     }
 
-    private static java.util.List<int[]> sortedByStart(final Set<int[]> regions) {
-        final java.util.List<int[]> sorted = new java.util.ArrayList<>(regions);
-        sorted.sort(java.util.Comparator.comparingInt(region -> region[0]));
+    private static List<int[]> sortedByStart(final Set<int[]> regions) {
+        final List<int[]> sorted = new ArrayList<>(regions);
+        sorted.sort(Comparator.comparingInt(region -> region[0]));
         return sorted;
     }
 
