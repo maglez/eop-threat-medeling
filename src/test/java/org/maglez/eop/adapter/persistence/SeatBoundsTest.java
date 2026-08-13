@@ -16,14 +16,16 @@ import org.maglez.eop.entity.GameSession;
 /**
  * Pins the two seat guards in {@link TrickPlayRepositoryAdapter}.
  *
- * <p>These are the only guards in the adapter that no integration test can reach, and
- * the reason is the same in both directions. {@code seatRead} exists to survive a row
- * that {@code chk_game_session_current_leader_seat} now refuses, so the row cannot be
- * manufactured; {@code seatToWrite}'s negative limb is only reachable from a use case
- * that has not been written yet, because every production caller today hands it a seat a
- * domain object already bounded. Proving them through the adapter would mean dropping
- * the constraint, which would leave the suite measuring the guard against a schema the
- * application never runs on.
+ * <p>Between them these guards have three limbs an integration test cannot reach, and
+ * the reason differs by limb rather than being one reason repeated. {@code seatRead} is
+ * unreachable in both directions: it exists to survive a row that {@code
+ * chk_game_session_current_leader_seat} now refuses, so the row cannot be manufactured
+ * at all, and proving it through the adapter would mean dropping the constraint and
+ * measuring the guard against a schema the application never runs on. {@code
+ * seatToWrite} is different: its overflow limb <em>is</em> proved through the adapter,
+ * by {@code refusesAnOpeningLeaderSeatOutOfRange}, and only its negative limb is out of
+ * reach — not because of a constraint, but because every production caller hands it a
+ * seat a domain object has already bounded below zero.
  *
  * <p>So they are proved here instead, as the pure functions they are: no Spring, no
  * database, sub-millisecond. What this cannot prove is the translation the adapter
@@ -33,9 +35,13 @@ import org.maglez.eop.entity.GameSession;
  * on the sibling paths that do throw {@link IllegalStateException} through a real
  * context.
  *
- * <p>Both bounds are asserted against {@link GameSession#MAXIMUM_PLAYERS} rather than
- * against the literal 5, so widening the table widens these tests with it instead of
- * turning them red for the wrong reason.
+ * <p>The table below is written twice over, deliberately. The parameterised cases use
+ * literal seats, because a table of literals is what makes a reader see which values are
+ * being claimed legal; the four boundary cases are derived from {@link
+ * GameSession#MAXIMUM_PLAYERS} instead, so the real limit and the first value past it
+ * stay under test whatever that constant becomes. Changing the constant therefore turns
+ * the literal cases red, which is the intended outcome: a table that quietly kept
+ * passing would be a table that had stopped testing the bound.
  */
 @DisplayName("Seat bounds")
 class SeatBoundsTest {
