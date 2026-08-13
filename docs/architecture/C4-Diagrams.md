@@ -18,13 +18,19 @@ sits. No Level 1, and no Level 3 beyond the one component detail.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-14 Slice B** (the trick-play
-schema, Liquibase changeset `004`), including the client-address resolution introduced by
-EOP-26 (ADR-021) and the session lifecycle from EOP-10. Slice B is schema-only: it adds
-tables, constraints — including one on `player`, a table it does not create — and migration
-tests, and adds **no** component, port, adapter, route or runtime behaviour. So the two
-diagrams below are unchanged in structure from EOP-10 and only their database nodes move — if a
-future slice changes that, this sentence is the first thing to correct. Where a diagram would flatter the design, the prose underneath says so instead.
+Everything below reflects the code as it stands after **EOP-14 Slice C1** (the trick-play
+persistence layer, Liquibase changeset `005`), including the trick-play schema from Slice B
+(changeset `004`), the client-address resolution introduced by EOP-26 (ADR-021) and the session
+lifecycle from EOP-10. Slice B was schema-only: it added tables, constraints — including one on
+`player`, a table it does not create — and migration tests, and added **no** component, port,
+adapter, route or runtime behaviour, which is why this note used to say that the two diagrams below
+were unchanged in structure from EOP-10 and that only their database nodes moved. That sentence
+named the condition that would end it, and **Slice C1 is the slice that met it**: the component
+view below now gains the trick-play persistence components — one adapter, two ports, five JPA
+entities and five Spring Data interfaces. What Slice C1 does **not** add is a route or any runtime
+behaviour: no use case, controller or other bean calls either port, and Slice C2 owns the use
+cases, the endpoint and the flag that guards it. Where a diagram would flatter the design, the
+prose underneath says so instead.
 
 ---
 
@@ -100,10 +106,11 @@ not make the peer *provably* Caddy, and the application no longer assumes it doe
 
 ---
 
-## Level 2 detail — the session-lifecycle components added by EOP-10
+## Level 2 detail — components
 
-The container view above is too coarse to show what this story actually introduced.
-This is the same `app` container, opened up.
+The container view above is too coarse to show what these stories actually introduced.
+This is the same `app` container, opened up: the session lifecycle from EOP-10, and the
+trick-play persistence added by EOP-14 Slice C1, whose nodes say so in their labels.
 
 ```mermaid
 flowchart LR
@@ -134,6 +141,8 @@ flowchart LR
         P4(["IdentityTokenGenerator"])
         P5(["JoinCodeGenerator"])
         P6(["JoinAttemptLimiter"])
+        P7(["HandRepository<br/>EOP-14 Slice C1<br/>no caller — nothing above depends on it"])
+        P8(["TrickRepository<br/>EOP-14 Slice C1<br/>no caller — nothing above depends on it"])
     end
 
     subgraph persist["adapter/persistence"]
@@ -141,9 +150,11 @@ flowchart LR
         GSR["GameSessionJpaRepository<br/>package-private"]
         PJR["PlayerJpaRepository<br/>package-private"]
         UUIDG["HibernateUuidV7IdentifierGenerator"]
+        TPRA["TrickPlayRepositoryAdapter<br/>EOP-14 Slice C1<br/>one class implementing both trick-play ports<br/>authorises nobody — no port takes an acting player"]
+        TPJR["trick-play JPA repositories ×5<br/>EOP-14 Slice C1<br/>hand, hand_card, trick, trick_play, trick_play_component<br/>all package-private"]
     end
 
-    DB[("PostgreSQL<br/>4 unique constraints on game_session and player<br/>version BIGINT DEFAULT 0")]
+    DB[("PostgreSQL<br/>4 unique constraints and 2 range CHECKs on game_session and player<br/>version BIGINT DEFAULT 0")]
 
     SC --> CREATE
     SC --> JOIN
@@ -175,17 +186,33 @@ flowchart LR
     P4 -.->|implements| TOK
     P5 -.->|implements| JC
     P6 -.->|implements| LIM
+    P7 -.->|implements| TPRA
+    P8 -.->|implements| TPRA
 
     SRA --> GSR
     SRA --> PJR
     GSR --> DB
     PJR --> DB
+    TPRA --> TPJR
+    TPJR --> DB
 ```
 
 The dotted `implements` edges are the important ones: **every arrow of dependency
 still points inward**, and the outward-pointing arrows are inversions. `usecase`
-declares six ports; nothing in `usecase` names a Spring type, an HTTP type or a JPA
+declares eight ports; nothing in `usecase` names a Spring type, an HTTP type or a JPA
 type.
+
+**Two of those eight ports have no inbound edge, and that is the most accurate thing this
+diagram says about Slice C1.** `HandRepository` and `TrickRepository` are implemented — by one
+class, and the two edges into `TrickPlayRepositoryAdapter` are drawn separately because
+implementing both in one class is the decision the slice turned on, not an accident of packaging
+([ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md)). But nothing calls them.
+`SessionController` has no edge to either, no use case depends on either, and — measured, not
+inferred — `HandRepository` and `TrickRepository` appear nowhere in `src/main/java` outside the two
+port declarations and the single adapter that implements them. A reader looking for the caller
+should not find one, because there is none: Slice C2 adds `DealHandsUseCase`, `PlayCardUseCase`
+and `ResolveTrickUseCase`, and until it does, the reachable surface of five tables ends at a bean
+that nothing injects.
 
 ### `SessionController` — five routes that may not exist at all
 
@@ -296,22 +323,35 @@ database node for exactly that reason — so a reader asks the question and find
 answer in [ADR-020](../adr/ADR-020-session-concurrency-control.md) rather than assuming
 optimistic locking is active.
 
-The node's constraint count is qualified as **"on `game_session` and `player`"** as of
-EOP-14 Slice B, and the qualification is the point: changeset `004` adds five of its six unique
-constraints to `hand`, `trick` and `trick_play`, and no component in this diagram touches any of
-them. An unqualified "4 unique constraints" would read as a claim about the whole database and be
-wrong by five. The trick-play tables are covered in their own section below rather than added
-here, because this diagram is the EOP-10 component view and Slice B adds no component to it.
+The node's constraint annotation is qualified as **"on `game_session` and `player`"**, and the
+qualification is the point: changeset `004` adds five of its six unique constraints to `hand`,
+`trick` and `trick_play`, and changeset `005` puts its third range CHECK on `trick.sequence`. An
+unqualified "4 unique constraints and 2 range CHECKs" would read as a claim about the whole
+database and be wrong by six. Within the two tables it does scope itself to, the annotation is now
+complete: changeset `005` adds `chk_player_seat_order` and `chk_game_session_current_leader_seat`
+to exactly those two tables, both bounded by `GameSession.MAXIMUM_PLAYERS`, so the count had to
+grow by two or stop being an inventory of anything.
 
-The count on this node did have to move, from three to **four**, and it is the only number in
-this diagram that Slice B changes. Changeset `004` adds `uq_player_id_seat` on
+The trick-play *tables* still get their own section below rather than being drawn on this node,
+because a component view is the wrong place to enumerate a schema. The trick-play *components*,
+by contrast, are now on the diagram above — `TrickPlayRepositoryAdapter` and the five package-private
+Spring Data interfaces behind it, collapsed to one node because the diagram is already dense and
+five near-identical nodes would cost more legibility than they buy. The old justification for
+leaving them off, that this was the EOP-10 component view and Slice B added no component to it,
+lapsed with Slice C1, which adds components to exactly this view. What the diagram withholds from
+them is an inbound edge, and that absence is deliberate and load-bearing rather than a gap in the
+drawing.
+
+The unique count on this node did have to move, from three to **four**, and it was the only number
+Slice B changed anywhere in this diagram. Changeset `004` adds `uq_player_id_seat` on
 `player (id, seat_order)` — a table it does not create and the only one of its constraints that
 lands on a table this component view already draws. It exists purely as the referenceable
 target for the two composite foreign keys described in the schema section below, and it adds no
-invariant of its own, because `player.id` is already the primary key. No adapter, repository or
-use case above changes as a result: `PlayerJpaEntity` has no setter for `seatOrder` at all
-(`PlayerJpaEntity.java:145-147` is the only accessor and the class declares no setters), so no
-write path in this diagram can produce a seat change for the new constraint to reject.
+invariant of its own, because `player.id` is already the primary key. Neither the session adapter
+nor the trick-play one changes as a result: `PlayerJpaEntity` has no setter for `seatOrder` at all
+(`PlayerJpaEntity.java:145-147` is the only accessor and the class declares no setters), and no
+write path in this diagram touches a `player` row, so nothing here can produce a seat change for
+that constraint to reject.
 
 ### `adapter/security` — two generators, one reason to be separate
 
@@ -425,13 +465,45 @@ only that `trick.winner_play_id` names some `trick_play` row — not one of *thi
 not one from this session. That needs neither a second session nor a second player, so no
 cross-session fix bounds it, and Slice C's resolve-trick use case owes the check.
 
-**What contains all of this today, and it is not a feature flag.** None of the five new tables has
-a JPA entity — `@Table` appears on `PlayerJpaEntity`, `GameSessionJpaEntity` and `CardJpaEntity`
-and nowhere else — so no repository, adapter, controller or route can reach them and no
-application code can write them at all. Every probe above required a raw JDBC connection. That is
-strictly stronger than a disabled flag, and no flag guards this slice: `application.yml` declares
-one, `features.session-lifecycle`. Slice C adds the entities and the flag together, at which point
-every gap above becomes reachable in a single commit.
+**What contains all of this today — not a feature flag, and only until Slice C2.** As of EOP-14
+Slice C1 all five tables are mapped: `@Table` appears on **eight** classes, not three —
+`CardJpaEntity`, `GameSessionJpaEntity` and `PlayerJpaEntity` as before, plus `HandJpaEntity`,
+`HandCardJpaEntity`, `TrickJpaEntity`, `TrickPlayJpaEntity` and `TrickPlayComponentJpaEntity` — and
+`TrickPlayRepositoryAdapter` writes all five behind the `HandRepository` and `TrickRepository`
+ports. So **every gap enumerated above is now reachable by any bean that injects either port**, in
+ordinary JPA, in a transaction, with no raw JDBC connection. The probes above were run over raw
+JDBC because that was the only way to reach these tables at the time; that fact says something
+about how the measurements were taken and nothing any longer about reachability.
+
+What contains those gaps today is thinner than a flag and worth naming precisely: **no use case
+and no route calls either port.** `HandRepository` and `TrickRepository` appear nowhere in
+`src/main/java` outside their own declarations and the one adapter implementing them, so there is
+no path from an HTTP request to a trick-play row, and no flag guards this slice — `application.yml`
+still declares exactly one, `features.session-lifecycle`. Containment by absence of a caller holds
+only until somebody writes one, and it protects nothing against code inside the application that
+chooses to inject a port. Neither port takes an acting-player parameter, so this layer authorises
+nobody; the seat check the adapter does perform is a check on the *row*, not on the requester
+([ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md)).
+
+Slice C2 writes the caller — `DealHandsUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase` and the
+controller DTOs — and **must put `eop.features.trick-play`, `matchIfMissing` left at `false`, in
+front of that route**, on the `SessionController` pattern above. From C2 onwards the containment
+*is* a feature flag, this heading stops being true in its own terms, and the four cross-session
+obligations in [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) become the only thing
+standing between a reachable route and the gaps enumerated above. They are use-case obligations,
+and nothing in the schema or in this persistence layer discharges them.
+
+> **Corrected 2026-08-13.** This block previously read "What contains all of this today, and it is
+> not a feature flag", and claimed that none of the five new tables had a JPA entity, that `@Table`
+> appeared on three classes "and nowhere else", that "no application code can write them at all",
+> and that this was "strictly stronger than a disabled flag". **All four statements are false as of
+> EOP-14 Slice C1**, which mapped every one of the five tables and added the two ports and the
+> adapter that reach them. The claim was true of Slice B and was left standing when Slice C1 landed
+> — directly above the enumeration of still-open cross-session gaps, where a containment claim
+> decides whether those gaps read as urgent, which is why @architecture-guardian treated it as a
+> blocker rather than a stale line. It is corrected in place rather than deleted so that the record
+> shows the inversion. The freshness note at the top of this document had also named this slice as
+> its own trigger condition and was corrected in the same pass.
 
 > **Reversed 2026-08-12.** This block previously listed seat binding here too, as constructible
 > and declined for the same reason. **Seat binding is now enforced**, by the composite foreign
@@ -462,9 +534,10 @@ and costs a write on every insert. The three survivors are not prefixes of any k
 ## Related
 
 - [`runtime-view.md`](runtime-view.md) — the reconnect, subscribe and create/join/start sequences
+- [ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) — why one adapter implements both trick-play ports, and why neither port authorises anybody: the boundary the two components added to the component view above actually draw
 - [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) — the decisions behind the trick-play schema above: the lock-order tree, the `SET NULL` on the winner and its cost, the redundant-index rule that dropped five indexes, the reversal that put seat binding into storage after first deferring it, and the cross-session invariant still left to Slice C
 - [ADR-018](../adr/ADR-018-uuid-v7-identifiers.md) — why `hand`, `trick` and `trick_play` carry UUID v7 keys while `hand_card` and `trick_play_component` carry composite natural keys and no UUID
-- [ADR-008](../adr/ADR-008-database-migration-liquibase.md) — Liquibase changeset `004` is the only authority for the schema drawn above
+- [ADR-008](../adr/ADR-008-database-migration-liquibase.md) — Liquibase changesets `004` and `005` are together the only authority for the schema drawn above: `004` creates the five tables and their keys, and `005` adds the three range CHECKs, in a file of its own rather than by editing `004`, because a merged changeset is immutable
 - [ADR-017](../adr/ADR-017-frontend-delivery-topology.md) — Caddy, one origin, and why there is no CORS
 - [ADR-016](../adr/ADR-016-local-container-runtime.md) — the local container runtime this all runs on
 - [ADR-014](../adr/ADR-014-realtime-transport.md) — SSE, the heartbeat, and the over-reporting subscriber list

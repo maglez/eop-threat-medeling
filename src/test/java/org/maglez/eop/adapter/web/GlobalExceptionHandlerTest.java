@@ -13,6 +13,7 @@ import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.IdentityTokenHash;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
@@ -372,6 +373,41 @@ class GlobalExceptionHandlerTest {
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
             assertThat(problem.getTitle()).isEqualTo("Hands already dealt");
             assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("acting before the deal is a 409 naming the session the caller supplied")
+        void shouldMapHandNotDealtToConflict() {
+            final ProblemDetail problem = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Hands not dealt");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("acting before the deal says nothing but the session, so it cannot report the seat it was refused for")
+        void shouldNotLeakAnythingBeyondTheSessionWhenNoHandsAreDealt() {
+            final ProblemDetail problem = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+
+            assertThat(problem.getDetail())
+                    .as("the only identifier in the body is the one the caller sent")
+                    .isEqualTo("No hands have been dealt in session " + SESSION_ID);
+            assertThat(problem.getProperties()).isNull();
+        }
+
+        @Test
+        @DisplayName("the two states of the deal are told apart, because one is over and the other has not begun")
+        void shouldNotCollapseTheTwoDealConflicts() {
+            final ProblemDetail alreadyDealt =
+                    handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID));
+            final ProblemDetail notDealt = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+
+            assertThat(notDealt.getStatus()).isEqualTo(alreadyDealt.getStatus());
+            assertThat(notDealt.getTitle())
+                    .as("both are 409s on one column, so the title is the only thing that says which way it went")
+                    .isNotEqualTo(alreadyDealt.getTitle());
+            assertThat(notDealt.getDetail()).isNotEqualTo(alreadyDealt.getDetail());
         }
 
         @Test

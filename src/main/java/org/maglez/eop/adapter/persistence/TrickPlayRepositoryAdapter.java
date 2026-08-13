@@ -21,6 +21,7 @@ import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.Hand;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NotYourSeatException;
 import org.maglez.eop.entity.OutOfTurnException;
@@ -298,6 +299,10 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
 
         assertSeated(sessionId, seatsByPlayer(sessionId), play.playerId(), play.seatOrder());
 
+        // Reads the session's hands and filters, rather than querying one seat directly.
+        // HandJpaRepository declares no by-seat finder on purpose, so that a hand is never
+        // read without the table it belongs to, and adding one here to save four rows would
+        // put the first per-seat read into the class that must not have one.
         final HandJpaEntity hand = handRows.findByGameSessionIdOrderBySeatOrderAsc(sessionId).stream()
                 .filter(row -> row.getSeatOrder() == play.seatOrder())
                 .findFirst()
@@ -518,7 +523,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
         for (final PlayerJpaEntity player : playerRows.findByGameSessionIdOrderBySeatOrderAsc(sessionId)) {
             seats.put(player.getId(), player.getSeatOrder());
         }
-        return seats;
+        return Map.copyOf(seats);
     }
 
     /**
@@ -544,7 +549,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
         if (occupied == null) {
             throw new PlayerNotInSessionException(sessionId);
         }
-        if (occupied != seatOrder) {
+        if (occupied.intValue() != seatOrder) {
             throw new NotYourSeatException(occupied, seatOrder);
         }
     }
@@ -556,6 +561,22 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * that says which way the world moved rather than that something went wrong. The
      * read is safe here in a way it would not be after a constraint violation: no
      * exception has been raised, so the transaction is still usable.
+     *
+     * <p>All five answers are refusals a caller can earn, including the one that says no
+     * hands have been dealt. It is tempting to read that branch as unreachable — the leader
+     * seat is only ever read from {@link #findCurrentLeaderSeat(UUID)}, which answers empty
+     * until the deal claims it, so a caller with a witness must have got it from a dealt
+     * session — but a caller does not have to have read anything to send a seat, and asking
+     * to open the first trick before dealing is an ordinary mistake rather than a broken
+     * invariant. It answers {@link HandNotDealtException} and a 409.
+     *
+     * <p>That branch previously answered {@link SessionNotJoinableException} carrying
+     * {@code IN_PROGRESS}, which told the caller a session was not joinable while handing
+     * them the status that says it is; @architecture-guardian found it in the EOP-14 Slice
+     * C1 review. The status was right and the explanation contradicted itself, which is a
+     * vocabulary gap rather than a policy error: {@link HandAlreadyDealtException} named one
+     * state of {@code current_leader_seat} and nothing named the other, so the other had to
+     * borrow a type that could not describe it.
      *
      * @param sessionId          the session the update named
      * @param expectedLeaderSeat the leader seat the caller observed, or {@code null}
@@ -576,7 +597,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
             return new HandAlreadyDealtException(sessionId);
         }
         if (leaderSeat == null) {
-            return new SessionNotJoinableException(sessionId, session.getStatus());
+            return new HandNotDealtException(sessionId);
         }
         return new OutOfTurnException(leaderSeat, expectedLeaderSeat);
     }
@@ -663,7 +684,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
             final Card card = row.toDomain();
             catalogue.put(card.cardId(), card);
         }
-        return catalogue;
+        return Map.copyOf(catalogue);
     }
 
     /**

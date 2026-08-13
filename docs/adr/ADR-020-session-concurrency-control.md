@@ -1,6 +1,6 @@
 # ADR-020: Concurrency Control by Compare-and-Set on `status`, Not by Optimistic Locking
 
-**Status:** Accepted (lock ordering decided 2026-08-12 — see ADR-023)
+**Status:** Accepted (lock ordering decided 2026-08-12, corrected from a chain to a tree 2026-08-13 — see ADR-023)
 **Date:** 2026-08-10
 **Deciders:** @tech-lead, @architecture-guardian, @db-designer
 
@@ -286,6 +286,18 @@ intermittent deadlock.
 > after the first deadlock, so this consequence is discharged. The paragraph above is
 > left as written, because its reasoning for why the question was still open at the time
 > remains accurate — only its status has changed.
+
+> **Amended 2026-08-13, EOP-14 Slice C1.** The policy is a tree, not the chain named
+> above: `game_session` → `hand` → `hand_card` and `game_session` → `trick` →
+> `trick_play` → `trick_play_component`, acquired left to right along every path, and
+> where one transaction touches both branches the `hand` branch is taken first.
+> [ADR-023](ADR-023-deal-remainder-and-turn-order.md) carries the diagram. EOP-14 Slice
+> C1's `TrickPlayRepositoryAdapter.appendPlay` is the first code to walk both branches —
+> it takes the session row, reads `hand`, deletes from `hand_card`, then inserts into
+> `trick_play` and `trick_play_component` — so it is also the first place the difference
+> between a chain and a tree could have mattered. The 2026-08-12 note above summarised
+> the policy more narrowly than the policy it points at, which was harmless while no code
+> walked the `hand` branch and is not harmless now.
 
 **Neutral — this is settled per aggregate, not globally.** `game_session` is the
 only contended aggregate today. EOP-14's card-playing path has a different shape

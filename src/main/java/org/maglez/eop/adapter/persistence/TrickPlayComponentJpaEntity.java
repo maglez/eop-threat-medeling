@@ -123,10 +123,9 @@ class TrickPlayComponentJpaEntity {
             if (this == other) {
                 return true;
             }
-            if (!(other instanceof Key)) {
+            if (!(other instanceof final Key that)) {
                 return false;
             }
-            final Key that = (Key) other;
             return ordinal == that.ordinal && Objects.equals(trickPlayId, that.trickPlayId);
         }
 

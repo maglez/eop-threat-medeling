@@ -21,6 +21,7 @@ import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.Hand;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.JoinCode;
 import org.maglez.eop.entity.NotYourSeatException;
@@ -467,14 +468,19 @@ class TrickPlayRepositoryAdapterIntegrationTest {
         }
 
         @Test
-        @DisplayName("is refused before a deal has set any leader seat at all")
+        @DisplayName("is refused before a deal has set any leader seat at all, and says so rather than blaming the status")
         void refusesAnOpenBeforeTheDeal() {
             final Table table = startedTable();
             // Built without consulting the session, which has no leader seat yet.
             final Trick first = Trick.open(table.trickId(1), 1, 0);
 
-            assertThatExceptionOfType(SessionNotJoinableException.class)
-                    .isThrownBy(() -> adapter.openTrick(table.sessionId(), first, 0, PLAYED_AT));
+            // This branch used to answer SessionNotJoinableException carrying IN_PROGRESS, which
+            // told the caller a session was not joinable while handing back the status saying it
+            // was. The status was right and the explanation contradicted itself, so the fix was a
+            // type that can name the state rather than a different status.
+            assertThatExceptionOfType(HandNotDealtException.class)
+                    .isThrownBy(() -> adapter.openTrick(table.sessionId(), first, 0, PLAYED_AT))
+                    .withMessageContaining(table.sessionId().toString());
         }
     }
 

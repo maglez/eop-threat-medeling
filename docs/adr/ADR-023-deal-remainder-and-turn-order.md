@@ -741,6 +741,23 @@ The consequence is a scheduling one and it is the reason to read on: **Slice C a
 and the entities in the same commit**, at which point every gap in this section becomes
 reachable at once, and the flag will not be the thing holding them shut.
 
+> **Corrected 2026-08-13, EOP-14 Slice C1.** The two paragraphs above are no longer true and
+> are kept for the record. `@Table` now appears on eight classes, not three: Slice C1 mapped
+> `hand`, `hand_card`, `trick`, `trick_play` and `trick_play_component`, added the
+> `HandRepository` and `TrickRepository` ports and one `TrickPlayRepositoryAdapter`
+> implementing both. `ddl-auto: validate` therefore no longer starts clean against these five
+> tables by vacuity — it validates every column and type on all eight at every context start,
+> which `MappedSchemaValidationIntegrationTest` pins. Every gap enumerated below is
+> consequently reachable by any bean that injects either port, and the containment is now the
+> absence of a *use case and route*, which C2 adds behind `eop.features.trick-play`. Slice C1
+> also did **not** add the flag with the entities; see the amendment of 2026-08-12 at the end
+> of this ADR.
+>
+> This note is deliberately placed against the claim it corrects rather than in date order
+> with the reversal below, because the defect a review found here was not that the record was
+> wrong — records go stale — but that its correction sat 520 lines away, where a reader who
+> stopped at the false sentence would never reach it.
+
 > **Reversed 2026-08-12, on the same day and inside the same slice.** One of those three
 > invariants is no longer deferred: **seat binding is enforced in storage**, by changesets
 > `008` and `009` of `004`. Two remain unenforced — cross-session containment and
@@ -990,7 +1007,19 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
    session they should not know exists: the `X1`/`X2` gap re-emerging through the error channel,
    with the constraint that cannot see across sessions replaced by a status that can. Getting
    the order right is what makes obligation 4's 409s unreachable except by members, which is in
-   turn what entitles them to be specific.
+    turn what entitles them to be specific.
+
+    > **Partly discharged 2026-08-13, EOP-14 Slice C1 — and not in the layer this obligation
+    > names.** `TrickPlayRepositoryAdapter.assertSeated` now throws both `NotYourSeatException`
+    > (403) and `PlayerNotInSessionException` (404), with the body parity this obligation
+    > requires. That is a check on the **row** — does the player a row names hold the seat that
+    > row claims — and not on the **requester**. It runs in `recordDeal` and `appendPlay` only;
+    > `openTrick` and `recordResolution` make no membership check, and the three reads cannot
+    > make one because the ports carry no acting-player parameter. Deriving the acting player
+    > from authenticated identity, refusing a caller-supplied seat, and running that check
+    > before any port method is called remain wholly outstanding and remain C2's. The adapter's
+    > own exceptions must not be mistaken for their discharge. ADR-024 records why the ports
+    > cannot enforce this and why no C1 test can fail for its absence.
 2. That behaviour needs tests naming both attacks — a play claiming another player's seat, and
    a play by a player from a different session — so the enforcement has a regression guard in
    the layer that performs it. Add a third: the **cross-session card block** (`X1`/`X2` above),
@@ -1046,9 +1075,25 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
    | `uq_trick_play_trick_card` | `23505` | `CardAlreadyPlayedException` | 409 |
    | `uq_hand_session_seat` | `23505` | `HandAlreadyDealtException` | 409 |
    | `uq_trick_session_sequence` | `23505` | `TrickAlreadyOpenException` | 409 |
-   | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
+    | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
 
-   Three things in that table are load-bearing rather than bookkeeping. The `23506` row answers
+    > **Superseded 2026-08-13, EOP-14 Slice C1, for the two seat foreign keys only.** The rest
+    > of this table shipped as written. The two seat-binding keys did not:
+    > `TrickPlayRepositoryAdapter.assertSeated` reads the session's seats *before* the insert and
+    > refuses a wrong seat as `NotYourSeatException` (403) or an unknown player as
+    > `PlayerNotInSessionException` (404) itself, so the keys are a backstop rather than the
+    > check. `dealFailure` and `playFailure` route them to `backstopFired`, which logs the
+    > constraint name at WARN and rethrows, answering a server fault — because a backstop that
+    > fires means a check above it was missed, and that is not the caller's mistake. The reason
+    > for checking first is that a raised constraint violation makes the transaction
+    > rollback-only, after which the read that distinguishes 403 from 404 can no longer be
+    > trusted; and checking first is safe only because `seat_order` is mapped non-updatable, so
+    > unlike seat *allocation* there is no window to narrow. Do not implement the 403
+    > translation this row originally required. The WARN-with-constraint-name half of the row
+    > stands. The paragraph immediately below, which argues the 403, is superseded with the row
+    > and is kept because its reasoning about *who* a status is owed to survives its conclusion.
+
+    Three things in that table are load-bearing rather than bookkeeping. The `23506` row answers
    **403** and not 500 even though reaching it means obligation 1's check is missing or wrong:
    the status owed to a caller is decided by what the caller attempted, not by which layer
    happened to notice, and the alternative here is exactly the 500 that is the defect. It must

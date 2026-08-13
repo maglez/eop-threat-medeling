@@ -5,6 +5,7 @@ import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
@@ -386,6 +387,34 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleHandAlreadyDealt(final HandAlreadyDealtException exception) {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Hands already dealt");
+        problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * No hands have been dealt in this session yet.
+     *
+     * <p>The mirror of the refusal above, and a 409 for the same reason: the request
+     * was well formed and the state is simply earlier than the caller believed. Asking
+     * to open the first trick before dealing reaches this.
+     *
+     * <p>It has its own type and title rather than borrowing
+     * {@code SessionNotJoinableException}, which is what it answered before EOP-14
+     * Slice C1's architecture review. That answer carried the right status with an
+     * explanation that contradicted itself — a session reported as not joinable, with
+     * the status saying it was in progress — because nothing in the vocabulary could
+     * name the state.
+     *
+     * <p>The detail names the session, which the caller supplied, and nothing about how
+     * far along the session is otherwise.
+     *
+     * @param exception the refusal, carrying the session identifier
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(HandNotDealtException.class)
+    public ProblemDetail handleHandNotDealt(final HandNotDealtException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Hands not dealt");
         problem.setDetail(exception.getMessage());
         return problem;
     }

@@ -118,10 +118,9 @@ class HandCardJpaEntity {
             if (this == other) {
                 return true;
             }
-            if (!(other instanceof Key)) {
+            if (!(other instanceof final Key that)) {
                 return false;
             }
-            final Key that = (Key) other;
             return Objects.equals(handId, that.handId) && Objects.equals(cardId, that.cardId);
         }
 
