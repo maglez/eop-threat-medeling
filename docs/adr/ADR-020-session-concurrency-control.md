@@ -54,6 +54,14 @@ retained as bookkeeping, not as a gate.**
 
 ### The mechanism: two conditional updates that report rows affected
 
+> **Amended 2026-08-13, EOP-14 Slice C1 — there are now five.** The count in the
+> heading and in the sentence below was true when written and is not any more.
+> `claimDeal`, `touchWhileLeaderSeatIs` and `advanceLeaderSeat` join them, all three
+> compare-and-set, all three hand-incrementing `version`, all three checked for rows
+> affected at every call site. Two of them witness `current_leader_seat` rather than
+> `status`, which is a widening of this decision recorded in *The deal-once gate*
+> below. Read "two" here as "the first two".
+
 `GameSessionJpaRepository` — package private, deliberately not the application's
 port — declares exactly two writes:
 
@@ -225,6 +233,60 @@ entity's own javadoc gives the reason, and it is the right formulation:
 `PlayerJpaEntity` has none either, because players are inserted and read but never
 contended-on as rows — their contention is settled by
 `uq_player_session_seat` instead.
+
+### The deal-once gate: a null column, not a count of rows — amended 2026-08-13, EOP-14 Slice C1
+
+This decision is a widening of the one above and was made in code during Slice C1
+without an ADR to carry it. @architecture-guardian's gate graded that a MAJOR
+finding, correctly: the *rationale* was in a Javadoc comment
+(`GameSessionJpaRepository.java:76-91`) and nowhere in `docs/`, and this ADR — which
+owns session concurrency control, and which that same slice amended for lock
+ordering — is where it belonged.
+
+**Dealing is serialised on the session row, and `current_leader_seat IS NULL` is the
+definition of "not yet dealt".**
+
+```java
+@Modifying(clearAutomatically = true)
+@Query("UPDATE GameSessionJpaEntity s SET s.currentLeaderSeat = :openingLeaderSeat, "
+     + "s.updatedAt = :now, s.version = s.version + 1 "
+     + "WHERE s.id = :sessionId AND s.status = :required "
+     + "AND s.currentLeaderSeat IS NULL")
+int claimDeal(UUID sessionId, SessionStatus required, int openingLeaderSeat,
+              OffsetDateTime now);
+```
+
+The predicate does two jobs in one statement: it is the status compare-and-set this
+ADR already mandates, *and* it is the deal-once gate. The first caller to set the
+column wins; every subsequent caller matches zero rows and is refused with
+`HandAlreadyDealtException`, a 409.
+
+**The alternative was counting `hand` rows first, and it is strictly worse.** A
+`SELECT COUNT(*) FROM hand WHERE session_id = ?` followed by an insert is a
+check-then-act across two statements: two concurrent deals both count zero, both
+proceed, and both insert. `uq_hand_session_seat` would catch the collision, so the
+outcome is not corrupt — but it is a race decided by a unique-constraint violation
+translated back into a conflict, which is exactly the pattern this ADR exists to
+avoid. Counting first would only *narrow* the window, never close it, at the cost of
+an extra round trip. The single conditional `UPDATE` closes it, because the row lock
+serialises the two callers and the column's nullness is the state being contended.
+
+**The cost, which is real:** `HandAlreadyDealtException` now has two distinct
+origins. It arises from this gate, via `sessionMoved(sessionId, null)` when the
+column is already set, and it arises from `uq_hand_session_seat` when a second deal
+somehow reaches the insert. The constraint-name-to-exception translation table in
+[ADR-023](ADR-023-deal-remainder-and-turn-order.md) covers only the second, and
+structurally cannot cover the first, because the first is not a constraint violation
+at all. A reader who uses that table as the complete inventory of how each exception
+is raised will be wrong about this one. That is the price of putting the gate on the
+session row, and it is worth paying; this paragraph is the mitigation.
+
+**Why the session row and not the `hand` table.** The seat the deal opens on is
+derived from the cards actually dealt (`Hands.openingLeaderSeat()`), so the deal has
+to write `current_leader_seat` anyway. Making that same write the gate costs nothing
+and means there is exactly one row whose lock serialises dealing — which is also the
+row that serialises every other transition in the session, so the lock ordering in
+the amendment below stays a tree rather than becoming a graph.
 
 ## Consequences
 

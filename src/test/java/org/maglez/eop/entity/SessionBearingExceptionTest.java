@@ -125,4 +125,60 @@ class SessionBearingExceptionTest {
         assertThat(exception.trickId()).isEqualTo(TRICK_ID);
         assertThat(exception.getMessage()).contains(TRICK_ID.toString());
     }
+
+    /**
+     * The session-lifecycle exceptions, which have the same untested-accessor gap the
+     * trick-play ones had. They were not named by the gate that found the first four, but
+     * they were sitting at 65–75% for exactly the same reason, and the fix is the same fix.
+     * Each carries a second field beyond the session identifier, and it is the second field
+     * that a handler needs in order to say anything useful — a capacity, a seated count, a
+     * status — so an accessor returning a default would produce a refusal that names the
+     * wrong number.
+     */
+    @Test
+    @DisplayName("returns every field a session-lifecycle refusal was constructed with")
+    void shouldReturnEverySessionLifecycleField() {
+        final UUID playerId = UUID.fromString("00000000-0000-7000-8000-0000000000f1");
+
+        final TooFewPlayersException tooFew = new TooFewPlayersException(SESSION_ID, 2, 3);
+        assertThat(tooFew.sessionId()).isEqualTo(SESSION_ID);
+        assertThat(tooFew.seated()).isEqualTo(2);
+        assertThat(tooFew.required()).isEqualTo(3);
+        assertThat(tooFew.getMessage()).contains(SESSION_ID.toString());
+
+        final SessionFullException full = new SessionFullException(SESSION_ID, 6);
+        assertThat(full.sessionId()).isEqualTo(SESSION_ID);
+        assertThat(full.capacity()).isEqualTo(6);
+        assertThat(full.getMessage()).contains(SESSION_ID.toString());
+
+        final NotFacilitatorException notFacilitator =
+                new NotFacilitatorException(SESSION_ID, playerId);
+        assertThat(notFacilitator.sessionId()).isEqualTo(SESSION_ID);
+        assertThat(notFacilitator.playerId()).isEqualTo(playerId);
+
+        final SessionNotJoinableException notJoinable =
+                new SessionNotJoinableException(SESSION_ID, SessionStatus.IN_PROGRESS);
+        assertThat(notJoinable.sessionId()).isEqualTo(SESSION_ID);
+        assertThat(notJoinable.status()).isEqualTo(SessionStatus.IN_PROGRESS);
+        assertThat(notJoinable.getMessage()).contains(SESSION_ID.toString());
+
+        final PlayerNotRecognisedException notRecognised =
+                new PlayerNotRecognisedException(SESSION_ID);
+        assertThat(notRecognised.sessionId()).isEqualTo(SESSION_ID);
+    }
+
+    /**
+     * Pins the two refusals that must not name a player or a seat in their own message,
+     * because the handler for one of them returns a fixed sentence and the other's message
+     * is logged. Asserting the accessors alone would let a message start echoing a player
+     * identifier without any test noticing.
+     */
+    @Test
+    @DisplayName("keeps a player identifier out of the message a log line will carry")
+    void shouldKeepThePlayerIdentifierOutOfTheMessage() {
+        final UUID playerId = UUID.fromString("00000000-0000-7000-8000-0000000000f1");
+
+        assertThat(new PlayerNotRecognisedException(SESSION_ID).getMessage())
+                .doesNotContain(playerId.toString());
+    }
 }

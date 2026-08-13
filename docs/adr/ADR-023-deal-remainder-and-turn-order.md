@@ -1250,6 +1250,22 @@ Slice C's resolve-trick use case owns the check that the winner play belongs to 
 resolves. It is the third obligation in the numbered list above, where it now also carries its
 exception type and its 422, and it is not a restatement of any of the other three.
 
+> **Corrected 2026-08-13, EOP-14 Slice C1.** The sentence above — "no adapter, repository or
+> entity maps `trick` at all" — **is now false**, and so is the conclusion "this is unreachable
+> until Slice C" if read as *all* of Slice C. `TrickJpaEntity` maps the table,
+> `TrickJpaRepository` reads and writes it, and `TrickPlayRepositoryAdapter.openTrick` inserts
+> rows into it. The gap itself is **still open**, but it is now held shut by something weaker
+> than the absence of a mapping: `winnerAmong` (`TrickPlayRepositoryAdapter.java:482`) refuses a
+> recorded winner that is not among the trick's own plays, on every read, and
+> `refusesAWinnerFromAnotherTrick` proves it. That is a *revalidation on read*, not the
+> structural impossibility this paragraph claimed. What remains genuinely unreachable is a
+> route: no use case and no controller calls either trick-play port, which is now the whole of
+> the containment. The owner is unchanged and is Slice C2's resolve-trick use case.
+> `WinningPlayNotInTrickException` exists and is mapped to 422, with no thrower yet — see
+> [ADR-024](ADR-024-trick-play-persistence-boundary.md). This correction is written here, at the
+> claim, rather than only at the head of the section, because a reader who stops at a false
+> sentence never follows a pointer.
+
 **No range CHECK on any seat or sequence column, which bounds what the composite keys prove.**
 @security-auditor measured `player.seat_order = -7`, `trick.sequence = -5` and
 `game_session.current_leader_seat = 9999` all **accepted** by storage, while the domain refuses
@@ -1278,13 +1294,34 @@ changesets is worse than landing it whole. Slice C should land all three bounds 
 `player.seat_order`, `trick.sequence` and `current_leader_seat` — and if it lands only some, this
 paragraph is the record of which one had no excuse.
 
+> **Corrected and discharged 2026-08-13, EOP-14 Slice C1.** Two things about the paragraph
+> above. First, "it is `004`'s own column, mapped by no entity, written by no code" **is now
+> false**: `GameSessionJpaEntity` maps `current_leader_seat`, and `claimDeal`
+> (`GameSessionJpaRepository.java:92`) and `advanceLeaderSeat` (`:143`) both write it. Second,
+> the self-test this paragraph set has been **passed, not failed**. Changeset
+> `005-seat-and-sequence-bounds.xml` lands **all three** bounds together, as demanded:
+> `player.seat_order` (`005:64`), `trick.sequence` (`005:99`) and
+> `game_session.current_leader_seat` (`005:136`). The bound is derived from
+> `GameSession.MAXIMUM_PLAYERS` rather than hard-coded, and `SeatAndSequenceBoundsTest` pins it
+> to that constant, rejects each of the three exact values @security-auditor measured as
+> accepted (`-7`, `-5`, `9999`), and asserts SQL state `23513` specifically — H2 reports a CHECK
+> violation as `23513`, not the `23514` an earlier draft of this ADR assumed. So there is no
+> column that "had no excuse"; the record this paragraph asked for is a clean one.
+>
+> One bound the paragraph did not ask for is still missing, and is recorded here so it is not
+> mistaken for part of the discharge: **`trick.leader_seat` has no CHECK constraint**, so
+> `trick.leader_seat = 9999` remains insertable — the same class of value `005` closed for the
+> other three columns. The domain refuses it on read (`Trick.java:50`, on both `open` and
+> `reconstitute`), so the defence sits one layer higher here than for the other three rather
+> than being absent. Slice C2 owns adding it, in the changeset that accompanies the use cases.
+
 ## Related
 
 - [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — seat order assigned once at join and never re-derived, clockwise play, and the next-player formula this ADR qualifies for the short final trick
 - [ADR-020](ADR-020-session-concurrency-control.md) — compare-and-set on a single row is why the leader's seat is stored rather than derived; the `@Version` warning repeated above; and the deadlock-ordering decision it predicted EOP-14 would have to make
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase owns the schema; `current_leader_seat` arrives in changeset `004` before the entities
 - [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `hand`, `trick` and `trick_play` are minted in the use case, not at flush. Narrowed by the 2026-08-12 amendment above: `trick_play_component` and `hand_card` carry no UUID, because their rows are values in a bounded list and a set membership respectively, rather than entities
-- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. **That flag does not exist**, in this slice or any other: `application.yml` declares one flag, `features.session-lifecycle: false`. Slice A is pure domain with nothing to gate and **Slice B is schema with nothing to gate either** — its five tables have no entity, adapter or route, which is a stronger containment than a flag and is not to be described as one (see the containment paragraph in *What changeset `004` deliberately does not enforce*). The flag is created in Slice C, in the same commit as the entities, when dealing is first wired into session start
+- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. **That flag does not exist**, in this slice or any other: `application.yml` declares one flag, `features.session-lifecycle: false`. Slice A is pure domain with nothing to gate and **Slice B is schema with nothing to gate either** — its five tables have no entity, adapter or route, which is a stronger containment than a flag and is not to be described as one (see the containment paragraph in *What changeset `004` deliberately does not enforce*). **Corrected 2026-08-13, EOP-14 Slice C1:** the clause "its five tables have no entity, adapter or route" is now false in two of its three terms — all five tables are mapped by JPA entities and reached by `TrickPlayRepositoryAdapter`. Only "no route" survives, and it now carries the containment on its own, together with the absence of any use case calling either port. That is still stronger than a flag, because a flag can be flipped and a route that does not exist cannot; but it is a weaker claim than the one this bullet made, and the sentence is not to be quoted in its original form. The flag is created in Slice C, in the same commit as the entities, when dealing is first wired into session start
 - [ADR-005](ADR-005-error-handling-strategy.md) — where an out-of-turn play and a follow-suit violation become RFC 9457 problem details
 - [ADR-014](ADR-014-realtime-transport.md) — events carry no state and reconnection is a re-read, so the stored leader seat is what a reconnecting client sees
 - [PRD §3.3](../requirements/PRD-eop-card-game.md) — dealing, the derived opening lead, and the "time, cards, or ways to connect" end condition that sanctions the short final trick
