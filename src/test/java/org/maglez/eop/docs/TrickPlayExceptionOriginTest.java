@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -136,9 +137,11 @@ class TrickPlayExceptionOriginTest {
      * hole — it is the exact mis-filing the block's own text records as its own past mistake, so the
      * guard built to stop it recurring could not see it recurring.
      *
-     * <p>Per-group equality catches all four shapes that have ever been attempted here: an origin the
-     * adapter gains and the prose omits, a name the prose invents, a name the prose deletes, and a
-     * name that moves between groups.
+     * <p>Per-group equality catches an origin the adapter gains and the prose omits, a name the
+     * prose invents, a name the prose deletes, and a name that moves between groups. It does not
+     * catch a reworded or duplicated heading; {@link #namedInBlock} does that, by requiring exactly
+     * one matching block. No total is given here on purpose — a count of attack shapes is one more
+     * number to get wrong, and this slice has spent nine rounds proving that.
      */
     @Test
     @DisplayName("maps each origin to the mechanism that raises it, group by group")
@@ -182,22 +185,6 @@ class TrickPlayExceptionOriginTest {
     }
 
     /**
-     * Every domain exception the adapter constructs inside a constraint translation. Not used to
-     * derive anything — kept because it is the complement of {@link #nonConstraintOrigins} and
-     * asserting it is non-empty proves the region subtraction actually removed something.
-     */
-    private static Set<String> constraintTranslatedOrigins(final String adapter) {
-        final Set<String> found = new TreeSet<>();
-        for (final int[] region : translationRegions(adapter)) {
-            found.addAll(domainExceptionsConstructedIn(adapter, Set.of(region)));
-        }
-        assertThat(found)
-                .as("the translation regions must contain constructions, or the split is meaningless")
-                .isNotEmpty();
-        return found;
-    }
-
-    /**
      * The refusals raised from the {@code assertSeated} read rather than from a row count. Located
      * by that method's own body, not by subtraction.
      */
@@ -214,18 +201,17 @@ class TrickPlayExceptionOriginTest {
      * The refusals raised from a rows-affected count of zero: constructions in the source that is
      * left after cutting out both the constraint translations and {@code assertSeated}'s body.
      *
-     * <p>This is a <em>region</em> complement, not a name-level subtraction, and the difference is
-     * not academic. An earlier version computed {@link #nonConstraintOrigins} and then
-     * {@code removeAll}-ed the names found in {@code assertSeated} — which unconditionally removed
-     * a type from this group whenever it appeared in that method, even if it was <em>also</em>
-     * constructed at a rows-affected position. That made the union and disjointness assertions in
-     * {@code shouldRecordTheSplit} tautologies, and a review gate proved it by adding a second
-     * construction of {@code PlayerNotInSessionException} to {@code sessionMoved}: the derivation
-     * still reported seven, still reported no overlap, and the build stayed green while the ADR's
-     * split had become false. Cutting regions rather than names means that mutation now fails. It
-     * surfaces as a group-size mismatch rather than as an overlap, because the size assertion is
-     * reached first; the overlap is nonetheless live, and the gate demonstrated that by masking the
-     * size and watching disjointness fire.
+     * <p>This is a <em>region</em> complement, not a name-level subtraction. An earlier version
+     * computed {@link #nonConstraintOrigins} and then {@code removeAll}-ed the names found in
+     * {@code assertSeated}, which dropped a type from this group whenever it appeared in that
+     * method even if it was <em>also</em> constructed at a rows-affected position. Cutting regions
+     * rather than names is what makes the two groups independently derived.
+     *
+     * <p>Deliberately no account here of which assertion a given mutation trips. The previous
+     * version of this comment gave one, described a disjointness check as live, and was left behind
+     * when that check was deleted one commit later — the eighth instance in this slice of a comment
+     * outliving the mechanism it described. The assertion messages are the record of what fails and
+     * where; they cannot go stale, because they are the thing that fires.
      */
     private static Set<String> rowCountOrigins(final String adapter) {
         final Set<String> found =
@@ -249,7 +235,7 @@ class TrickPlayExceptionOriginTest {
      * range whose start coincides with the hole's start is truncated, not preserved.
      */
     private static Set<int[]> excluding(final Set<int[]> ranges, final int[] hole) {
-        final Set<int[]> kept = new java.util.LinkedHashSet<>();
+        final Set<int[]> kept = new LinkedHashSet<>();
         for (final int[] range : ranges) {
             if (hole[1] <= range[0] || hole[0] >= range[1]) {
                 kept.add(range);
@@ -269,10 +255,10 @@ class TrickPlayExceptionOriginTest {
     }
 
     /** Prefix of the block that enumerates the rows-affected group. Load-bearing. */
-    private static final String ROWS_BLOCK = "**Seven are raised from";
+    private static final String ROWS_BLOCK = "are raised from a rows-affected count of zero";
 
     /** Prefix of the block that enumerates the read group. Load-bearing. */
-    private static final String READ_BLOCK = "**Two are raised from";
+    private static final String READ_BLOCK = "are raised from a read this adapter makes itself";
 
     /**
      * The exception types named in the one block beginning {@code prefix}.
@@ -288,7 +274,7 @@ class TrickPlayExceptionOriginTest {
         final Set<String> found = new TreeSet<>();
         int blocks = 0;
         for (final String block : paragraph.split("\\n\\s*\\n")) {
-            if (!block.trim().startsWith(prefix)) {
+            if (!headlineOf(block).contains(prefix)) {
                 continue;
             }
             blocks++;
@@ -317,7 +303,7 @@ class TrickPlayExceptionOriginTest {
      * one inline in {@code openTrick} that translates in place.
      */
     private static Set<int[]> translationRegions(final String adapter) {
-        final Set<int[]> regions = new java.util.LinkedHashSet<>();
+        final Set<int[]> regions = new LinkedHashSet<>();
         regions.add(bodyOf(adapter, adapter.indexOf("private RuntimeException dealFailure")));
         regions.add(bodyOf(adapter, adapter.indexOf("private RuntimeException playFailure")));
 
@@ -344,7 +330,7 @@ class TrickPlayExceptionOriginTest {
 
     /** The file with the translation regions cut out of it. */
     private static Set<int[]> wholeFileExcludingTranslations(final String adapter) {
-        final Set<int[]> keep = new java.util.LinkedHashSet<>();
+        final Set<int[]> keep = new LinkedHashSet<>();
         int cursor = 0;
         for (final int[] region : sortedByStart(translationRegions(adapter))) {
             assertThat(cursor)
@@ -419,6 +405,21 @@ class TrickPlayExceptionOriginTest {
                 .as("the adapter must still import its domain exceptions by name")
                 .isNotEmpty();
         return found;
+    }
+
+    /**
+     * The bolded lead-in of a block, which is where a group block declares what it is.
+     *
+     * <p>Matching a group block on this rather than on a prefix containing the number word is
+     * deliberate. The prefixes used to read {@code "**Seven are raised from"}, so a legitimate change
+     * in a group's size made the block unfindable and reported as a reworded heading — fail-safe, but
+     * with the wrong diagnosis. Matching the invariant half means a size change now fails as the size
+     * mismatch it is.
+     */
+    private static String headlineOf(final String block) {
+        final String trimmed = block.trim();
+        final int stop = trimmed.indexOf(":**");
+        return stop < 0 ? trimmed : trimmed.substring(0, stop);
     }
 
     /** The paragraph the count lives in, anchored on text rather than a line number. */
