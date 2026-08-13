@@ -75,6 +75,24 @@ final class InMemoryHandRepository implements HandRepository {
         return this;
     }
 
+    /**
+     * Seeds hands with no leader seat recorded, which is a state the real deal cannot produce.
+     *
+     * <p>{@code recordDeal} writes the hands and the leader seat in one transaction, so a session
+     * with hands and no leader does not arise from any sequence of legal calls. It is seeded here
+     * only to reach the guard that answers it, because the alternative to a guard is that the use
+     * case reads an empty optional and fails on it somewhere less obvious. Treat this as the
+     * partial-write case it is, not as a state worth supporting.
+     *
+     * @param hands the hands to answer reads with
+     * @return this repository
+     */
+    InMemoryHandRepository seededWithNoLeader(final Hands hands) {
+        this.dealt = Objects.requireNonNull(hands, "hands is required");
+        this.leaderSeat = NO_LEADER;
+        return this;
+    }
+
     @Override
     public Optional<Hands> findBySessionId(final UUID sessionId) {
         sessionsAsked.add(sessionId);

@@ -88,24 +88,33 @@ class DealHandsUseCaseTest {
     /**
      * A hand keeps its cards in canonical order rather than in the order they were dealt, so the
      * dealt sequence cannot be read back off one. What can be read back is <em>which</em> cards
-     * landed at a seat, and that is enough: the deal is round robin over three seats, so the
-     * canonical order gives seat zero every card at an index divisible by three while the reversed
-     * order gives it every card two above a multiple of three. The two sets are disjoint, so
-     * holding the deck's last card while not holding its first is only true of the reversed deal.
+     * landed at a seat, and that is enough to pin the whole permutation: the deal is round robin
+     * over three seats, so seat zero takes every third card of whatever order it was handed. Under
+     * the canonical order that is every index divisible by three; under the reversed order it is
+     * every index two above a multiple of three. The two sets are disjoint, and asserting the
+     * whole set rather than a card from each end also refuses a shuffle that moved only some of
+     * the deck.
      */
     @Test
     @DisplayName("deals the shuffled order, not the order the deck was read in")
     void shouldDealTheShuffledOrder() {
         final var session = seatedTable(SEATS);
         final var canonical = DeckFixture.fullDeck();
+        final var expectedAtSeatZero = new ArrayList<Card>();
+        for (int index = canonical.size() - 1; index >= 0; index -= SEATS) {
+            expectedAtSeatZero.add(canonical.get(index));
+        }
 
         useCaseFor(session).execute(session.sessionId(), PlayerBuilder.DEFAULT_TOKEN);
 
         assertThat(shuffler.calls()).isOne();
         assertThat(shuffler.received()).isEqualTo(canonical);
+        assertThat(expectedAtSeatZero)
+                .as("the reversed deal gives the first seat a third of the deck")
+                .hasSize(CARDS_PER_SEAT);
         assertThat(handRepository.recordedHands().handOf(0).cards())
-                .as("the reversed deck puts the deck's last card at the first seat")
-                .contains(canonical.get(canonical.size() - 1))
+                .as("every card at the first seat is one the reversed order would have put there")
+                .containsExactlyInAnyOrderElementsOf(expectedAtSeatZero)
                 .as("dealing the canonical order would have put the deck's first card there instead")
                 .doesNotContain(canonical.get(0));
     }

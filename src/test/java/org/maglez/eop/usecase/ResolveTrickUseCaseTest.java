@@ -236,6 +236,45 @@ class ResolveTrickUseCaseTest {
                 .isEqualTo(resolved.winningSeat());
     }
 
+    /**
+     * The other half of the next-leader rule, and the half that cannot be read off the winner.
+     *
+     * <p>Four cards over three seats is the unequal deal ADR-023 describes: the round robin
+     * gives seat zero {@code TWO} and {@code FOUR} while seats one and two get one card each.
+     * Seat one takes the trick with the ace and is immediately out of cards, so the lead cannot
+     * pass to the winner and goes to the next seat clockwise that still holds one, which is seat
+     * zero.
+     *
+     * <p>This is the only shape in which {@code nextLeaderSeat} and {@code winningSeat} disagree
+     * while play continues, which makes it the only test that can tell the two apart. Without it
+     * an implementation that ignored the seats holding cards and always sent the winning seat
+     * would pass every other assertion in this class, and the table would then wait for a card
+     * from a player who has none.
+     */
+    @Test
+    @DisplayName("passes the lead on when the winner is out of cards but another seat is not")
+    void shouldPassTheLeadOnWhenTheWinnerIsOutOfCards() {
+        final GameSession session = seatedTable();
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.ACE, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+
+        final var resolved = useCaseFor(session)
+                .execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        assertThat(resolved.winningSeat())
+                .as("the ace takes the trick, and it was dealt to seat one")
+                .isEqualTo(1);
+        assertThat(underWay.remaining().seatsHoldingCards())
+                .as("only seat zero was dealt a second card")
+                .containsExactly(LEADER_SEAT);
+        assertThat(trickRepository.resolutions().get(0).nextLeaderSeat())
+                .as("the winner holds nothing, so the lead passes clockwise to seat zero")
+                .isEqualTo(LEADER_SEAT)
+                .isNotEqualTo(resolved.winningSeat());
+    }
+
     @Test
     @DisplayName("lets any seated member resolve, not only the facilitator")
     void shouldAllowAnyMemberToResolve() {

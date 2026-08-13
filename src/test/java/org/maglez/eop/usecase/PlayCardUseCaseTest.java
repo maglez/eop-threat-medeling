@@ -65,11 +65,17 @@ class PlayCardUseCaseTest {
 
     private static final UUID SECOND_PLAY_ID = UUID.fromString("00000000-0000-7000-8000-0000000000e2");
 
+    private static final UUID SECOND_TRICK_ID = UUID.fromString("00000000-0000-7000-8000-0000000000e3");
+
     private static final long HAND_PREFIX = 900L;
+
+    private static final long PLAY_PREFIX = 910L;
 
     private static final int SEATS = 3;
 
     private static final int FIRST_SEQUENCE = 1;
+
+    private static final int SECOND_SEQUENCE = 2;
 
     private final List<String> order = new ArrayList<>();
 
@@ -146,6 +152,68 @@ class PlayCardUseCaseTest {
         assertThat(appended.play().seatOrder()).isEqualTo(followerSeat);
         assertThat(appended.play().card()).isEqualTo(follow);
         assertThat(played.plays()).hasSize(2);
+    }
+
+    /**
+     * The trick after the first one, which is where the sequence number stops being a constant.
+     *
+     * <p>Every other test here plays into the opening trick, where the sequence is one whether it
+     * was derived or hard coded. This one resolves a complete first trick and has its winner lead
+     * again, so the number written to the second trick can only be right if it was taken from the
+     * first. An implementation that always wrote one would leave two tricks claiming to be the
+     * opening trick, which the unique constraint on sequence would then refuse at the database, a
+     * failure no test above the port would explain.
+     *
+     * <p>It also pins the seat the next trick opens on. The recorded leader seat has moved to the
+     * winner by the time this runs, so passing it back as the compare-and-set witness is what lets
+     * the write succeed; a use case that reached for the old leader would be refused by the port
+     * for a reason that has nothing to do with the caller.
+     */
+    @Test
+    @DisplayName("opens the next trick on the seat that won the last one, numbered after it")
+    void shouldOpenTheNextTrickAfterTheFirstIsResolved() {
+        final var session = seatedTable(SEATS);
+        final var dealt = dealTo(session, SEATS);
+        final var openingSeat = dealt.openingLeaderSeat();
+        final var lead = dealt.handOf(openingSeat).cards().getFirst();
+
+        var trick = Trick.open(TRICK_ID, FIRST_SEQUENCE, openingSeat)
+                .acceptPlay(openingSeat, playOf(PLAY_ID, playerAt(session, openingSeat), lead), dealt);
+        var remaining = dealt.withCardPlayed(openingSeat, lead);
+        while (!trick.isComplete(remaining.seatsHoldingCards())) {
+            final var seat = trick.seatToPlay(remaining.seatsHoldingCards()).orElseThrow();
+            final var follow = remaining.handOf(seat).lowestOf(lead.suit()).orElseThrow();
+            final var play = playOf(new UUID(PLAY_PREFIX, seat), playerAt(session, seat), follow);
+            trick = trick.acceptPlay(seat, play, remaining);
+            remaining = remaining.withCardPlayed(seat, follow);
+        }
+
+        final var resolved = trick.resolved();
+        final var winnerSeat = resolved.winningSeat();
+        final var nextLead = remaining.handOf(winnerSeat).cards().getFirst();
+        handRepository.seededWith(remaining, winnerSeat);
+        trickRepository.seededWith(resolved);
+
+        final var played = useCaseWith(session, new QueuedIdentifierGenerator(SECOND_TRICK_ID, SECOND_PLAY_ID))
+                .execute(commandFor(session, winnerSeat, nextLead.cardId()));
+
+        assertThat(order).containsExactly("openTrick", "appendPlay");
+        assertThat(trickRepository.opened()).hasSize(1);
+
+        final var opened = trickRepository.opened().getFirst();
+        assertThat(opened.trick().sequence())
+                .as("the second trick is numbered from the first, not from a constant")
+                .isEqualTo(SECOND_SEQUENCE);
+        assertThat(opened.trick().trickId()).isEqualTo(SECOND_TRICK_ID);
+        assertThat(opened.trick().leaderSeat())
+                .as("the winner of the last trick leads this one")
+                .isEqualTo(winnerSeat);
+        assertThat(opened.expectedLeaderSeat())
+                .as("the witness is the leader seat as recorded after the resolution")
+                .isEqualTo(winnerSeat);
+        assertThat(trickRepository.appended()).hasSize(1);
+        assertThat(trickRepository.appended().getFirst().trickId()).isEqualTo(SECOND_TRICK_ID);
+        assertThat(played.plays()).hasSize(1);
     }
 
     @Test
@@ -235,6 +303,35 @@ class PlayCardUseCaseTest {
                 .isThrownBy(() -> useCase.execute(commandFor(session, 0, someCard.cardId())));
 
         assertThat(trickRepository.opened()).isEmpty();
+        assertThat(trickRepository.appended()).isEmpty();
+    }
+
+    /**
+     * The guard on a state the deal cannot leave behind.
+     *
+     * <p>{@code recordDeal} writes the hands and the opening leader seat in one transaction, so a
+     * session holding hands with no leader recorded is not reachable through any sequence of legal
+     * calls. The use case still refuses it rather than unwrapping an empty optional, because the
+     * alternative is a failure inside the domain with nothing to say about which of the two reads
+     * disagreed. Seeded here through a double that can express the state the database cannot.
+     */
+    @Test
+    @DisplayName("refuses a play when hands exist but no leader seat is recorded")
+    void shouldRefuseWhenNoLeaderSeatIsRecorded() {
+        final var session = seatedTable(SEATS);
+        final var dealt = dealTo(session, SEATS);
+        final var seat = dealt.openingLeaderSeat();
+        final var card = dealt.handOf(seat).cards().getFirst();
+        handRepository.seededWithNoLeader(dealt);
+        final var useCase = useCaseFor(session);
+        final var command = commandFor(session, seat, card.cardId());
+
+        assertThatExceptionOfType(HandNotDealtException.class)
+                .isThrownBy(() -> useCase.execute(command));
+
+        assertThat(trickRepository.opened())
+                .as("a refusal must not leave an open trick behind")
+                .isEmpty();
         assertThat(trickRepository.appended()).isEmpty();
     }
 
