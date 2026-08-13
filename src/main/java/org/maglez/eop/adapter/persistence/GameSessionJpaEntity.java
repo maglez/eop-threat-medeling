@@ -95,8 +95,8 @@ class GameSessionJpaEntity {
      * control.</strong>
      *
      * <p>The annotation is mapped, but nothing in this repository handles
-     * {@code OptimisticLockingFailureException}, and the two writes that
-     * matter increment this column by hand in JPQL rather than going through
+     * {@code OptimisticLockingFailureException}, and all five of the conditional
+     * writes increment this column by hand in JPQL rather than going through
      * Hibernate's dirty-check path, which is what leaves the annotation inert.
      * Serialisation actually rests on the row lock that
      * {@code GameSessionJpaRepository.touchWhileInStatus} acquires and holds to

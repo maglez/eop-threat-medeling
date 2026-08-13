@@ -90,10 +90,14 @@ import org.springframework.transaction.annotation.Transactional;
  * fault. It means the world moved underneath the request. For the four session
  * compare-and-sets {@link #sessionMoved(UUID, Integer)} spends one extra read on the
  * already-failing path to say which way it moved; for the winner update in {@link
- * #recordResolution} no read is needed, because the only thing zero can mean there is
- * that the trick is already resolved, and {@link TrickAlreadyResolvedException} says
- * so. That last case was an {@code IllegalStateException}, and so a 500, until a
- * security review of this slice noticed it contradicted this paragraph.
+ * #recordResolution} no read is spent, because both things zero can mean there — the
+ * trick is already resolved, or the trick row is gone — are answered the same way, by
+ * {@link TrickAlreadyResolvedException} and so a 409. Conflating them is deliberate and
+ * is only safe while nothing deletes a single trick row; the only delete in this class
+ * is of a {@code hand_card}. If a later slice adds one, this is the paragraph to revisit,
+ * because the second meaning would then need a 404 of its own. That case was an
+ * {@code IllegalStateException}, and so a 500, until a security review of this slice
+ * noticed it contradicted this paragraph.
  */
 @Repository
 public class TrickPlayRepositoryAdapter implements HandRepository, TrickRepository {

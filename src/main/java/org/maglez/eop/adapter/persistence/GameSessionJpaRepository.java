@@ -127,10 +127,18 @@ interface GameSessionJpaRepository extends JpaRepository<GameSessionJpaEntity, U
     /**
      * Moves the leader's seat on to the next trick's leader, but only from the expected one.
      *
-     * <p>This is where the leader seat actually changes, and it is also how a trick is
-     * stopped from being resolved twice: the first resolution moves the seat, so the second
-     * one finds it no longer matching and changes no rows. That check costs nothing and
-     * arrives before any trick row is touched.
+     * <p>This is where the leader seat actually changes. It is <strong>not</strong> what stops a
+     * trick being resolved twice, though an earlier version of this comment claimed it was. The
+     * claim held only while the lead always moved. When the seat that led a trick also wins it
+     * the caller passes a next leader equal to the expected one, this statement sets the column
+     * to the value it just compared against, and the write is idempotent — so a replayed
+     * resolution matches the row, changes one row, and sails straight through the guard that was
+     * supposed to stop it. Trick resolution is therefore serialised by
+     * {@code TrickJpaRepository.recordWinner}'s {@code winner_play_id IS NULL} predicate on the
+     * trick row, not by this statement on the session row, and that predicate raises
+     * {@code TrickAlreadyResolvedException} and so a 409. See ADR-020, "The deal-once gate" and
+     * the replay note beside it. This statement's real job is the leader seat and the row lock it
+     * takes while doing it.
      *
      * @param sessionId          the session to advance
      * @param expectedLeaderSeat the leader seat the caller observed

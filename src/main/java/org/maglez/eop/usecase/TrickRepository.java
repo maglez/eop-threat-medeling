@@ -7,11 +7,13 @@ import org.maglez.eop.entity.AlreadyPlayedInTrickException;
 import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.NotYourSeatException;
+import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
+import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickPlay;
 
 /**
@@ -118,8 +120,14 @@ public interface TrickRepository {
      * @param nextLeaderSeat the seat that leads the next trick
      * @param occurredAt the instant recorded as the session's last update
      * @throws SessionNotFoundException if the session no longer exists
-     * @throws SessionNotJoinableException if the session is not in play, which includes
-     *     the case where another request resolved this trick first
+     * @throws SessionNotJoinableException if the session is no longer in play
+     * @throws OutOfTurnException if the leader seat has already moved on — which is what a
+     *     second resolution looks like whenever the lead changed hands
+     * @throws TrickAlreadyResolvedException if the trick already carries a winner. This is the
+     *     other shape a second resolution takes, and the two do not subsume each other: when
+     *     the seat that led the trick also won it the leader seat does not move, so the session
+     *     compare-and-set is idempotent and lets the replay through, and the trick row's own
+     *     {@code winner_play_id IS NULL} predicate is what refuses it. See ADR-020
      */
     void recordResolution(
             UUID sessionId, Trick resolved, int expectedLeaderSeat, int nextLeaderSeat, Instant occurredAt);

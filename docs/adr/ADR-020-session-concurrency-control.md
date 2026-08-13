@@ -60,7 +60,10 @@ retained as bookkeeping, not as a gate.**
 > compare-and-set, all three hand-incrementing `version`, all three checked for rows
 > affected at every call site. Two of them witness `current_leader_seat` rather than
 > `status`, which is a widening of this decision recorded in *The deal-once gate*
-> below. Read "two" here as "the first two".
+> below. Read "two" here as "the first two". One caution: all five compare-and-set,
+> but that does **not** make all five replay guards — `advanceLeaderSeat` is
+> idempotent when the leader wins their own trick, and the section *One of the five is
+> not a replay guard* records what serialises trick resolution instead.
 
 `GameSessionJpaRepository` — package private, deliberately not the application's
 port — declares exactly two writes:
@@ -248,11 +251,11 @@ definition of "not yet dealt".**
 
 ```java
 @Modifying(clearAutomatically = true)
-@Query("UPDATE GameSessionJpaEntity s SET s.currentLeaderSeat = :openingLeaderSeat, "
+@Query("UPDATE GameSessionJpaEntity s SET s.currentLeaderSeat = :leaderSeat, "
      + "s.updatedAt = :now, s.version = s.version + 1 "
      + "WHERE s.id = :sessionId AND s.status = :required "
      + "AND s.currentLeaderSeat IS NULL")
-int claimDeal(UUID sessionId, SessionStatus required, int openingLeaderSeat,
+int claimDeal(UUID sessionId, int leaderSeat, SessionStatus required,
               OffsetDateTime now);
 ```
 
@@ -287,6 +290,49 @@ to write `current_leader_seat` anyway. Making that same write the gate costs not
 and means there is exactly one row whose lock serialises dealing — which is also the
 row that serialises every other transition in the session, so the lock ordering in
 the amendment below stays a tree rather than becoming a graph.
+
+### One of the five is not a replay guard: trick resolution serialises on the trick row
+
+Recorded 2026-08-13, EOP-14 Slice C1, in the same breath as the gate above and for
+the same reason — @architecture-guardian's gate observed that this slice remediated
+one decision-in-a-Javadoc while introducing another, and that the new one qualifies
+the guarantee the subsection above asserts. It does, and the qualification belongs
+here.
+
+**Compare-and-set on the session row does not stop a trick being resolved twice.
+The `winner_play_id IS NULL` predicate on the trick row does.**
+
+`advanceLeaderSeat` is a compare-and-set like the other four, and the sentence above
+that "one means the caller's assumption held, zero means it did not" is still true of
+it. What is *not* true is the inference that it therefore refuses a replay. It sets
+`current_leader_seat = :nextLeaderSeat WHERE ... current_leader_seat =
+:expectedLeaderSeat`, so whenever the caller's next leader equals the leader it
+witnessed the statement writes the value it just compared against and is
+**idempotent**. A replayed resolution matches the row, changes one row, and passes
+the guard.
+
+That is not an edge case. It is what happens whenever the seat that led a trick also
+wins it and still holds a card, which is an ordinary outcome rather than a rare one.
+
+So the serialisation point for resolution is one statement further in:
+`TrickJpaRepository.recordWinner` carries `AND t.winnerPlayId IS NULL`, and it is the
+first statement that can distinguish a first resolution from a replay. Zero rows
+there raises `TrickAlreadyResolvedException`, and so a 409. Until this slice it
+raised `IllegalStateException`, and so a 500 — an ordinary replay of an ordinary hand
+billed as a server fault, which is the defect that made this decision visible.
+
+**Three consequences worth naming.** First, the two second-resolution shapes are
+genuinely different and both are tested: when the lead *did* move, the session
+compare-and-set refuses with `OutOfTurnException`; when it did not, the trick
+predicate refuses with `TrickAlreadyResolvedException`. Neither subsumes the other.
+Second, `TrickAlreadyResolvedException` joins `HandAlreadyDealtException` as an
+exception whose origin is not a constraint violation, so it is a second thing
+[ADR-023](ADR-023-deal-remainder-and-turn-order.md)'s constraint-name translation
+table structurally cannot cover. Third, this is the one place in the design where the
+contended row is *not* the session row, which is why it is recorded rather than left
+to be rediscovered: a reader who takes "every write compare-and-sets the session row,
+therefore every write is replay-safe" from the section above would be wrong here, and
+wrong in the direction of removing the predicate that is actually doing the work.
 
 ## Consequences
 

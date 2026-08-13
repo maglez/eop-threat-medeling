@@ -259,6 +259,20 @@
            case owes the check that the winner play belongs to the trick it
            resolves - it is ADR-023's third Slice C obligation.
 
+           CORRECTED 2026-08-13, EOP-14 Slice C1: "no adapter exists" is now
+           false, and it was the third copy of a containment claim the other two
+           of which are corrected in ADR-023. TrickPlayRepositoryAdapter stamps
+           this very column, via TrickJpaRepository.recordWinner, from
+           recordResolution. The gap is still open, but what holds it shut is now
+           weaker than the absence of an adapter: winnerAmong refuses a recorded
+           winner that is not among the trick's own plays, on every read, and
+           refusesAWinnerFromAnotherTrick proves it. That is a revalidation on
+           read, not a structural impossibility. What remains genuinely
+           unreachable is a route - no use case and no controller calls either
+           trick-play port. The owner sentence above is unchanged and still
+           correct. This note is written here, at the claim, because a reader who
+           stops at a false sentence never follows a pointer.
+
            No resolved_at column: Trick has exactly five fields and no timestamp,
            and resolved() mints none. Under ddl-auto=validate an unmapped column
            passes startup silently, so it would sit permanently NULL. -->

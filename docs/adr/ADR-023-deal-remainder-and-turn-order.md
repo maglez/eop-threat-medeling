@@ -1075,7 +1075,9 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
    | `uq_trick_play_trick_card` | `23505` | `CardAlreadyPlayedException` | 409 |
    | `uq_hand_session_seat` | `23505` | `HandAlreadyDealtException` | 409 |
    | `uq_trick_session_sequence` | `23505` | `TrickAlreadyOpenException` | 409 |
-    | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
+   | `chk_trick_play_component_ordinal`, `pk_trick_play_component` | `23514`, `23505` | server fault, fixed detail | 500 |
+
+   **This table is not an inventory of how each exception is raised, only of how each *constraint* is translated.** Two exceptions also arise without any constraint being violated, and no row here can cover them: `HandAlreadyDealtException` from the deal-once gate, when `current_leader_seat` is already set, and `TrickAlreadyResolvedException` from the `winner_play_id IS NULL` predicate on a replayed resolution. Both are recorded in [ADR-020](ADR-020-session-concurrency-control.md); this sentence exists so a reader who reaches for this table as the complete list is sent there instead of concluding the list is complete.
 
     > **Superseded 2026-08-13, EOP-14 Slice C1, for the two seat foreign keys only.** The rest
     > of this table shipped as written. The two seat-binding keys did not:

@@ -37,7 +37,11 @@ interface TrickJpaRepository extends JpaRepository<TrickJpaEntity, UUID> {
      *
      * @param trickId the trick to resolve
      * @param winnerPlayId the play that took the trick
-     * @return {@code 1} if the winner was recorded, {@code 0} if the trick was already resolved
+     * @return {@code 1} if the winner was recorded, {@code 0} if the trick was already
+     *     resolved <em>or no longer exists</em> — the predicate cannot tell those apart, and
+     *     the caller answers both with a 409. That conflation is only safe while nothing
+     *     deletes a single trick row; see the class comment on
+     *     {@code TrickPlayRepositoryAdapter}
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE TrickJpaEntity t SET t.winnerPlayId = :winnerPlayId "
