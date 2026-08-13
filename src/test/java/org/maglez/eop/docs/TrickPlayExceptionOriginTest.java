@@ -37,12 +37,28 @@ import org.junit.jupiter.api.Test;
  * passed. A test that oversells itself is worse than no test, because it stops people checking.
  *
  * <p>So this version derives the set. It classifies every construction of a type the adapter
- * imports from {@code org.maglez.eop.entity} by <em>where</em> it sits: inside {@code
- * dealFailure}, {@code playFailure} or the {@code openTrick} catch block, a constraint really
- * was violated and a row of the table covers it; anywhere else, the refusal came from a
- * rows-affected count of zero or from the {@code assertSeated} read, and no row can. The ADR's
- * named list must then equal the derived set — <em>equal</em>, not contain, so that a tenth
- * origin in the adapter and a fabricated tenth name in the prose both fail.
+ * imports from {@code org.maglez.eop.entity} by <em>where</em> it sits. Inside {@code
+ * dealFailure}, {@code playFailure}, or any of the four {@code catch (final
+ * DataIntegrityViolationException ...)} blocks — two in {@code recordDeal}, one inline in {@code
+ * openTrick}, one in {@code appendPlay} — a constraint really was violated and a row of the table
+ * covers it. Inside {@code assertSeated}, the refusal came from a read. Anywhere else it came
+ * from a rows-affected count of zero. Both groups are located positionally; neither is inferred
+ * by subtracting the other, because filing a member in the wrong group by arithmetic is exactly
+ * the mistake the six-count made with {@code CardNotInHandException}.
+ *
+ * <p>The ADR's named list must then <em>equal</em> the derived set, not merely contain it. The
+ * names are read from the backticked tokens of the two blocks that enumerate the groups, so a
+ * tenth origin the adapter gains and a tenth name the prose invents both fail. An earlier version
+ * claimed that while checking padding against a closed list of four types, which let a fabricated
+ * name straight through; a review gate proved it with a mutation, and the mutation now fails.
+ *
+ * <p>One limitation, measured rather than assumed. Membership is detected by a name appearing in a
+ * group block, so if a block mentions the same type twice — once enumerating it, once in narrative
+ * — deleting only the enumerating mention leaves it detected and the omission passes. That is why
+ * the mutation validating this class removes <em>every</em> mention: with the name genuinely
+ * absent, which is the shape all three historical miscounts actually had, the omission check fails
+ * as it should. A block would have to keep discussing a type it had stopped listing for this to
+ * hide anything.
  *
  * <p>It reads the adapter as text because the distinction being derived is positional and
  * reflection cannot see it. That is a real limitation and worth naming: a construction moved
@@ -120,41 +136,50 @@ class TrickPlayExceptionOriginTest {
             }
         }
 
-        final Set<String> padded = new TreeSet<>();
-        for (final String type : constraintTranslatedOrigins(adapterSource())) {
-            if (paragraph.contains(type) && !derived.contains(type)) {
-                padded.add(type);
-            }
-        }
+        final Set<String> padded = new TreeSet<>(namedAsMembers(paragraph));
+        padded.removeAll(derived);
 
         assertThat(omitted)
                 .as("every miscount so far was an omission from this paragraph")
                 .isEmpty();
         assertThat(padded)
                 .as(
-                        "these reach the caller through a constraint, so a row of the table covers "
-                                + "them and naming them here would inflate the count")
+                        "every exception name the paragraph mentions must be one of the derived "
+                                + "origins. A name here that the adapter never raises outside a "
+                                + "constraint translation inflates the count — whether it is one of "
+                                + "the constraint-translated types, which a row of the table already "
+                                + "covers, or a type that does not exist at all")
                 .isEmpty();
+        assertThat(namedAsMembers(paragraph))
+                .as("stated as equality, so neither direction can drift unnoticed")
+                .isEqualTo(derived);
     }
 
     @Test
-    @DisplayName("splits them by mechanism, and the two groups sum to the derived total")
+    @DisplayName("splits them by mechanism, both groups located positionally")
     void shouldRecordTheSplit() throws IOException {
+        final String adapter = adapterSource();
         final String paragraph = paragraphBesideTheTable(adrSource());
-        final int derived = nonConstraintOrigins(adapterSource()).size();
-        final int fromReads = seatReadOrigins(adapterSource()).size();
-        final int fromRowCounts = derived - fromReads;
+        final Set<String> fromReads = seatReadOrigins(adapter);
+        final Set<String> fromRowCounts = rowCountOrigins(adapter);
 
         assertThat(paragraph)
                 .as("the larger group is the rows-affected one")
-                .contains(numberWord(fromRowCounts) + " come from a rows-affected count of zero");
+                .contains(numberWord(fromRowCounts.size()) + " are raised from a rows-affected count of zero");
         assertThat(paragraph)
                 .as("the smaller group is the assertSeated read")
-                .contains(numberWord(fromReads) + " come from a read this adapter makes itself");
+                .contains(numberWord(fromReads.size()) + " are raised from a read this adapter makes itself");
 
-        assertThat(fromRowCounts + fromReads)
-                .as("the split must account for every derived origin and invent none")
-                .isEqualTo(derived);
+        final Set<String> union = new TreeSet<>(fromRowCounts);
+        union.addAll(fromReads);
+        assertThat(union)
+                .as(
+                        "the two positionally-derived groups must together be exactly the derived "
+                                + "set, with no member in both and none unaccounted for")
+                .isEqualTo(nonConstraintOrigins(adapter));
+        assertThat(fromRowCounts)
+                .as("no origin may be counted in both groups")
+                .doesNotContainAnyElementsOf(fromReads);
     }
 
     /**
@@ -169,7 +194,11 @@ class TrickPlayExceptionOriginTest {
         return all;
     }
 
-    /** Every domain exception constructed inside a constraint translation. */
+    /**
+     * Every domain exception the adapter constructs inside a constraint translation. Not used to
+     * derive anything — kept because it is the complement of {@link #nonConstraintOrigins} and
+     * asserting it is non-empty proves the region subtraction actually removed something.
+     */
     private static Set<String> constraintTranslatedOrigins(final String adapter) {
         final Set<String> found = new TreeSet<>();
         for (final int[] region : translationRegions(adapter)) {
@@ -181,22 +210,72 @@ class TrickPlayExceptionOriginTest {
         return found;
     }
 
-    /** The two raised by the {@code assertSeated} read rather than by a row count. */
+    /**
+     * The refusals raised from the {@code assertSeated} read rather than from a row count. Located
+     * by that method's own body, not by subtraction.
+     */
     private static Set<String> seatReadOrigins(final String adapter) {
-        final int[] region = bodyOf(adapter, adapter.indexOf("private Map<UUID, Integer> seatsByPlayer"));
-        final int assertSeated = adapter.indexOf("private void assertSeated");
-        final int[] seated = bodyOf(adapter, assertSeated);
+        final int[] seated = bodyOf(adapter, adapter.indexOf("private void assertSeated"));
         final Set<String> found = domainExceptionsConstructedIn(adapter, Set.of(seated));
         assertThat(found)
                 .as("assertSeated must still be the source of the read-based refusals")
                 .isNotEmpty();
-        assertThat(region[0]).as("seatsByPlayer must still exist beside it").isNotNegative();
         return found;
     }
 
     /**
-     * The byte ranges of the three places a {@code DataIntegrityViolationException} is turned
-     * into a domain exception: the two failure helpers and the inline catch in {@code openTrick}.
+     * The refusals raised from a rows-affected count of zero: everything outside both the
+     * constraint translations and the {@code assertSeated} read. Located positionally, so a new
+     * origin cannot be filed here by arithmetic the way {@code CardNotInHandException} once was
+     * filed in the other group.
+     */
+    private static Set<String> rowCountOrigins(final String adapter) {
+        final Set<String> found = new TreeSet<>(nonConstraintOrigins(adapter));
+        found.removeAll(domainExceptionsConstructedIn(
+                adapter, Set.of(bodyOf(adapter, adapter.indexOf("private void assertSeated")))));
+        assertThat(found)
+                .as("the rows-affected group must not be empty, or the derivation is inverted")
+                .isNotEmpty();
+        return found;
+    }
+
+    /**
+     * Every exception type the paragraph presents <em>as a member</em> of the nine, read from the
+     * backticked tokens of the two group blocks and nowhere else.
+     *
+     * <p>Scoping this to the group blocks rather than the whole paragraph is not a loophole, it is
+     * the correction of one. The paragraph legitimately names other types for contrast — the
+     * universe sentence names {@code IllegalStateException} and {@code IllegalArgumentException}
+     * precisely in order to exclude them — so a whole-paragraph sweep flagged those two as padding.
+     * That was the check working, and it showed "names exactly the derived set" was loose about
+     * where a name has to appear. Membership is claimed in the two blocks that enumerate the groups,
+     * so that is where equality is enforced.
+     */
+    private static Set<String> namedAsMembers(final String paragraph) {
+        final Set<String> found = new TreeSet<>();
+        for (final String block : paragraph.split("\\n\\s*\\n")) {
+            final String trimmed = block.trim();
+            if (!trimmed.startsWith("**Seven are raised from") && !trimmed.startsWith("**Two are raised from")) {
+                continue;
+            }
+            final Matcher matcher = Pattern.compile("`(\\w+Exception)`").matcher(trimmed);
+            while (matcher.find()) {
+                found.add(matcher.group(1));
+            }
+        }
+        assertThat(found)
+                .as(
+                        "the two group blocks must exist and must name their members in backticks, "
+                                + "or the equality check below is vacuous")
+                .isNotEmpty();
+        return found;
+    }
+
+    /**
+     * The byte ranges of every place a {@code DataIntegrityViolationException} is turned into a
+     * domain exception, or handed to something that does: the two failure helpers, and all four
+     * catch blocks — two in {@code recordDeal} and one in {@code appendPlay} that delegate, and
+     * one inline in {@code openTrick} that translates in place.
      */
     private static Set<int[]> translationRegions(final String adapter) {
         final Set<int[]> regions = new java.util.LinkedHashSet<>();
@@ -224,11 +303,16 @@ class TrickPlayExceptionOriginTest {
         return regions;
     }
 
+    /** The file with the translation regions cut out of it. */
     private static Set<int[]> wholeFileExcludingTranslations(final String adapter) {
-        final Set<int[]> excluded = translationRegions(adapter);
         final Set<int[]> keep = new java.util.LinkedHashSet<>();
         int cursor = 0;
-        for (final int[] region : sortedByStart(excluded)) {
+        for (final int[] region : sortedByStart(translationRegions(adapter))) {
+            assertThat(cursor)
+                    .as(
+                            "translation regions must not overlap, or the complement below is "
+                                    + "negative-length and silently drops source")
+                    .isLessThanOrEqualTo(region[0]);
             keep.add(new int[] {cursor, region[0]});
             cursor = region[1];
         }
