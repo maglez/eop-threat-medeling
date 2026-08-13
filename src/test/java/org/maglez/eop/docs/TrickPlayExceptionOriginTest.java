@@ -42,9 +42,10 @@ import org.junit.jupiter.api.Test;
  * DataIntegrityViolationException ...)} blocks — two in {@code recordDeal}, one inline in {@code
  * openTrick}, one in {@code appendPlay} — a constraint really was violated and a row of the table
  * covers it. Inside {@code assertSeated}, the refusal came from a read. Anywhere else it came
- * from a rows-affected count of zero. Both groups are located positionally; neither is inferred
- * by subtracting the other, because filing a member in the wrong group by arithmetic is exactly
- * the mistake the six-count made with {@code CardNotInHandException}.
+ * from a rows-affected count of zero. Both groups are located by cutting regions out of the
+ * source, not by subtracting one group's names from the other's. Filing a member by arithmetic is
+ * exactly the mistake the six-count made with {@code CardNotInHandException}, and an earlier
+ * version of this class reintroduced it one layer down — see {@link #rowCountOrigins}.
  *
  * <p>The ADR's named list must then <em>equal</em> the derived set, not merely contain it. The
  * names are read from the backticked tokens of the two blocks that enumerate the groups, so a
@@ -224,19 +225,58 @@ class TrickPlayExceptionOriginTest {
     }
 
     /**
-     * The refusals raised from a rows-affected count of zero: everything outside both the
-     * constraint translations and the {@code assertSeated} read. Located positionally, so a new
-     * origin cannot be filed here by arithmetic the way {@code CardNotInHandException} once was
-     * filed in the other group.
+     * The refusals raised from a rows-affected count of zero: constructions in the source that is
+     * left after cutting out both the constraint translations and {@code assertSeated}'s body.
+     *
+     * <p>This is a <em>region</em> complement, not a name-level subtraction, and the difference is
+     * not academic. An earlier version computed {@link #nonConstraintOrigins} and then
+     * {@code removeAll}-ed the names found in {@code assertSeated} — which unconditionally removed
+     * a type from this group whenever it appeared in that method, even if it was <em>also</em>
+     * constructed at a rows-affected position. That made the union and disjointness assertions in
+     * {@code shouldRecordTheSplit} tautologies, and a review gate proved it by adding a second
+     * construction of {@code PlayerNotInSessionException} to {@code sessionMoved}: the derivation
+     * still reported seven, still reported no overlap, and the build stayed green while the ADR's
+     * split had become false. Cutting regions rather than names means that mutation now surfaces as
+     * an overlap and fails.
      */
     private static Set<String> rowCountOrigins(final String adapter) {
-        final Set<String> found = new TreeSet<>(nonConstraintOrigins(adapter));
-        found.removeAll(domainExceptionsConstructedIn(
-                adapter, Set.of(bodyOf(adapter, adapter.indexOf("private void assertSeated")))));
+        final Set<String> found =
+                domainExceptionsConstructedIn(adapter, rowCountRegions(adapter));
         assertThat(found)
                 .as("the rows-affected group must not be empty, or the derivation is inverted")
                 .isNotEmpty();
         return found;
+    }
+
+    /** Everything that is neither a constraint translation nor the {@code assertSeated} read. */
+    private static Set<int[]> rowCountRegions(final String adapter) {
+        return excluding(
+                wholeFileExcludingTranslations(adapter),
+                bodyOf(adapter, adapter.indexOf("private void assertSeated")));
+    }
+
+    /**
+     * The given ranges with {@code hole} cut out of each, splitting any range that straddles it.
+     * Ranges are half-open, so a range touching the hole's boundary is preserved intact.
+     */
+    private static Set<int[]> excluding(final Set<int[]> ranges, final int[] hole) {
+        final Set<int[]> kept = new java.util.LinkedHashSet<>();
+        for (final int[] range : ranges) {
+            if (hole[1] <= range[0] || hole[0] >= range[1]) {
+                kept.add(range);
+                continue;
+            }
+            if (range[0] < hole[0]) {
+                kept.add(new int[] {range[0], hole[0]});
+            }
+            if (hole[1] < range[1]) {
+                kept.add(new int[] {hole[1], range[1]});
+            }
+        }
+        assertThat(kept)
+                .as("cutting the read region must not consume the whole file")
+                .isNotEmpty();
+        return kept;
     }
 
     /**
@@ -265,8 +305,10 @@ class TrickPlayExceptionOriginTest {
         }
         assertThat(found)
                 .as(
-                        "the two group blocks must exist and must name their members in backticks, "
-                                + "or the equality check below is vacuous")
+                        "no block starting '**Seven are raised from' or '**Two are raised from' "
+                                + "named any exception in backticks. Those two prefixes are "
+                                + "load-bearing: rewording either heading lands here, and without "
+                                + "them the equality check below is vacuous")
                 .isNotEmpty();
         return found;
     }
