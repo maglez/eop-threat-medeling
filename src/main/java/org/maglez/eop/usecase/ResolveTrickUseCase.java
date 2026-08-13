@@ -80,8 +80,11 @@ public class ResolveTrickUseCase {
      * @param trickRepository reads the current trick and records its resolution
      * @param clock supplies the resolution timestamp
      */
-    public ResolveTrickUseCase(final ResolvePlayerUseCase resolvePlayerUseCase,
-            final HandRepository handRepository, final TrickRepository trickRepository, final Clock clock) {
+    public ResolveTrickUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final HandRepository handRepository,
+            final TrickRepository trickRepository,
+            final Clock clock) {
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
         this.trickRepository = Objects.requireNonNull(trickRepository, "trickRepository is required");

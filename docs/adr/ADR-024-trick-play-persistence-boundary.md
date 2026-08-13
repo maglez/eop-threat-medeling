@@ -121,12 +121,41 @@ cannot enforce it, and **no test in Slice C1 fails for its absence**. The build 
 way, which is precisely why the obligation is recorded in the decision log rather than left in the
 javadoc of the class it constrains.
 
+> **Amended 2026-08-13, EOP-14 Slice C2 — this obligation is now discharged.** The bolded sentence
+> above says "undischarged" and was true when it was written; it is no longer. All three use cases
+> call `ResolvePlayerUseCase.execute` as their first statement, before any hand, trick or card is
+> read: `DealHandsUseCase.java:113`, `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:108`.
+> `PlayCardUseCase` then derives the acting seat and the acting player identifier from the resolved
+> player and from nothing the caller supplied (`PlayCardUseCase.java:140-141`), which is stronger than
+> the obligation asked for: `PlayCardCommand` has no seat and no player component, so a caller-supplied
+> seat is inexpressible rather than rejected. Each of the three has a test asserting a stranger is
+> refused *before* any port read happens, asserted against the repository double's read log rather than
+> against the status code, because a refusal that has already read is a refusal that has already leaked
+> timing. What has **not** changed is the sentence's premise: `sessionMoved` still answers five
+> distinguishable exceptions and the ports still take no acting player, so the oracle is closed by the
+> layer above and not by the adapter, and it reopens the day a caller reaches these ports through any
+> path that does not authorise first. This amendment is written here, at the claim, rather than only in
+> the index, because a reader who stops at the word "undischarged" never follows a pointer. See
+> [ADR-025](ADR-025-dealing-is-its-own-use-case.md), decision 4. The status of this ADR is unchanged:
+> nothing in the decision is superseded, only its implementation state.
+
 **Negative — one exception ships with no thrower.** `WinningPlayNotInTrickException` is declared and
 mapped to 422 but nothing in production raises it. It is Slice C2's `ResolveTrickUseCase` contract
 arriving early with the rest of the error vocabulary. Per ADR-023's obligation 3 it will never have
 a storage backstop, so the use-case check is the only check that will ever exist. The adapter's own
 detection of a corrupt `winner_play_id` deliberately does *not* use it: that is our data being
 wrong, and a 422 would tell a caller their well-formed request was unprocessable.
+
+> **Amended 2026-08-13, EOP-14 Slice C2 — the thrower now exists.** `ResolveTrickUseCase.java:126-132`
+> raises `WinningPlayNotInTrickException` when the resolved winning play is not among the plays of the
+> trick being resolved, so the paragraph's "nothing in production raises it" no longer holds. What holds
+> is the reason it was written: the check is unreachable through `Trick.resolved()` today, because
+> `Trick`'s own constructor already refuses a winner that is foreign to the trick, and it is written
+> anyway because `fk_trick_winner_play` confines a winning play to the `trick_play` table and to nothing
+> narrower — the composite key that would confine it to *this* trick cannot be expressed in Liquibase,
+> and ADR-023's obligation 3 records that it never will be. So this is a guard against our own future
+> defect rather than against a caller, which is why it is written at the only layer that can see both
+> the trick and its plays.
 
 **Neutral — the read side is whole-or-nothing by design.** `Hands.reconstitute` re-runs the
 invariant that one card cannot sit in two hands of the same session, and **no database constraint

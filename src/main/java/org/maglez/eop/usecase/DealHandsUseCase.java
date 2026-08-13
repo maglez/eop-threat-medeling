@@ -9,19 +9,26 @@ import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
+import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.TooFewPlayersException;
 
 /**
  * Deals the whole deck to the seated players and records the opening lead.
  *
- * <p>This is a use case in its own right rather than a step inside {@link StartSessionUseCase},
- * because the two writes cannot share a transaction through these ports and should not pretend to.
- * {@link HandRepository#recordDeal} refuses a session that had not started at the moment of the
- * write, so the status transition has to be committed first; wrapping both in one transaction would
- * put {@code org.springframework.transaction} into this layer, which AGENTS.md forbids. Keeping them
- * apart also keeps their failures apart: "you are not the facilitator" and "there are only two of
- * you" are different answers from "the deal has already happened", and a caller that receives them
- * through one call cannot tell which write it needs to retry.
+ * <p>This is a use case in its own right rather than a step inside {@link StartSessionUseCase}. The
+ * seam is chosen rather than forced, and it is worth being exact about that, because an earlier draft
+ * of this javadoc claimed no alternative existed. {@link HandRepository#recordDeal} refuses a session
+ * that had not started at the moment of the write, so the status transition has to be
+ * <em>written</em> first &mdash; but not necessarily committed, since a caller already inside a
+ * transaction reads its own writes. A {@code @Transactional} composer in the outer ring could
+ * therefore join both writes into one atomic act without putting
+ * {@code org.springframework.transaction} anywhere near this layer. It is declined for a different
+ * reason: {@link StartSessionUseCase} announces {@code GAME_STARTED} over in-process SSE, and no
+ * transaction can roll back a delivered frame, so a deal that failed after that announcement would
+ * leave every subscriber told a game had started that was never dealt. Keeping the two apart also
+ * keeps their failures apart: "you are not the facilitator" and "there are only two of you" are
+ * different answers from "the deal has already happened", and a caller that receives them through
+ * one call cannot tell which write it needs to retry (ADR-025).
  *
  * <p>Dealing twice is not a hazard that this class defends against. {@code recordDeal} writes the
  * opening leader seat only where none is recorded, so two facilitators pressing at once produce one
@@ -126,7 +133,7 @@ public class DealHandsUseCase {
 
         final List<Hands.Seat> seats =
                 session.players().stream()
-                        .sorted(Comparator.comparingInt(player -> player.seatOrder()))
+                        .sorted(Comparator.comparingInt(Player::seatOrder))
                         .map(
                                 player ->
                                         new Hands.Seat(

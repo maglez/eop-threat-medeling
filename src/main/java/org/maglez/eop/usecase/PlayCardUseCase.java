@@ -194,7 +194,7 @@ public class PlayCardUseCase {
         }
 
         final var updated = trick.acceptPlay(actingSeat, candidate, hands);
-        final var accepted = updated.plays().get(updated.plays().size() - 1);
+        final var accepted = updated.plays().getLast();
 
         trickRepository.appendPlay(sessionId, trick.trickId(), leaderSeat, accepted);
         return updated;

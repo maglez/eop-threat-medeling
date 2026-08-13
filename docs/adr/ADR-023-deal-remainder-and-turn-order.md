@@ -1278,6 +1278,26 @@ exception type and its 422, and it is not a restatement of any of the other thre
 > claim, rather than only at the head of the section, because a reader who stops at a false
 > sentence never follows a pointer.
 
+> **Amended 2026-08-13, EOP-14 Slice C2 — the owner named above has discharged it.** The last two
+> sentences of the correction directly above are now out of date in both halves. The check has a
+> thrower: `ResolveTrickUseCase.java:126-132` raises `WinningPlayNotInTrickException` when the
+> resolved winning play is not among the plays of the trick being resolved, so "with no thrower
+> yet" no longer holds and neither does "the owner is unchanged and is Slice C2's resolve-trick
+> use case" — that owner has written the check. Two qualifications keep this honest rather than
+> triumphant. The check is **unreachable through `Trick.resolved()` as the domain stands**,
+> because `Trick`'s constructor already refuses a winner foreign to the trick, so it guards
+> against a future defect of ours rather than against any caller; and the *storage* gap this
+> paragraph is about is untouched — `fk_trick_winner_play` still admits a play from another
+> trick and from another session, exactly as obligation 3 says it always will, because the
+> composite key that would close it cannot be expressed in Liquibase. What changed is that the
+> revalidation on read in `winnerAmong` is now joined by a refusal on the write path, one layer
+> higher, where the trick and its plays are both in hand. Containment is also no longer only
+> "no route": since Slice C2 there are callers of the trick-play ports, and what withholds them
+> is `eop.features.trick-play`, declared `false` at `application.yml:86` and gating all three
+> use-case beans (`UseCaseConfiguration.java:195-248`). A flag is weaker than an absent class
+> and is named as such rather than presented as equivalent. See
+> [ADR-025](ADR-025-dealing-is-its-own-use-case.md).
+
 **No range CHECK on any seat or sequence column, which bounds what the composite keys prove.**
 @security-auditor measured `player.seat_order = -7`, `trick.sequence = -5` and
 `game_session.current_leader_seat = 9999` all **accepted** by storage, while the domain refuses
@@ -1326,6 +1346,25 @@ paragraph is the record of which one had no excuse.
 > other three columns. The domain refuses it on read (`Trick.java:50`, on both `open` and
 > `reconstitute`), so the defence sits one layer higher here than for the other three rather
 > than being absent. Slice C2 owns adding it, in the changeset that accompanies the use cases.
+>
+> **Reassigned 2026-08-13, EOP-14 Slice C2 — that owner is wrong and this is who owns it now.**
+> Slice C2 shipped **no Liquibase changeset at all**: `git diff main...HEAD --name-only` for the
+> slice lists no file under `src/main/resources/db/`, so the sentence above points at a changeset
+> that does not exist and would have left the obligation orphaned rather than outstanding. The
+> reassignment is deliberate and not an oversight. C2 is the use-case slice; C1 owned the
+> persistence work and Slice B owned the schema, and adding a migration to a pull request whose
+> entire claim is that it changes no adapter and no schema would make the claim false and put a
+> column constraint in the one slice with no reviewer looking at the database. **The obligation
+> now belongs to the next EOP-14 slice that ships a Liquibase changeset — Slice E, the resolution
+> and stream wiring — or to a standalone follow-up story if Slice E turns out to need no
+> changeset either.** It must not be closed by a reader assuming C2 did it. What must land is a
+> range CHECK on `trick.leader_seat` derived from `GameSession.MAXIMUM_PLAYERS` in the same shape
+> as `005:64`, `005:99` and `005:136`, with a test in the manner of `SeatAndSequenceBoundsTest`
+> rejecting `9999` and asserting SQL state `23513`. Nothing fails while it is missing, which is
+> the whole reason it is recorded at the claim and reassigned in writing rather than carried in a
+> Jira comment: `Trick.java:50` refuses the value on both `open` and `reconstitute`, so the
+> defence is real, sits one layer higher than for the other three columns, and is invisible to
+> the build.
 
 ## Related
 

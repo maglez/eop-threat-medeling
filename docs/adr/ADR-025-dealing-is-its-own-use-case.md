@@ -11,7 +11,7 @@ beneath them: `DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`. T
 recorded on EOP-14 described this work as "dealing wired into session start behind the flag", and
 that phrase turned out to describe something the layer below will not do.
 
-Three facts collide.
+Three facts bear on the shape of the work, and the third is weaker than it first appears.
 
 `StartSessionUseCase` already exists and its javadoc explicitly refuses to deal, on the grounds that
 "dealing is EOP-14, and putting it behind the same call would make two very different failures
@@ -19,17 +19,28 @@ indistinguishable to the caller." That was written before the ports existed, as 
 
 `HandRepository.recordDeal` refuses a session that is not in play. Its contract throws
 `SessionNotJoinableException`, and C1's handoff recorded that this **includes the case where the
-session had not started at the moment of the write**. So the status transition has to be committed
-before the deal is attempted, not alongside it.
+session had not started at the moment of the write**. So the status transition has to be *written*
+before the deal is attempted. Written, not committed — and the distinction is load-bearing, because an
+earlier draft of this ADR said "committed" and built an argument on it. What `recordDeal` actually
+depends on is a predicate: `GameSessionJpaRepository.claimDeal` carries `AND s.status = :required` with
+`IN_PROGRESS` supplied, and `SessionRepositoryAdapter.recordStarted` sets that column through
+`advanceStatus`. A transaction reads its own uncommitted writes at every isolation level, so if the two
+writes were ever to share a transaction the predicate would match.
 
 The use-case layer has no transactions. `UseCaseConfiguration` exists so that no use case carries a
-Spring import, and AGENTS.md requires that layer to have none. A single transaction spanning
-`SessionRepository.recordStarted` and `HandRepository.recordDeal` would need
-`org.springframework.transaction` in the package that is defined by not having it, or a third port
-whose only purpose is to hold a transaction open across two aggregates.
+Spring import, and AGENTS.md requires that layer to have none. No use case may therefore demarcate a
+transaction spanning `SessionRepository.recordStarted` and `HandRepository.recordDeal` *itself*, and no
+port may be invented whose only purpose is to hold one open — that would put the persistence model's
+boundaries into the layer defined by being ignorant of them.
 
-There is therefore no arrangement in which starting and dealing are one atomic act, and the question
-is only where the seam goes and who is told about it.
+That is a constraint on where demarcation may live, and it is not impossibility. A `@Transactional`
+method in the outer ring — on a controller, or on a Spring-managed composition bean — calling
+`StartSessionUseCase` and then `DealHandsUseCase` joins both adapter methods into one transaction
+through the default `REQUIRED` propagation they already carry, with zero framework imports added to
+`usecase`. Outer-ring transaction demarcation is where Clean Architecture puts it. **Starting and
+dealing can be made one atomic act.** The seam recorded here is therefore chosen, not forced, and the
+question is not whether atomicity is reachable but what it costs; the cost, which is a broadcast event
+that cannot be rolled back, is weighed under Alternatives considered.
 
 ## Decision
 
@@ -55,6 +66,11 @@ It is accepted rather than prevented because it is recoverable and because recov
 deals or answers `HandAlreadyDealtException`, and never deals twice. Retrying the deal is safe from
 any number of callers, which is the property that makes the window uninteresting.
 
+"Accepted" is the accurate word and "unavoidable" would not be. The window is preventable by the
+outer-ring composer described under Alternatives considered; it is accepted because the failure it
+would remove is recoverable and the failure it would introduce — a `GAME_STARTED` event broadcast for
+a session whose deal then rolled back — is not.
+
 Recognising the state and prompting the facilitator to finish the deal is a read-model concern and
 belongs to the slice that adds the route.
 
@@ -68,6 +84,12 @@ of safety that also doubles the number of places the rule is written down.
 The defence in depth that is real here is a different pairing: the use case authorises the *identity*
 of the requester, which no port can do, and the port enforces the *state*, which no use case can do
 atomically.
+
+`PlayCardUseCase` is the one apparent exception and is not one. It calls `hand.resolve(card)` and
+compares the acting seat against the recorded leader seat before writing anything, which duplicates
+refusals `Trick.acceptPlay` would raise anyway. Those pre-flights buy ordering, not safety: they keep a
+doomed play from committing a trick row first, and they turn what would surface as a 500 into a
+distinguishable 403 or 422. Decision 9 records what that ordering rests on and how it can break.
 
 ### 4. Authorisation is the first statement of all three use cases
 
@@ -110,6 +132,56 @@ private information — the reason `Hands.toString()` names no card — and the 
 right to see the table's cards than anyone else. Each player reads their own hand through a
 per-player query in a later slice.
 
+### 8. None of the three broadcasts anything, and that is a gap whose only enforcement is this page
+
+`DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase` take no `SessionEventPublisher`. Every
+state change the system had before this slice announces itself — `SessionEventType` declares
+`PLAYER_JOINED` and `GAME_STARTED`, and `StartSessionUseCase` publishes the second — so these three are
+the first writes in the system that change what every player at the table can see and tell nobody.
+
+The silence is deliberate, and the reason is that an event name is a wire contract. `SessionEventType`
+holds the name that appears in the `event:` field of an SSE frame, and its own javadoc records that the
+name is fixed by `docs/api/openapi.yml`. Contract-first is ADR-004, and the published contract for the
+trick-play routes is Slice D's work. A constant minted here would be a wire name invented in a slice
+that is not allowed to publish one, and it would have to be renamed the moment the contract was
+written. So this slice adds no `SessionEventType` constant, and the three use cases have no publisher
+to give one to.
+
+The consequence is precise. Until the broadcast is wired, a client learns that a hand was dealt, that a
+card was played or that a trick was resolved **only by re-reading** — through `GetSessionStateUseCase`,
+or the per-player hand query a later slice adds. A whole trick can be played out with the stream
+silent. Slice D owns the event names in the contract; Slice E owns passing `SessionEventPublisher` into
+these three use cases and publishing on each write, which is one constructor parameter and one call per
+class.
+
+What makes this worth a numbered decision rather than a handoff note is that **nothing in the
+repository fails while it is missing.** There is no test that a deal publishes, because a publisher that
+is not a collaborator cannot be asserted on; the flag being false hides the gap rather than reporting
+it; and a reader of the three use cases sees no absence, only a shorter constructor. A Jira handoff is
+read once, by the next person to pick up the story, and then never again. This paragraph is the only
+artefact that a maintainer who wonders in six months why the stream goes quiet during a trick will
+find, and that is exactly the job an ADR exists to do.
+
+### 9. The trick row is opened before the play is accepted, and that ordering is safe only by exhaustion
+
+`PlayCardUseCase` builds the candidate `TrickPlay`, then writes the trick row when the trick is being
+opened, then calls `Trick.acceptPlay`. Building the play first is what stops an over-long note or a
+malformed component list from committing a trick row that never receives a card — that ordering was
+wrong in the first commit of this slice and is fixed by `fcb6fd5`. But `openTrick` still commits before
+`acceptPlay` runs, so the orphan-trick window is closed by an argument rather than by a mechanism: on an
+opening play, `MustFollowSuit` cannot fire because no suit has been led, `AlreadyPlayedInTrick` and
+`CardAlreadyPlayed` cannot fire because the trick is empty, and `NotYourSeat`, `PlayerMismatch`,
+`OutOfTurn` and `CardNotInHand` are each pre-flighted before the write — `hand.resolve(card)` proves the
+seat holds the card, and the leader-seat comparison proves it is that seat's turn. The opening play is
+the only path that writes a trick row, so the enumeration covers it.
+
+That argument is an exhaustion over the refusals `Trick.acceptPlay` has *today*. **An eighth refusal
+added to `acceptPlay` reopens the window**, silently, in a class that does not mention trick rows. The
+durable fix is to move the write after acceptance and let the repository persist the trick and its
+first play together, which changes the `TrickRepository` contract and belongs with the slice that
+revisits it. Until then this paragraph is the guard: a change to `acceptPlay`'s refusals must be
+checked against it.
+
 ## Consequences
 
 - A client starts a session and then deals: two calls, and the second one is retryable. Slice D
@@ -127,6 +199,14 @@ per-player query in a later slice.
   ports is an unconditional `@Repository` and is created either way, so what the flag withholds is
   every caller of it rather than the capability itself — which is what makes C1's containment claim
   true rather than intended.
+- End of hand is not recognised in this slice, and the whole of the shortfall is one line.
+  `ResolveTrickUseCase.java:134` writes the winning seat as the next leader even when the winner holds
+  no card, because `TrickRepository.recordResolution` takes an `int` and the port has no value meaning
+  "nobody leads next". It is harmless while it lasts — no seat can play, so no read of the column can
+  mislead a legal move — and Slice E replaces that line together with the port signature that forces
+  it. A reviewer of Slice E should expect the diff to touch both.
+- Nothing in the system announces a deal, a play or a resolution. See decision 8: the stream is silent
+  for the whole of a trick, and the only closing date is Slice E's.
 
 ## Alternatives considered
 
@@ -140,10 +220,34 @@ Rejected. An optional collaborator whose presence depends on configuration makes
 behave differently in production and in the suite, and no test of the start path alone reveals which
 behaviour is under test.
 
-**One transaction spanning both writes.** Rejected. It requires either a Spring transaction import in
-the use-case layer, which AGENTS.md forbids and `UseCaseConfiguration` exists to avoid, or a port
-whose only purpose is to hold a transaction open across two aggregates — which would put the
-persistence model's boundaries into the layer that is supposed to be ignorant of them.
+**One transaction spanning both writes, demarcated inside the use-case layer.** Rejected, and this is
+the narrow version of the claim. It requires either a Spring transaction import in the use-case layer,
+which AGENTS.md forbids and `UseCaseConfiguration` exists to avoid, or a port whose only purpose is to
+hold a transaction open across two aggregates — which would put the persistence model's boundaries into
+the layer that is supposed to be ignorant of them.
+
+**One transaction spanning both writes, demarcated in the outer ring.** Rejected on cost, not on
+principle — and an earlier draft of this ADR wrongly claimed this option did not exist at all. It does,
+and it works. A `@Transactional` method in `adapter/web`, or on a Spring-managed composition bean,
+calls `StartSessionUseCase` and then `DealHandsUseCase`. `SessionRepositoryAdapter.recordStarted` and
+`TrickPlayRepositoryAdapter.recordDeal` are both `@Transactional` with the default `REQUIRED`
+propagation, so both join the caller's transaction rather than opening their own; `claimDeal`'s
+`status = IN_PROGRESS` predicate matches the uncommitted `advanceStatus` because a transaction reads its
+own writes; the two writes commit or roll back together; and `usecase` gains no import, because
+demarcating a transaction in the outer ring is the textbook Clean Architecture placement rather than a
+violation of it.
+
+It is declined for a reason that has nothing to do with imports. `StartSessionUseCase` publishes
+`SessionEventType.GAME_STARTED` through `SessionEventPublisher` as part of its own execution, and that
+publisher is an in-process SSE broadcast (ADR-014), not a transactional resource. Inside a composed
+transaction the event reaches every subscriber before the deal has committed, so a deal that then rolls
+back leaves every client at the table told the game has started while the database says it never did.
+That trades a recoverable inconsistency — the started-but-undealt window of decision 2, which any retry
+closes — for an unrecoverable one, since a delivered SSE frame cannot be withdrawn. Making the composer
+safe means publishing after commit rather than during it: a transaction synchronisation, or an outbox.
+Both are real designs and either is a larger change than the window it removes deserves. If a later
+slice wants start-and-deal to be one act, publish-after-commit is its prerequisite and deserves its own
+ADR; it must not arrive as a `@Transactional` annotation added to a controller.
 
 **A single "start and deal" endpoint in front of both use cases.** Not rejected, deferred. It is a
 composition decision that belongs with the route, and it stays available precisely because the deal
@@ -151,11 +255,19 @@ is its own use case.
 
 ## Relations
 
-- **ADR-005** — plain-Java domain types, which is why the two new refusals are plain exceptions.
+- **ADR-005** — RFC 9457 problem details. The two new refusals get two new handlers in
+  `GlobalExceptionHandler`, both 409: `NoTrickToResolveException` ("no trick has been led in this
+  session yet") and `TrickNotCompleteException`, whose detail names the seat still to play. That seat
+  number is a deliberate disclosure to a member of the session and is only defensible because decision 4
+  puts authorisation before every read.
 - **ADR-013** — feature flags via `@ConditionalOnProperty` and `application.yml`. `eop.features.trick-play`
   is registered there, defaulted false, and gates the three new beans.
-- **ADR-014** — the database is the only authority on session state, which is why every use case
-  re-reads and none caches.
+- **ADR-014** — Server-Sent Events as the real-time transport. None of these three use cases takes a
+  `SessionEventPublisher`, so none of them broadcasts, and the stream says nothing for the whole of a
+  trick; decision 8 records why and who closes it. The same publisher being non-transactional is what
+  rules out the outer-ring composer under Alternatives considered.
+- **ADR-004** — contract-first. The wire names for a deal, a play and a resolution belong in
+  `docs/api/openapi.yml`, which is why this slice mints no `SessionEventType` constant.
 - **ADR-018** — UUIDv7 identifiers minted above the persistence layer, which is why the deal mints a
   hand identifier per seat through `IdentifierGenerator`.
 - **ADR-019** — the identity token is the whole authorisation control, so `ResolvePlayerUseCase` is
