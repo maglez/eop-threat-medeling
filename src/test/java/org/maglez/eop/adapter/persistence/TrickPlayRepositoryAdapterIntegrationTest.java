@@ -468,26 +468,36 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             final Table table = dealtTable();
             table.openFirstTrick();
             final int leader = table.leaderSeat();
-            final int follower = (leader + 1) % SEATED_PLAYERS;
 
-            // The follower's play is stamped earlier than the leader's, so a sort
-            // by played_at would put the wrong card first and the trick would
-            // read the led suit from the follower.
-            final TrickPlay followerPlay =
-                    table.play(follower, table.cardHeldAt(follower, 0), PLAYED_AT);
-            final TrickPlay leaderPlay =
-                    table.play(leader, table.cardHeldAt(leader, 0), PLAYED_AT.plusSeconds(30));
-
-            adapter.appendPlay(table.sessionId(), table.trickId(1), leader, followerPlay);
-            adapter.appendPlay(table.sessionId(), table.trickId(1), leader, leaderPlay);
+            // Every seat plays, and the clock and the insertion order both run in
+            // the exact reverse of the rotation, so a sort by played_at, by
+            // insertion or by raw seat number all disagree with it. Using the whole
+            // table rather than the leader and one follower is load-bearing: with
+            // two adjacent seats the seat numbers ascend, so inverting the rotation
+            // arithmetic still happens to order them correctly and the defect this
+            // test exists to catch survives.
+            final List<TrickPlay> rotation = new ArrayList<>();
+            for (int position = 0; position < SEATED_PLAYERS; position++) {
+                final int seat = (leader + position) % SEATED_PLAYERS;
+                rotation.add(table.play(
+                        seat,
+                        table.cardHeldAt(seat, 0),
+                        PLAYED_AT.plusSeconds(30L * (SEATED_PLAYERS - position))));
+            }
+            for (int position = SEATED_PLAYERS - 1; position >= 0; position--) {
+                adapter.appendPlay(
+                        table.sessionId(), table.trickId(1), leader, rotation.get(position));
+            }
 
             final Trick stored = adapter.findCurrentTrick(table.sessionId()).orElseThrow();
             assertThat(stored.plays())
                     .extracting(TrickPlay::seatOrder)
-                    .containsExactly(leader, follower);
-            // The trick reads its led suit from the first play, so the order
-            // above is what decides which card the rules measure against.
-            assertThat(stored.plays().get(0).card()).isEqualTo(leaderPlay.card());
+                    .containsExactlyElementsOf(rotation.stream().map(TrickPlay::seatOrder).toList());
+            // The trick reads its led suit from the first play, so the order above
+            // is what decides which card the rules measure against. A wrong order
+            // may instead be refused by Trick.reconstitute, which checks the plays
+            // run clockwise from the leader; either way this test goes red.
+            assertThat(stored.plays().get(0).card()).isEqualTo(rotation.get(0).card());
         }
 
         @Test
