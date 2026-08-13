@@ -55,9 +55,15 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Two responsibilities live here and nowhere else. The first is the transaction
  * boundary, for the reason above. The second is translating a constraint violation
- * into a domain exception: Spring Data types, JPA entities and {@link
- * DataIntegrityViolationException} all stop at this class, and what continues
- * inwards is a domain exception the web layer already knows how to answer.
+ * into a domain exception: Spring Data types and JPA entities stop at this class, and
+ * what continues inwards is a domain exception the web layer already knows how to
+ * answer. One deliberate exception to that, which an earlier version of this paragraph
+ * denied by saying {@link DataIntegrityViolationException} stops here too: a violation
+ * whose constraint name is not recognised is <em>rethrown as it is</em>, so that a
+ * constraint added later fails loudly as a 500 rather than being answered as whichever
+ * domain exception happened to be tested first. That is argued where it happens, on
+ * {@code backstopFired}. So the rule is that every violation this class has been taught
+ * to name is translated, and no other.
  *
  * <p>Every write begins with a conditional update on {@code game_session}. That is
  * two things at once. It is the compare-and-set that ADR-020 makes the concurrency
