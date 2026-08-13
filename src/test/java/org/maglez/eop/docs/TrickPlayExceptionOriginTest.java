@@ -119,76 +119,62 @@ class TrickPlayExceptionOriginTest {
     }
 
     /**
-     * The assertion the previous version should have made. Set equality in both directions: an
-     * origin the adapter raises but the ADR omits fails, and a name the ADR invents but the
-     * adapter never raises that way also fails. Each of the three historical miscounts was an
-     * omission, so the first direction would have caught all three.
+     * The assertion every previous version should have made: each block's names equal <em>its own</em>
+     * derived group.
+     *
+     * <p>This one test replaces four — a whole-set equality, a union, a disjointness check and a pair
+     * of size assertions — and is strictly stronger than all of them together, which is the tell that
+     * the earlier ones were the wrong shape. A review gate diagnosed it exactly: the paragraph asserts
+     * a <em>mapping</em> from name to mechanism, and every check built for it verified
+     * <em>aggregates</em> of that mapping. Aggregates over a mapping leave every permutation green by
+     * construction, however many you add, which is why strengthening the total, then the padding
+     * direction, then the derivation's positional honesty each closed a real hole and left the next
+     * one open in the same place.
+     *
+     * <p>The gate proved it by moving {@code CardNotInHandException} from the rows-affected block into
+     * the read block, leaving both headings untouched: the build stayed green. That is not an abstract
+     * hole — it is the exact mis-filing the block's own text records as its own past mistake, so the
+     * guard built to stop it recurring could not see it recurring.
+     *
+     * <p>Per-group equality catches all four shapes that have ever been attempted here: an origin the
+     * adapter gains and the prose omits, a name the prose invents, a name the prose deletes, and a
+     * name that moves between groups.
      */
     @Test
-    @DisplayName("names exactly the derived set — no omission, no padding")
-    void shouldNameExactlyTheDerivedSet() throws IOException {
-        final Set<String> derived = nonConstraintOrigins(adapterSource());
-        final String paragraph = paragraphBesideTheTable(adrSource());
-
-        final Set<String> omitted = new TreeSet<>();
-        for (final String type : derived) {
-            if (!paragraph.contains(type)) {
-                omitted.add(type);
-            }
-        }
-
-        final Set<String> padded = new TreeSet<>(namedAsMembers(paragraph));
-        padded.removeAll(derived);
-
-        assertThat(omitted)
-                .as("every miscount so far was an omission from this paragraph")
-                .isEmpty();
-        assertThat(padded)
-                .as(
-                        "every exception name the paragraph mentions must be one of the derived "
-                                + "origins. A name here that the adapter never raises outside a "
-                                + "constraint translation inflates the count — whether it is one of "
-                                + "the constraint-translated types, which a row of the table already "
-                                + "covers, or a type that does not exist at all")
-                .isEmpty();
-        assertThat(namedAsMembers(paragraph))
-                .as("stated as equality, so neither direction can drift unnoticed")
-                .isEqualTo(derived);
-    }
-
-    @Test
-    @DisplayName("splits them by mechanism, both groups located positionally")
-    void shouldRecordTheSplit() throws IOException {
+    @DisplayName("maps each origin to the mechanism that raises it, group by group")
+    void shouldMapEachOriginToItsMechanism() throws IOException {
         final String adapter = adapterSource();
         final String paragraph = paragraphBesideTheTable(adrSource());
-        final Set<String> fromReads = seatReadOrigins(adapter);
-        final Set<String> fromRowCounts = rowCountOrigins(adapter);
 
-        assertThat(paragraph)
-                .as("the larger group is the rows-affected one")
-                .contains(numberWord(fromRowCounts.size()) + " are raised from a rows-affected count of zero");
-        assertThat(paragraph)
-                .as("the smaller group is the assertSeated read")
-                .contains(numberWord(fromReads.size()) + " are raised from a read this adapter makes itself");
-
-        final Set<String> union = new TreeSet<>(fromRowCounts);
-        union.addAll(fromReads);
-        assertThat(union)
+        assertThat(namedInBlock(paragraph, ROWS_BLOCK))
                 .as(
-                        "the two positionally-derived groups must together be exactly the derived "
-                                + "set, with no member in both and none unaccounted for")
-                .isEqualTo(nonConstraintOrigins(adapter));
-        assertThat(fromRowCounts)
-                .as("no origin may be counted in both groups")
-                .doesNotContainAnyElementsOf(fromReads);
+                        "the rows-affected block must name exactly the origins raised from a "
+                                + "rows-affected count of zero — no omission, no padding, and nothing "
+                                + "that actually comes from the read")
+                .isEqualTo(rowCountOrigins(adapter));
+
+        assertThat(namedInBlock(paragraph, READ_BLOCK))
+                .as(
+                        "the read block must name exactly the origins raised from assertSeated. "
+                                + "Moving a name between the two blocks was green until this "
+                                + "assertion existed")
+                .isEqualTo(seatReadOrigins(adapter));
+
+        assertThat(paragraph)
+                .as("the rows-affected heading must state its own group's size")
+                .contains(numberWord(rowCountOrigins(adapter).size()) + " are raised from a rows-affected count of zero");
+        assertThat(paragraph)
+                .as("the read heading must state its own group's size")
+                .contains(numberWord(seatReadOrigins(adapter).size()) + " are raised from a read this adapter makes itself");
     }
 
     /**
-     * Every domain exception the adapter constructs outside a constraint translation. These are
-     * the ones no row of ADR-023's table can cover, because no constraint was violated.
+     * Every domain exception the adapter constructs outside a constraint translation. These are the
+     * ones no row of ADR-023's table can cover, because no constraint was violated.
      */
     private static Set<String> nonConstraintOrigins(final String adapter) {
-        final Set<String> all = domainExceptionsConstructedIn(adapter, wholeFileExcludingTranslations(adapter));
+        final Set<String> all =
+                domainExceptionsConstructedIn(adapter, wholeFileExcludingTranslations(adapter));
         assertThat(all)
                 .as("the derivation must find something, or every assertion using it is vacuous")
                 .isNotEmpty();
@@ -236,8 +222,10 @@ class TrickPlayExceptionOriginTest {
      * {@code shouldRecordTheSplit} tautologies, and a review gate proved it by adding a second
      * construction of {@code PlayerNotInSessionException} to {@code sessionMoved}: the derivation
      * still reported seven, still reported no overlap, and the build stayed green while the ADR's
-     * split had become false. Cutting regions rather than names means that mutation now surfaces as
-     * an overlap and fails.
+     * split had become false. Cutting regions rather than names means that mutation now fails. It
+     * surfaces as a group-size mismatch rather than as an overlap, because the size assertion is
+     * reached first; the overlap is nonetheless live, and the gate demonstrated that by masking the
+     * size and watching disjointness fire.
      */
     private static Set<String> rowCountOrigins(final String adapter) {
         final Set<String> found =
@@ -257,7 +245,8 @@ class TrickPlayExceptionOriginTest {
 
     /**
      * The given ranges with {@code hole} cut out of each, splitting any range that straddles it.
-     * Ranges are half-open, so a range touching the hole's boundary is preserved intact.
+     * Ranges are half-open, so a range merely <em>adjacent</em> to the hole is preserved intact — a
+     * range whose start coincides with the hole's start is truncated, not preserved.
      */
     private static Set<int[]> excluding(final Set<int[]> ranges, final int[] hole) {
         final Set<int[]> kept = new java.util.LinkedHashSet<>();
@@ -279,36 +268,44 @@ class TrickPlayExceptionOriginTest {
         return kept;
     }
 
+    /** Prefix of the block that enumerates the rows-affected group. Load-bearing. */
+    private static final String ROWS_BLOCK = "**Seven are raised from";
+
+    /** Prefix of the block that enumerates the read group. Load-bearing. */
+    private static final String READ_BLOCK = "**Two are raised from";
+
     /**
-     * Every exception type the paragraph presents <em>as a member</em> of the nine, read from the
-     * backticked tokens of the two group blocks and nowhere else.
+     * The exception types named in the one block beginning {@code prefix}.
      *
-     * <p>Scoping this to the group blocks rather than the whole paragraph is not a loophole, it is
-     * the correction of one. The paragraph legitimately names other types for contrast — the
-     * universe sentence names {@code IllegalStateException} and {@code IllegalArgumentException}
-     * precisely in order to exclude them — so a whole-paragraph sweep flagged those two as padding.
-     * That was the check working, and it showed "names exactly the derived set" was loose about
-     * where a name has to appear. Membership is claimed in the two blocks that enumerate the groups,
-     * so that is where equality is enforced.
+     * <p>Scoped to a single block, which is what makes the mapping checkable. An earlier version
+     * unioned the tokens of <em>both</em> group blocks and so could never tell which mechanism the
+     * prose assigned a name to — the hole a review gate walked through by migrating a name between
+     * them. Reading one block at a time is also what keeps the universe sentence out of the way: it
+     * backticks {@code IllegalStateException} and {@code IllegalArgumentException} precisely in order
+     * to exclude them, and a whole-paragraph sweep flagged those two as padding.
      */
-    private static Set<String> namedAsMembers(final String paragraph) {
+    private static Set<String> namedInBlock(final String paragraph, final String prefix) {
         final Set<String> found = new TreeSet<>();
+        int blocks = 0;
         for (final String block : paragraph.split("\\n\\s*\\n")) {
-            final String trimmed = block.trim();
-            if (!trimmed.startsWith("**Seven are raised from") && !trimmed.startsWith("**Two are raised from")) {
+            if (!block.trim().startsWith(prefix)) {
                 continue;
             }
-            final Matcher matcher = Pattern.compile("`(\\w+Exception)`").matcher(trimmed);
+            blocks++;
+            final Matcher matcher = Pattern.compile("`(\\w+Exception)`").matcher(block);
             while (matcher.find()) {
                 found.add(matcher.group(1));
             }
         }
-        assertThat(found)
+        assertThat(blocks)
                 .as(
-                        "no block starting '**Seven are raised from' or '**Two are raised from' "
-                                + "named any exception in backticks. Those two prefixes are "
-                                + "load-bearing: rewording either heading lands here, and without "
-                                + "them the equality check below is vacuous")
+                        "exactly one block must begin '%s'. Zero means the heading was reworded and "
+                                + "this check would go vacuous; more than one means the paragraph was "
+                                + "duplicated, which has happened once already in this slice",
+                        prefix)
+                .isEqualTo(1);
+        assertThat(found)
+                .as("the block beginning '%s' must name its members in backticks", prefix)
                 .isNotEmpty();
         return found;
     }
