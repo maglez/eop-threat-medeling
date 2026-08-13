@@ -354,6 +354,47 @@ class PlayCardUseCaseTest {
     }
 
     /**
+     * Pins the order of the two statements a security review found the wrong way round.
+     *
+     * <p>The bounds on caller supplied text live in the play, not in the command: at most twenty
+     * components, two hundred characters each, two thousand characters of notes, and no control or
+     * bidirectional formatting characters. Nothing measures them until the play is constructed, so
+     * the only thing standing between an over-long note and a committed trick row is which of those
+     * two statements runs first. It used to be the write, which meant a note one character too long
+     * left behind an open trick with no plays in it and then answered the caller with a refusal.
+     *
+     * <p>The note is the field asserted here because it is the largest, but the guarantee is about
+     * the ordering rather than about notes, so any bound the play grows later is covered too.
+     */
+    @Test
+    @DisplayName("refuses an over-long note without opening a trick")
+    void shouldRefuseAnOverLongNoteWithoutOpeningATrick() {
+        final var session = seatedTable(SEATS);
+        final var dealt = dealTo(session, SEATS);
+        final var leaderSeat = dealt.openingLeaderSeat();
+        final var lead = dealt.handOf(leaderSeat).cards().getFirst();
+        handRepository.seededWith(dealt, leaderSeat);
+
+        final var overLong =
+                new PlayCardCommand(
+                        session.sessionId(),
+                        tokenForSeat(leaderSeat),
+                        lead.cardId(),
+                        false,
+                        List.of(),
+                        "x".repeat(TrickPlay.MAX_NOTES_LENGTH + 1));
+
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> useCaseFor(session).execute(overLong));
+
+        assertThat(trickRepository.opened())
+                .as("a refusal must not leave an open trick nobody asked for")
+                .isEmpty();
+        assertThat(trickRepository.appended()).isEmpty();
+        assertThat(order).isEmpty();
+    }
+
+    /**
      * Builds a table whose lobby has already closed, since a card cannot be played into a lobby.
      *
      * @param players how many seats to fill

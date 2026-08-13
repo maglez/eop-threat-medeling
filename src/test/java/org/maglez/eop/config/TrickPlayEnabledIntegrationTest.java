@@ -1,0 +1,64 @@
+package org.maglez.eop.config;
+
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.PlayCardUseCase;
+import org.maglez.eop.usecase.ResolveTrickUseCase;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
+
+/**
+ * Asserts that {@code eop.features.trick-play} produces the three trick play beans when it is on.
+ *
+ * <p>{@link TrickPlayDisabledIntegrationTest} is the half of this pair that matters in production,
+ * because the flag ships off and an incident is answered by knowing what the off position withholds.
+ * On its own, though, that test passes for the wrong reason if the beans are never registered at
+ * all: a bean that a typo in the property name has made unreachable is absent with the flag off and
+ * absent with the flag on, and only the on position can tell those two apart.
+ *
+ * <p>There is deliberately no {@code properties} attribute here. The suite already runs with every
+ * flag on, so this class reuses the default Spring context rather than asking for a second one; a
+ * property override that merely restates the suite default would pay for a whole extra context to
+ * assert what the default context could have answered for free.
+ *
+ * <p>The assertion is on the bean rather than on behaviour, which is what keeps this test honest
+ * about its subject: the wiring is what is under test, and the three use cases have their own unit
+ * tests for what they do once wired.
+ */
+@SpringBootTest
+@DisplayName("Trick play with the feature flag on")
+class TrickPlayEnabledIntegrationTest {
+
+    /** The context, asked directly, because the question is which beans exist. */
+    @Autowired private ApplicationContext context;
+
+    /** Asserts the deal use case is registered while the flag is on. */
+    @Test
+    @DisplayName("creates the deal hands use case")
+    void shouldRegisterTheDealHandsUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(DealHandsUseCase.class))
+                .as("the flag is on for the suite, so the deal must be wired")
+                .isNotEmpty();
+    }
+
+    /** Asserts the play use case is registered while the flag is on. */
+    @Test
+    @DisplayName("creates the play card use case")
+    void shouldRegisterThePlayCardUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(PlayCardUseCase.class))
+                .as("the flag is on for the suite, so playing a card must be wired")
+                .isNotEmpty();
+    }
+
+    /** Asserts the resolve use case is registered while the flag is on. */
+    @Test
+    @DisplayName("creates the resolve trick use case")
+    void shouldRegisterTheResolveTrickUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(ResolveTrickUseCase.class))
+                .as("the flag is on for the suite, so resolving a trick must be wired")
+                .isNotEmpty();
+    }
+}

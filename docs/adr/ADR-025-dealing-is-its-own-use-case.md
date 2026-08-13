@@ -123,7 +123,9 @@ per-player query in a later slice.
   `HandNotDealtException` is the mapped 409 for anything that needs them.
 - Three use cases now exist that can reach the five trick-play tables C1 shipped, so
   `eop.features.trick-play` gates the three beans in `UseCaseConfiguration`. With the flag off no
-  bean exists that can write a hand, a trick or a play, which is what makes C1's containment claim
+  bean exists that calls the ports which write a hand, a trick or a play — the adapter behind those
+  ports is an unconditional `@Repository` and is created either way, so what the flag withholds is
+  every caller of it rather than the capability itself — which is what makes C1's containment claim
   true rather than intended.
 
 ## Alternatives considered

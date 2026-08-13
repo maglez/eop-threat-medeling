@@ -26,7 +26,9 @@ import org.springframework.context.ApplicationContext;
  * {@code TrickRepository}, and this slice adds the first three beans that do. Asserting the beans
  * are absent pins the mechanism: {@link org.springframework.boot.autoconfigure.condition.ConditionalOnProperty}
  * withholds the code rather than leaving it in place to branch at request time (ADR-013). With the
- * flag off there is nothing in the application that can write a hand, a trick or a play.
+ * flag off nothing in the application calls the ports that write a hand, a trick or a play. The
+ * adapter implementing those ports is an unconditional {@code @Repository} and is created either
+ * way, so what the flag withholds is every caller of it rather than the capability itself.
  *
  * <p>The last test is the counterweight. A flag that took the rest of the application down with it
  * would be worse than no flag, so the shuffler — deliberately ungated, because a stateless

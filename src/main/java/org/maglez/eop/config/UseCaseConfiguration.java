@@ -174,7 +174,9 @@ public class UseCaseConfiguration {
      * by anything that injects {@link HandRepository} or {@link TrickRepository}, and
      * this is the slice that adds the first such beans, so gating them here is what
      * makes the containment claim true rather than merely intended: with the flag off,
-     * no bean exists that can write a hand, a trick or a play. The route Slice D adds
+     * no bean exists that calls the ports which write a hand, a trick or a
+     * play. The adapter implementing those ports is an unconditional {@code @Repository} and is
+     * created either way; what the flag withholds is every caller of it. The route Slice D adds
      * is gated on the same flag (ADR-013).
      *
      * <p>{@link DeckShuffler} is deliberately not gated. It is stateless, reaches no

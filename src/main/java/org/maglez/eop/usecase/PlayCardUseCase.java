@@ -46,6 +46,16 @@ import org.maglez.eop.entity.TrickPlay;
  * {@link Trick#acceptPlay} still re-checks it, and still owns the answer once a trick is under way,
  * where whose turn it is depends on the plays already made rather than on the leader alone.
  *
+ * <p>For the same reason the candidate play is built before {@link TrickRepository#openTrick} is
+ * called rather than after it. {@link TrickPlay} is where the bounds on caller supplied text live
+ * &mdash; at most twenty components, two hundred characters each, two thousand characters of notes,
+ * and no control or bidirectional formatting characters &mdash; and {@link PlayCardCommand}
+ * deliberately does not repeat them, because one place that enforces an invariant is easier to trust
+ * than two that have to agree. Opening the trick first would commit a row and only then reject an
+ * over-long note, which is the same orphan trick the two guards above exist to prevent arriving by a
+ * different door. Building the play first is what makes every refusal on an opening lead precede the
+ * write, rather than only the two that were thought of first.
+ *
  * <p>The leader seat handed to every write comes from the trick that was read or from
  * {@link HandRepository#findCurrentLeaderSeat}, never from the caller. It is the compare-and-set
  * witness that serialises concurrent plays (ADR-020), and it advances once per trick rather than
@@ -152,8 +162,9 @@ public class PlayCardUseCase {
         final var now = clock.instant();
         final var current = trickRepository.findCurrentTrick(sessionId);
 
+        final var opening = current.isEmpty() || current.get().winner().isPresent();
         final Trick trick;
-        if (current.isEmpty() || current.get().winner().isPresent()) {
+        if (opening) {
             if (actingSeat != leaderSeat) {
                 throw new OutOfTurnException(leaderSeat, actingSeat);
             }
@@ -162,7 +173,6 @@ public class PlayCardUseCase {
                             identifierGenerator.nextIdentifier(),
                             current.map(resolvedTrick -> resolvedTrick.sequence() + 1).orElse(1),
                             leaderSeat);
-            trickRepository.openTrick(sessionId, trick, leaderSeat, now);
         }
         else {
             trick = current.get();
@@ -178,6 +188,11 @@ public class PlayCardUseCase {
                         command.components(),
                         command.notes(),
                         now);
+
+        if (opening) {
+            trickRepository.openTrick(sessionId, trick, leaderSeat, now);
+        }
+
         final var updated = trick.acceptPlay(actingSeat, candidate, hands);
         final var accepted = updated.plays().get(updated.plays().size() - 1);
 
