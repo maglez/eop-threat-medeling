@@ -1,5 +1,6 @@
 package org.maglez.eop.usecase;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.maglez.eop.entity.Card;
@@ -31,4 +32,22 @@ public interface CardRepository {
      * @return the card, or empty if no card has that identifier
      */
     Optional<Card> findById(UUID cardId);
+
+    /**
+     * Reads the whole deck in canonical order: by suit, then ascending rank.
+     *
+     * <p>Deliberately not a page. Dealing needs every card, and a paginated deal
+     * would be one forgotten loop away from dealing a truncated deck — a defect
+     * that produces a playable-looking game with cards missing, which is far
+     * worse than a failure. The deck is seeded reference data of fixed, small
+     * size, so reading all of it is cheap and the usual argument for pagination
+     * does not apply.
+     *
+     * <p>Canonical order rather than shuffled: randomising is the dealing use
+     * case's job, through {@link DeckShuffler}. A port that returned the deck
+     * pre-shuffled would make a deal impossible to reproduce in a test.
+     *
+     * @return every card in the deck, in canonical order
+     */
+    List<Card> findWholeDeck();
 }

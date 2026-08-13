@@ -3,18 +3,25 @@ package org.maglez.eop.config;
 import java.time.Clock;
 import org.maglez.eop.usecase.CardRepository;
 import org.maglez.eop.usecase.CreateSessionUseCase;
+import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.DeckShuffler;
 import org.maglez.eop.usecase.GetCardUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
+import org.maglez.eop.usecase.HandRepository;
 import org.maglez.eop.usecase.IdentifierGenerator;
 import org.maglez.eop.usecase.IdentityTokenGenerator;
 import org.maglez.eop.usecase.JoinAttemptLimiter;
 import org.maglez.eop.usecase.JoinCodeGenerator;
 import org.maglez.eop.usecase.JoinSessionUseCase;
 import org.maglez.eop.usecase.ListCardsUseCase;
+import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ResolvePlayerUseCase;
+import org.maglez.eop.usecase.ResolveTrickUseCase;
 import org.maglez.eop.usecase.SessionEventPublisher;
 import org.maglez.eop.usecase.SessionRepository;
 import org.maglez.eop.usecase.StartSessionUseCase;
+import org.maglez.eop.usecase.TrickRepository;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -157,5 +164,84 @@ public class UseCaseConfiguration {
             final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         return new StartSessionUseCase(sessionRepository, resolvePlayerUseCase, sessionEventPublisher, clock);
+    }
+
+    /**
+     * Declares the deal-hands use case, behind {@code eop.features.trick-play}.
+     *
+     * <p>The flag is on the bean rather than on a controller because this slice ships
+     * no route. The persistence slice before it left five trick-play tables reachable
+     * by anything that injects {@link HandRepository} or {@link TrickRepository}, and
+     * this is the slice that adds the first such beans, so gating them here is what
+     * makes the containment claim true rather than merely intended: with the flag off,
+     * no bean exists that can write a hand, a trick or a play. The route Slice D adds
+     * is gated on the same flag (ADR-013).
+     *
+     * <p>{@link DeckShuffler} is deliberately not gated. It is stateless, reaches no
+     * table, and gating it would only turn a missing feature into an unsatisfied
+     * dependency somewhere further away from the cause.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param cardRepository the port the whole deck is read through
+     * @param deckShuffler the port that randomises the deck before it is dealt
+     * @param handRepository the port the deal is recorded through
+     * @param identifierGenerator the source of the hand identifiers
+     * @param clock the clock the dealt timestamp is read from
+     * @return the deal-hands use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public DealHandsUseCase dealHandsUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final CardRepository cardRepository,
+            final DeckShuffler deckShuffler,
+            final HandRepository handRepository,
+            final IdentifierGenerator identifierGenerator,
+            final Clock clock) {
+        return new DealHandsUseCase(
+                resolvePlayerUseCase, cardRepository, deckShuffler, handRepository, identifierGenerator, clock);
+    }
+
+    /**
+     * Declares the play-card use case, behind {@code eop.features.trick-play}.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param handRepository the port the hands and the current leader seat are read through
+     * @param trickRepository the port a trick is opened and a play appended through
+     * @param cardRepository the port the played card is resolved through
+     * @param identifierGenerator the source of the trick and play identifiers
+     * @param clock the clock the played timestamp is read from
+     * @return the play-card use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public PlayCardUseCase playCardUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final HandRepository handRepository,
+            final TrickRepository trickRepository,
+            final CardRepository cardRepository,
+            final IdentifierGenerator identifierGenerator,
+            final Clock clock) {
+        return new PlayCardUseCase(
+                resolvePlayerUseCase, handRepository, trickRepository, cardRepository, identifierGenerator, clock);
+    }
+
+    /**
+     * Declares the resolve-trick use case, behind {@code eop.features.trick-play}.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param handRepository the port the hands are read through
+     * @param trickRepository the port the resolution is recorded through
+     * @param clock the clock the resolved timestamp is read from
+     * @return the resolve-trick use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public ResolveTrickUseCase resolveTrickUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final HandRepository handRepository,
+            final TrickRepository trickRepository,
+            final Clock clock) {
+        return new ResolveTrickUseCase(resolvePlayerUseCase, handRepository, trickRepository, clock);
     }
 }

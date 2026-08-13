@@ -33,8 +33,8 @@ class SessionBearingExceptionTest {
     private static final UUID TRICK_ID = UUID.fromString("00000000-0000-7000-8000-0000000000b2");
 
     /**
-     * The four types whose only state is the session identifier. Each entry pairs the
-     * constructor with the accessor so that adding a fifth such type is one line.
+     * The five types whose only state is the session identifier. Each entry pairs the
+     * constructor with the accessor so that adding a sixth such type is one line.
      */
     private static List<Object[]> sessionBearingTypes() {
         return List.of(
@@ -53,7 +53,11 @@ class SessionBearingExceptionTest {
                 entry(
                         "SessionNotFoundException",
                         SessionNotFoundException::new,
-                        SessionNotFoundException::sessionId));
+                        SessionNotFoundException::sessionId),
+                entry(
+                        "NoTrickToResolveException",
+                        NoTrickToResolveException::new,
+                        NoTrickToResolveException::sessionId));
     }
 
     private static <E extends RuntimeException> Object[] entry(
@@ -99,6 +103,8 @@ class SessionBearingExceptionTest {
                 .contains(SESSION_ID.toString());
         assertThat(new HandNotDealtException(SESSION_ID).getMessage())
                 .contains(SESSION_ID.toString());
+        assertThat(new NoTrickToResolveException(SESSION_ID).getMessage())
+                .contains(SESSION_ID.toString());
     }
 
     /**
@@ -124,6 +130,28 @@ class SessionBearingExceptionTest {
 
         assertThat(exception.trickId()).isEqualTo(TRICK_ID);
         assertThat(exception.getMessage()).contains(TRICK_ID.toString());
+    }
+
+    /**
+     * The refusal that names a seat as well as a trick. The seat is the one field a client
+     * needs in order to say who the table is waiting for, and
+     * {@code GlobalExceptionHandler} builds the problem detail from the accessor rather
+     * than from {@code getMessage()}, so an accessor returning a stale or constant seat
+     * would name the wrong player in a response that looks entirely well formed.
+     */
+    @Test
+    @DisplayName("returns the trick and the seat still to play, and keeps them apart")
+    void shouldReturnTheTrickAndTheSeatStillToPlay() {
+        final int seatStillToPlay = 2;
+        final TrickNotCompleteException exception =
+                new TrickNotCompleteException(TRICK_ID, seatStillToPlay);
+
+        assertThat(exception.trickId()).isEqualTo(TRICK_ID);
+        assertThat(exception.seatStillToPlay()).isEqualTo(seatStillToPlay);
+        assertThat(exception.getMessage()).contains(TRICK_ID.toString());
+        assertThat(new TrickNotCompleteException(TRICK_ID, 0).seatStillToPlay())
+                .as("the seat must come from the constructor argument, not from a constant")
+                .isNotEqualTo(seatStillToPlay);
     }
 
     /**
