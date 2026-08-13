@@ -17,56 +17,39 @@ import org.junit.jupiter.api.Test;
 /**
  * Derives the set of non-constraint exception origins from the adapter and holds ADR-023 to it.
  *
- * <p>This test exists because prose lost to arithmetic three times running. The paragraph
- * beside ADR-023's constraint-name translation table warns that the table is not an inventory
- * of how each exception is raised, and then states how many exceptions arise with no
- * constraint violated at all. It said two, then three, then six. The answer is nine, because
- * the shared {@code sessionMoved} helper has five answers and three of them kept being left
- * out even while two of its siblings were being counted. Nine is the fourth statement of the
- * count and the first correct one.
+ * <p>It exists because prose lost to arithmetic. The paragraph beside ADR-023's constraint-name
+ * translation table states how many exceptions arise with no constraint violated, and it said two,
+ * then three, then six before nine. Each wrong count was written carefully and reviewed carefully,
+ * which is the argument for deriving the number instead of restating it.
  *
- * <p>Every one of those three wrong counts was written by someone reading carefully and passed
- * by a reviewer reading carefully. That is the argument for a machine.
+ * <p>How it derives. Every construction of a type the adapter imports from {@code
+ * org.maglez.eop.entity} is classified by <em>where</em> it sits. Inside {@code dealFailure}, {@code
+ * playFailure}, or any of the four {@code catch (final DataIntegrityViolationException ...)} blocks,
+ * a constraint really was violated and a row of the table covers it. Inside {@code assertSeated},
+ * the refusal came from a read. Anywhere else it came from a rows-affected count of zero. Both
+ * groups are located by cutting regions out of the source rather than by subtracting one group's
+ * names from the other's, because subtraction cannot tell a type that belongs to both from one that
+ * belongs only to the group being subtracted.
  *
- * <p><strong>The first version of this test was not that machine, and three review gates said
- * so.</strong> It compared the ADR against a hard-coded list, and its own Javadoc claimed to
- * derive the set from the adapter's branches. It did not: its regex collected every exception
- * construction anywhere in the file, so a tenth origin appearing in the adapter would have left
- * the suite green while the ADR silently went stale — which is the more likely future event,
- * since the adapter is the code under development. It also claimed to be two-directional when
- * both of its assertions ran the same way, so padding the paragraph with an invented type
- * passed. A test that oversells itself is worse than no test, because it stops people checking.
+ * <p>Each block of the paragraph must then name exactly its own derived group, and the two groups
+ * must be disjoint. Per-group equality does not imply disjointness: a type constructed both inside
+ * {@code assertSeated} and at a rows-affected position satisfies both equalities while the headings
+ * sum to more than the derived total, so that is asserted separately.
  *
- * <p>So this version derives the set. It classifies every construction of a type the adapter
- * imports from {@code org.maglez.eop.entity} by <em>where</em> it sits. Inside {@code
- * dealFailure}, {@code playFailure}, or any of the four {@code catch (final
- * DataIntegrityViolationException ...)} blocks — two in {@code recordDeal}, one inline in {@code
- * openTrick}, one in {@code appendPlay} — a constraint really was violated and a row of the table
- * covers it. Inside {@code assertSeated}, the refusal came from a read. Anywhere else it came
- * from a rows-affected count of zero. Both groups are located by cutting regions out of the
- * source, not by subtracting one group's names from the other's. Filing a member by arithmetic is
- * exactly the mistake the six-count made with {@code CardNotInHandException}, and an earlier
- * version of this class reintroduced it one layer down — see {@link #rowCountOrigins}.
+ * <p>The one limitation, measured rather than assumed. Membership is a name appearing in a group
+ * block, so if a block mentions a type twice — once enumerating it, once in narrative — deleting
+ * only the enumerating mention leaves it detected. A block would have to keep discussing a type it
+ * had stopped listing for this to hide anything, and the mutations validating this class therefore
+ * remove every mention. Closing it would mean parsing prose intent, which this approach cannot do.
  *
- * <p>The ADR's named list must then <em>equal</em> the derived set, not merely contain it. The
- * names are read from the backticked tokens of the two blocks that enumerate the groups, so a
- * tenth origin the adapter gains and a tenth name the prose invents both fail. An earlier version
- * claimed that while checking padding against a closed list of four types, which let a fabricated
- * name straight through; a review gate proved it with a mutation, and the mutation now fails.
+ * <p>It reads the adapter as text because the distinction being derived is positional and reflection
+ * cannot see it. A construction moved into a helper called <em>from</em> a translation would be
+ * classified wrongly.
  *
- * <p>One limitation, measured rather than assumed. Membership is detected by a name appearing in a
- * group block, so if a block mentions the same type twice — once enumerating it, once in narrative
- * — deleting only the enumerating mention leaves it detected and the omission passes. That is why
- * the mutation validating this class removes <em>every</em> mention: with the name genuinely
- * absent, which is the shape all three historical miscounts actually had, the omission check fails
- * as it should. A block would have to keep discussing a type it had stopped listing for this to
- * hide anything.
- *
- * <p>It reads the adapter as text because the distinction being derived is positional and
- * reflection cannot see it. That is a real limitation and worth naming: a construction moved
- * into a helper called <em>from</em> a translation would be classified wrongly. What the text
- * approach does buy is the one property that matters here — the set is computed from the source
- * rather than restated beside it.
+ * <p>No account here of which assertion a given mutation trips, and no tally of anything. Earlier
+ * versions of this comment gave both, and each was left behind by the next change to the code it
+ * described. The assertion messages are the record: they cannot go stale, because they are what
+ * fires.
  */
 @DisplayName("ADR-023's non-constraint exception origins, derived from the adapter")
 class TrickPlayExceptionOriginTest {
@@ -426,13 +409,11 @@ class TrickPlayExceptionOriginTest {
      * The bolded lead-in of a block — the run between the opening {@code **} and its closing
      * {@code **} — or the block's first line when it has no bolded lead-in.
      *
-     * <p>Matching a group block on its lead-in rather than on its whole text is what stops a phrase
-     * matching inside some other block's body. An earlier version cut at {@code ":**"}, which occurs
-     * nowhere in this document — the headings end {@code ",**"} — so it never cut anything and
-     * matching was block-wide. A review gate proved that live: rewording the rows heading while
-     * planting its phrase in the read block's body made {@code namedInBlock} match the wrong block
-     * with {@code blocks == 1}, so the vacuity guard stayed silent and the failure arrived as a
-     * confusing equality mismatch instead.
+     * <p>For a bolded block this stops a phrase matching inside its body. It does not for a
+     * non-bolded one: the fallback returns the first line, and every block in this paragraph is a
+     * single line, so a non-bolded block is still matched whole. That path is fail-safe rather than
+     * safe — a wrong match there surfaces as an equality mismatch instead of as the vacuity guard —
+     * and it is why the group blocks must stay bolded.
      *
      * <p>Matching on the invariant half of the lead-in, rather than on one containing the number
      * word, is what makes a wrong heading number fail as the size mismatch it is.
