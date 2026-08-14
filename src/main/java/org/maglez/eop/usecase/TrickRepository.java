@@ -41,10 +41,24 @@ import org.maglez.eop.entity.TrickPlay;
  * authority on a fact that is already written down.
  *
  * <p>Appending a play is one method rather than two on purpose. It removes the card from
- * a hand and records the play, and those cannot be separate calls: two transactions would
+ * a hand and records the play, and those must happen together: two transactions would
  * admit a card gone from a hand with no play recorded, or a play recorded for a card the
- * player still holds, and a single transaction spanning two port calls would put
- * {@code org.springframework.transaction} into this package.
+ * player still holds.
+ *
+ * <p>An earlier version of this paragraph justified that by claiming a single transaction
+ * spanning two port calls would put {@code org.springframework.transaction} into this
+ * package. That was false and is retracted. A caller in the outer ring can compose two
+ * calls into one transaction without this package importing anything: both adapter methods
+ * are already transactional, and Spring's default {@code REQUIRED} propagation makes them
+ * join an enclosing transaction rather than start their own. Atomicity is reachable from
+ * outside; the claim that it was not merely saved the argument from being made.
+ *
+ * <p>The reason that survives is about ownership. The transaction is a detail of the
+ * persistence mechanism, so the ring that owns the mechanism should own its atomic unit.
+ * Splitting this into two methods would move an invariant that is this port's
+ * responsibility out to every caller, and a second place to state an invariant is a second
+ * place for it to drift — a cost, deliberately paid here rather than passed upwards, not an
+ * impossibility.
  *
  * <p><strong>Authorising the requester is the caller's obligation, not this port's.</strong>
  * Nothing here takes an acting player, so no implementation can check one. {@code

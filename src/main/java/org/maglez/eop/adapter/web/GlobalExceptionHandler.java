@@ -8,6 +8,7 @@ import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
+import org.maglez.eop.entity.NoTrickToResolveException;
 import org.maglez.eop.entity.NotFacilitatorException;
 import org.maglez.eop.entity.NotYourSeatException;
 import org.maglez.eop.entity.OutOfTurnException;
@@ -20,6 +21,7 @@ import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.TooFewPlayersException;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
+import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
@@ -417,6 +419,75 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Hands not dealt");
         problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * The session has no trick to resolve.
+     *
+     * <p>The second of three states a resolve request can be too early for, and the
+     * middle one: {@link #handleHandNotDealt} is before the deal, this is after the
+     * deal but before the first card, and {@link #handleTrickNotComplete} is after
+     * the first card but before the last. Three states, three titles, because a
+     * client that shows "waiting for the deal" rather than "waiting for the lead"
+     * cannot tell them apart from one shared answer.
+     *
+     * <p>A 409 and pointedly not a 404. Nothing the caller named is missing — the
+     * session exists and the caller is in it, which is how the request got this far.
+     * A 404 would tell an honest client its session identifier was wrong, which is
+     * the one thing it can be sure it is not, and would send it to re-join a table
+     * it is already seated at.
+     *
+     * <p>The detail does not echo the session identifier. The caller supplied it, so
+     * repeating it discloses nothing and informs nothing; what the caller needs to
+     * know is that the answer will change once somebody leads.
+     *
+     * <p>Takes no argument, like {@link #handleUnknownJoinCode}, because there is
+     * nothing in the refusal this response has any business echoing: the session
+     * identifier came from the caller, and accepting a parameter it does not read
+     * would invite a later edit to start reading it.
+     *
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(NoTrickToResolveException.class)
+    public ProblemDetail handleNoTrickToResolve() {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("No trick to resolve");
+        problem.setDetail("No trick has been led in this session yet.");
+        return problem;
+    }
+
+    /**
+     * The trick is not complete, so it cannot be resolved yet.
+     *
+     * <p>A 409 and not a 422. The request is premature, not impossible: the missing
+     * card is expected, and re-reading once it arrives is exactly what the caller
+     * should do. A 422 would say the request could never succeed and would push a
+     * client into treating an ordinary wait as a defect.
+     *
+     * <p>Distinct from {@link #handleOutOfTurn} despite both naming a seat. That one
+     * refuses a caller trying to <em>play</em> when it is not their turn; this one
+     * refuses a caller trying to <em>resolve</em> while a turn is still outstanding,
+     * and the caller here has done nothing wrong.
+     *
+     * <p>The detail names the seat still to play and nothing else. Whose turn it is
+     * is public at the table — every player watches it — so it is not a leak, and it
+     * is the one fact that lets a client say who it is waiting for. Nothing about any
+     * card is carried, because the cards already played are the read model's to give
+     * and the cards still held are nobody else's business.
+     *
+     * <p>Completeness is measured against the seats that still hold cards rather
+     * than the number of players, per ADR-023: the last trick of a hand is short, so
+     * counting players would leave it permanently unresolvable.
+     *
+     * @param exception the refusal, carrying the trick and the seat still to play
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(TrickNotCompleteException.class)
+    public ProblemDetail handleTrickNotComplete(final TrickNotCompleteException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Trick not complete");
+        problem.setDetail("The trick is still waiting on seat " + exception.seatStillToPlay() + ".");
         return problem;
     }
 

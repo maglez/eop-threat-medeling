@@ -31,6 +31,7 @@ import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.TooFewPlayersException;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
+import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
@@ -409,6 +410,59 @@ class GlobalExceptionHandlerTest {
                     .as("both are 409s on one column, so the title is the only thing that says which way it went")
                     .isNotEqualTo(alreadyDealt.getTitle());
             assertThat(notDealt.getDetail()).isNotEqualTo(alreadyDealt.getDetail());
+        }
+
+        @Test
+        @DisplayName("resolving before anyone has led is a 409 that echoes no identifier at all")
+        void shouldMapNoTrickToResolveToConflictWithoutEchoingTheSession() {
+            final ProblemDetail problem = handler.handleNoTrickToResolve();
+
+            assertThat(problem.getStatus())
+                    .as("nothing the caller named is missing, so this is a conflict and not a 404")
+                    .isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("No trick to resolve");
+            assertThat(problem.getDetail())
+                    .as("the caller supplied the session, so repeating it back informs nobody")
+                    .doesNotContain(SESSION_ID.toString());
+            assertThat(problem.getProperties()).isNull();
+        }
+
+        @Test
+        @DisplayName("resolving mid-trick is a 409 naming the seat still to play and never the trick")
+        void shouldMapTrickNotCompleteToConflictNamingTheSeatOnly() {
+            final ProblemDetail problem =
+                    handler.handleTrickNotComplete(new TrickNotCompleteException(TRICK_ID, 2));
+
+            assertThat(problem.getStatus())
+                    .as("the card is expected, so re-reading fixes it: premature, not impossible")
+                    .isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Trick not complete");
+            assertThat(problem.getDetail())
+                    .as("whose turn it is, is public at the table; the trick identifier is not")
+                    .contains("2")
+                    .doesNotContain(TRICK_ID.toString());
+        }
+
+        /**
+         * The three ways a resolve request can be too early. All three are 409s on one
+         * column, so the title is the only thing that tells a client whether to say
+         * "waiting for the deal", "waiting for the lead" or "waiting for a player" —
+         * and collapsing any two of them would make a client unable to say which.
+         */
+        @Test
+        @DisplayName("the three too-early states are told apart, deal from lead from outstanding turn")
+        void shouldNotCollapseTheThreeTooEarlyStates() {
+            final ProblemDetail notDealt = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+            final ProblemDetail noTrick = handler.handleNoTrickToResolve();
+            final ProblemDetail notComplete =
+                    handler.handleTrickNotComplete(new TrickNotCompleteException(TRICK_ID, 2));
+
+            assertThat(notDealt.getStatus()).isEqualTo(noTrick.getStatus()).isEqualTo(notComplete.getStatus());
+            assertThat(List.of(notDealt.getTitle(), noTrick.getTitle(), notComplete.getTitle()))
+                    .as("three retryable states, three titles")
+                    .doesNotHaveDuplicates();
+            assertThat(List.of(notDealt.getDetail(), noTrick.getDetail(), notComplete.getDetail()))
+                    .doesNotHaveDuplicates();
         }
 
         @Test

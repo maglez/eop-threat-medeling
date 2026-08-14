@@ -1,5 +1,6 @@
 package org.maglez.eop.adapter.persistence;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,5 +51,10 @@ public class CardRepositoryAdapter implements CardRepository {
     public Optional<Card> findById(final UUID cardId) {
         Objects.requireNonNull(cardId, "cardId is required");
         return cardJpaRepository.findById(cardId).map(CardJpaEntity::toDomain);
+    }
+
+    @Override
+    public List<Card> findWholeDeck() {
+        return cardJpaRepository.findAll(DECK_ORDER).stream().map(CardJpaEntity::toDomain).toList();
     }
 }

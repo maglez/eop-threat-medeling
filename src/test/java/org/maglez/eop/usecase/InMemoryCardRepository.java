@@ -42,6 +42,20 @@ final class InMemoryCardRepository implements CardRepository {
     }
 
     /**
+     * Every seeded card, in the order it was seeded.
+     *
+     * <p>A {@link LinkedHashMap} backs this double precisely so that seed order is
+     * the order handed back. The port promises canonical order, and a test that
+     * seeds in canonical order therefore gets it, without this class having to
+     * know what canonical means — that knowledge belongs to the adapter and its
+     * sort, not to a stand-in.
+     */
+    @Override
+    public List<Card> findWholeDeck() {
+        return List.copyOf(cards.values());
+    }
+
+    /**
      * The query the use case actually passed down, so a test can prove it was not
      * quietly rewritten on the way through.
      *
