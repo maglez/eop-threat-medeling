@@ -168,19 +168,41 @@ find, and that is exactly the job an ADR exists to do.
 opened, then calls `Trick.acceptPlay`. Building the play first is what stops an over-long note or a
 malformed component list from committing a trick row that never receives a card — that ordering was
 wrong in the first commit of this slice and is fixed by `fcb6fd5`. But `openTrick` still commits before
-`acceptPlay` runs, so the orphan-trick window is closed by an argument rather than by a mechanism: on an
-opening play, `MustFollowSuit` cannot fire because no suit has been led, `AlreadyPlayedInTrick` and
-`CardAlreadyPlayed` cannot fire because the trick is empty, and `NotYourSeat`, `PlayerMismatch`,
-`OutOfTurn` and `CardNotInHand` are each pre-flighted before the write — `hand.resolve(card)` proves the
-seat holds the card, and the leader-seat comparison proves it is that seat's turn. The opening play is
-the only path that writes a trick row, so the enumeration covers it.
+`acceptPlay` runs, so the orphan-trick window is closed by an argument rather than by a mechanism.
 
-That argument is an exhaustion over the refusals `Trick.acceptPlay` has *today*. **An eighth refusal
-added to `acceptPlay` reopens the window**, silently, in a class that does not mention trick rows. The
+The argument has to be an exhaustion over the refusals `Trick.acceptPlay` actually makes, which means
+reading `Trick.java:360-384` rather than the exception vocabulary. Taken in the order the method
+applies them, on an **opening** play — the only path that writes a trick row:
+
+| Refusal in `acceptPlay` | Why it cannot fire after `openTrick` |
+| --- | --- |
+| `IllegalArgumentException`, seat outside the table (`Trick.java:366-369`) | Unreachable. `actingSeat` is read from the resolved `Player` (`PlayCardUseCase.java:140`), never from the request, and the domain bounded it when the seat was assigned. |
+| `NotYourSeatException` (`Trick.java:372`) | **Inexpressible, not pre-flighted.** The check compares `candidate.seatOrder()` with `actingSeat`, and the candidate is constructed *with* `actingSeat` (`PlayCardUseCase.java:181-190`). The two operands are the same value by construction, so no input can make them differ. |
+| `IllegalArgumentException` from `hands.handOf(actingSeat)` (`Trick.java:375`) | Pre-flighted by `hands.hasSeat(actingSeat)` (`PlayCardUseCase.java:147-149`), which refuses with `PlayerNotInSessionException` first. |
+| `PlayerMismatchException` (`Trick.java:378`) | Unreachable, but **for a reason neither pre-flight supplies.** It compares `hand.playerId()` — frozen into `Hands` when the deal was recorded — with the resolved player's identifier. They can only disagree if a seat changes hands after the deal, and no such path exists: `seatPlayer` is guarded by `touchWhileInStatus(..., LOBBY, ...)` (`SessionRepositoryAdapter.java:96-103`), `GameSession.join` refuses unless the status accepts new players (`GameSession.java:163-164`) and only `LOBBY` does (`SessionStatus.java:38-40`), and `GameSession` has no leave, remove or vacate method at all. The seat-to-player map is immutable from the moment the session starts. |
+| `OutOfTurnException` (`Trick.java:243`, via `assertSeatMayPlay` at `:231`) | Pre-flighted by the leader-seat comparison (`PlayCardUseCase.java:168-170`), which is what makes the play an opening play in the first place. |
+| `IllegalStateException`, seat holding no cards (`Trick.java:240`, same helper) | Pre-flighted by `hand.resolve(card)` (`PlayCardUseCase.java:156`), which cannot succeed against an empty hand. |
+| `CardNotInHandException` (raised in `Hand.java:115`, reached through `assertLegalPlay` at `Trick.java:205`) | Pre-flighted by the same `hand.resolve(card)` — the use case calls the identical method on the identical hand before the write. |
+| `MustFollowSuitException` (`Trick.java:214`, same helper) | Cannot fire on an opening play: no suit has been led, so `ledSuit()` is empty and `assertLegalPlay` returns at `Trick.java:209`. |
+
+`Trick`'s private constructor adds five more refusals — a seat playing twice, the same card twice, one
+player holding two seats, duplicate play identifiers, and a winner foreign to the trick
+(`Trick.java:61-81`) — all raised as `IllegalArgumentException`. None can fire here either: the trick
+is empty when it is opened, so the four duplication invariants have nothing to duplicate, and
+`acceptPlay` sets no winner. Note that `AlreadyPlayedInTrickException` and `CardAlreadyPlayedException`
+are *declared* in `entity` and *mapped* in `GlobalExceptionHandler`, but nothing in production throws
+either; the constructor's `IllegalArgumentException`s are the refusals that actually stand in their
+place. An earlier version of this decision listed those two exceptions among the refusals `acceptPlay`
+makes and omitted three that it does make, which made the enumeration unverifiable against the method
+it claimed to exhaust. Corrected 2026-08-13.
+
+That argument is an exhaustion over the refusals `Trick.acceptPlay` has *today*. **Any refusal added to
+`acceptPlay`, or to `Trick`'s constructor, reopens the window**, silently, in a class that does not
+mention trick rows. The
 durable fix is to move the write after acceptance and let the repository persist the trick and its
 first play together, which changes the `TrickRepository` contract and belongs with the slice that
-revisits it. Until then this paragraph is the guard: a change to `acceptPlay`'s refusals must be
-checked against it.
+revisits it. Until then this table is the guard: a change to `acceptPlay`'s refusals must be
+checked against it, row by row.
 
 ## Consequences
 
@@ -199,12 +221,21 @@ checked against it.
   ports is an unconditional `@Repository` and is created either way, so what the flag withholds is
   every caller of it rather than the capability itself — which is what makes C1's containment claim
   true rather than intended.
-- End of hand is not recognised in this slice, and the whole of the shortfall is one line.
-  `ResolveTrickUseCase.java:134` writes the winning seat as the next leader even when the winner holds
+- End of hand is not recognised in this slice, and the whole of the shortfall is one line. That line is
+  the `nextLeaderSeat` assignment in `ResolveTrickUseCase.execute`, which reads
+  `final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards).orElse(resolved.winningSeat());`
+  — `ResolveTrickUseCase.java:137` as this ADR is written, and identified by that expression rather than
+  by the line number alone, because the number moves and the expression does not. It writes the winning
+  seat as the next leader even when the winner holds
   no card, because `TrickRepository.recordResolution` takes an `int` and the port has no value meaning
   "nobody leads next". It is harmless while it lasts — no seat can play, so no read of the column can
   mislead a legal move — and Slice E replaces that line together with the port signature that forces
-  it. A reviewer of Slice E should expect the diff to touch both.
+  it. A reviewer of Slice E should expect the diff to touch both. **An earlier version of this bullet
+  pinned the shortfall to `ResolveTrickUseCase.java:134`, which is the `throw` inside the
+  `WinningPlayNotInTrickException` guard at `:131-135` — an integrity check, not a placeholder. An
+  implementer who had followed that citation literally would have deleted the guard. Corrected
+  2026-08-13; the `.orElse` expression is quoted above so the pin cannot rot back into pointing at a
+  guard.**
 - Nothing in the system announces a deal, a play or a resolution. See decision 8: the stream is silent
   for the whole of a trick, and the only closing date is Slice E's.
 

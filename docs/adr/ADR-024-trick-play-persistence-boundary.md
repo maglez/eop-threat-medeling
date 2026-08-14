@@ -43,6 +43,37 @@ first reading of Clean Architecture pushes toward:
   inward side of the dependency rule. `.opencode/rules/clean-architecture.md` forbids it, and
   rightly: the use case would then be unable to state its own logic without stating Spring's.
 
+> **Amended 2026-08-13, EOP-14 Slice C2 — the second bullet's premise is false and is retracted.**
+> "The only place left to declare that transaction is the use-case package" is wrong, and it is wrong
+> in exactly the way [ADR-025](ADR-025-dealing-is-its-own-use-case.md) was wrong about the seam
+> between starting a session and dealing. There is another place: a `@Transactional` composer in the
+> outer ring. Spring's default `REQUIRED` propagation means two adapter methods that are each
+> `@Transactional` *join* an enclosing transaction rather than starting their own, so a composer above
+> them demarcates one unit of work while `org.springframework.transaction` stays entirely outside
+> `usecase`. Nothing about the dependency rule prevents it, and the mechanism is already demonstrable
+> in this codebase: `SessionRepositoryAdapter.recordStarted` (`SessionRepositoryAdapter.java:120-126`)
+> and `TrickPlayRepositoryAdapter.recordDeal` (`TrickPlayRepositoryAdapter.java:241-252`) are both
+> plain `@Transactional`, so they would compose that way today. The bullet's rhetorical move —
+> declaring an option not to exist so that it need not be argued against — is the failure, not merely
+> its conclusion.
+>
+> **The conclusion stands, on the two grounds that survive.** First, an adapter owning its own
+> transaction is a legitimate boundary rather than a consolation prize: the transaction is a detail of
+> the persistence mechanism, and the ring that owns the mechanism is the right ring to own its atomic
+> unit. A composer above the ports would move that decision *outward past* the layer that knows why
+> the writes belong together, leaving the reason in one ring and the enforcement in another. Second,
+> composition is cost and coupling, not impossibility: the composer must know that these particular
+> two calls form one unit and must be kept in step with every future change to that fact, which is a
+> second place for the invariant to be stated and therefore a second place for it to drift.
+>
+> Read the paragraph below beginning "Placing the transaction boundary inside the adapter" with the
+> same correction applied. Where it says "Composed in the use case from two adapters", read "composed
+> by any caller above the two adapters" — the composer need not, and per this amendment should not,
+> sit in `usecase`. That paragraph's argument is unaffected by the substitution: a lock-ordering
+> policy spread across a composer and two adapters is spread across three files wherever the composer
+> lives, whereas here it is a property of one method. The status of this ADR is unchanged; one
+> supporting premise is retracted and the decision is re-justified, not superseded.
+
 The ports stay separate because the *callers* are separate. Only the implementation is shared.
 Interface segregation is a property of the interfaces, not of the number of classes behind them.
 
@@ -124,7 +155,7 @@ javadoc of the class it constrains.
 > **Amended 2026-08-13, EOP-14 Slice C2 — this obligation is now discharged.** The bolded sentence
 > above says "undischarged" and was true when it was written; it is no longer. All three use cases
 > call `ResolvePlayerUseCase.execute` as their first statement, before any hand, trick or card is
-> read: `DealHandsUseCase.java:113`, `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:108`.
+> read: `DealHandsUseCase.java:120`, `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:111`.
 > `PlayCardUseCase` then derives the acting seat and the acting player identifier from the resolved
 > player and from nothing the caller supplied (`PlayCardUseCase.java:140-141`), which is stronger than
 > the obligation asked for: `PlayCardCommand` has no seat and no player component, so a caller-supplied
@@ -146,8 +177,9 @@ a storage backstop, so the use-case check is the only check that will ever exist
 detection of a corrupt `winner_play_id` deliberately does *not* use it: that is our data being
 wrong, and a 422 would tell a caller their well-formed request was unprocessable.
 
-> **Amended 2026-08-13, EOP-14 Slice C2 — the thrower now exists.** `ResolveTrickUseCase.java:126-132`
-> raises `WinningPlayNotInTrickException` when the resolved winning play is not among the plays of the
+> **Amended 2026-08-13, EOP-14 Slice C2 — the thrower now exists.** `ResolveTrickUseCase.java:131-135`
+> raises `WinningPlayNotInTrickException` (the `throw` itself is `:134`) when the resolved winning play
+> is not among the plays of the
 > trick being resolved, so the paragraph's "nothing in production raises it" no longer holds. What holds
 > is the reason it was written: the check is unreachable through `Trick.resolved()` today, because
 > `Trick`'s own constructor already refuses a winner that is foreign to the trick, and it is written

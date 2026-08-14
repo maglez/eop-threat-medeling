@@ -27,9 +27,11 @@ caller, and this note said so: no use case, controller or other bean called eith
 and the containment of five tables was the absence of a caller.
 
 **Slice C2 writes the caller, and that is the change the component view below records.** Three use
-cases (`DealHandsUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`), a ninth and tenth port
-(`DeckShuffler`, and `CardRepository` gaining a whole-deck read), and one new adapter class
-(`SecureRandomDeckShuffler`). What Slice C2 still does **not** add is a route: there is no
+cases (`DealHandsUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`), one new port — `DeckShuffler`,
+the tenth — and one new adapter class
+(`SecureRandomDeckShuffler`). `CardRepository` is *not* new: it has been the card-catalogue port
+since EOP-13, and Slice C2 only adds a third method to it (`findWholeDeck()`). What Slice C2 still
+does **not** add is a route: there is no
 controller, no request DTO and no path in `SessionController` that reaches any of the three, so the
 reachable surface from an HTTP request is unchanged from Slice C1 and the endpoint is Slice D's.
 What has replaced containment-by-absence is a feature flag — the three beans exist only while
@@ -159,7 +161,7 @@ flowchart LR
         P4(["IdentityTokenGenerator"])
         P5(["JoinCodeGenerator"])
         P6(["JoinAttemptLimiter"])
-        P7(["HandRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases"])
+        P7(["HandRepository<br/>EOP-14 Slice C1<br/>called by all three Slice C2 use cases"])
         P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases"])
         P9(["CardRepository<br/>EOP-13 — third method findWholeDeck added by Slice C2"])
         P10(["DeckShuffler<br/>EOP-14 Slice C2<br/>a port so the security choice is made once, in one class"])
@@ -253,9 +255,10 @@ type, and that was re-measured for this slice —
 `grep -rn "^import \(org.springframework\|jakarta\|javax\)"` over `entity/` and `usecase/`
 returns nothing.
 
-**Three of those ten ports now have a caller that did not exist a slice ago, and one node on this
-diagram has no inbound edge at all.** `HandRepository` and `TrickRepository` are called by the
-three new use cases, so the sentence this section used to carry — that nothing calls them, that the
+**Three of those ten ports now have a caller that did not exist a slice ago:** `HandRepository`,
+`TrickRepository` and the new `DeckShuffler`. `HandRepository` and `TrickRepository` are called by the
+three new use cases — `HandRepository` by all three, `TrickRepository` by `PlayCardUseCase` and
+`ResolveTrickUseCase` — so the sentence this section used to carry — that nothing calls them, that the
 reachable surface of five tables ended at a bean nothing injected — is no longer true, and Slice C2
 is the slice that ended it. What has replaced it is narrower and worth stating exactly, because it
 is easy to over-read the arrival of a use case as the arrival of a feature:
@@ -281,8 +284,8 @@ is easy to over-read the arrival of a use case as the arrival of a feature:
 - **All three use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
   `PlayCardUseCase` and `ResolveTrickUseCase` into `ResolvePlayerUseCase` are drawn as first-class
   edges rather than left implicit because the *ordering* is the slice's main security property, and
-  a component view that omitted them would hide it: `DealHandsUseCase.java:113`,
-  `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:108` are each the first executable
+  a component view that omitted them would hide it: `DealHandsUseCase.java:120`,
+  `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:111` are each the first executable
   statement of their `execute` method, before any read, any port call and any state test
   ([ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) records why the adapter cannot do
   this for them — no port method takes an acting player).
@@ -559,12 +562,15 @@ status that refusal carries — are in
 only that `trick.winner_play_id` names some `trick_play` row — not one of *this* trick's plays, and
 not one from this session. That needs neither a second session nor a second player, so no
 cross-session fix bounds it, and Slice C's resolve-trick use case owed the check. **Slice C2
-discharges it:** `ResolveTrickUseCase.java:126-132` refuses a resolution whose winning play is not
-one of the plays of the trick being resolved, throwing `WinningPlayNotInTrickException` (422). The
+discharges it:** `ResolveTrickUseCase.java:131-135` refuses a resolution whose winning play is not
+one of the plays of the trick being resolved, throwing `WinningPlayNotInTrickException` (422) at
+`:134`. The
 guard is unreachable through today's domain — `Trick`'s constructor already refuses a foreign winner
 — and was written anyway, because the constraint that would confine the winner to *this* trick's
-plays is a composite key Liquibase cannot express, so the check has to live somewhere and a use case
-is the only place left.
+plays is a composite key Liquibase cannot express. Two checks in two rings is defence in depth, not
+redundancy: the constructor's refusal protects the object, and the use case's refusal protects the
+*write*, which is the thing `fk_trick_winner_play` fails to constrain. The use case is where the
+write is composed, so it is where a guard on the write belongs.
 
 **What contains all of this today — a feature flag, since EOP-14 Slice C2.** As of EOP-14
 Slice C1 all five tables are mapped: `@Table` appears on **eight** classes, not three —
@@ -600,7 +606,7 @@ the seat check it performs is a check on the *row*, not on the requester
 
 Two of ADR-023's four cross-session obligations are discharged by Slice C2 and two are not.
 Discharged: the play path cannot express a foreign seat (`PlayCardCommand.java:35-41`), and the
-winning play is confined to its own trick (`ResolveTrickUseCase.java:126-132`). Not discharged, and
+winning play is confined to its own trick (`ResolveTrickUseCase.java:131-135`). Not discharged, and
 still storage-shaped: `trick_play` and `hand` still accept a row naming a player from another
 session, so the seat- and card-lockout denial of service enumerated above survives any use-case
 check, because it does not depend on a forged request — it depends on a genuine request from a

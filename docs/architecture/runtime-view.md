@@ -405,7 +405,7 @@ sequenceDiagram
     CL->>DH: execute(sessionId, playerToken)
 
     DH->>RP: execute(sessionId, playerToken)
-    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:113. Nothing is<br/>read, shuffled or written before it.
+    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:120. Nothing is<br/>read, shuffled or written before it.
     RP-->>DH: ResolvedPlayer, or 404 SessionNotFoundException<br/>or 403 PlayerNotRecognisedException
 
     alt not the facilitator
@@ -562,10 +562,15 @@ choose which race it wins.
 **The window that remains, and what closes it.** `openTrick` still commits before
 `acceptPlay` runs, so a refusal from `acceptPlay` on an *opening* play would still orphan
 a trick row. That path is argued closed by exhaustion over `Trick.acceptPlay`'s current
-refusals — on an opening play there is no led suit to follow, no earlier play by the seat
-and no earlier play of the card, and the remaining refusals are pre-flighted above. The
-argument is only as good as that list: **an eighth refusal added to `acceptPlay` reopens
-the window**, which is why ADR-025 records the reasoning rather than only the conclusion.
+refusals — on an opening play there is no led suit to follow and the trick is empty, so the
+duplication invariants in `Trick`'s constructor have nothing to duplicate; `NotYourSeatException`
+is inexpressible because the candidate is built with the acting seat itself; `PlayerMismatchException`
+cannot fire because the seat-to-player map is frozen once the session leaves `LOBBY`; and the
+remainder are pre-flighted above. The
+argument is only as good as that list: **any refusal added to `acceptPlay` or to `Trick`'s
+constructor reopens
+the window**, which is why ADR-025 records the reasoning rather than only the conclusion — as a
+table, row by row against the method, in its decision 9.
 
 **Nothing is broadcast here either.** No `SessionEventPublisher` reaches this use case, so
 the other players at the table learn of a play by re-reading. That is the second half of
@@ -602,7 +607,7 @@ sequenceDiagram
     else complete
         RT->>RT: trick.resolved() — highest card of the led suit takes it
         RT->>RT: nextLeaderSeat = next seat holding cards, else the winning seat
-        Note over RT: ResolveTrickUseCase.java:134. The port takes an int and<br/>has no value for "nobody left to lead", so at end of<br/>hand the winning seat is written as a placeholder.<br/>This is the single line Slice E replaces.
+        Note over RT: The nextLeaderSeat assignment —<br/>resolved.nextLeaderSeat(seatsHoldingCards).orElse(resolved.winningSeat())<br/>ResolveTrickUseCase.java:137 today; find it by the expression, not the number.<br/>The port takes an int and<br/>has no value for "nobody left to lead", so at end of<br/>hand the winning seat is written as a placeholder.<br/>This is the single line Slice E replaces.
         RT->>TPRA: recordResolution(sessionId, resolved, leaderSeat, nextLeaderSeat, now)
         TPRA->>DB: UPDATE game_session SET current_leader_seat = next<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
         TPRA->>DB: UPDATE trick SET winner_play_id = ?<br/>WHERE id = ? AND winner_play_id IS NULL
