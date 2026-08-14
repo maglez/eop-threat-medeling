@@ -416,8 +416,9 @@ five near-identical nodes would cost more legibility than they buy. The old just
 leaving them off, that this was the EOP-10 component view and Slice B added no component to it,
 lapsed with Slice C1, which adds components to exactly this view. The second justification
 lapsed with Slice C2: it used to be that nothing above these components called in, and now
-three use cases do, so `HandRepository` and `TrickRepository` are drawn with inbound edges from
-the deal, play and resolve nodes.
+three use cases do, so `HandRepository` is drawn with inbound edges from all three of the deal, play
+and resolve nodes, and `TrickRepository` with edges from play and resolve only — dealing never touches
+it.
 
 The unique count on this node did have to move, from three to **four**, and it was the only number
 Slice B changed anywhere in this diagram. Changeset `004` adds `uq_player_id_seat` on

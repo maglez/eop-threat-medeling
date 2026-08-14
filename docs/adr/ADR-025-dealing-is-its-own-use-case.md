@@ -185,18 +185,30 @@ applies them, on an **opening** play — the only path that writes a trick row:
 | `CardNotInHandException` (raised in `Hand.java:115`, reached through `assertLegalPlay` at `Trick.java:205`) | Pre-flighted by the same `hand.resolve(card)` — the use case calls the identical method on the identical hand before the write. |
 | `MustFollowSuitException` (`Trick.java:214`, same helper) | Cannot fire on an opening play: no suit has been led, so `ledSuit()` is empty and `assertLegalPlay` returns at `Trick.java:209`. |
 
-`Trick`'s private constructor adds eight more refusals — a sequence below one, a leader seat outside
+`Trick`'s private constructor adds nine more refusals — a sequence below one, a leader seat outside
 the seat range, a seat playing twice, the same card twice, one player holding two seats, duplicate
-play identifiers, a winner foreign to the trick, and a first play that does not belong to the leading
-seat (`Trick.java:37-86`) — all raised as `IllegalArgumentException`. None can fire here either: the
-trick is empty when it is opened, so the four duplication invariants have nothing to duplicate;
-`acceptPlay` sets no winner; the sequence and the leader seat are supplied by `PlayCardUseCase` from a
-read rather than by a caller. The last of the eight deserves naming, because it is the only refusal
-whose predicate is first evaluated on exactly the opening play — the path this table exists to
-exhaust — and an earlier version of this table omitted it: a first play that does not belong to the
-leading seat cannot arise, because `seatToPlay` returns `leaderSeat` while `plays` is empty
-(`Trick.java:265-269`), `assertSeatMayPlay` forces `actingSeat == leaderSeat` (`Trick.java:381`), and
-`Trick.java:371-372` forces the candidate's own seat to equal `actingSeat`. Note that
+play identifiers, a winner foreign to the trick, a first play that does not belong to the leading
+seat, and plays that do not run clockwise from the leading seat (`Trick.java:37-102`) — all raised as
+`IllegalArgumentException`. Two `Objects.requireNonNull` calls at `Trick.java:43-44` raise
+`NullPointerException` and are excluded on that ground rather than overlooked. None can fire here
+either: the trick is empty when it is opened, so the four duplication invariants have nothing to
+duplicate; `acceptPlay` sets no winner; the sequence and the leader seat are supplied by
+`PlayCardUseCase` from a read rather than by a caller.
+
+The last **two** deserve naming together, because they are the only refusals whose predicates first
+become live at exactly one play — which is the path this table exists to exhaust, and so the only part
+of the constructor where being empty is not itself the answer. Refusals one to seven are evaluated
+even on an empty trick and pass vacuously. The leading-seat guard (`Trick.java:82-88`) cannot fire
+because `seatToPlay` returns `leaderSeat` while `plays` is empty (`Trick.java:265-269`),
+`assertSeatMayPlay` forces `actingSeat == leaderSeat` (`Trick.java:381`), and `Trick.java:371-372`
+forces the candidate's own seat to equal `actingSeat`. The clockwise-rotation loop
+(`Trick.java:89-101`) cannot fire because with one play it runs a single iteration comparing an
+`offset` of zero against a `previousOffset` of minus one. Two earlier versions of this paragraph got
+this wrong in the same way twice: the first counted five refusals and omitted both, the second counted
+eight, named the leading-seat guard, and claimed it was **the only** refusal with that property — a
+uniqueness the rotation loop it had still omitted falsifies. The lesson is the one this table is for:
+an argument by exhaustion is worth exactly its enumeration, so the enumeration is checked against
+`Trick.java` line by line rather than recalled. Note that
 `AlreadyPlayedInTrickException` and `CardAlreadyPlayedException`
 are *declared* in `entity` and *mapped* in `GlobalExceptionHandler`, but nothing in production throws
 either; the constructor's `IllegalArgumentException`s are the refusals that actually stand in their
