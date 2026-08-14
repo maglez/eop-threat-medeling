@@ -1425,6 +1425,7 @@ components:
       headers:
         Retry-After:
           description: Seconds to wait before attempting again.
+          required: true
           schema:
             type: integer
             format: int32
@@ -1453,6 +1454,7 @@ components:
       headers:
         Retry-After:
           description: Seconds to wait before attempting again.
+          required: true
           schema:
             type: integer
             format: int32
