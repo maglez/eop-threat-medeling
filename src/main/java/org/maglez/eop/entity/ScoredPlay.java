@@ -90,4 +90,26 @@ public record ScoredPlay(UUID playerId, int seatOrder, DisplayName displayName, 
     public int points() {
         return (threatPoint ? 1 : 0) + (trickPoint ? 1 : 0);
     }
+
+    /**
+     * Renders the row without repeating what a player typed.
+     *
+     * <p>The generated record {@code toString} would reproduce the note and every component name verbatim, and
+     * {@link ScoreSheet#rows()} cascades straight into it, so one debug statement over a sheet would emit every note at the table —
+     * up to two thousand characters of note and twenty component names per row. {@link TrickPlay} redacts the same two fields for the
+     * same reason, and this row copies that text out of it, so it inherits the obligation. The component list becomes a count and the
+     * note becomes its presence; the card is left to {@link Card#toString()}, which already drops its threat prompt. The card itself is
+     * face up the moment it is played, so naming it discloses nothing.</p>
+     *
+     * <p>{@link Standing} keeps the generated {@code toString} deliberately: the only free text it carries is a
+     * {@link DisplayName}, which is validated at construction to forty characters with no control characters, and which every player
+     * at the table can already see.</p>
+     *
+     * @return a description that names no player-supplied text
+     */
+    @Override
+    public String toString() {
+        return "ScoredPlay[playerId=" + playerId + ", seatOrder=" + seatOrder + ", card=" + card + ", components=" + components.size()
+                + ", notes=" + (notes.isPresent() ? "given" : "none") + ", points=" + points() + "]";
+    }
 }

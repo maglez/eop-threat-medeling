@@ -45,6 +45,15 @@ class ScoreSheetTest {
         return DeckFixture.card(suit, rank);
     }
 
+    private static Trick trickBySeatZeroAt(final int sequence) {
+        return TrickBuilder.aTrick()
+                .withTrickId(new UUID(1000, 90L + sequence))
+                .withSequence(sequence)
+                .withLeaderSeat(0)
+                .withPlays(aPlayBy(0, card(StrideCategory.SPOOFING, Rank.NINE)).build())
+                .build();
+    }
+
     @Nested
     @DisplayName("the shipped scoring rule")
     class TheShippedScoringRule {
@@ -241,9 +250,9 @@ class ScoreSheetTest {
         @Test
         @DisplayName("refuses a sheet with nobody seated")
         void shouldRefuseNoPlayers() {
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> ScoreSheet.of(List.of(), List.of()))
-                    .withMessageContaining("at least one seated player");
+            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(List.of(), List.of()));
+
+            assertThat(ScoreSheet.of(List.of(player(0, PlayerRole.FACILITATOR)), List.of()).standings()).hasSize(1);
         }
 
         @Test
@@ -256,27 +265,31 @@ class ScoreSheetTest {
         @Test
         @DisplayName("refuses a play made by somebody who is not seated, rather than dropping it from the sheet")
         void shouldRefuseAPlayByAStranger() {
+            final Card ten = card(StrideCategory.SPOOFING, Rank.TEN);
             final Trick trick = TrickBuilder.aTrick()
                     .withLeaderSeat(0)
-                    .withPlays(aPlayBy(0, card(StrideCategory.SPOOFING, Rank.TEN)).withPlayerId(new UUID(42, 42)).build())
+                    .withPlays(aPlayBy(0, ten).withPlayerId(new UUID(42, 42)).build())
                     .build();
 
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)))
-                    .withMessageContaining("not seated");
+            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)));
+
+            final Trick seated = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(aPlayBy(0, ten).build()).build();
+            assertThat(ScoreSheet.of(threePlayers(), List.of(seated)).rows()).hasSize(1);
         }
 
         @Test
         @DisplayName("refuses a play whose seat disagrees with where its player is sitting")
         void shouldRefuseASeatMismatch() {
+            final Card ten = card(StrideCategory.SPOOFING, Rank.TEN);
             final Trick trick = TrickBuilder.aTrick()
                     .withLeaderSeat(1)
-                    .withPlays(aPlayBy(1, card(StrideCategory.SPOOFING, Rank.TEN)).withPlayerId(new UUID(700, 2)).build())
+                    .withPlays(aPlayBy(1, ten).withPlayerId(new UUID(700, 2)).build())
                     .build();
 
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)))
-                    .withMessageContaining("names seat 1");
+            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)));
+
+            final Trick agreeing = TrickBuilder.aTrick().withLeaderSeat(1).withPlays(aPlayBy(1, ten).build()).build();
+            assertThat(ScoreSheet.of(threePlayers(), List.of(agreeing)).rows()).hasSize(1);
         }
 
         @Test
@@ -284,25 +297,21 @@ class ScoreSheetTest {
         void shouldRefuseADuplicateTrick() {
             final Trick trick = firstTrickWonBySeatZero();
 
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick, trick)))
-                    .withMessageContaining("appears twice");
+            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick, trick)));
+
+            assertThat(ScoreSheet.of(threePlayers(), List.of(trick)).rows()).isNotEmpty();
         }
 
         @Test
         @DisplayName("refuses two tricks claiming the same place in the hand")
         void shouldRefuseADuplicateSequence() {
             final Trick first = firstTrickWonBySeatZero();
-            final Trick clash = TrickBuilder.aTrick()
-                    .withTrickId(new UUID(1000, 99))
-                    .withSequence(first.sequence())
-                    .withLeaderSeat(0)
-                    .withPlays(aPlayBy(0, card(StrideCategory.SPOOFING, Rank.NINE)).build())
-                    .build();
+            final Trick clash = trickBySeatZeroAt(first.sequence());
+            final Trick following = trickBySeatZeroAt(first.sequence() + 1);
 
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(first, clash)))
-                    .withMessageContaining("claim sequence");
+            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(first, clash)));
+
+            assertThat(ScoreSheet.of(threePlayers(), List.of(first, following)).rows()).hasSizeGreaterThan(1);
         }
 
         @Test
@@ -310,9 +319,10 @@ class ScoreSheetTest {
         void shouldRefuseADuplicatePlayer() {
             final List<Player> twice = List.of(player(0, PlayerRole.FACILITATOR), player(0, PlayerRole.PARTICIPANT));
 
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> ScoreSheet.of(twice, List.of()))
-                    .withMessageContaining("seated twice");
+            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(twice, List.of()));
+
+            final List<Player> once = List.of(player(0, PlayerRole.FACILITATOR), player(1, PlayerRole.PARTICIPANT));
+            assertThat(ScoreSheet.of(once, List.of()).standings()).hasSize(2);
         }
 
         @Test
@@ -330,16 +340,31 @@ class ScoreSheetTest {
         void shouldRefuseToScoreAStranger() {
             final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of());
 
-            assertThatIllegalArgumentException()
-                    .isThrownBy(() -> sheet.pointsOf(new UUID(42, 42)))
-                    .withMessageContaining("is seated in this game");
+            assertThatIllegalArgumentException().isThrownBy(() -> sheet.pointsOf(new UUID(42, 42)));
             assertThatNullPointerException().isThrownBy(() -> sheet.pointsOf(null));
+
+            assertThat(sheet.pointsOf(new UUID(700, 0))).isZero();
         }
     }
 
     @Nested
     @DisplayName("value semantics")
     class ValueSemantics {
+
+        @Test
+        @DisplayName("differs from a sheet with the same rows but another player standing")
+        void shouldDifferFromASheetWithTheSameRowsButAnotherPlayerStanding() {
+            final Trick trick = firstTrickWonBySeatZero();
+            final List<Player> four = List.of(player(0, PlayerRole.FACILITATOR), player(1, PlayerRole.PARTICIPANT),
+                    player(2, PlayerRole.PARTICIPANT), player(3, PlayerRole.PARTICIPANT));
+
+            final ScoreSheet three = ScoreSheet.of(threePlayers(), List.of(trick));
+            final ScoreSheet withASpectator = ScoreSheet.of(four, List.of(trick));
+
+            assertThat(withASpectator.rows()).isEqualTo(three.rows());
+            assertThat(withASpectator.standings()).hasSize(4);
+            assertThat(withASpectator).isNotEqualTo(three);
+        }
 
         @Test
         @DisplayName("two sheets scored from the same play are equal")

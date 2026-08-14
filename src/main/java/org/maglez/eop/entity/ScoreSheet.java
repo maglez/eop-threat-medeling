@@ -18,7 +18,8 @@ import java.util.UUID;
  *
  * <p>This is the whole of the shipped scoring rule, and it is deliberately small: <strong>one point for a threat on your card, plus one
  * point for taking the trick</strong> (PRD §3.4). It must not be embellished. A richer system was tried and abandoned — four points for a
- * threat on your own card, three, two and one for threats on other people's, two for a face card, three for an ace — not because it was a
+ * threat on your own card, three, two and one for the first, second and third threat on other people's, one for the trick, two for a face
+ * card, three for an ace — not because it was a
  * worse game but because playtesters could not compute it at the table and looked to the facilitator at the end of every round to find out
  * who had scored. A server does not have that limitation, so a richer rule is cheap to add later and is worth recording as an option; it is
  * explicitly not part of this story.</p>
@@ -50,8 +51,10 @@ public final class ScoreSheet {
      * Scores a game from its seated players and its tricks.
      *
      * <p>Tricks are read in sequence order regardless of the order they arrive in, so the rows come out in the order the cards were played.
-     * At most one of them may be unresolved — the trick currently on the table — and its plays contribute their threat points but no trick
-     * point, because nobody has taken it yet.</p>
+     * An unresolved trick — the one currently on the table — contributes its plays' threat points but no trick point, because nobody has
+     * taken it yet. In a real game at most one trick is unresolved at a time, but that is a property of how the game is played rather than
+     * something checked here: a sheet scored from several unresolved tricks is arithmetically correct, merely describing a position no
+     * session can reach.</p>
      *
      * <p>A play by somebody who is not seated, or a play whose seat disagrees with its player's seat, is a contradiction rather than a
      * client error, and is refused as one. Neither is reachable through the game's own writes; both are cheap to rule out here and would
@@ -60,8 +63,8 @@ public final class ScoreSheet {
      * @param players the seated players, at least one
      * @param tricks  the tricks played so far, possibly empty, possibly including one still in progress
      * @return the score of the game as it stands
-     * @throws IllegalArgumentException if there are no players, if two tricks collide on identity or sequence, or if a play cannot be
-     *                                  attributed to a seated player
+     * @throws IllegalArgumentException if there are no players, if one player is seated twice, if two tricks collide on identity or
+     *                                  sequence, or if a play cannot be attributed to a seated player at the seat it names
      */
     public static ScoreSheet of(final List<Player> players, final List<Trick> tricks) {
         Objects.requireNonNull(players, "players is required");

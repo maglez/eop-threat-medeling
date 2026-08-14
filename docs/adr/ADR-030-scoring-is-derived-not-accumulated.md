@@ -57,10 +57,15 @@ write path that could be wrong. Persisting the final standings when a game compl
 remains open to the third slice, as a projection of a completed game's outcome rather
 than as the authority for it; that is additive and does not disturb this decision.
 
-The cost is real and accepted: the score of a long game is recomputed on every read. A
-six-player game plays 78 cards in 13 tricks and a three-player game 78 in 26, so the
-input is bounded by the deck and is small enough that measuring it would be theatre.
-Nothing here forecloses caching later if measurement ever contradicts that.
+Two conditions bind that opening, because a projection is exactly how the two-authority
+problem returns by the back door. Persisting standings in the third slice must be
+justified by a stated purpose that derivation cannot serve — and note that
+`docs/requirements/PRD-eop-card-game.md` excludes any ranking that outlives a single
+session, which is the main thing such a table would otherwise buy. And a persisted
+standing must never be read back to answer the score, not even for a `COMPLETED` game
+where the rows happen to be sitting there and reading them would be cheaper. The moment
+it is, there are two authorities for one number and the drift this decision exists to
+prevent is back. If neither condition can be met, the third slice persists nothing.
 
 ### The rule stays as written, and richer scoring is recorded as an option not built
 
@@ -163,29 +168,71 @@ slice.
 ## Consequences
 
 - Three new pure domain types — `ScoredPlay`, `Standing`, `ScoreSheet` — with zero
-  framework imports. The production class count rises from 109 to 112 and JaCoCo's 80%
-  instruction minimum is met on all three with no exclusion.
+  framework imports. The production class count rises from 109 to 112. The coverage gate
+  is measured over the whole bundle rather than per class (ADR-006), and the bundle's 80%
+  instruction minimum is met with no exclusion; separately, each of the three new types is
+  at 100% instruction coverage (470/470, 57/57 and 145/145) and 100% branch coverage
+  (48/48, 8/8 and 12/12), so the bundle result is not carrying them and the 70% branch
+  minimum ADR-006 holds in reserve would not trouble them either.
+- The score is recomputed on every read, and that cost is accepted rather than mitigated.
+  A six-player game plays 78 cards in 13 tricks and a three-player game 78 in 26, so the
+  input is bounded by the deck and is small enough that measuring it would be theatre.
+  Nothing here forecloses caching later if measurement ever contradicts that — but the
+  honest position today is that this design trades a fixed, small, repeated cost for the
+  removal of a whole class of drift bug, and the cost is real.
+- Persisting the final standings is left open to the third slice as a projection, under
+  the two conditions stated above. That is a loose end, not a settled design: if the
+  conditions cannot be met the third slice persists nothing, and a reader should not treat
+  a standings table as planned.
 - No changeset, no entity change, no route and no use case in this slice. It is additive
   and unreachable from HTTP, so it is safe to merge with `eop.features.trick-play` still
   `false` — which it stays, per ADR-028; flipping it is a separate story.
 - The reading slice needs one new read method on `TrickRepository` returning a session's
   tricks. It must carry no acting player, per ADR-024: authorising the requester is the
   use case's job and no port's.
-- Two documentation claims become stale the moment the later slices land and must be
-  corrected at the claim rather than pointed at from elsewhere:
-  `SessionStatus`'s class Javadoc, which says nothing advances a session out of
-  `IN_PROGRESS`, and the `eop.features.trick-play` comment block in `application.yml`,
-  which names EOP-15 as an outstanding blocker. `TrickState.handComplete`'s "says nothing
-  about the score" stays true and stays as written — the flag genuinely says nothing about
-  the score; it is the sheet that says it.
+- Two known debts are deliberately left for the second slice, both raised in review of
+  this one and both harmless only while nothing can reach this code over HTTP. First, the
+  refusals in `ScoreSheet.of` and `ScoredPlay.of` throw `IllegalArgumentException` with
+  the offending `playerId` or `trickPlayId` interpolated into the message, where the house
+  style is a named domain exception carrying typed fields — which exists precisely so that
+  a boundary can refuse without echoing an identifier into a Problem Details body. Those
+  must become named types before a route can reach them. Second, `ScoredPlay`'s canonical
+  constructor accepts `components` and `notes` as raw strings with no length or
+  control-character bound; today every value on the shipped path has already passed
+  `TrickPlay`'s validation, so the guarantee rests on `ScoredPlay.of` being the only
+  caller rather than on the type. Neither is a defect in this slice; both are preconditions
+  for the next.
+- One documentation claim was falsified by this slice itself and is corrected in the same
+  commit: `TrickPlay`'s Javadoc said that scoring "decides what it does with a linked
+  threat that names nothing", and this slice decided it. It now records the decision in
+  the past tense and cites this ADR. A javadoc that poses a question this commit answered
+  is the one kind of staleness that cannot be deferred.
+- Two further claims are stale or will go stale, and must be corrected at the claim rather
+  than pointed at from elsewhere. `SessionStatus`'s class Javadoc is **already** wrong, and
+  not because of this slice: it explains that nothing advances a session out of
+  `IN_PROGRESS` "because playing cards arrives with EOP-14", and playing cards has
+  arrived — only the consequent still holds, and it holds until the third slice. The
+  `eop.features.trick-play` comment block in `application.yml`, which names EOP-15 as an
+  outstanding blocker, is entirely true after this slice and goes stale when the third
+  lands. `TrickState.handComplete`'s "says nothing about the score" stays true and stays as
+  written — the flag genuinely says nothing about the score; it is the sheet that says it.
+- ADR-018 predicted that "EOP-15 adds scoring rows". This decision adds none, and may never
+  add any. That prediction should be read as superseded here rather than as a plan.
 - Richer scoring and the beginner relaxation are now cheap to add and deliberately
   absent. Anyone adding either should expect to defend it against the reason the author
   removed it, which no longer applies to a server and did apply to a table.
 
 ## Related
 
+- [ADR-004](ADR-004-api-contract-first.md) — the score route in the second slice is
+  hand-authored into `docs/api/openapi.yml` before its controller exists.
+- [ADR-006](ADR-006-build-quality-gates.md) — the coverage gate is a bundle
+  measurement, not a per-class one, which is what the first consequence above states
+  precisely rather than approximately.
 - [ADR-015](ADR-015-player-identity.md) — display names are unverified and not unique,
   which is why nothing here keys on one.
+- [ADR-018](ADR-018-uuid-v7-identifiers.md) — predicted scoring rows this decision does
+  not create; see the consequence above.
 - [ADR-020](ADR-020-session-concurrency-control.md) — the conditional-update guard the
   later slices must use for the `COMPLETED` transition; a derived score adds no state for
   it to protect.
@@ -193,7 +240,15 @@ slice.
   final trick, which is why the sheet counts plays rather than assuming a trick size.
 - [ADR-024](ADR-024-trick-play-persistence-boundary.md) — no port method takes an acting
   player, binding on the read method the second slice adds.
-- [ADR-027](ADR-027-singleton-subresource-naming.md) — the naming precedent for the score
-  read the second slice adds.
+- [ADR-026](ADR-026-use-case-observability.md) — the second slice adds a use case, and is
+  where that ADR's logging obligations attach to scoring.
+- [ADR-027](ADR-027-singleton-subresource-naming.md) — cited for its **prohibition**, not
+  merely its naming rule. `/hand` is singular because a collection of every hand must
+  never exist; a score sheet is by construction every player's rows, so the second slice
+  must argue explicitly why that prohibition is not breached. The argument available to it
+  is that ADR-027 forbids exposing every player's *private* state through one route, and a
+  score names only cards already face up.
 - [ADR-028](ADR-028-end-of-hand-without-release-or-score.md) — assigned the `COMPLETED`
-  transition to this story and keeps `eop.features.trick-play` `false`.
+  transition to this story and keeps `eop.features.trick-play` `false`. That transition
+  amends ADR-028 in the third slice rather than earning a new ADR, since ADR-028 already
+  owns the decision.

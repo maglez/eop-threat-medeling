@@ -66,8 +66,11 @@ public record TrickPlay(
      * <p>Components are not required even when the threat was linked. No rule
      * says they must be, and a facilitation tool that refuses a play in a live
      * session because a text box is empty gets in the way of the conversation it
-     * exists to support. Scoring (EOP-15) decides what it does with a linked
-     * threat that names nothing.
+     * exists to support. Scoring settled what to do with a linked threat that
+     * names nothing: it still scores its threat point, because the rule keys on
+     * the threat being connected rather than on the naming, and this application
+     * holds no model of the system against which a component name could be
+     * checked in any case (ADR-030).
      *
      * <p>Both free-text fields are bounded in length and count because they cross
      * a system boundary from a client and are written to the database.
