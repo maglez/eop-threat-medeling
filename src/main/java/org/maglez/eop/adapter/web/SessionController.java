@@ -36,6 +36,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * branches on the flag at request time, because behaviour that is switched off by
  * the absence of code cannot be switched on by accident.
  *
+ * <p>{@code havingValue = "true"} is not decoration. Without it the condition matches
+ * any present value that is not literally {@code false}, so {@code off}, {@code no},
+ * {@code 0} and {@code disabled} would all switch these five routes <em>on</em> — and
+ * {@code off} is both the spelling an operator reaching for a kill switch is likeliest
+ * to use and a boolean false in YAML 1.1. A flag whose off position depends on picking
+ * one of several synonyms for off is fail-open, which
+ * {@code .opencode/rules/security.md} forbids. ADR-013 therefore requires the explicit
+ * form on every flag in this repository (EOP-48).
+ *
  * <p>The credential header is declared {@code required = false} on purpose. Letting
  * Spring reject a missing header would produce a 400 describing a missing header,
  * and the absence of a credential is not a malformed request — it is a refused one.
@@ -48,7 +57,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @RestController
 @RequestMapping("/api/v1/sessions")
-@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle")
+@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle", havingValue = "true")
 @Tag(name = "sessions", description = "Game session lifecycle")
 public class SessionController {
 

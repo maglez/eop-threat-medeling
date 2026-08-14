@@ -80,7 +80,15 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the create-session use case.
+     * Declares the create-session use case, behind {@code eop.features.session-lifecycle}.
+     *
+     * <p>Gated as well as the controller, and the reason is that the controller alone was
+     * never enough. Until EOP-48 the four lifecycle use cases were registered
+     * unconditionally, so a mistake in the flag's spelling had nothing to fail against:
+     * the beans that write a session existed regardless, and only the route was withheld.
+     * Withholding every caller of {@link SessionRepository} that opens or mutates a
+     * session is what makes the flag's off position a property of the context rather than
+     * of the request mapping — the same arrangement the trick-play use cases below use.
      *
      * @param sessionRepository the port implementation supplied by the persistence adapter
      * @param identifierGenerator the UUID version 7 generator (ADR-018)
@@ -90,6 +98,7 @@ public class UseCaseConfiguration {
      * @return the create-session use case
      */
     @Bean
+    @ConditionalOnProperty(name = "eop.features.session-lifecycle", havingValue = "true")
     public CreateSessionUseCase createSessionUseCase(
             final SessionRepository sessionRepository,
             final IdentifierGenerator identifierGenerator,
@@ -101,7 +110,7 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the join-session use case.
+     * Declares the join-session use case, behind {@code eop.features.session-lifecycle}.
      *
      * @param sessionRepository the port implementation supplied by the persistence adapter
      * @param identifierGenerator the UUID version 7 generator (ADR-018)
@@ -112,6 +121,7 @@ public class UseCaseConfiguration {
      * @return the join-session use case
      */
     @Bean
+    @ConditionalOnProperty(name = "eop.features.session-lifecycle", havingValue = "true")
     public JoinSessionUseCase joinSessionUseCase(
             final SessionRepository sessionRepository,
             final IdentifierGenerator identifierGenerator,
@@ -129,7 +139,15 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the resolve-player use case.
+     * Declares the resolve-player use case, deliberately ungated.
+     *
+     * <p>Every other lifecycle use case here is behind {@code eop.features.session-lifecycle};
+     * this one is not, and the exception is load-bearing. It is a pure lookup — a token in, a
+     * named player out, nothing written — and the five trick-play use cases below depend on it
+     * too. Gating it on the lifecycle flag would make trick play unsatisfiable whenever the
+     * lobby flag were off and trick play on, turning a withheld feature into a context that
+     * will not start. Same reasoning as the ungated {@link DeckShuffler}: a dependency shared
+     * across two flags belongs to neither.
      *
      * @param sessionRepository the port implementation supplied by the persistence adapter
      * @return the resolve-player use case
@@ -140,18 +158,19 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the get-session-state use case.
+     * Declares the get-session-state use case, behind {@code eop.features.session-lifecycle}.
      *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @return the get-session-state use case
      */
     @Bean
+    @ConditionalOnProperty(name = "eop.features.session-lifecycle", havingValue = "true")
     public GetSessionStateUseCase getSessionStateUseCase(final ResolvePlayerUseCase resolvePlayerUseCase) {
         return new GetSessionStateUseCase(resolvePlayerUseCase);
     }
 
     /**
-     * Declares the start-session use case.
+     * Declares the start-session use case, behind {@code eop.features.session-lifecycle}.
      *
      * @param sessionRepository the port implementation supplied by the persistence adapter
      * @param resolvePlayerUseCase the use case that turns a token into a named player
@@ -160,6 +179,7 @@ public class UseCaseConfiguration {
      * @return the start-session use case
      */
     @Bean
+    @ConditionalOnProperty(name = "eop.features.session-lifecycle", havingValue = "true")
     public StartSessionUseCase startSessionUseCase(
             final SessionRepository sessionRepository,
             final ResolvePlayerUseCase resolvePlayerUseCase,
