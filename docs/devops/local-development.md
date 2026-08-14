@@ -173,28 +173,40 @@ Each subsequent run adds data to InfluxDB — the Grafana dashboard accumulates 
 
 See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/config/options.js` for thresholds.
 
-## Front-End (React + TypeScript) — NOT YET SCAFFOLDED
+## Front-End (React + TypeScript)
 
-> **Status: planned, not implemented.** There is no `ui/` directory in the
-> repository yet. ADR-009 selects React + TypeScript + Vite with GOV.UK Design
-> System styling, but no code has been written. The commands below describe the
-> intended layout and will not work until the front-end is scaffolded.
+`ui/` is scaffolded and tracked. Stack: React 18 + TypeScript + Vite + GOV.UK Design System
+CSS (ADR-009). The Vite dev server proxies `/api/*` to Spring Boot on `:8080` so local
+development and the deployed Caddy stack (ADR-017) share a single origin.
 
-### Planned quick start
+### Quick start
 
 ```bash
 cd ui
 npm install
 npm run dev
-# Opens at http://localhost:5173 — proxies /api/* to Spring Boot on :8080
+# Opens at http://localhost:5173 — /api/* proxied to :8080
 ```
 
-### Planned development workflow
+### Development workflow
 
 ```
 Terminal 1: ./mvnw spring-boot:run     # API on :8080
 Terminal 2: cd ui && npm run dev        # Front-end on :5173
 ```
+
+### Available scripts
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start Vite dev server with hot reload |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run typecheck` | TypeScript type-check (`tsc --noEmit`) |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest (single run) |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run verify` | Full check: typecheck + lint + test + build |
 
 ## Common Commands
 
@@ -206,8 +218,8 @@ Terminal 2: cd ui && npm run dev        # Front-end on :5173
 | `./mvnw spring-boot:run` | Start application on port 8080 |
 | `./mvnw clean` | Clean build artifacts |
 
-Front-end commands (`npm run dev`, `npm run build`, `npm test` in `ui/`) are not
-available yet — see the front-end section above.
+Front-end commands (`npm run dev`, `npm run build`, `npm test` in `ui/`) — see the
+front-end section above for the full script reference.
 
 ## Troubleshooting
 
