@@ -154,6 +154,18 @@ silent. Slice D owns the event names in the contract; Slice E owns passing `Sess
 these three use cases and publishing on each write, which is one constructor parameter and one call per
 class.
 
+**2026-08-14, EOP-14 Slice D.** The first half of that handoff is discharged. Slice D published the
+contract for the four trick-play routes and, with it, the three names: `hand-dealt`, `card-played` and
+`trick-resolved` are now constants on `SessionEventType` and members of the `SessionEvent.type` enum in
+`docs/api/openapi.yml`, marked **reserved** there because nothing emits them yet. A test reads the
+contract as text and asserts every constant's wire name appears in it, so a name deleted from either
+side fails the build. That guard is a text match rather than a parse: it proves the name is present in
+the document, not that it sits under `SessionEvent`. Binding the contract to a YAML parser in `verify`
+is a separate follow-up. The reasoning above is why they were minted in Slice D and not here: a
+wire name belongs to the slice that is allowed to publish one. What remains is Slice E's half — passing
+the publisher into the use cases and calling it on each write — so the stream is still silent for a
+whole trick, and a client still learns of a deal, a play or a resolution only by re-reading.
+
 What makes this worth a numbered decision rather than a handoff note is that **nothing in the
 repository fails while it is missing.** There is no test that a deal publishes, because a publisher that
 is not a collaborator cannot be asserted on; the flag being false hides the gap rather than reporting
@@ -236,7 +248,10 @@ checked against it, row by row.
   session has hands is wrong. `HandRepository.findBySessionId` answers empty there, and
   `HandNotDealtException` is the mapped 409 for anything that needs them.
 - Three use cases now exist that can reach the five trick-play tables C1 shipped, so
-  `eop.features.trick-play` gates the three beans in `UseCaseConfiguration`. With the flag off no
+  `eop.features.trick-play` gates the three beans in `UseCaseConfiguration`. *(2026-08-14, EOP-14
+  Slice D: four beans and `TrickController`. The containment claim below is unchanged by that —
+  a fourth caller of the ports is still a caller withheld by the same flag — but the count is not.
+  ADR-013 is the register and states it.)* With the flag off no
   bean exists that calls the ports which write a hand, a trick or a play — the adapter behind those
   ports is an unconditional `@Repository` and is created either way, so what the flag withholds is
   every caller of it rather than the capability itself — which is what makes C1's containment claim

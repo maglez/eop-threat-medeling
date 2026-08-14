@@ -9,6 +9,13 @@ package org.maglez.eop.usecase;
  * two could drift apart without anything failing.
  *
  * <p>Pure domain-adjacent type: no Spring, no Jakarta, no persistence annotations.
+ *
+ * <p>{@link #HAND_DEALT}, {@link #CARD_PLAYED} and {@link #TRICK_RESOLVED} are
+ * declared here and in the contract but nothing publishes them yet; wiring the
+ * publisher into the trick-play use cases is a later slice. They are minted now
+ * because the wire name belongs to the contract, and a client that matches on a
+ * name today must keep working unchanged once the server starts emitting it. A
+ * later release may begin emitting one of these names; it may never rename one.
  */
 public enum SessionEventType {
 
@@ -16,7 +23,16 @@ public enum SessionEventType {
     PLAYER_JOINED("player-joined"),
 
     /** The facilitator closed the lobby and play began. */
-    GAME_STARTED("game-started");
+    GAME_STARTED("game-started"),
+
+    /** The deck was dealt and every seated player now holds a hand. */
+    HAND_DEALT("hand-dealt"),
+
+    /** A player added a card to the current trick. */
+    CARD_PLAYED("card-played"),
+
+    /** A trick was resolved and the seat that took it is known. */
+    TRICK_RESOLVED("trick-resolved");
 
     private final String wireName;
 

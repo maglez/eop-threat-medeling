@@ -61,6 +61,12 @@ tags:
     description: |
       Game session lifecycle — create, join, read state, stream change
       notifications, start play. Gated by `eop.features.session-lifecycle`.
+  - name: trick-play
+    description: |
+      Dealing the deck, playing a card into the current trick and resolving who
+      took it. Gated by `eop.features.trick-play`, a separate flag from
+      `eop.features.session-lifecycle` (ADR-013), so trick play can be held back
+      while the lobby is live.
 
 paths:
   /api/v1/cards:
@@ -290,9 +296,17 @@ paths:
         spike observed the server reporting two live subscribers after both
         clients had gone away.
 
-        Event names currently emitted: `player-joined`, `game-started`. The JSON
-        carried in each `data:` field is the `SessionEvent` schema. It is not
-        referenced with `$ref` here because the response body is a framed text
+        Event names emitted today: `player-joined`, `game-started`. Three further
+        names are **reserved and fixed by this contract** but not yet published by
+        the server: `hand-dealt`, `card-played` and `trick-resolved`. They are
+        named here first because an SSE `event:` name is part of the wire contract,
+        so a client may match on them now and a later release may only start
+        emitting them — never rename them. Until the publisher is wired, a client
+        learns of a deal, a play or a resolution by re-reading, exactly as it would
+        after any other change.
+
+        The JSON carried in each `data:` field is the `SessionEvent` schema. It is
+        not referenced with `$ref` here because the response body is a framed text
         stream, not a single JSON document, and saying otherwise would misdescribe
         the wire format to a code generator.
       operationId: streamSessionEvents
@@ -365,6 +379,246 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/sessions/{sessionId}/deal:
+    post:
+      tags: [trick-play]
+      summary: Deal the deck
+      description: |
+        Deals the whole deck into hands, one per seated player, and fixes the
+        opening lead.
+
+        Facilitator only, and only once per session: a second call is a `409`.
+        Requires the session to be joinable and to hold at least three players.
+
+        **The deck is not dealt evenly.** All 78 cards are dealt, and the
+        remainder goes to the lowest seats, so hands differ in size by at most
+        one — four players receive 20/20/19/19, five receive 16/16/16/15/15. A
+        trick is therefore one card from each seat that *still holds cards*, and
+        the last trick of a hand is short.
+
+        The opening lead is derived from the cards actually dealt, not fixed by
+        rule: it belongs to the seat holding the lowest Tampering card. No
+        particular rank is guaranteed to be in play, so a client must read the
+        lead from the server rather than assume it.
+
+        Returns no body. The caller reads its own hand from
+        `GET /api/v1/sessions/{sessionId}/hand` and the session from
+        `GET /api/v1/sessions/{sessionId}`, which keeps one code path per read.
+      operationId: dealHands
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The deck has been dealt.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          description: |
+            The deal produced no Tampering card, so no opening lead could be
+            derived. This is a server fault, not a client one: the deck is fixed
+            and every deal of it must contain Tampering cards, so reaching this
+            means the deck loaded from the database is not the deck the rules
+            assume. It is documented rather than hidden because a client that
+            sees it should stop and report, not retry.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/sessions/{sessionId}/hand:
+    get:
+      tags: [trick-play]
+      summary: Read the calling player's own hand
+      description: |
+        Returns the hand belonging to the player identified by the token, and no
+        other. There is no operation that returns another player's hand or all
+        hands at once, because a hand is secret for the whole of a game and an
+        endpoint that could leak one would be the game's most valuable target.
+
+        The path is singular — `hand`, not `hands` — as a deliberate departure
+        from the plural-noun convention. It is a singleton sub-resource: *the
+        caller's* hand. A plural would advertise a collection of every hand,
+        which is precisely the operation that must never exist.
+
+        `403` covers a token that is missing, unrecognised, or belongs to another
+        session. `409` means the deck has not been dealt yet, which is a state
+        problem rather than a missing resource: the session exists and the hand
+        will exist after the deal.
+      operationId: getOwnHand
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The caller's hand.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/sessions/{sessionId}/plays:
+    post:
+      tags: [trick-play]
+      summary: Play a card into the current trick
+      description: |
+        Plays one card out of the caller's own hand. If no trick is open this
+        opens one; otherwise the card is appended to the trick in progress.
+
+        **The seat is taken from the token, never from the body.** There is no
+        `seatOrder` and no `playerId` in the request, and `suit` and `rank` are
+        absent too: the card is resolved from the deck row named by `cardId` and
+        then out of the caller's hand. Two earlier defects were exactly a
+        caller-supplied seat, which let a player play out of somebody else's
+        hand, and a caller-supplied suit and rank, which let a forged card take a
+        trick.
+
+        The server enforces turn order and follow-suit. The two are deliberately
+        **not** the same status. Playing out of turn is a `409`: the request is
+        coherent and would be legal later. Failing to follow the led suit while
+        holding it, or naming a card that is not in the caller's hand, is a `422`:
+        the request is well-formed and understood, but the card named cannot be
+        played at all. `409` also covers a card already played into the trick and
+        a hand that has not been dealt. `403` means the token is not the caller's
+        seat's — including an attempt to act as another player. `404` means the
+        session, the caller's membership of it, or the `cardId` names nothing that
+        exists.
+
+        Two requests racing to fill the same seat cannot both succeed — one gets
+        `201`, the other `409`.
+
+        `threatLinked` is optional and defaults to `false`; an unlinked play is an
+        ordinary outcome, not a degraded one. `components` and `notes` are the
+        player's threat-modelling annotations and are bounded by this contract.
+      operationId: playCard
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayCardRequest'
+      responses:
+        '201':
+          description: |
+            The card was played. The body is the trick as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trick'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: |
+            No such session, no such card, or the caller is not a member of the
+            session. The three are one status on purpose: distinguishing them
+            would tell an unauthenticated caller which session identifiers are
+            real.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /api/v1/sessions/{sessionId}/tricks/current/resolve:
+    post:
+      tags: [trick-play]
+      summary: Resolve the current trick
+      description: |
+        Works out which play took the completed trick and records it. The highest
+        card of the led suit wins, unless any Elevation of Privilege card was
+        played, in which case the highest of those wins. Ties are impossible
+        because no card appears twice in a deck.
+
+        Any seated player may resolve, not only the facilitator: the outcome is
+        determined entirely by the cards already played, so there is nothing for
+        the caller to decide and no reason to make the table wait on one person.
+
+        A trick is complete when every seat that still holds cards has played
+        into it — which for the last trick of a hand is fewer seats than the
+        table. Resolving an incomplete trick, or one already resolved, is a
+        `409`.
+
+        Scoring is not part of this operation.
+
+        There is no `422` on this operation, and its absence is deliberate. The
+        caller sends no body, so there is nothing about the request that can be
+        well-formed and yet unprocessable: every refusal is either a matter of
+        who is asking (`403`), what exists (`404`) or what state the trick is in
+        (`409`). The server does keep one guard for a winning play that belongs
+        to another trick, but no client input can reach it — a trick refuses such
+        a winner in its own constructor — so publishing a status for it would
+        promise a response no caller can provoke.
+      operationId: resolveCurrentTrick
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            The trick is resolved. `winningSeat` is now present.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trick'
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
@@ -674,10 +928,20 @@ components:
       properties:
         type:
           type: string
-          description: The kind of change. Matches the SSE `event:` name.
+          description: |
+            The kind of change. Matches the SSE `event:` name.
+
+            `hand-dealt`, `card-played` and `trick-resolved` are reserved and
+            fixed by this contract but are not published by the server yet. They
+            are listed here so a client may match on them today and keep working
+            unchanged when the server starts emitting them. A later release may
+            begin emitting a reserved name; it may never rename one.
           enum:
             - player-joined
             - game-started
+            - hand-dealt
+            - card-played
+            - trick-resolved
         sessionId:
           type: string
           format: uuid
@@ -688,6 +952,211 @@ components:
           description: |
             Server time at which the change was published. Useful for ordering in
             a log; not a cursor, because there is no replay.
+
+    Hand:
+      type: object
+      description: |
+        The cards held by one player — always the caller.
+
+        There is no schema for another player's hand and no schema for all hands,
+        because there is no operation that returns either.
+
+        `seatOrder` is deliberately absent. The caller already knows its own seat:
+        it was given a `playerId` at admission and can find that player in
+        `SessionState.players`. Repeating the seat here would be a second copy of
+        game data that could disagree with the first.
+      required: [handId, playerId, cardCount, cards]
+      properties:
+        handId:
+          type: string
+          format: uuid
+          description: Identifier of the hand.
+        playerId:
+          type: string
+          format: uuid
+          description: |
+            The player holding it. Always the caller — supplied so a client can
+            assert it is looking at its own hand rather than assuming.
+        cardCount:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 20
+          description: |
+            How many cards remain. Redundant with the length of `cards`, and
+            present because hands are not equal: the whole deck is dealt, so the
+            counts differ by one across the table and shrink at different rates
+            once the short final trick is reached.
+        cards:
+          type: array
+          maxItems: 20
+          description: |
+            The remaining cards, in no guaranteed order. A client that wants them
+            sorted sorts them; the server does not promise a presentation order.
+          items:
+            $ref: '#/components/schemas/Card'
+
+    TrickPlay:
+      type: object
+      description: |
+        One card played into a trick by one seat.
+
+        Every field here is decided by the server. In particular `seatOrder` is
+        `readOnly`: it is derived from the identity token of the request that
+        created the play and can never be supplied by a client. See
+        `PlayCardRequest`.
+      required: [trickPlayId, playerId, seatOrder, card, threatLinked, components, playedAt]
+      properties:
+        trickPlayId:
+          type: string
+          format: uuid
+          description: Identifier of this play.
+        playerId:
+          type: string
+          format: uuid
+          description: Which player played it.
+        seatOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          readOnly: true
+          description: |
+            The seat that played it, derived from the identity token of the
+            request. Never accepted from a client.
+        card:
+          $ref: '#/components/schemas/Card'
+        threatLinked:
+          type: boolean
+          description: |
+            Whether the player linked this card to a component of the system under
+            review. `false` is an ordinary outcome, not a degraded one — a player
+            may play a card without finding a threat.
+        components:
+          type: array
+          maxItems: 20
+          description: |
+            Names of the components the threat was linked to. Empty when
+            `threatLinked` is `false`.
+          items:
+            type: string
+            maxLength: 200
+        notes:
+          type: string
+          maxLength: 2000
+          description: |
+            The player's free-text note about the threat. Absent when none was
+            given; never an empty string.
+        playedAt:
+          type: string
+          format: date-time
+          description: Server time at which the play was recorded.
+
+    Trick:
+      type: object
+      description: |
+        One round of play: one card from each seat that still holds cards.
+
+        Not necessarily one card from every seat at the table. Because the whole
+        deck is dealt and hands are unequal, the last trick of a hand is short.
+
+        This schema deliberately does not say whose turn it is, whether the trick
+        is complete, or which seat leads next. Those three answers depend on which
+        seats still hold cards, which is not part of a trick, and reporting them
+        from here would mean guessing.
+      required: [trickId, sequence, leaderSeat, plays]
+      properties:
+        trickId:
+          type: string
+          format: uuid
+          description: Identifier of the trick.
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |
+            Which trick this is within the hand, counting from one.
+        leaderSeat:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: |
+            The seat that led. For the first trick this is derived from the cards
+            actually dealt, not fixed by the rules; afterwards it is decided when
+            the previous trick is resolved.
+        ledSuit:
+          allOf:
+            - $ref: '#/components/schemas/StrideCategory'
+          description: |
+            The suit that must be followed, taken from the leading card. Absent
+            only on a trick that has just been opened and holds no plays yet.
+        plays:
+          type: array
+          maxItems: 6
+          description: |
+            The cards played so far, in the order they were played — which starts
+            at `leaderSeat` and runs clockwise.
+          items:
+            $ref: '#/components/schemas/TrickPlay'
+        winningSeat:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: |
+            The seat that took the trick.
+
+            Absent until the trick is resolved, and its absence is the way to
+            tell an unresolved trick from a resolved one. Highest card of
+            `ledSuit` wins unless any Elevation of Privilege was played, in which
+            case the highest of those wins.
+
+    PlayCardRequest:
+      type: object
+      description: |
+        A request to play one card.
+
+        `seatOrder`, `playerId`, `suit` and `rank` are absent by design, not by
+        omission. The seat and the player come from the `X-EoP-Player-Token`
+        header; the suit and rank come from the deck row named by `cardId`. Two
+        defects fixed during development were exactly a client-supplied seat,
+        which let a player play out of another player's hand, and a
+        client-supplied suit and rank, which let a forged card take a trick.
+
+        A body carrying any of those fields is accepted and the field is
+        ignored: nothing reads it. The seat and player published back in the
+        `Trick` are always the token's, and the suit and rank are always the
+        deck's, so a forged field changes nothing. Clients should not send them,
+        and a future release may begin refusing them outright.
+      required: [cardId]
+      properties:
+        cardId:
+          type: string
+          format: uuid
+          description: |
+            The card to play. Must be a card the caller currently holds; the
+            server resolves it out of the caller's hand rather than trusting the
+            request to describe it.
+        threatLinked:
+          type: boolean
+          default: false
+          description: |
+            Whether this card was linked to a component of the system under
+            review. Optional, and `false` is a perfectly ordinary answer.
+        components:
+          type: array
+          maxItems: 20
+          description: |
+            Names of the components the threat applies to. Optional; omitting it
+            and sending an empty array mean the same thing.
+          items:
+            type: string
+            maxLength: 200
+        notes:
+          type: string
+          maxLength: 2000
+          description: The player's note about the threat. Optional.
 
   responses:
     BadRequest:
@@ -729,6 +1198,22 @@ components:
         The request is valid but the session's current state does not allow it.
         The `title` distinguishes the cases: play has already started, the table
         is full at six players, or play cannot start with fewer than three.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    UnprocessableEntity:
+      description: |
+        The request is well formed and was understood, but the card it names
+        cannot be played. The `title` distinguishes the cases: the caller holds
+        the led suit and named a card of another suit, or the caller does not
+        hold the card at all.
+
+        The line between this and 409 is whether the same request could ever
+        succeed. Playing out of turn is a 409 because the request is coherent and
+        would be legal once the turn comes round. A card the caller does not hold
+        is a 422 because no amount of waiting makes it playable.
       content:
         application/problem+json:
           schema:

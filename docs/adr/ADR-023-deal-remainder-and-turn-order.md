@@ -753,6 +753,13 @@ reachable at once, and the flag will not be the thing holding them shut.
 > also did **not** add the flag with the entities; see the amendment of 2026-08-12 at the end
 > of this ADR.
 >
+> **Corrected again 2026-08-14, EOP-14 Slice D:** the containment described above is spent. C2
+> added the use cases and Slice D added the route — `TrickController`, four paths — so nothing
+> is now held back by absence. What holds these gaps back is `eop.features.trick-play` alone,
+> `false` at `application.yml:91`, withholding four use-case beans and the controller. A flag
+> can be flipped, so every gap enumerated below is one property change away from reachable and
+> must be read that way rather than as latent.
+>
 > This note is deliberately placed against the claim it corrects rather than in date order
 > with the reversal below, because the defect a review found here was not that the record was
 > wrong — records go stale — but that its correction sat 520 lines away, where a reader who
@@ -1294,8 +1301,9 @@ exception type and its 422, and it is not a restatement of any of the other thre
 > revalidation on read in `winnerAmong` is now joined by a refusal on the write path, one layer
 > higher, where the trick and its plays are both in hand. Containment is also no longer only
 > "no route": since Slice C2 there are callers of the trick-play ports, and what withholds them
-> is `eop.features.trick-play`, declared `false` at `application.yml:86` and gating all three
-> use-case beans (`UseCaseConfiguration.java:195-248`). A flag is weaker than an absent class
+> is `eop.features.trick-play`, declared `false` at `application.yml:91`. As of EOP-14 Slice D it
+> gates four use-case beans (`UseCaseConfiguration.java:196-260`) and `TrickController`, which now
+> supplies the route this paragraph once said was absent. A flag is weaker than an absent class
 > and is named as such rather than presented as equivalent. See
 > [ADR-025](ADR-025-dealing-is-its-own-use-case.md).
 
@@ -1373,7 +1381,7 @@ paragraph is the record of which one had no excuse.
 - [ADR-020](ADR-020-session-concurrency-control.md) — compare-and-set on a single row is why the leader's seat is stored rather than derived; the `@Version` warning repeated above; and the deadlock-ordering decision it predicted EOP-14 would have to make
 - [ADR-008](ADR-008-database-migration-liquibase.md) — Liquibase owns the schema; `current_leader_seat` arrives in changeset `004` before the entities
 - [ADR-018](ADR-018-uuid-v7-identifiers.md) — identifiers for `hand`, `trick` and `trick_play` are minted in the use case, not at flush. Narrowed by the 2026-08-12 amendment above: `trick_play_component` and `hand_card` carry no UUID, because their rows are values in a bounded list and a set membership respectively, rather than entities
-- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. **That flag does not exist**, in this slice or any other: `application.yml` declares one flag, `features.session-lifecycle: false`. Slice A is pure domain with nothing to gate and **Slice B is schema with nothing to gate either** — its five tables have no entity, adapter or route, which is a stronger containment than a flag and is not to be described as one (see the containment paragraph in *What changeset `004` deliberately does not enforce*). **Corrected 2026-08-13, EOP-14 Slice C1:** the clause "its five tables have no entity, adapter or route" is now false in two of its three terms — all five tables are mapped by JPA entities and reached by `TrickPlayRepositoryAdapter`. Only "no route" survives, and it now carries the containment on its own, together with the absence of any use case calling either port. That is still stronger than a flag, because a flag can be flipped and a route that does not exist cannot; but it is a weaker claim than the one this bullet made, and the sentence is not to be quoted in its original form. The flag is created in Slice C, in the same commit as the entities, when dealing is first wired into session start
+- [ADR-013](ADR-013-feature-flags.md) — every slice of EOP-14 that adds a route or changes behaviour a player can see will ship behind `eop.features.trick-play`, false by default. **That flag does not exist**, in this slice or any other: `application.yml` declares one flag, `features.session-lifecycle: false`. Slice A is pure domain with nothing to gate and **Slice B is schema with nothing to gate either** — its five tables have no entity, adapter or route, which is a stronger containment than a flag and is not to be described as one (see the containment paragraph in *What changeset `004` deliberately does not enforce*). **Corrected 2026-08-13, EOP-14 Slice C1:** the clause "its five tables have no entity, adapter or route" is now false in two of its three terms — all five tables are mapped by JPA entities and reached by `TrickPlayRepositoryAdapter`. Only "no route" survives, and it now carries the containment on its own, together with the absence of any use case calling either port. That is still stronger than a flag, because a flag can be flipped and a route that does not exist cannot; but it is a weaker claim than the one this bullet made, and the sentence is not to be quoted in its original form. The flag is created in Slice C, in the same commit as the entities, when dealing is first wired into session start. **Corrected again 2026-08-14, EOP-14 Slice D:** the third term has now gone too — `TrickController` supplies the route, so no part of the original clause survives and the whole containment rests on the flag, which Slice D also tightened to `havingValue = "true"` so that a value other than `true` cannot register the routes without their use cases
 - [ADR-005](ADR-005-error-handling-strategy.md) — where an out-of-turn play and a follow-suit violation become RFC 9457 problem details
 - [ADR-014](ADR-014-realtime-transport.md) — events carry no state and reconnection is a re-read, so the stored leader seat is what a reconnecting client sees
 - [PRD §3.3](../requirements/PRD-eop-card-game.md) — dealing, the derived opening lead, and the "time, cards, or ways to connect" end condition that sanctions the short final trick

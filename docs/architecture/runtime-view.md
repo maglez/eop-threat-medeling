@@ -4,38 +4,55 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-14 Slice C2** (the trick-play use-case
-layer, gated on `eop.features.trick-play`), on top of Slice C1's persistence layer (Liquibase
-changeset `005`), Slice B's trick-play schema (changeset `004`) and the client-address resolution
-from EOP-26 (ADR-021). Sequences 1 to 3 are still the EOP-10 session lifecycle and **Slice C2
-alters none of them.** Sequences 4, 5 and 6 are new, and they are the three this document said it
-was owed: dealing, playing and resolving.
+Everything here reflects the code as it stands after **EOP-14 Slice D** (the trick-play HTTP
+routes), on top of Slice C2's use-case layer, Slice C1's persistence layer (Liquibase changeset
+`005`), Slice B's trick-play schema (changeset `004`) and the client-address resolution from EOP-26
+(ADR-021). Sequences 1 to 3 are the EOP-10 session lifecycle and **Slice D alters none of them.**
+Sequences 4, 5 and 6 are dealing, playing and resolving.
 
-**They begin at a caller that does not exist yet, and the diagrams say so.** Slice C2 adds no
-route, no controller method and no DTO — `SessionController` still has the same five routes — and
-the three new use cases are Spring beans only while `eop.features.trick-play` is `true`, which
-`application.yml` leaves `false`. The first participant of each new sequence is therefore drawn as
-a caller a later slice supplies; everything to the right of it is implemented and covered by tests,
-and everything to the left of it is Slice D. The refusals are real all the same:
-`GlobalExceptionHandler` maps every exception drawn below, including the two Slice C2 adds —
+**They now begin at a caller that exists.** Three earlier versions of this paragraph said the
+opposite — that Slice C2 added no route, no controller method and no DTO, and that the first
+participant of each new sequence was drawn as a caller a later slice would supply. Slice D supplies
+it: `TrickController` maps `POST /api/v1/sessions/{sessionId}/deal`,
+`GET /api/v1/sessions/{sessionId}/hand`, `POST /api/v1/sessions/{sessionId}/plays` and
+`POST /api/v1/sessions/{sessionId}/tricks/current/resolve`, each returning a transport record rather
+than a domain object. The controller and all four use-case beans exist only while
+`eop.features.trick-play` is `true`, which `application.yml` still leaves `false`, so the routes
+answer 404 as shipped — but that is now a flag position rather than an absence of code, and the
+distinction matters because it is testable in both directions. The refusals were always real:
+`GlobalExceptionHandler` maps every exception drawn below, including
 `NoTrickToResolveException` at `GlobalExceptionHandler.java:452` and `TrickNotCompleteException` at
-`:486`, both 409. What is missing from these three sequences is the route, not the answer.
+`:486`, both 409.
+
+There is deliberately **no seventh sequence for `GET /api/v1/sessions/{sessionId}/hand`.** A
+sequence diagram earns its place when the order of interactions is the thing worth pinning, and
+that read has one: resolve the caller, load the hands, return the caller's own. Its one interesting
+property is an ordering already drawn in sequences 4 to 6 — authorisation precedes the repository
+call, so a failed credential never reaches storage — and its substantive property is a prohibition
+rather than an interaction, namely that no route, use case or DTO returns a hand the caller does not
+hold, which [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) records because a diagram
+cannot record an absence.
 
 Slice B changed the *failure mode* of writes that already have sequences below: a forged seat and a
 ghost player are rejected by the database rather than reaching it, which
 [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) records — in the second and fourth of
 the four Slice C obligations under *What changeset `004` deliberately does not enforce* — as owing
 a use-case-level rejection, so the caller sees a 403-shaped refusal rather than a constraint
-violation. **Slice C2 discharges that on the play path by construction rather than by a check.**
+violation. **Slice C2 discharges that on the play path by construction rather than by a check, and
+Slice D preserves it across the HTTP boundary.**
 `PlayCardCommand` has no seat component and no player component at all
 (`PlayCardCommand.java:35-41`, argued at `:10-17`), so `PlayCardUseCase` derives the acting seat
 from the resolved player (`PlayCardUseCase.java:139-141`): a caller cannot name a seat it does not
 hold, which makes the 403 with `NotYourSeatException` inexpressible from the outside rather than
-merely refused. A caller outside the session is refused with `PlayerNotInSessionException`
-(`PlayCardUseCase.java:147-149`), a 404 chosen so the status does not itself disclose that the
-session exists. If a future slice adds or alters an interaction, this paragraph is the first thing
-to correct — one version of it claimed EOP-10 two stories after that stopped being the whole truth,
-and the version before this one claimed Slice C1 one slice after the same thing.
+merely refused. `PlayCardRequest` — the request record Slice D adds — carries no seat, player, suit
+or rank either, so the property survives the one change that could have quietly undone it, and a
+test posts a body naming all four for an impostor and asserts the published play still carries the
+token's seat and the deck's suit. A caller outside the session is refused with
+`PlayerNotInSessionException` (`PlayCardUseCase.java:147-149`), a 404 chosen so the status does not
+itself disclose that the session exists. If a future slice adds or alters an interaction, this
+paragraph is the first thing to correct — one version of it claimed EOP-10 two stories after that
+stopped being the whole truth, the version before last claimed Slice C1 one slice after the same
+thing, and the last one claimed the caller did not exist for a whole slice after Slice D built it.
 
 Where a sequence has a weakness, the prose says so rather than leaving the diagram to imply
 everything is fine.
@@ -391,7 +408,7 @@ sequence 3 ends: the session is already `IN_PROGRESS`, because
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CL as Caller — Slice D route, not built yet
+    participant CL as TrickController — POST /api/v1/sessions/{sessionId}/deal
     participant DH as DealHandsUseCase
     participant RP as ResolvePlayerUseCase
     participant CRA as CardRepositoryAdapter
@@ -486,7 +503,7 @@ a bad component name cannot leave an open trick behind it.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CL as Caller — Slice D route, not built yet
+    participant CL as TrickController — POST /api/v1/sessions/{sessionId}/plays
     participant PC as PlayCardUseCase
     participant RP as ResolvePlayerUseCase
     participant CRA as CardRepositoryAdapter
@@ -583,7 +600,7 @@ what Slice E owes.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CL as Caller — Slice D route, not built yet
+    participant CL as TrickController — POST /api/v1/sessions/{sessionId}/tricks/current/resolve
     participant RT as ResolveTrickUseCase
     participant RP as ResolvePlayerUseCase
     participant TPRA as TrickPlayRepositoryAdapter

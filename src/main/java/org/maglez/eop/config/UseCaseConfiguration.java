@@ -15,6 +15,7 @@ import org.maglez.eop.usecase.JoinCodeGenerator;
 import org.maglez.eop.usecase.JoinSessionUseCase;
 import org.maglez.eop.usecase.ListCardsUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
+import org.maglez.eop.usecase.ReadOwnHandUseCase;
 import org.maglez.eop.usecase.ResolvePlayerUseCase;
 import org.maglez.eop.usecase.ResolveTrickUseCase;
 import org.maglez.eop.usecase.SessionEventPublisher;
@@ -202,6 +203,24 @@ public class UseCaseConfiguration {
             final Clock clock) {
         return new DealHandsUseCase(
                 resolvePlayerUseCase, cardRepository, deckShuffler, handRepository, identifierGenerator, clock);
+    }
+
+    /**
+     * Declares the read-own-hand use case, behind {@code eop.features.trick-play}.
+     *
+     * <p>Gated with the writers even though it only reads. The flag is meant to withhold trick play
+     * entirely, and a read of a hand is trick play: with the flag off there are no hands to read, so
+     * the bean would exist only to answer 409 to every caller.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param handRepository the port the caller's own hand is read through
+     * @return the read-own-hand use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public ReadOwnHandUseCase readOwnHandUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase, final HandRepository handRepository) {
+        return new ReadOwnHandUseCase(resolvePlayerUseCase, handRepository);
     }
 
     /**
