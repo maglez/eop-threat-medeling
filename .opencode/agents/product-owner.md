@@ -133,11 +133,3 @@ You hold `task: tech-lead: allow` for exactly one purpose — the expert advisor
 - When defining a new feature or complex Epic:
     1. If a PRD is needed beyond the Jira description, commit a Markdown file under `docs/requirements/PRD-[FEATURE-NAME].md`.
     2. Embed Jira issue keys directly within the Markdown file for cross-referencing.
-
-## Required Reading
-
-These project rules are NOT in your context by default. Read them with the `read` tool before you start work that touches them, and follow them as binding:
-
-- `.opencode/rules/feature-flags.md`
-
-`clean-architecture.md`, `security.md`, `git-commits.md` and `testing.md` are already loaded globally — do not re-read those.

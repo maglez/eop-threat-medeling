@@ -1,11 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": [
-    ".opencode/rules/clean-architecture.md",
-    ".opencode/rules/security.md",
-    ".opencode/rules/git-commits.md",
-    ".opencode/rules/testing.md"
-  ],
+  "instructions": [".opencode/rules/*.md"],
   "mcp": {
     "atlassian": {
       "type": "local",
