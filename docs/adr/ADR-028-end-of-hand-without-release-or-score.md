@@ -35,6 +35,18 @@ exists to protect. EOP-48 is a second predecessor: `SessionController`'s
 `@ConditionalOnProperty` omits `havingValue`, so `session-lifecycle: off` in YAML
 silently *enables* the session routes. A flag mechanism that fails open on its sibling
 is not a mechanism anybody should rely on for a first release.
+*(Amended 2026-08-14, EOP-48 — the description of the defect is kept in the present tense
+because it records the context on the day this ADR was accepted, but **it is no longer true of
+the code**: commit `34d30d7` added `havingValue = "true"` to `SessionController.java:60` and
+gated the four use-case beans that open or mutate a session
+(`UseCaseConfiguration.java:101`, `:124`, `:167`, `:182`) on the same flag, with a 12-test
+off-value suite pinning the `off` spelling. The unconditional beans turned out to be the deeper
+half of it: withholding the request mapping alone left an application that could still execute
+session creation. This predecessor is therefore **discharged**, and the reasoning that made it
+one — a flag mechanism that fails open on its sibling is not one to rely on — survives intact as
+the reason it had to be discharged first. [ADR-013](ADR-013-feature-flags.md) carries the
+mechanism, the repository-wide mandate it produced and the register entry; **two** of this ADR's
+three predecessors remain, ADR-026 and EOP-15.)*
 
 The second is what the session's status should become when the last card is played.
 `SessionStatus.COMPLETED` is documented in the entity as "Every trick has been played

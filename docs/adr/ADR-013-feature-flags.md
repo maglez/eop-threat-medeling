@@ -170,6 +170,11 @@ blocker is gone and **three named predecessors remain** — [ADR-026](./ADR-026-
 `SessionController`, recorded in the next note) and EOP-15 (releasing a hand and scoring it, which
 `handComplete` deliberately does not claim). [ADR-028](./ADR-028-end-of-hand-without-release-or-score.md)
 names those three and owns the flag-on story.
+*(Amended 2026-08-14, EOP-48 — **two** of those three predecessors remain. EOP-48 is discharged by
+commit `34d30d7`, recorded in the second 2026-08-14 note below; the register's answer to "is
+flag-on reachable?" is now ADR-026 and EOP-15. The list of three is kept as written because it
+records why the flag was still down when Slice E merged, and because ADR-028's decision sentence
+names the same three; neither is to be read as the current count.)*
 
 The counts also moved, and this is the register's current statement of them. The flag withholds
 **five use-case beans and one controller — six beans in all**: `DealHandsUseCase`,
@@ -198,6 +203,69 @@ request was opened; `application.yml` currently sets the literal `false`, so the
 safe and the exposure is latent operator error.
 **Every `@ConditionalOnProperty` on a flag in this repository must carry
 `havingValue = "true"`.**
+*(Corrected 2026-08-14, EOP-48 — the three claims this note makes about `SessionController` are
+all **false of the tree as it now stands**, and are kept only as the record of what was found on
+the day it was written: it no longer "still carries the loose form", its use-case beans are no
+longer "unconditional", and it is no longer "left for its own commit" because that commit is
+`34d30d7`. Do not quote this paragraph in the present tense; read the note immediately below,
+which also strengthens the mandate in its last two lines.)*
+
+**2026-08-14, later the same day — EOP-48: the explicit form on both flags, and the beans were
+the deeper half of the defect.** `SessionController.java:60` now reads
+`@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle", havingValue = "true")`,
+and the four use cases that open or mutate a session — `createSessionUseCase`,
+`joinSessionUseCase`, `getSessionStateUseCase`, `startSessionUseCase` — each carry the same
+condition (`UseCaseConfiguration.java:101`, `:124`, `:167`, `:182`). The two spellings in the tree,
+`prefix` + `name` on the controllers and the single dotted `name = "eop.features.…"` on the beans,
+resolve to the same property and the same condition; the inconsistency is cosmetic and is recorded
+here so that nobody reads it as two mechanisms.
+
+The mechanism is now written down exactly, because the note above understated it. `matchIfMissing`
+defaults to `false`, so an **absent** property was never the hole: no property, no bean, in every
+version of this code. The hole was confined to the case where the property is *present* — and
+there, with `havingValue` left empty, the condition reduces to `!"false".equalsIgnoreCase(value)`
+(verified against the resolved `spring-boot-autoconfigure-4.1.0` bytecode, @security-auditor,
+EOP-48). `off`, `no`, `0` and `disabled` therefore all **enabled** the feature, and so did **the
+empty string** — `session-lifecycle:` with nothing after the colon, or
+`EOP_FEATURES_SESSION_LIFECYCLE=` exported empty in the environment a container starts with, which
+is the likeliest way an operator unsets a variable while leaving it *present*. That last case was
+recorded nowhere in this repository before EOP-48. It is why the mandate below is absolute rather
+than a style preference: there is no value an operator can reach for, other than the six letters
+`false`, that turns a loosely-conditioned flag off.
+
+The controller was never the whole defect, and this is the part worth carrying forward to the next
+flag. Withholding a request mapping hides a feature from HTTP; it does not withhold the code that
+performs it. Before EOP-48 the four beans above existed in every context regardless of the flag, so
+`session-lifecycle: off` produced an application that had loaded, wired and could execute session
+creation, and whose only protection was that one bean's request mapping was absent. Nothing failed
+the context to announce the contradiction — which is precisely why the loose form on
+`TrickController` was merely a trap (its beans required `"true"`, so a bad value failed startup)
+while the same loose form on `SessionController` was an exposure. Gating the beans as well makes
+the off position a property of the **application context** rather than of the URL space, and it
+gives the off-position test something to assert that a route test cannot: absence, not 404.
+
+Measured rather than argued. `SessionLifecycleOffValueIntegrationTest` pins the `off` spelling with
+12 tests — five bean absences, five 404s, one counterweight and one unrelated-route check — and run
+against the pre-fix tree it failed **6 of 12**, with `POST /api/v1/sessions` answering **201
+Created** and persisting a session while the flag said `off`. The `false` spelling keeps its own
+older test (`SessionControllerDisabledIntegrationTest`), untouched, because a fix that made the two
+spellings agree by breaking the one that already worked would pass a single-test suite.
+
+One exception is deliberate and load-bearing: `resolvePlayerUseCase`
+(`UseCaseConfiguration.java:156`) stays **ungated**. It is a pure lookup that writes nothing, and it
+is a constructor dependency of two lifecycle use cases *and* all five trick-play use cases, so
+gating it on the lifecycle flag would make the lobby-off/trick-play-on combination — the
+combination this repository's own suite runs — an unsatisfiable context rather than a withheld
+feature. The same reasoning already keeps `DeckShuffler` ungated: **a collaborator shared across two
+flags belongs to neither, and a pure read is not state to withhold.** Both exceptions are recorded
+in the javadoc at the bean, not only here, because the failure mode is a future contributor tidying
+up the asymmetry.
+
+**Every `@ConditionalOnProperty` on a flag in this repository must carry
+`havingValue = "true"` — the loose form matches every value but the literal `false`, including the
+empty string. And the flag must be repeated on every bean that opens or mutates the state behind
+it, not on the controller alone; collaborators that only read, and collaborators shared with
+another flag, stay ungated and say in their javadoc why.**
 
 Slice C1 shipped without it, and the reason is worth stating in the register rather
 than only in the ADR that argued it. C1 is the persistence layer — five JPA entities,

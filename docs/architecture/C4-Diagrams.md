@@ -63,8 +63,10 @@ is, whether the trick is complete, which seat leads next and whether the hand is
 gameplay gap that kept the flag down through Slice D is closed. The reasons it stays down are now
 elsewhere, and [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) names three
 predecessors for the story that flips it: ADR-026, still `Proposed`, which would give the
-game-affecting writes the audit logging `observability.md` requires; EOP-48, which fixes the sibling
-`session-lifecycle` flag failing open for want of a `havingValue`; and EOP-15, which scores a hand,
+game-affecting writes the audit logging `observability.md` requires; EOP-48, which fixed the sibling
+`session-lifecycle` flag failing open for want of a `havingValue` — **discharged by commit
+`34d30d7`**, which also gated the four session use cases the controller alone had left registered,
+so **two** of the three predecessors remain; and EOP-15, which scores a hand,
 because until it lands a player can play every card and the session still reports `IN_PROGRESS` with
 no score anywhere. See ADR-013 for the register entry and ADR-027 for why `/hand` is singular.
 
@@ -159,7 +161,7 @@ Slice D, whose nodes say so in their labels.
 ```mermaid
 flowchart LR
     subgraph web["adapter/web — Frameworks and Drivers"]
-        SC["SessionController<br/>five routes<br/>@ConditionalOnProperty<br/>bean absent when flag is off"]
+        SC["SessionController<br/>five routes<br/>@ConditionalOnProperty havingValue=true (EOP-48)<br/>bean absent when eop.features.session-lifecycle is off<br/>so are its four session use cases"]
         TC["TrickController<br/>EOP-14 Slice D, fifth route added by Slice E<br/>POST /deal · GET /hand · POST /plays<br/>GET /tricks/current · POST /tricks/current/resolve<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>the acting seat is never read from a request"]
         TDTO["HandDto · TrickDto · TrickPlayDto · PlayCardRequest · TrickStateDto<br/>EOP-14 Slice D, TrickStateDto added by Slice E<br/>PlayCardRequest carries no seat, no player, no suit, no rank<br/>TrickDto omits turn, completeness and next leader — it cannot know them<br/>TrickStateDto carries all four, from a use case that reads both aggregates"]
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
@@ -386,8 +388,10 @@ job:
 | `GET` | `/api/v1/sessions/{sessionId}/events` | `text/event-stream` |
 | `POST` | `/api/v1/sessions/{sessionId}/start` | facilitator closes the lobby |
 
-The class is annotated `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle")`
-with **`matchIfMissing` left at its default of `false`**. This is drawn as one node
+The class is annotated `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle",
+havingValue = "true")` with **`matchIfMissing` left at its default of `false`** — so an absent
+property and any present value other than `true` both leave the bean unregistered
+(`SessionController.java:60`). This is drawn as one node
 rather than two because there is no second state to draw: with the flag off **the bean
 does not exist**, no handler is mapped, and Spring's own no-handler response — already
 rendered as a problem detail — returns 404 for all five paths.
@@ -397,15 +401,22 @@ branch that could be implemented incorrectly**; it is the absence of a bean. The
 no `if (enabled)` anywhere, and therefore no possibility of a half-enabled controller
 (ADR-013, ADR-019).
 
-One wart worth recording rather than glossing: this condition omits `havingValue`, so it
-matches **any** value that is not literally `false`. `session-lifecycle: off` — which YAML
-reads as boolean false, and which is the spelling an operator is likeliest to reach for —
-therefore *enables* these five routes, and because the session use cases are registered
-unconditionally nothing fails the context to say so. The shipped default is the literal
-`false`, so this is a latent operator-error hole rather than a live exposure, but it is
-fail-open where the rest of the flag machinery is fail-closed. `TrickController` below
-carries `havingValue = "true"` for exactly this reason; correcting `SessionController`
-belongs to its own change under its own Jira key (ADR-013 records the rule).
+The wart this section used to record has been fixed, and it is worth keeping the record of it
+because it explains why the diagram now has more gated nodes than routes. Until EOP-48
+(commit `34d30d7`) the condition above **omitted `havingValue`**, which matches any value that is
+not literally `false`: `session-lifecycle: off` — YAML 1.1 boolean false, and the spelling an
+operator is likeliest to reach for — *enabled* these five routes, and so did `no`, `0`, `disabled`
+and the empty string. Worse, the four session use cases were registered **unconditionally**, so
+nothing failed the context to say so: the off position was a property of the URL space only, and
+the application behind it could still create and mutate sessions. EOP-48 closed both halves —
+`havingValue = "true"` on the controller, and the same condition on `createSessionUseCase`,
+`joinSessionUseCase`, `getSessionStateUseCase` and `startSessionUseCase`
+(`UseCaseConfiguration.java:101`, `:124`, `:167`, `:182`) — so the flag now withholds **five beans
+in all**, matching the arrangement `TrickController` has had since Slice D. `resolvePlayerUseCase`
+stays ungated on purpose: it writes nothing and is shared with all five trick-play use cases, so
+gating it would make lobby-off/trick-play-on an unsatisfiable context rather than a withheld
+feature — the same reasoning as the ungated `DeckShuffler` (ADR-013 records both the mandate and
+that exception).
 
 ### `TrickController` — five routes that may not exist at all
 
