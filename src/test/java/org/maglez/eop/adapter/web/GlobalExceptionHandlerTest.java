@@ -1,10 +1,17 @@
 package org.maglez.eop.adapter.web;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -16,6 +23,7 @@ import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.IdentityTokenHash;
+import org.maglez.eop.entity.JoinCodeUnavailableException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
@@ -24,6 +32,7 @@ import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerMismatchException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
+import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
@@ -36,6 +45,7 @@ import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -263,11 +273,121 @@ class GlobalExceptionHandlerTest {
         }
     }
 
+    /**
+     * The two exhaustion paths, which used to fall through to {@code handleUnexpected} and answer 500.
+     *
+     * <p>These tests carry a second obligation beyond the status code. Both acceptance scenarios require that neither
+     * exception logs a stack trace at ERROR, because a 500 with a full trace on every occurrence was half the defect:
+     * a caller holding a valid join code can provoke seat contention at will, and each occurrence wrote a trace. A
+     * status assertion alone would pass even if the handler still logged at ERROR, so these tests attach a Logback
+     * appender to this handler's own logger and assert on what was emitted.</p>
+     */
+    @Nested
+    @DisplayName("exhausting a retry budget")
+    class Contention {
+
+        private static final int SEAT_ORDER = 4;
+
+        private final Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+        private final ListAppender<ILoggingEvent> emitted = new ListAppender<>();
+
+        private Level originalLevel;
+
+        @BeforeEach
+        void captureLogging() {
+            originalLevel = logger.getLevel();
+            logger.setLevel(Level.DEBUG);
+            emitted.start();
+            logger.addAppender(emitted);
+        }
+
+        @AfterEach
+        void releaseLogging() {
+            logger.detachAppender(emitted);
+            emitted.stop();
+            logger.setLevel(originalLevel);
+        }
+
+        @Test
+        @DisplayName("a seat contested on every attempt is a 409, because the same request could succeed later")
+        void shouldMapSeatAlreadyTakenTo409() {
+            final ProblemDetail problem = handler.handleSeatAlreadyTaken(new SeatAlreadyTakenException(SESSION_ID, SEAT_ORDER));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("The lobby filled while you were joining");
+            assertThat(problem.getDetail()).isEqualTo("Another player took the seat on every attempt. Read the session and try again.");
+        }
+
+        @Test
+        @DisplayName("the 409 names neither the session nor the seat, which the caller never held")
+        void shouldNotDiscloseTheContestedSeat() {
+            final ProblemDetail problem = handler.handleSeatAlreadyTaken(new SeatAlreadyTakenException(SESSION_ID, SEAT_ORDER));
+
+            assertThat(problem.getDetail()).as("a joining caller supplies only a join code, so the session id is not theirs to learn")
+                    .doesNotContain(SESSION_ID.toString())
+                    .doesNotContain(Integer.toString(SEAT_ORDER));
+        }
+
+        @Test
+        @DisplayName("seat contention logs at debug without a trace, so a caller cannot flood the log by provoking it")
+        void shouldLogSeatContentionAtDebugWithoutATrace() {
+            handler.handleSeatAlreadyTaken(new SeatAlreadyTakenException(SESSION_ID, SEAT_ORDER));
+
+            assertThat(emitted.list).hasSize(1);
+            assertThat(emitted.list.getFirst().getLevel()).isEqualTo(Level.DEBUG);
+            assertThat(emitted.list.getFirst().getThrowableProxy()).as("the trace is the flood; the message alone is the diagnosis")
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("an exhausted join-code budget is a 503 whose Retry-After invites the caller back")
+        void shouldMapJoinCodeUnavailableTo503WithRetryAfter() {
+            final ResponseEntity<ProblemDetail> response = handler.handleJoinCodeUnavailable(new JoinCodeUnavailableException());
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+            assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("5");
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+            assertThat(response.getBody().getTitle()).isEqualTo("No lobby could be opened");
+            assertThat(response.getBody().getDetail()).isEqualTo("The service could not open a new lobby. Try again in a few seconds.");
+        }
+
+        @Test
+        @DisplayName("the 503 says nothing about join codes, which are our generator's business and not the caller's")
+        void shouldNotDiscloseTheJoinCodeCollision() {
+            final ResponseEntity<ProblemDetail> response = handler.handleJoinCodeUnavailable(new JoinCodeUnavailableException());
+
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getDetail()).doesNotContainIgnoringCase("join code");
+        }
+
+        @Test
+        @DisplayName("an exhausted join-code budget logs at warn, not error, because nothing malfunctioned")
+        void shouldLogJoinCodeExhaustionAtWarnRatherThanError() {
+            handler.handleJoinCodeUnavailable(new JoinCodeUnavailableException());
+
+            assertThat(emitted.list).hasSize(1);
+            assertThat(emitted.list.getFirst().getLevel()).as("capacity evidence an operator should see, but not a fault")
+                    .isEqualTo(Level.WARN);
+        }
+
+        @Test
+        @DisplayName("neither exhaustion path logs at error, which is what made every occurrence write a stack trace")
+        void shouldLogNeitherExhaustionPathAtError() {
+            handler.handleSeatAlreadyTaken(new SeatAlreadyTakenException(SESSION_ID, SEAT_ORDER));
+            handler.handleJoinCodeUnavailable(new JoinCodeUnavailableException());
+
+            assertThat(emitted.list).noneMatch(event -> event.getLevel() == Level.ERROR);
+        }
+    }
+
     @Test
     @DisplayName("no refusal echoes a credential, in plaintext or as a digest")
     void shouldNeverLeakACredential() {
         final String plaintext = "grace-plaintext-token";
         final String digest = IdentityTokenHash.of(plaintext).value();
+        final ProblemDetail unavailable = requireNonNull(handler.handleJoinCodeUnavailable(new JoinCodeUnavailableException()).getBody());
 
         final List<String> details = List.of(
                 handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID)).getDetail(),
@@ -279,7 +399,9 @@ class GlobalExceptionHandlerTest {
                 handler.handleNotFacilitator(new NotFacilitatorException(SESSION_ID, PLAYER_ID)).getDetail(),
                 handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID)).getDetail(),
                 handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID)).getDetail(),
-                handler.handleHandComplete(new HandCompleteException(SESSION_ID)).getDetail());
+                handler.handleHandComplete(new HandCompleteException(SESSION_ID)).getDetail(),
+                handler.handleSeatAlreadyTaken(new SeatAlreadyTakenException(SESSION_ID, 4)).getDetail(),
+                unavailable.getDetail());
 
         assertThat(details).noneMatch(detail -> detail.contains(plaintext))
                 .noneMatch(detail -> detail.contains(digest))

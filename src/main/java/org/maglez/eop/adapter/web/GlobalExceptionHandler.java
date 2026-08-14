@@ -7,6 +7,7 @@ import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
+import org.maglez.eop.entity.JoinCodeUnavailableException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NoTrickToResolveException;
@@ -16,6 +17,7 @@ import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerMismatchException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
+import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
@@ -57,6 +59,19 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * How long a caller is asked to wait after the join-code generator has been
+     * exhausted.
+     *
+     * <p>Five seconds, which is a guess and only has to be a defensible one. The
+     * condition it follows is a run of collisions in the code space, so there is no
+     * queue draining at a known rate to derive a number from; what matters is that
+     * the value is short enough that a facilitator retries rather than gives up, and
+     * long enough that a client honouring it does not simply re-run the same
+     * exhausted loop immediately.
+     */
+    private static final int JOIN_CODE_RETRY_AFTER_SECONDS = 5;
 
     /**
      * A named card does not exist.
@@ -695,6 +710,79 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         problem.setDetail(exception.getMessage());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfter().toSeconds()))
+                .body(problem);
+    }
+
+    /**
+     * Every attempt to claim a seat lost its race.
+     *
+     * <p>A 409 and not a 500. {@link org.maglez.eop.usecase.JoinSessionUseCase}
+     * retries a contested seat up to its attempt budget and only rethrows when every
+     * attempt was beaten to the row, so reaching here means the lobby was being
+     * filled by other callers throughout — a conflict with the state of the session,
+     * and one the same request could succeed at if a seat frees up. It belongs beside
+     * {@link #handleSessionFull} rather than among the server faults: both say the
+     * seats ran out, and they differ only in whether the domain saw the lobby full
+     * before the write or the unique constraint said so during it.
+     *
+     * <p>Logged at debug level and without the throwable. A caller holding a valid
+     * join code can provoke this at will by firing concurrent joins at one lobby, so
+     * a warning with a stack trace per occurrence would hand that caller a
+     * log-flooding amplifier — which is the defect this mapping exists to remove,
+     * not something to relocate to a lower level. A stack trace of a retry loop that
+     * behaved exactly as designed describes nothing a reader needs.
+     *
+     * <p>The response names neither the session nor the seat. The exception message
+     * carries both, but a joining caller supplied only a join code and never held the
+     * session identifier, so echoing the message would disclose an internal key it
+     * had no way to know.
+     *
+     * @param exception the refusal, carrying the session and the seat that was lost
+     * @return a 409 problem detail whose detail is a fixed string
+     */
+    @ExceptionHandler(SeatAlreadyTakenException.class)
+    public ProblemDetail handleSeatAlreadyTaken(final SeatAlreadyTakenException exception) {
+        LOG.debug("Seat {} in session {} was contested on every attempt", exception.seatOrder(), exception.sessionId());
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("The lobby filled while you were joining");
+        problem.setDetail("Another player took the seat on every attempt. Read the session and try again.");
+        return problem;
+    }
+
+    /**
+     * No free join code could be minted within the attempt budget.
+     *
+     * <p>A 503 and not a 500. {@link org.maglez.eop.usecase.CreateSessionUseCase}
+     * asks the generator for a code and only rethrows after every attempt in its
+     * budget collided with a lobby that already holds one, which is a statement about
+     * how much of the code space is presently occupied rather than about anything
+     * being broken: the same request, sent later or once a lobby has closed, succeeds.
+     * That is a capacity condition, so this is the one status that both says so and
+     * carries the standard way of saying when to come back.
+     *
+     * <p>Logged at warning level, with the throwable, because unlike a contested seat
+     * this is not something a caller can provoke: it takes a run of independent
+     * collisions across the whole attempt budget, so each occurrence is real evidence
+     * that the number of live lobbies is approaching what the code space will bear,
+     * and this handler is the only place that evidence will appear. It is deliberately
+     * not an error — the request was refused correctly and nothing malfunctioned — so
+     * it no longer reaches the catch-all that logs at error level.
+     *
+     * <p>The response says nothing about join codes. The exception's own message
+     * describes our generator colliding with itself, which is an internal detail, and
+     * the request named no code to be told about.
+     *
+     * @param exception the refusal from the last attempt in the budget
+     * @return a 503 problem detail with a {@code Retry-After} header
+     */
+    @ExceptionHandler(JoinCodeUnavailableException.class)
+    public ResponseEntity<ProblemDetail> handleJoinCodeUnavailable(final JoinCodeUnavailableException exception) {
+        LOG.warn("No free join code was available within the attempt budget", exception);
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.SERVICE_UNAVAILABLE);
+        problem.setTitle("No lobby could be opened");
+        problem.setDetail("The service could not open a new lobby. Try again in a few seconds.");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, Integer.toString(JOIN_CODE_RETRY_AFTER_SECONDS))
                 .body(problem);
     }
 

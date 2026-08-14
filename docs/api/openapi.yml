@@ -167,6 +167,8 @@ paths:
                 $ref: '#/components/schemas/SessionAdmission'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/v1/sessions/{joinCode}/players:
     post:
@@ -1347,25 +1349,36 @@ components:
     Conflict:
       description: |
         The request is valid but the session's current state does not allow it.
-        The `title` distinguishes the cases, and there are thirteen of them, which
+        The `title` distinguishes the cases, and there are fourteen of them, which
         is more than one status can imply on its own: play has already started,
         the table is full at six players, play cannot start with fewer than three,
         it is another seat's turn, the cards have already been dealt, the cards
         have not been dealt, every card dealt has been played and the hand is
         over, there is no trick to resolve, the trick is not complete yet, a trick
         is already open, the trick is already resolved, the seat has already
-        played into this trick, and the card has already been played into it.
+        played into this trick, the card has already been played into it, and
+        every attempt to claim a seat lost its race to another joiner.
+
+        That last case is the only one raised by contention rather than by state.
+        A join retries a contested seat several times before giving up, so the
+        response means the lobby filled underneath the caller while they were
+        being seated — not that it was full when they asked. The distinction is
+        invisible to the client and deliberately so: both answers are "read the
+        session and decide", and the response names neither the session
+        identifier nor the seat, because a joining caller supplied only a join
+        code and never held either.
 
         Each of those is a separate `title` rather than a shared one, because a
         client's next move differs: wait for another player, deal, wait your turn,
         resolve, or stop. Collapsing them would leave the client guessing which
         wait it is in.
 
-        Thirteen is the count of handlers in `GlobalExceptionHandler` that answer
+        Fourteen is the count of handlers in `GlobalExceptionHandler` that answer
         409, each with a distinct title. It is stated because an enumeration that
         silently omits a case is worse than no enumeration at all: this list named
         eleven and omitted the two about a play already in the trick until a
-        review counted the handlers rather than trusting the prose.
+        review counted the handlers rather than trusting the prose, and it named
+        thirteen while seat contention was still falling through to 500 (EOP-17).
       content:
         application/problem+json:
           schema:
@@ -1409,6 +1422,34 @@ components:
         thirty bits of entropy, which is only unguessable while guessing is
         rate-limited — so this limiter is a primary security control rather than
         a courtesy (ADR-019).
+      headers:
+        Retry-After:
+          description: Seconds to wait before attempting again.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ServiceUnavailable:
+      description: |
+        No new lobby could be opened, because every join code the generator
+        offered was already taken by a live session. The request was valid and
+        nothing malfunctioned, so this is a capacity statement rather than an
+        error: the same request is expected to succeed shortly.
+
+        A six-character code carries roughly thirty bits of entropy, so a run of
+        collisions across the whole attempt budget means the number of live
+        lobbies is approaching what that code space comfortably bears. Unlike
+        429, a caller cannot provoke this — which is why each occurrence is
+        logged as an operational signal (EOP-17).
+
+        The `detail` says nothing about join codes. The collision is between our
+        own generator and our own data, and a caller who never sees a code being
+        generated has no use for that mechanism.
       headers:
         Retry-After:
           description: Seconds to wait before attempting again.
