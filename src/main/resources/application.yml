@@ -74,8 +74,16 @@ eop:
   # docker compose -f compose.app.yml up -d (ADR-016).
   features:
     # Session create, join, state, event stream and start (EOP-10). While this is
-    # false the controller bean does not exist, so every /api/v1/sessions path
-    # returns the framework's own 404 and nothing else in the application changes.
+    # false neither the controller bean nor the create-session, join-session,
+    # session-state and start-session beans exist, so every /api/v1/sessions path
+    # returns the framework's own 404, nothing in the application can open or
+    # mutate a session, and nothing else changes. resolve-player stays ungated on
+    # purpose: it only reads, and the trick-play use cases depend on it (EOP-48,
+    # ADR-013).
+    #
+    # Only the literal true turns this on. on, yes and 1 all read as off, because
+    # the conditions carry havingValue = "true" -- flipping it with anything but
+    # true is a silent no-op, which is the price of the flag failing closed.
     session-lifecycle: false
 
     # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this is
@@ -89,11 +97,13 @@ eop:
     # It stays false on merge, and the feature is complete: EOP-14 Slice E finished the
     # rules, added the state-of-play read that tells a client whose turn it is, and
     # published hand-dealt, card-played and trick-resolved. What is missing is not
-    # gameplay. Three things must land before this becomes true, all recorded as
+    # gameplay. Two things must land before this becomes true, both recorded as
     # predecessors in ADR-028: ADR-026, which is still Proposed and would give the
-    # game-affecting writes the audit logging observability.md requires; EOP-48,
-    # which fixes the sibling flag above failing open for want of a havingValue; and
+    # game-affecting writes the audit logging observability.md requires; and
     # EOP-15, which scores a hand, because until it lands a player could play every
     # card and the session would still report IN_PROGRESS with no score anywhere. Do
-    # not flip this without them.
+    # not flip this without them. The third predecessor, EOP-48 -- which fixed the
+    # sibling flag above failing open for want of a havingValue -- is discharged by
+    # commit 34d30d7, and this flag's own conditions have carried havingValue since
+    # 56c31b1, so the same caveat applies here: only the literal true turns it on.
     trick-play: false
