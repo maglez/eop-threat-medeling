@@ -171,8 +171,9 @@ slice.
   framework imports. The production class count rises from 109 to 112. The coverage gate
   is measured over the whole bundle rather than per class (ADR-006), and the bundle's 80%
   instruction minimum is met with no exclusion; separately, each of the three new types is
-  at 100% instruction coverage (470/470, 57/57 and 145/145) and 100% branch coverage
-  (48/48, 8/8 and 12/12), so the bundle result is not carrying them and the 70% branch
+  at 100% instruction and 100% branch coverage — `ScoredPlay` 145/145 instructions and
+  12/12 branches, `Standing` 57/57 and 8/8, `ScoreSheet` 470/470 and 48/48 — so the bundle
+  result is not carrying them and the 70% branch
   minimum ADR-006 holds in reserve would not trouble them either.
 - The score is recomputed on every read, and that cost is accepted rather than mitigated.
   A six-player game plays 78 cards in 13 tricks and a three-player game 78 in 26, so the
@@ -192,20 +193,24 @@ slice.
   use case's job and no port's.
 - Two known debts are deliberately left for the second slice, both raised in review of
   this one and both harmless only while nothing can reach this code over HTTP. First, the
-  refusals in `ScoreSheet.of` and `ScoredPlay.of` throw `IllegalArgumentException` with
+  refusals in `ScoreSheet.of`, `ScoreSheet.pointsOf` and `ScoredPlay.of` throw
+  `IllegalArgumentException` with
   the offending `playerId` or `trickPlayId` interpolated into the message, where the house
   style is a named domain exception carrying typed fields — which exists precisely so that
   a boundary can refuse without echoing an identifier into a Problem Details body. Those
-  must become named types before a route can reach them. Second, `ScoredPlay`'s canonical
+  must become named types before a route can reach them, and `pointsOf` is the one to start
+  from: it is the only one of the three a reading route calls with a client-supplied
+  identifier, so it is the first that could echo one into a response. Second, `ScoredPlay`'s canonical
   constructor accepts `components` and `notes` as raw strings with no length or
   control-character bound; today every value on the shipped path has already passed
   `TrickPlay`'s validation, so the guarantee rests on `ScoredPlay.of` being the only
   caller rather than on the type. Neither is a defect in this slice; both are preconditions
   for the next.
-- One documentation claim was falsified by this slice itself and is corrected in the same
-  commit: `TrickPlay`'s Javadoc said that scoring "decides what it does with a linked
+- One documentation claim was falsified by this slice itself and is corrected within the
+  same slice, before the branch merges: `TrickPlay`'s Javadoc said that scoring "decides
+  what it does with a linked
   threat that names nothing", and this slice decided it. It now records the decision in
-  the past tense and cites this ADR. A javadoc that poses a question this commit answered
+  the past tense and cites this ADR. A javadoc that poses a question this slice answered
   is the one kind of staleness that cannot be deferred.
 - Two further claims are stale or will go stale, and must be corrected at the claim rather
   than pointed at from elsewhere. `SessionStatus`'s class Javadoc is **already** wrong, and
