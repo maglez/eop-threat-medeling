@@ -150,6 +150,19 @@ class TrickControllerIntegrationTest {
 
             assertProblem(elsewhere, 404, "Session not found");
         }
+
+        @Test
+        @DisplayName("refuses a session identifier that is not a UUID")
+        void shouldRefuseANonUuidSession() throws Exception {
+            final var table = startedTable();
+
+            final var refused = deal("not-a-uuid", table.facilitator().playerToken());
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("an unreadable identifier is refused before anything is looked up")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
     }
 
     @Nested
@@ -226,6 +239,44 @@ class TrickControllerIntegrationTest {
             final var trespass = readHand(mine.sessionId(), theirs.facilitator().playerToken());
 
             assertProblem(trespass, 403, "Player not recognised");
+        }
+
+        @Test
+        @DisplayName("reports an unknown session")
+        void shouldReportAnUnknownSession() throws Exception {
+            final var table = dealtTable();
+
+            final var nowhere = readHand(UUID.randomUUID().toString(), table.facilitator().playerToken());
+
+            assertProblem(nowhere, 404, "Session not found");
+        }
+
+        @Test
+        @DisplayName("refuses a session identifier that is not a UUID")
+        void shouldRefuseANonUuidSession() throws Exception {
+            final var table = dealtTable();
+
+            final var refused = readHand("not-a-uuid", table.facilitator().playerToken());
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("an unreadable identifier is refused before anything is looked up")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
+
+        @Test
+        @DisplayName("does not repeat the seat the caller already knows")
+        void shouldNotRepeatTheSeat() throws Exception {
+            final var table = dealtTable();
+
+            final var own = readHand(table.sessionId(), table.facilitator().playerToken());
+
+            // The caller finds its own seat in the session state by matching the player id it was
+            // given at admission. Repeating it here would be a second copy of game data that could
+            // disagree with the first, so its absence is asserted rather than left to the schema.
+            Assertions.assertThat(own.getResponse().getContentAsString())
+                    .as("the hand names no seat")
+                    .doesNotContain("seatOrder");
         }
     }
 
@@ -397,6 +448,63 @@ class TrickControllerIntegrationTest {
 
             Assertions.assertThat(refused.getResponse().getStatus())
                     .as("the card is the one thing the body must carry")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
+
+        @Test
+        @DisplayName("refuses a card of another suit while the caller holds the led suit")
+        void shouldRefuseAPlayThatDoesNotFollowSuit() throws Exception {
+            final var table = dealtTable();
+            final var leaderSeat = leaderSeatOf(table);
+            final var leader = table.seats().get(leaderSeat);
+            final var follower = table.seats().get((leaderSeat + 1) % PLAYERS);
+
+            final var led = handOf(table.sessionId(), leader).get(0);
+            playCard(table.sessionId(), leader.playerToken(), playRequest(led.cardId()));
+
+            // Every hand holds all six suits at this table size, so the follower certainly holds the
+            // led suit. Asserting that first means a failure below is the rule breaking rather than
+            // the fixture handing the follower a hand that made the play legal.
+            final var hand = handOf(table.sessionId(), follower);
+            Assertions.assertThat(hand)
+                    .as("the refusal only means anything if the follower could have followed suit")
+                    .anyMatch(card -> card.suit().equals(led.suit()));
+            final var offSuit = hand.stream()
+                    .filter(card -> !card.suit().equals(led.suit()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("the follower holds nothing but the led suit"));
+
+            final var refused = playCard(table.sessionId(), follower.playerToken(), playRequest(offSuit.cardId()));
+
+            assertProblem(refused, 422, "You must follow suit");
+        }
+
+        @Test
+        @DisplayName("refuses a body that is not JSON")
+        void shouldRefuseAMalformedBody() throws Exception {
+            final var table = dealtTable();
+            final var leader = table.seats().get(leaderSeatOf(table));
+
+            final var refused = playCard(table.sessionId(), leader.playerToken(), "{\"cardId\":");
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("a body the parser cannot read is the caller's mistake, not a server fault")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
+
+        @Test
+        @DisplayName("refuses a session identifier that is not a UUID")
+        void shouldRefuseANonUuidSession() throws Exception {
+            final var table = dealtTable();
+            final var leader = table.seats().get(leaderSeatOf(table));
+
+            final var refused = playCard("not-a-uuid", leader.playerToken(),
+                    playRequest(UUID.randomUUID().toString()));
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("an unreadable identifier is refused before anything is looked up")
                     .isEqualTo(400);
             assertProblemJson(refused);
         }
@@ -625,6 +733,29 @@ class TrickControllerIntegrationTest {
 
             assertProblem(anonymous, 403, "Player not recognised");
         }
+
+        @Test
+        @DisplayName("reports an unknown session")
+        void shouldReportAnUnknownSession() throws Exception {
+            final var table = dealtTable();
+
+            final var nowhere = resolve(UUID.randomUUID().toString(), table.facilitator().playerToken());
+
+            assertProblem(nowhere, 404, "Session not found");
+        }
+
+        @Test
+        @DisplayName("refuses a session identifier that is not a UUID")
+        void shouldRefuseANonUuidSession() throws Exception {
+            final var table = dealtTable();
+
+            final var refused = resolve("not-a-uuid", table.facilitator().playerToken());
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("an unreadable identifier is refused before anything is looked up")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
     }
 
     @Nested
@@ -656,7 +787,8 @@ class TrickControllerIntegrationTest {
                 gate.countDown();
             }
 
-            final var statuses = races.stream().map(TrickControllerIntegrationTest::completed)
+            final var outcomes = races.stream().map(TrickControllerIntegrationTest::completed).toList();
+            final var statuses = outcomes.stream()
                     .map(result -> result.getResponse().getStatus())
                     .collect(Collectors.toList());
 
@@ -666,6 +798,15 @@ class TrickControllerIntegrationTest {
             Assertions.assertThat(handOf(table.sessionId(), leader))
                     .as("the losing play is rolled back whole, so its card is still in the hand")
                     .hasSize(CARDS_EACH - 1);
+
+            // The status alone would pass for a conflict returned as plain text or as a stack trace.
+            // The collision is a constraint violation deep in the adapter, so what earns its keep is
+            // that it still reaches the caller as the same problem document as any other refusal.
+            final var loser = outcomes.stream()
+                    .filter(result -> result.getResponse().getStatus() == 409)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("no contender was refused"));
+            assertProblem(loser, 409, "Already played in this trick");
         }
     }
 

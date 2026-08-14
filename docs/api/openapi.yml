@@ -591,6 +591,15 @@ paths:
         `409`.
 
         Scoring is not part of this operation.
+
+        There is no `422` on this operation, and its absence is deliberate. The
+        caller sends no body, so there is nothing about the request that can be
+        well-formed and yet unprocessable: every refusal is either a matter of
+        who is asking (`403`), what exists (`404`) or what state the trick is in
+        (`409`). The server does keep one guard for a winning play that belongs
+        to another trick, but no client input can reach it — a trick refuses such
+        a winner in its own constructor — so publishing a status for it would
+        promise a response no caller can provoke.
       operationId: resolveCurrentTrick
       security:
         - playerToken: []
@@ -618,8 +627,6 @@ paths:
           $ref: '#/components/responses/SessionNotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
 
 components:
   schemas:

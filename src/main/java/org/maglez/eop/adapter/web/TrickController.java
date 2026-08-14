@@ -1,6 +1,8 @@
 package org.maglez.eop.adapter.web;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.Objects;
@@ -100,6 +102,14 @@ public class TrickController {
     @PostMapping("/{sessionId}/deal")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Deal the deck to the seated players")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "The deck is dealt. No body: a hand is read from its own route."),
+        @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "No credential, an unrecognised one, or a player who is not the facilitator."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "409", description = "Play has not started, the deck is already dealt, or the table is too small."),
+        @ApiResponse(responseCode = "500", description = "The stored deck holds no Tampering card, so no opening lead exists.")
+    })
     public void dealHands(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
@@ -119,6 +129,13 @@ public class TrickController {
      */
     @GetMapping("/{sessionId}/hand")
     @Operation(summary = "Read your own hand")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The caller's own hand. No operation returns anybody else's."),
+        @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "No credential, an unrecognised one, or one belonging to another session."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "409", description = "The deck has not been dealt, so there is no hand to read.")
+    })
     public HandDto getOwnHand(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
@@ -141,6 +158,14 @@ public class TrickController {
     @PostMapping("/{sessionId}/plays")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Play a card into the current trick")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "The card is played. The body is the trick as it stands, with no Location."),
+        @ApiResponse(responseCode = "400", description = "The body is malformed, names no card, or breaks an annotation limit."),
+        @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
+        @ApiResponse(responseCode = "404", description = "No such session, no such card, or the caller is not a member."),
+        @ApiResponse(responseCode = "409", description = "Not the caller's turn, or the seat or card has already been played."),
+        @ApiResponse(responseCode = "422", description = "The caller does not hold the card, or holds the led suit and played another.")
+    })
     public TrickDto playCard(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken,
@@ -168,6 +193,13 @@ public class TrickController {
      */
     @PostMapping("/{sessionId}/tricks/current/resolve")
     @Operation(summary = "Resolve the current trick")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The trick is resolved and winningSeat is now present."),
+        @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "409", description = "No trick is open, it is incomplete, or it is already resolved.")
+    })
     public TrickDto resolveCurrentTrick(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
