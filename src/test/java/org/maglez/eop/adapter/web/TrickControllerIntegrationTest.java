@@ -578,6 +578,50 @@ class TrickControllerIntegrationTest {
         }
 
         @Test
+        @DisplayName("refuses a note carrying a line break")
+        void shouldRefuseANoteWithALineBreak() throws Exception {
+            final var refused = playWithBody("{\"cardId\":\"%s\",\"notes\":\"first line\\nsecond line\"}");
+
+            // A carriage return or newline in stored free text is the whole mechanism of log
+            // forging (CWE-117): the day anything logs a play, a note holding a line break
+            // would let its author write a log line of their own. The domain refuses control
+            // characters when it builds the play, and nothing here logs yet, so this test is
+            // the only thing pinning the status a caller sees for it. Without it, a change to
+            // the handler that maps this refusal could turn a 400 into a 500 unnoticed.
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("a control character in free text is a client error, not a server one")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
+
+        @Test
+        @DisplayName("refuses a component name carrying a control character")
+        void shouldRefuseAComponentNameWithAControlCharacter() throws Exception {
+            final var refused = playWithBody("{\"cardId\":\"%s\",\"components\":[\"Payments\\u0000API\"]}");
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("component names are held to the same rule as notes")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
+
+        /**
+         * Deals a table and plays the leader's first card with the given body template, into
+         * which the card's identifier is interpolated.
+         *
+         * @param bodyTemplate a JSON body with one {@code %s} placeholder for the card identifier
+         * @return the result of the play, for the caller to assert on
+         * @throws Exception if the request cannot be performed
+         */
+        private MvcResult playWithBody(final String bodyTemplate) throws Exception {
+            final var table = dealtTable();
+            final var leader = table.seats().get(leaderSeatOf(table));
+            final var card = handOf(table.sessionId(), leader).get(0);
+
+            return playCard(table.sessionId(), leader.playerToken(), bodyTemplate.formatted(card.cardId()));
+        }
+
+        @Test
         @DisplayName("accepts an annotation exactly at the boundary")
         void shouldAcceptTheBoundary() throws Exception {
             final var table = dealtTable();
@@ -802,11 +846,21 @@ class TrickControllerIntegrationTest {
             // The status alone would pass for a conflict returned as plain text or as a stack trace.
             // The collision is a constraint violation deep in the adapter, so what earns its keep is
             // that it still reaches the caller as the same problem document as any other refusal.
+            //
+            // Which constraint fires is genuinely the clock's choice and both answers are correct, so
+            // pinning one title made this test flaky. No trick is open when the pair set off, so both
+            // take the opening branch: the loser is refused either by the sequence constraint while
+            // opening the trick, or by the seat constraint while appending to the trick the winner
+            // opened. Asserting the set of two says what the caller is owed - a conflict, as a problem
+            // document, naming a rule - without asserting which of two rules the database reached first.
             final var loser = outcomes.stream()
                     .filter(result -> result.getResponse().getStatus() == 409)
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("no contender was refused"));
-            assertProblem(loser, 409, "Already played in this trick");
+            assertProblemJson(loser);
+            Assertions.assertThat(JsonPath.parse(loser.getResponse().getContentAsString()).read("$.title", String.class))
+                    .as("the refusal names the rule that stopped it, whichever constraint the race reached first")
+                    .isIn("Already played in this trick", "Trick already open");
         }
     }
 
