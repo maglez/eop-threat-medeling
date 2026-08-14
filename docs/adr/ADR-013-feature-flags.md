@@ -119,6 +119,46 @@ and [ADR-023](./ADR-023-deal-remainder-and-turn-order.md) makes it a **merge
 precondition** for Slice C2: defaulted to `false`, recorded here, and covered by an
 off-position test that asserts the bean is absent as well as the routes answering 404.
 
+**2026-08-14 — `eop.features.trick-play` now exists, and what it withholds grew twice.**
+Slice C2 created it gating three use-case beans and no route, because that slice shipped
+no route to gate; the off-position test could therefore only assert bean absence, and the
+"routes answering 404" half of the clause above was unwritable. EOP-14 Slice D discharges
+it. The flag now withholds **four use-case beans and one controller**: `DealHandsUseCase`,
+`ReadOwnHandUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase` and `TrickController`, whose
+four routes — `POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`
+and `POST /{sessionId}/tricks/current/resolve` — answer the framework's own 404 while it is
+off. `TrickPlayDisabledIntegrationTest` now asserts both halves: all five beans absent *and*
+all four routes 404, because the status is what a client is promised while the absence is
+what pins the mechanism, and a test asserting only the status would pass against a design
+this ADR forbids. It stays `false` on merge.
+
+Two things about this flag are worth recording because they are not obvious from its name.
+First, `ReadOwnHandUseCase` is a **read** and is gated anyway, which departs from the
+"only the writers are gated" principle stated elsewhere in this repository: with the flag
+off no hand has ever been dealt, so an ungated read would exist only to answer 409.
+Second, the flag cannot be turned on when Slice D merges, and not because of a defect —
+`TrickDto` deliberately publishes no answer to whose turn it is, whether the trick is
+complete, or which seat leads next, so no client can yet play a game. Turning it on needs
+a later slice to add a read that exposes them, and — per @security-auditor on Slice D —
+needs [ADR-026](./ADR-026-use-case-observability.md) resolved first, since dealing,
+playing and resolving are now reachable and entirely unaudited.
+
+**2026-08-14 — a fail-open condition in the first flag, found reviewing the second.**
+`TrickController` was written with `@ConditionalOnProperty(prefix = "eop.features",
+name = "trick-play")` and no `havingValue`, which matches any value that is not literally
+`false`, while its four use-case beans require `"true"`. `trick-play: yes` would therefore
+have registered the routes with none of their use cases and failed at startup — fail-closed,
+but a trap for whoever reaches for the flag during an incident. Slice D fixed it to
+`havingValue = "true"`. `SessionController` still carries the loose form and is the worse of
+the two: its use-case beans are unconditional, so nothing fails the context and
+`session-lifecycle: off` — which YAML 1.1 reads as boolean false, and which is the idiom an
+operator is likeliest to reach for — would silently **enable** five live routes an operator
+believed were off. Fail-open, not cosmetic. It is left for its own commit under its own Jira
+key rather than buried in a feature branch; `application.yml` currently sets the literal
+`false`, so the shipped default is safe and the exposure is latent operator error.
+**Every `@ConditionalOnProperty` on a flag in this repository must carry
+`havingValue = "true"`.**
+
 Slice C1 shipped without it, and the reason is worth stating in the register rather
 than only in the ADR that argued it. C1 is the persistence layer — five JPA entities,
 five Spring Data interfaces, two ports and one adapter — with no controller, no route

@@ -91,6 +91,14 @@ Whichever is chosen must also answer three things the rule raises but does not s
   the only thing that stops this ADR going stale in place.
 - Until it is resolved, an operator has no record of who dealt, who played what, or who resolved a
   trick — which is the actual cost, and the reason this is `Proposed` rather than closed.
+- **Resolving this ADR is a predecessor of the story that turns `eop.features.trick-play` on, not a
+  parallel backlog item.** EOP-14 Slice D added the four routes through which dealing, playing and
+  resolving can be invoked, so those three writes are now reachable *and* unobserved; while the flag is
+  `false` the controller bean does not exist and there is nothing to audit, but the moment it is `true`
+  the product's first competitively meaningful writes go live with no evidence of who made them. A
+  dispute over who played what would have nothing to appeal to. `@security-auditor` made that ordering
+  a condition of approving Slice D, and it is recorded here rather than left in a review transcript
+  because, as this ADR says above, a record that lives outside the repository will be lost.
 
 ## Alternatives considered
 
