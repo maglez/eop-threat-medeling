@@ -78,14 +78,22 @@ eop:
     # returns the framework's own 404 and nothing else in the application changes.
     session-lifecycle: false
 
-    # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this
-    # is false the deal-hands, read-own-hand, play-card and resolve-trick beans do not
-    # exist, so nothing in the application calls the ports that write a hand, a trick
-    # or a play, even though the tables and the ports are already there. TrickController
-    # is gated on this same flag, so /deal, /hand, /plays and /tricks/current/resolve
-    # return the framework's own 404 while it is off.
+    # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this is
+    # false the deal-hands, read-own-hand, play-card, trick-state and resolve-trick beans
+    # do not exist, so nothing in the application calls the ports that write a hand, a
+    # trick or a play, even though the tables and the ports are already there.
+    # TrickController is gated on this same flag, so all five of /deal, /hand, /plays,
+    # /tricks/current and /tricks/current/resolve return the framework's own 404 while it
+    # is off.
     #
-    # It stays false on merge. Turning it on needs one more slice: a client can read its
-    # own hand and gets the trick back from its own play, but nothing yet tells it whose
-    # turn it is, whether the trick is complete or which seat leads next.
+    # It stays false on merge, and the feature is complete: EOP-14 Slice E finished the
+    # rules, added the state-of-play read that tells a client whose turn it is, and
+    # published hand-dealt, card-played and trick-resolved. What is missing is not
+    # gameplay. Three things must land before this becomes true, all recorded as
+    # predecessors in ADR-028: ADR-026, which is still Proposed and would give the
+    # game-affecting writes the audit logging observability.md requires; EOP-48,
+    # which fixes the sibling flag above failing open for want of a havingValue; and
+    # EOP-15, which scores a hand, because until it lands a player could play every
+    # card and the session would still report IN_PROGRESS with no score anywhere. Do
+    # not flip this without them.
     trick-play: false

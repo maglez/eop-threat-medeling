@@ -120,6 +120,9 @@ precondition** for Slice C2: defaulted to `false`, recorded here, and covered by
 off-position test that asserts the bean is absent as well as the routes answering 404.
 
 **2026-08-14 — `eop.features.trick-play` now exists, and what it withholds grew twice.**
+*(Superseded in part by the EOP-14 Slice E note below — it grew a third time. Every cardinal in
+this paragraph is Slice D's and is kept unaltered as history rather than corrected in place;
+read the Slice E note for what the flag withholds today.)*
 Slice C2 created it gating three use-case beans and no route, because that slice shipped
 no route to gate; the off-position test could therefore only assert bean absence, and the
 "routes answering 404" half of the clause above was unwritable. EOP-14 Slice D discharges
@@ -143,10 +146,46 @@ a later slice to add a read that exposes them, and — per @security-auditor on 
 needs [ADR-026](./ADR-026-use-case-observability.md) resolved first, since dealing,
 playing and resolving are now reachable and entirely unaudited.
 
+*(The second of those two things — from "Second, the flag cannot be turned on" to "add a read that
+exposes them" — is Slice D's position and is superseded by the note immediately below. It is kept
+verbatim because it records why the flag stayed down through Slice D, not because it is still true:
+EOP-14 Slice E is the later slice it asks for. The first, on gating a read, still holds.)*
+
+**2026-08-14 — EOP-14 Slice E: what it withholds grew a third time, and the read this ADR said
+was missing now exists.** The paragraph above says the flag "cannot be turned on" because
+`TrickDto` "publishes no answer to whose turn it is, whether the trick is complete, or which seat
+leads next, so no client can yet play a game", and that "turning it on needs a later slice to add
+a read that exposes them". **That later slice is this one, and the reason has expired.**
+`GetTrickStateUseCase` reads the hands and the open trick together and returns a `TrickState`
+(`TrickState.java:47-50`) that publishes exactly those three answers — `seatToPlay`, `complete`
+and `nextLeaderSeat` — plus a fourth, `handComplete`; `TrickStateDto` (`TrickStateDto.java:38-41`)
+maps it to the wire and computes nothing; and `GET /api/v1/sessions/{sessionId}/tricks/current`
+(`TrickController.java:209`) serves it. A client can now learn whose turn it is without attempting
+a play and reading the refusal, so the gameplay gap is no longer a reason to keep the flag down.
+Because this ADR and `src/main/resources/application.yml` *are* the flag register (see the
+2026-08-13 note above and `.opencode/rules/feature-flags.md`), an operator asking "is flag-on
+reachable?" reads this paragraph and no separate catalogue: the answer is that the gameplay
+blocker is gone and **three named predecessors remain** — [ADR-026](./ADR-026-use-case-observability.md)
+(no use case emits any audit record), EOP-48 (the fail-open `@ConditionalOnProperty` on
+`SessionController`, recorded in the next note) and EOP-15 (releasing a hand and scoring it, which
+`handComplete` deliberately does not claim). [ADR-028](./ADR-028-end-of-hand-without-release-or-score.md)
+names those three and owns the flag-on story.
+
+The counts also moved, and this is the register's current statement of them. The flag withholds
+**five use-case beans and one controller — six beans in all**: `DealHandsUseCase`,
+`ReadOwnHandUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`, `GetTrickStateUseCase` and
+`TrickController` (`UseCaseConfiguration.java:198`, `:229`, `:248`, `:280`, `:299` and
+`TrickController.java:69`), whose **five** routes — `POST /{sessionId}/deal`,
+`GET /{sessionId}/hand`, `POST /{sessionId}/plays`, `GET /{sessionId}/tricks/current` and
+`POST /{sessionId}/tricks/current/resolve` — answer the framework's own 404 while it is off.
+`TrickPlayDisabledIntegrationTest` asserts both halves at that arity: six beans absent
+(`:86`, `:92`, `:98`, `:104`, `:119`, `:125`) *and* five routes 404 (`:133`, `:141`, `:151`,
+`:159`, `:167`). It stays `false` on merge — `application.yml:99`.
+
 **2026-08-14 — a fail-open condition in the first flag, found reviewing the second.**
 `TrickController` was written with `@ConditionalOnProperty(prefix = "eop.features",
 name = "trick-play")` and no `havingValue`, which matches any value that is not literally
-`false`, while its four use-case beans require `"true"`. `trick-play: yes` would therefore
+`false`, while its four use-case beans at that date required `"true"`. `trick-play: yes` would therefore
 have registered the routes with none of their use cases and failed at startup — fail-closed,
 but a trap for whoever reaches for the flag during an incident. Slice D fixed it to
 `havingValue = "true"`. `SessionController` still carries the loose form and is the worse of

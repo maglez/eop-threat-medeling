@@ -68,6 +68,16 @@ addressable and listing them is legitimate.
   unaided — see [ADR-013](ADR-013-feature-flags.md) for what `eop.features.trick-play` still withholds
   and why the flag cannot be turned on until a later slice adds a read exposing whose turn it is. That
   is a separate limitation and is not what this ADR is about.
+  *(Amended 2026-08-14, EOP-14 Slice E — the sentence above is kept as written because it records the
+  position on the day this ADR was accepted, but the clause "until a later slice adds a read exposing
+  whose turn it is" is spent: **this ADR named the route that slice would use, and Slice E built it.**
+  `GET /api/v1/sessions/{sessionId}/tricks/current` now answers with `seatToPlay`, `complete`,
+  `nextLeaderSeat` and `handComplete` (`TrickStateDto.java:38-41`), so `TrickDto`'s omissions no longer
+  leave a client unable to play — they are simply not that DTO's job, which is the naming point this
+  ADR is actually about. `eop.features.trick-play` still ships `false`
+  (`src/main/resources/application.yml:99`), and [ADR-013](ADR-013-feature-flags.md) — the flag
+  register — now records that the three remaining reasons are ADR-026, EOP-48 and EOP-15, not the
+  missing read. Follow that link for the current answer rather than the clause above.)*
 
 ## Alternatives considered
 

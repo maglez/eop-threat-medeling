@@ -24,12 +24,15 @@ import org.maglez.eop.entity.TooFewPlayersException;
 /**
  * Tests {@link DealHandsUseCase}.
  *
- * <p>Two assertions here earn their keep beyond the happy path. The first is that a refusal writes
+ * <p>Three assertions here earn their keep beyond the happy path. The first is that a refusal writes
  * nothing: the port's conditional write is what makes a deal happen once, but it cannot help if the
  * use case calls it for a player who was never entitled to deal, so every refusal test checks the
  * call count as well as the exception. The second is that the dealt order is the shuffled one. The
  * shuffler double reverses the deck rather than handing it back, so a use case that read the deck and
- * forgot to shuffle would fail rather than quietly deal a canonical hand every game.
+ * forgot to shuffle would fail rather than quietly deal a canonical hand every game. The third is
+ * that the announcement follows the write rather than preceding it, asserted through the shared
+ * interaction log, because a client told to re-read its hand before the hand exists would read
+ * nothing and have no second prompt to try again.
  *
  * <p>The deck is seeded in canonical order because that is what the port promises, and the hand
  * identifiers are queued rather than random so the test can state which one belongs to which seat.
@@ -68,6 +71,8 @@ class DealHandsUseCaseTest {
     private final QueuedIdentifierGenerator identifiers =
             new QueuedIdentifierGenerator(FIRST_HAND, SECOND_HAND, THIRD_HAND);
 
+    private final RecordingSessionEventPublisher publisher = new RecordingSessionEventPublisher(order);
+
     @Test
     @DisplayName("deals the whole deck and records the leader the deal itself decided")
     void shouldDealTheWholeDeck() {
@@ -82,7 +87,7 @@ class DealHandsUseCaseTest {
         assertThat(handRepository.recordedHands().handOf(0).size()).isEqualTo(CARDS_PER_SEAT);
         assertThat(handRepository.recordedLeaderSeat())
                 .isEqualTo(handRepository.recordedHands().openingLeaderSeat());
-        assertThat(order).containsExactly("shuffle", "recordDeal");
+        assertThat(order).containsExactly("shuffle", "recordDeal", "publish");
     }
 
     /**
@@ -177,6 +182,33 @@ class DealHandsUseCaseTest {
         assertThat(handRepository.recordDealCalls()).isZero();
     }
 
+    @Test
+    @DisplayName("announces the deal once the hands are written, and says nothing about them")
+    void shouldAnnounceTheDealAfterTheWrite() {
+        final var session = seatedTable(SEATS);
+
+        useCaseFor(session).execute(session.sessionId(), PlayerBuilder.DEFAULT_TOKEN);
+
+        assertThat(publisher.published()).singleElement().satisfies(event -> {
+            assertThat(event.type()).isEqualTo(SessionEventType.HAND_DEALT);
+            assertThat(event.sessionId()).isEqualTo(session.sessionId());
+            assertThat(event.occurredAt()).isEqualTo(NOW);
+        });
+        assertThat(order).containsSubsequence("recordDeal", "publish");
+    }
+
+    @Test
+    @DisplayName("announces nothing when the deal is refused")
+    void shouldAnnounceNothingWhenTheDealIsRefused() {
+        final var session = seatedTable(TWO_PLAYERS);
+        final var useCase = useCaseFor(session);
+
+        assertThatExceptionOfType(TooFewPlayersException.class)
+                .isThrownBy(() -> useCase.execute(session.sessionId(), PlayerBuilder.DEFAULT_TOKEN));
+
+        assertThat(publisher.published()).isEmpty();
+    }
+
     private static GameSession seatedTable(final int players) {
         return aSession().withPlayerCount(players).withStatus(SessionStatus.IN_PROGRESS).build();
     }
@@ -193,6 +225,7 @@ class DealHandsUseCaseTest {
                 shuffler,
                 handRepository,
                 identifiers,
+                publisher,
                 FIXED);
     }
 }

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.maglez.eop.adapter.web.TrickController;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ReadOwnHandUseCase;
 import org.maglez.eop.usecase.ResolveTrickUseCase;
@@ -27,11 +28,11 @@ import org.springframework.context.ApplicationContext;
  * assert what the default context could have answered for free.
  *
  * <p>The assertion is on the bean rather than on behaviour, which is what keeps this test honest
- * about its subject: the wiring is what is under test, and the four use cases have their own unit
+ * about its subject: the wiring is what is under test, and the five use cases have their own unit
  * tests for what they do once wired.
  *
  * <p>The controller is asserted here too, and it is the bean this pair most needs to cover. The
- * four use cases are only reachable by something that injects them, so with the flag off they are
+ * five use cases are only reachable by something that injects them, so with the flag off they are
  * unreachable code; the controller is the thing that makes them reachable over HTTP, and a flag
  * that withheld the use cases but left the routes mapped would fail at request time with a missing
  * dependency rather than with the 404 the contract promises.
@@ -79,7 +80,27 @@ class TrickPlayEnabledIntegrationTest {
                 .isNotEmpty();
     }
 
-    /** Asserts the controller carrying the four routes is registered while the flag is on. */
+    /**
+     * Asserts the state-of-play use case is registered while the flag is on.
+     *
+     * <p>{@link TrickPlayDisabledIntegrationTest} asserts this bean is absent with the flag off.
+     * That is the assertion which would pass for the wrong reason on its own: a typo in the property
+     * name, or a bean method left off the configuration altogether, is absent in both positions, and
+     * only this test tells an intentionally withheld bean from a missing one.
+     *
+     * <p>It is the newest of the five and the one a reader is most likely to forget. EOP-14 Slice E
+     * added it, and this pair had asserted four use cases up to that point, so the off position
+     * knew about the fifth bean before the on position did.
+     */
+    @Test
+    @DisplayName("creates the trick state use case")
+    void shouldRegisterTheGetTrickStateUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(GetTrickStateUseCase.class))
+                .as("without this bean no client can learn whose turn it is, so the flag would gate an unplayable game")
+                .isNotEmpty();
+    }
+
+    /** Asserts the controller carrying the five routes is registered while the flag is on. */
     @Test
     @DisplayName("creates the trick controller, which is what makes the use cases reachable")
     void shouldRegisterTheTrickController() {

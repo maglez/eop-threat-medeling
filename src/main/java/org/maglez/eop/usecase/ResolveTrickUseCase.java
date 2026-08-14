@@ -52,15 +52,31 @@ import org.maglez.eop.entity.WinningPlayNotInTrickException;
  * winner arrives from anywhere other than that constructor, this is what refuses it.
  *
  * <p>When the hand is spent, {@link Trick#nextLeaderSeat} answers empty: no seat holds a card, so
- * nobody leads next. The port takes an {@code int} and rejects anything outside the seat range, so
- * there is no value for "nobody" to send, and this use case sends the winning seat. That is harmless
- * because no seat holds a card and so no play can follow it, and it is preferable to reopening a
- * port, an adapter and their tests that shipped in the previous slice. Recognising that the hand is
- * over — stopping the next trick from being opened at all, and declaring the hand finished — is the
- * next slice's work, and until it lands the seat written here is a placeholder that nothing reads.
+ * nobody leads next, and that absence is passed straight to the port as an empty
+ * {@link java.util.OptionalInt}. Slice D sent the winning seat instead, because the port took an
+ * {@code int} and had no value meaning "nobody"; it was harmless only in the sense that no seat could
+ * act on it, and it left the session row asserting that a seat led when that seat held nothing to
+ * lead with. The port now records the absence, which is what makes the end of a hand a fact the
+ * database states rather than one every reader has to re-derive.
+ *
+ * <p>Note which seats the lead is chosen from. {@code hands} is read after the plays in this trick
+ * removed their cards, so {@code seatsHoldingCards} is the set as it stands once the trick is over,
+ * and the winner is only handed the lead if it appears in that set. A winner that has just played its
+ * last card passes the lead clockwise to the next seat that still holds one — handing it to a
+ * card-less seat would open a trick nobody could legally play into, and the table would stop with no
+ * exception raised and nothing logged (ADR-023).
  *
  * <p>The resolved trick is returned because everything in it is public: every card in it was played
  * face up and the winner is what the whole table is waiting to see.
+ *
+ * <p>{@code trick-resolved} is announced once the resolution is recorded, so a refused resolution
+ * announces nothing and the winner is never announced twice by two callers racing to resolve the same
+ * trick — the second is refused before it reaches the write. The announcement carries no part of the
+ * outcome: {@link SessionEvent} names a type, a session and an instant, and every recipient re-reads
+ * the state of play for itself, which is also how it learns which seat leads next (ADR-014). It is
+ * published rather than returned to the resolving caller alone because the seat that leads next is
+ * usually somebody else's news. Publishing is not guarded here because it must not fail a request, an
+ * obligation {@link SessionEventPublisher} places on its implementation.
  */
 public class ResolveTrickUseCase {
 
@@ -70,6 +86,8 @@ public class ResolveTrickUseCase {
 
     private final TrickRepository trickRepository;
 
+    private final SessionEventPublisher sessionEventPublisher;
+
     private final Clock clock;
 
     /**
@@ -78,16 +96,20 @@ public class ResolveTrickUseCase {
      * @param resolvePlayerUseCase resolves the acting player from the identity token
      * @param handRepository reads the hands, which say which seats still hold cards
      * @param trickRepository reads the current trick and records its resolution
+     * @param sessionEventPublisher announces that the trick was resolved, naming none of it
      * @param clock supplies the resolution timestamp
      */
     public ResolveTrickUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
             final TrickRepository trickRepository,
+            final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
         this.trickRepository = Objects.requireNonNull(trickRepository, "trickRepository is required");
+        this.sessionEventPublisher =
+                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
@@ -134,8 +156,10 @@ public class ResolveTrickUseCase {
             throw new WinningPlayNotInTrickException(trick.trickId(), winner.trickPlayId());
         }
 
-        final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards).orElse(resolved.winningSeat());
-        trickRepository.recordResolution(sessionId, resolved, trick.leaderSeat(), nextLeaderSeat, clock.instant());
+        final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);
+        final var now = clock.instant();
+        trickRepository.recordResolution(sessionId, resolved, trick.leaderSeat(), nextLeaderSeat, now);
+        sessionEventPublisher.publish(new SessionEvent(SessionEventType.TRICK_RESOLVED, sessionId, now));
 
         return resolved;
     }

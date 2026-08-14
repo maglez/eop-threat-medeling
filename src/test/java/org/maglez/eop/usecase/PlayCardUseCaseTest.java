@@ -18,6 +18,7 @@ import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.DeckFixture;
 import org.maglez.eop.entity.GameSession;
+import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.OutOfTurnException;
@@ -32,7 +33,7 @@ import org.maglez.eop.entity.TrickPlay;
 /**
  * Exercises {@link PlayCardUseCase} against hand written doubles for both trick play ports.
  *
- * <p>Three groups of assertion earn their keep here. The first is that a refusal writes nothing,
+ * <p>Four groups of assertion earn their keep here. The first is that a refusal writes nothing,
  * and in particular that it opens no trick: this use case is the one place that opens a trick, it
  * does so before the play is accepted, and an open trick with no plays in it is a state no caller
  * asked for and no later slice knows how to clear. That is why every refusal test asserts on
@@ -47,6 +48,12 @@ import org.maglez.eop.entity.TrickPlay;
  * command names only an identifier, the deck supplies suit and rank, and the hand confirms
  * possession; a play persisted from the command rather than from
  * {@link Trick#acceptPlay(int, TrickPlay, Hands)} would be the card forgery defect returning.
+ *
+ * <p>The fourth is that the announcement follows the write and carries none of the play. A
+ * subscriber prompted to re-read the table before the play was stored would read the table it
+ * already had and would get no second prompt, so the shared interaction log is asserted rather
+ * than only the event; and a refused play announces nothing at all, because a client that re-reads
+ * on every notification would otherwise be sent looking for a change that never happened.
  *
  * <p>The opening leader is derived from the deal rather than written down, because which seat holds
  * the lowest Tampering card is a property of the deck and the seat count, and a hard coded seat
@@ -88,6 +95,8 @@ class PlayCardUseCaseTest {
 
     private final QueuedIdentifierGenerator identifiers = new QueuedIdentifierGenerator(TRICK_ID, PLAY_ID);
 
+    private final RecordingSessionEventPublisher publisher = new RecordingSessionEventPublisher(order);
+
     @Test
     @DisplayName("opens the first trick on the recorded leader seat and appends the lead")
     void shouldOpenTheFirstTrickAndAppendTheLead() {
@@ -101,7 +110,7 @@ class PlayCardUseCaseTest {
         final var played = useCaseFor(session)
                 .execute(commandFor(session, leaderSeat, lead.cardId()));
 
-        assertThat(order).containsExactly("openTrick", "appendPlay");
+        assertThat(order).containsExactly("openTrick", "appendPlay", "publish");
         assertThat(trickRepository.opened()).hasSize(1);
         assertThat(trickRepository.opened().getFirst().trick().sequence()).isEqualTo(FIRST_SEQUENCE);
         assertThat(trickRepository.opened().getFirst().trick().leaderSeat()).isEqualTo(leaderSeat);
@@ -142,7 +151,7 @@ class PlayCardUseCaseTest {
         final var played = useCaseWith(session, new QueuedIdentifierGenerator(SECOND_PLAY_ID))
                 .execute(commandFor(session, followerSeat, follow.cardId()));
 
-        assertThat(order).containsExactly("appendPlay");
+        assertThat(order).containsExactly("appendPlay", "publish");
         assertThat(trickRepository.opened()).isEmpty();
         assertThat(trickRepository.appended()).hasSize(1);
         final var appended = trickRepository.appended().getFirst();
@@ -197,7 +206,7 @@ class PlayCardUseCaseTest {
         final var played = useCaseWith(session, new QueuedIdentifierGenerator(SECOND_TRICK_ID, SECOND_PLAY_ID))
                 .execute(commandFor(session, winnerSeat, nextLead.cardId()));
 
-        assertThat(order).containsExactly("openTrick", "appendPlay");
+        assertThat(order).containsExactly("openTrick", "appendPlay", "publish");
         assertThat(trickRepository.opened()).hasSize(1);
 
         final var opened = trickRepository.opened().getFirst();
@@ -394,6 +403,87 @@ class PlayCardUseCaseTest {
         assertThat(order).isEmpty();
     }
 
+    @Test
+    @DisplayName("announces the play once it is appended, and says nothing about the card")
+    void shouldAnnounceThePlayAfterTheWrite() {
+        final var session = seatedTable(SEATS);
+        final var hands = dealTo(session, SEATS);
+        final var leaderSeat = hands.openingLeaderSeat();
+        final var lead = hands.handOf(leaderSeat).cards().getFirst();
+        handRepository.seededWith(hands, leaderSeat);
+
+        useCaseFor(session).execute(commandFor(session, leaderSeat, lead.cardId()));
+
+        assertThat(publisher.published())
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.type()).isEqualTo(SessionEventType.CARD_PLAYED);
+                    assertThat(event.sessionId()).isEqualTo(session.sessionId());
+                    assertThat(event.occurredAt()).isEqualTo(NOW);
+                });
+        assertThat(order)
+                .as("a subscriber told to re-read before the play is stored would read the table it already had")
+                .containsSubsequence("appendPlay", "publish");
+    }
+
+    @Test
+    @DisplayName("announces nothing when the play is refused")
+    void shouldAnnounceNothingWhenThePlayIsRefused() {
+        final var session = seatedTable(SEATS);
+        final var hands = dealTo(session, SEATS);
+        final var leaderSeat = hands.openingLeaderSeat();
+        final var impatientSeat = nextSeat(leaderSeat);
+        final var own = hands.handOf(impatientSeat).cards().getFirst();
+        handRepository.seededWith(hands, leaderSeat);
+        final var useCase = useCaseFor(session);
+
+        assertThatExceptionOfType(OutOfTurnException.class)
+                .isThrownBy(() -> useCase.execute(commandFor(session, impatientSeat, own.cardId())));
+
+        assertThat(publisher.published()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("refuses a play into a hand that has been played out, by name")
+    void shouldRefuseAPlayIntoASpentHand() {
+        final var session = seatedTable(SEATS);
+        final var dealt = dealTo(session, SEATS);
+        final var leaderSeat = dealt.openingLeaderSeat();
+        final var lead = dealt.handOf(leaderSeat).cards().getFirst();
+        handRepository.seededWith(playedOut(dealt), leaderSeat);
+        final var useCase = useCaseFor(session);
+
+        assertThatExceptionOfType(HandCompleteException.class)
+                .isThrownBy(() -> useCase.execute(commandFor(session, leaderSeat, lead.cardId())))
+                .satisfies(refusal -> assertThat(refusal.sessionId()).isEqualTo(session.sessionId()));
+
+        assertThat(trickRepository.opened()).isEmpty();
+        assertThat(trickRepository.appended()).isEmpty();
+        assertThat(publisher.published()).isEmpty();
+        assertThat(identifiers.issued()).isZero();
+    }
+
+    /**
+     * Plays every dealt card, leaving a table whose hands are all empty.
+     *
+     * <p>The end of a hand is not something the doubles can be told about, because no port records
+     * it: it is the absence of cards. Reaching it by playing the deck out rather than by handing
+     * the double an empty map is deliberate, since a hand emptied one card at a time is the only
+     * arrangement a real session can produce.
+     *
+     * @param dealt the hands as dealt
+     * @return the same seats, holding nothing
+     */
+    private static Hands playedOut(final Hands dealt) {
+        var remaining = dealt;
+        for (final int seat : dealt.seats()) {
+            for (final var card : dealt.handOf(seat).cards()) {
+                remaining = remaining.withCardPlayed(seat, card);
+            }
+        }
+        return remaining;
+    }
+
     /**
      * Builds a table whose lobby has already closed, since a card cannot be played into a lobby.
      *
@@ -514,6 +604,7 @@ class PlayCardUseCaseTest {
                 trickRepository,
                 cardRepository,
                 generator,
+                publisher,
                 FIXED);
     }
 }

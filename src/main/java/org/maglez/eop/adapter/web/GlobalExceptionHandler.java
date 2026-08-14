@@ -5,6 +5,7 @@ import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
@@ -418,6 +419,37 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleHandNotDealt(final HandNotDealtException exception) {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Hands not dealt");
+        problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * Every card dealt in this session has been played.
+     *
+     * <p>The third state of a dealt hand, after the two above: not dealt, dealt and in
+     * progress, dealt and played out. A 409 for the same reason as its siblings — the
+     * request was well formed and would have succeeded earlier in the hand — and it
+     * needs its own title because the caller's next move is different. "Hands not
+     * dealt" invites waiting; this one never changes back, and a client shown it
+     * should stop asking to play and go and look at the score.
+     *
+     * <p>Like {@link #handleHandNotDealt} it exists because the honest answer was
+     * otherwise unavailable. Without it the same state reaches the caller as
+     * {@link #handleCardNotInHand}, a 422 saying the card named was wrong when no card
+     * is left to name, or as "hands not dealt", which is false about a hand that was
+     * dealt and finished.
+     *
+     * <p>The detail names the session, which the caller supplied, and says nothing
+     * about the score. That the cards have run out is one of the ways play ends; whether
+     * the result is final is not this response's to state.
+     *
+     * @param exception the refusal, carrying the session identifier
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(HandCompleteException.class)
+    public ProblemDetail handleHandComplete(final HandCompleteException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Hand complete");
         problem.setDetail(exception.getMessage());
         return problem;
     }

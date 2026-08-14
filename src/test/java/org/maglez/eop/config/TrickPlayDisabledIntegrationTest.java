@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.maglez.eop.adapter.security.SecureRandomDeckShuffler;
 import org.maglez.eop.adapter.web.TrickController;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ReadOwnHandUseCase;
 import org.maglez.eop.usecase.ResolveTrickUseCase;
@@ -46,7 +47,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * <p>What the flag withholds is worth stating precisely. An earlier slice put five trick-play tables
  * and two ports into the application, and the adapter implementing those ports is an unconditional
  * {@code @Repository} that is created either way. So the flag does not withhold the capability to
- * write a hand, a trick or a play; it withholds every caller of it — the four use cases and the
+ * write a hand, a trick or a play; it withholds every caller of it — the five use cases and the
  * controller that reaches them over HTTP.
  *
  * <p>The last two tests are the counterweight. A flag that took the rest of the application down
@@ -103,6 +104,21 @@ class TrickPlayDisabledIntegrationTest {
         Assertions.assertThat(context.getBeanNamesForType(ReadOwnHandUseCase.class)).isEmpty();
     }
 
+    /**
+     * Asserts the read that answers whose turn it is is withheld along with the writers.
+     *
+     * <p>It is a read, and it names no card any seat holds, so nothing about it is dangerous. It is
+     * gated all the same, because with the flag off no hand has been dealt and there is no state of
+     * play to report: the route could only ever answer a conflict. A read left behind a withheld
+     * feature is a route whose every answer is a refusal, which is a worse thing to publish than no
+     * route at all.
+     */
+    @Test
+    @DisplayName("does not create the trick-state use case at all")
+    void shouldNotRegisterTheGetTrickStateUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(GetTrickStateUseCase.class)).isEmpty();
+    }
+
     @Test
     @DisplayName("does not create the controller, so the routes are absent rather than disabled")
     void shouldNotRegisterTheTrickController() {
@@ -132,6 +148,14 @@ class TrickPlayDisabledIntegrationTest {
         mockMvc.perform(post("/api/v1/sessions/{id}/plays", SOME_SESSION)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(A_PLAY))
+                .andExpect(status().isNotFound());
+    }
+
+    /** Asserts the state-of-play route is not served while the flag is off. */
+    @Test
+    @DisplayName("withholds the state-of-play route")
+    void shouldNotServeTheTrickStateRoute() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/tricks/current", SOME_SESSION))
                 .andExpect(status().isNotFound());
     }
 

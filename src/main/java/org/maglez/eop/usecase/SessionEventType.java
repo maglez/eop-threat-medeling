@@ -10,12 +10,16 @@ package org.maglez.eop.usecase;
  *
  * <p>Pure domain-adjacent type: no Spring, no Jakarta, no persistence annotations.
  *
- * <p>{@link #HAND_DEALT}, {@link #CARD_PLAYED} and {@link #TRICK_RESOLVED} are
- * declared here and in the contract but nothing publishes them yet; wiring the
- * publisher into the trick-play use cases is a later slice. They are minted now
- * because the wire name belongs to the contract, and a client that matches on a
- * name today must keep working unchanged once the server starts emitting it. A
- * later release may begin emitting one of these names; it may never rename one.
+ * <p>Every constant here is published. {@link #HAND_DEALT}, {@link #CARD_PLAYED}
+ * and {@link #TRICK_RESOLVED} were minted before anything emitted them, because a
+ * wire name belongs to the contract and a client matching on a name must keep
+ * working unchanged once the server starts sending it; EOP-14 Slice E wired the
+ * publisher into the three trick-play use cases, so they are emitted now. That
+ * asymmetry is deliberate and survives: a later release may begin emitting a name
+ * declared here, but it may never rename one.
+ *
+ * <p>They reach a subscriber only where {@code eop.features.trick-play} is on,
+ * which is a fact about a deployment rather than about this type.
  */
 public enum SessionEventType {
 

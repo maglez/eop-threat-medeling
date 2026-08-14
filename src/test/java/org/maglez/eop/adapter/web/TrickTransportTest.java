@@ -9,6 +9,8 @@ import static org.maglez.eop.entity.TrickPlayBuilder.aPlayBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,12 +22,13 @@ import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickPlay;
 import org.maglez.eop.entity.TrickPlayBuilder;
+import org.maglez.eop.usecase.TrickState;
 
 /**
  * Exercises the transport objects the trick-play routes publish.
  *
- * <p>Two assertions here are about what the wire does <em>not</em> carry, and both are asserted
- * against real serialised JSON rather than against the record's components. A record component that
+ * <p>Several assertions here are about what the wire does <em>not</em> carry, and every one of them is
+ * asserted against real serialised JSON rather than against the record's components. A record component that
  * is null is not the same thing as an absent field: the difference is a Jackson setting, the setting
  * is on these two classes rather than on the application, and a client distinguishing a resolved
  * trick from an unresolved one by the presence of {@code winningSeat} is relying on it. Asserting the
@@ -37,6 +40,13 @@ import org.maglez.eop.entity.TrickPlayBuilder;
  * {@link Trick#winner()} instead and lets an absent winner mean an absent field. That is easy to
  * "simplify" into a direct call, and the failure would be a 500 on the ordinary response to every
  * play but the last of a trick.
+ *
+ * <p>The state of play is published by a separate record from the trick itself, and the reason is
+ * asserted here rather than only argued in a comment: three of its five fields are absent at ordinary
+ * moments, and the two seat answers it carries come from different authorities — the cards on the table
+ * and the seat the session row records as leading. Nothing reconciles them on the way out, so a state
+ * holding two different seats is published as two different seats. A mapping that quietly preferred one
+ * would take away the only check a client has on either.
  */
 @DisplayName("Trick-play transport objects")
 class TrickTransportTest {
@@ -208,5 +218,93 @@ class TrickTransportTest {
         mutable.clear();
 
         assertThat(dto.plays()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("the state of play names the seat still to play and omits the seat that leads next")
+    void shouldPublishTheSeatStillToPlay() throws Exception {
+        final Trick trick = aTrick()
+                .withTrickId(TRICK_ID)
+                .withLeaderSeat(0)
+                .withPlays(aPlayBy(0, LOW_SPOOF).build())
+                .withWinner(null)
+                .build();
+        final TrickState state =
+                new TrickState(Optional.of(trick), OptionalInt.of(SECOND_SEAT), false, OptionalInt.empty(), false);
+
+        final TrickStateDto dto = TrickStateDto.from(state);
+
+        assertThat(dto.trick()).isNotNull();
+        assertThat(dto.trick().trickId()).isEqualTo(TRICK_ID.toString());
+        assertThat(dto.seatToPlay()).isEqualTo(SECOND_SEAT);
+        assertThat(dto.complete()).isFalse();
+        assertThat(dto.nextLeaderSeat()).as("no seat leads next until the trick is resolved").isNull();
+        assertThat(dto.handComplete()).isFalse();
+        assertThat(MAPPER.writeValueAsString(dto))
+                .as("an absent field is how a client tells an unresolved trick from a resolved one")
+                .doesNotContain("nextLeaderSeat");
+    }
+
+    @Test
+    @DisplayName("the state of play before the first lead carries a seat to play and no trick")
+    void shouldPublishAStateWithNoTrick() throws Exception {
+        final TrickState state = new TrickState(Optional.empty(), OptionalInt.of(0), false, OptionalInt.empty(), false);
+
+        final TrickStateDto dto = TrickStateDto.from(state);
+
+        assertThat(dto.trick()).isNull();
+        assertThat(dto.seatToPlay()).isZero();
+        assertThat(MAPPER.writeValueAsString(dto))
+                .as("the opening lead is still owed, so the field a client reads is the seat and not the trick")
+                .doesNotContain("\"trick\"");
+    }
+
+    @Test
+    @DisplayName("a played-out hand names no seat at all, and still says so with both booleans")
+    void shouldPublishASpentHandWithoutNamingASeat() throws Exception {
+        final TrickPlay taken = aPlayBy(SECOND_SEAT, HIGH_SPOOF).build();
+        final Trick trick = aTrick()
+                .withTrickId(TRICK_ID)
+                .withLeaderSeat(0)
+                .withPlays(aPlayBy(0, LOW_SPOOF).build(), taken)
+                .withWinner(taken)
+                .build();
+        final TrickState state =
+                new TrickState(Optional.of(trick), OptionalInt.empty(), true, OptionalInt.empty(), true);
+
+        final TrickStateDto dto = TrickStateDto.from(state);
+
+        assertThat(dto.seatToPlay()).isNull();
+        assertThat(dto.nextLeaderSeat()).isNull();
+        assertThat(dto.complete()).isTrue();
+        assertThat(dto.handComplete()).isTrue();
+
+        final String json = MAPPER.writeValueAsString(dto);
+        assertThat(json).doesNotContain("seatToPlay").doesNotContain("nextLeaderSeat");
+        assertThat(json)
+                .as("the two answers a client always gets are the pair the contract marks required")
+                .contains("\"complete\":true")
+                .contains("\"handComplete\":true");
+    }
+
+    @Test
+    @DisplayName("two seat answers that disagree are published as they are, not reconciled")
+    void shouldNotReconcileTheTwoSeatAnswers() {
+        final TrickPlay taken = aPlayBy(SECOND_SEAT, HIGH_SPOOF).build();
+        final Trick trick = aTrick()
+                .withTrickId(TRICK_ID)
+                .withLeaderSeat(0)
+                .withPlays(aPlayBy(0, LOW_SPOOF).build(), taken)
+                .withWinner(taken)
+                .build();
+        final TrickState state =
+                new TrickState(Optional.of(trick), OptionalInt.of(0), true, OptionalInt.of(SECOND_SEAT), false);
+
+        final TrickStateDto dto = TrickStateDto.from(state);
+
+        assertThat(dto.seatToPlay()).isZero();
+        assertThat(dto.nextLeaderSeat())
+                .as("a disagreement between the session row and the cards is a defect a client may notice")
+                .isEqualTo(SECOND_SEAT);
     }
 }

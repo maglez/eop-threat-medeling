@@ -296,14 +296,18 @@ paths:
         spike observed the server reporting two live subscribers after both
         clients had gone away.
 
-        Event names emitted today: `player-joined`, `game-started`. Three further
-        names are **reserved and fixed by this contract** but not yet published by
-        the server: `hand-dealt`, `card-played` and `trick-resolved`. They are
-        named here first because an SSE `event:` name is part of the wire contract,
-        so a client may match on them now and a later release may only start
-        emitting them — never rename them. Until the publisher is wired, a client
-        learns of a deal, a play or a resolution by re-reading, exactly as it would
-        after any other change.
+        Event names emitted: `player-joined`, `game-started`, `hand-dealt`,
+        `card-played` and `trick-resolved`. The last three accompany operations
+        that are themselves behind the trick-play feature: where that feature is
+        switched off those operations do not exist, so those names never appear.
+        That is a deployment fact, not a difference in this contract. An event
+        name is part of the wire contract and is never renamed.
+
+        Delivery is best effort and is not ordered with respect to the HTTP
+        response that caused it. An event may arrive after the response to the
+        very request that produced it, and a client that made a change may be
+        notified of its own change. Both are ordinary, because a client re-reads
+        either way and arrives at the same state.
 
         The JSON carried in each `data:` field is the `SessionEvent` schema. It is
         not referenced with `$ref` here because the response body is a framed text
@@ -524,6 +528,17 @@ paths:
         Two requests racing to fill the same seat cannot both succeed — one gets
         `201`, the other `409`.
 
+        Once every card dealt has been played the hand is over and this operation
+        answers `409` with its own `title`, not the `422` that a card missing from
+        an empty hand would otherwise produce. The distinction matters: `422`
+        would say the caller named the wrong card, when in fact no card exists to
+        name. `GET /api/v1/sessions/{sessionId}/tricks/current` reports the same
+        fact as `handComplete`.
+
+        Whose turn it is is not in this response, because it depends on which
+        seats still hold cards. Read it from
+        `GET /api/v1/sessions/{sessionId}/tricks/current` as `seatToPlay`.
+
         `threatLinked` is optional and defaults to `false`; an unlinked play is an
         ordinary outcome, not a degraded one. `components` and `notes` are the
         player's threat-modelling annotations and are bounded by this contract.
@@ -571,6 +586,63 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
+  /api/v1/sessions/{sessionId}/tricks/current:
+    get:
+      tags: [trick-play]
+      summary: Read the state of play
+      description: |
+        Answers the three questions a client cannot answer from a `Trick` alone:
+        whose turn it is, whether the current trick is complete, and which seat
+        leads next. All three depend on which seats still hold cards — a fact
+        about the whole session rather than about one trick — which is why they
+        are published here and not on `Trick`.
+
+        Any seated player may read this. Everything in the response is already
+        public at the table: the cards played face up, the seat to play, the seat
+        that took the trick. Cards still held appear nowhere;
+        `GET /api/v1/sessions/{sessionId}/hand` is the only way to see a hand and
+        it only ever shows the caller's own.
+
+        `trick` is absent in exactly one situation: the cards have been dealt and
+        nobody has led yet. `seatToPlay` is present even then, naming the seat
+        that must lead.
+
+        This is a read. It never opens, advances or resolves anything, and
+        polling it changes nothing — though a client should prefer the event
+        stream and read when notified.
+      operationId: getTrickState
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The current state of play.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrickState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: |
+            The cards have not been dealt yet, so there is no state of play to
+            report.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
   /api/v1/sessions/{sessionId}/tricks/current/resolve:
     post:
       tags: [trick-play]
@@ -589,6 +661,15 @@ paths:
         into it — which for the last trick of a hand is fewer seats than the
         table. Resolving an incomplete trick, or one already resolved, is a
         `409`.
+
+        Resolving also decides who leads next. The lead passes to the seat that
+        took the trick if it still holds a card, and otherwise clockwise to the
+        next seat that does — because the whole deck is dealt and hands are
+        unequal, a winner can be out of cards while others are not. Handing the
+        lead to a seat with no cards would open a trick nobody could play into.
+        When no seat holds a card the hand is over and no seat leads;
+        `GET /api/v1/sessions/{sessionId}/tricks/current` reports that as
+        `handComplete`, and the seat that leads next as `nextLeaderSeat`.
 
         Scoring is not part of this operation.
 
@@ -931,11 +1012,10 @@ components:
           description: |
             The kind of change. Matches the SSE `event:` name.
 
-            `hand-dealt`, `card-played` and `trick-resolved` are reserved and
-            fixed by this contract but are not published by the server yet. They
-            are listed here so a client may match on them today and keep working
-            unchanged when the server starts emitting them. A later release may
-            begin emitting a reserved name; it may never rename one.
+            `hand-dealt`, `card-played` and `trick-resolved` are emitted by the
+            trick-play operations; where that feature is switched off those
+            operations do not exist and those names do not appear. A name in this
+            enum is part of the wire contract and is never renamed.
           enum:
             - player-joined
             - game-started
@@ -1112,6 +1192,77 @@ components:
             `ledSuit` wins unless any Elevation of Privilege was played, in which
             case the highest of those wins.
 
+    TrickState:
+      type: object
+      description: |
+        The state of play across a whole session: the current trick, if there is
+        one, together with the three answers that depend on which seats still
+        hold cards.
+
+        `Trick` reports none of those three, deliberately. A trick knows the
+        cards played into it and nothing about the hands they came from, so
+        answering from there would mean guessing. This schema is where the trick
+        and the hands are put together.
+      required: [complete, handComplete]
+      properties:
+        trick:
+          allOf:
+            - $ref: '#/components/schemas/Trick'
+          description: |
+            The current trick — the one in progress, or the last one resolved.
+
+            Absent only between the deal and the first card led.
+        seatToPlay:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: |
+            The seat entitled to play the next card. A card from any other seat
+            is a `409`.
+
+            Absent when no card may be played at all: either the trick is
+            complete and waiting to be resolved, or the hand is spent.
+            `handComplete` tells those two apart.
+        complete:
+          type: boolean
+          description: |
+            Whether every seat that still holds cards has played into the current
+            trick — which for the last trick of a hand is fewer seats than the
+            table.
+
+            `false` when there is no trick. A complete trick that has not been
+            resolved is what `POST …/tricks/current/resolve` is for; once
+            resolved, `complete` stays `true` and `trick.winningSeat` appears.
+        nextLeaderSeat:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: |
+            The seat that leads the next trick. Present only once the current
+            trick is resolved, and only while some seat still holds a card.
+
+            Usually the seat that took the trick, but not always: because the
+            whole deck is dealt and hands are unequal, a winner can be out of
+            cards while other seats are not, and the lead then passes clockwise
+            to the next seat that still holds one.
+
+            While present it equals `seatToPlay`, and publishing both is
+            intentional rather than redundant: they are computed from different
+            authorities — one from the cards in the trick, one from the seat the
+            session records as leading — so a disagreement is a defect a client
+            is entitled to notice.
+        handComplete:
+          type: boolean
+          description: |
+            Whether every card dealt has been played. No further card can be
+            played and no further trick can be opened.
+
+            The session status does not become `COMPLETED` at this point. That
+            word is reserved for a hand whose score is final, and scoring is a
+            separate operation.
+
     PlayCardRequest:
       type: object
       description: |
@@ -1196,8 +1347,25 @@ components:
     Conflict:
       description: |
         The request is valid but the session's current state does not allow it.
-        The `title` distinguishes the cases: play has already started, the table
-        is full at six players, or play cannot start with fewer than three.
+        The `title` distinguishes the cases, and there are thirteen of them, which
+        is more than one status can imply on its own: play has already started,
+        the table is full at six players, play cannot start with fewer than three,
+        it is another seat's turn, the cards have already been dealt, the cards
+        have not been dealt, every card dealt has been played and the hand is
+        over, there is no trick to resolve, the trick is not complete yet, a trick
+        is already open, the trick is already resolved, the seat has already
+        played into this trick, and the card has already been played into it.
+
+        Each of those is a separate `title` rather than a shared one, because a
+        client's next move differs: wait for another player, deal, wait your turn,
+        resolve, or stop. Collapsing them would leave the client guessing which
+        wait it is in.
+
+        Thirteen is the count of handlers in `GlobalExceptionHandler` that answer
+        409, each with a distinct title. It is stated because an enumeration that
+        silently omits a case is worse than no enumeration at all: this list named
+        eleven and omitted the two about a play already in the trick until a
+        review counted the handlers rather than trusting the prose.
       content:
         application/problem+json:
           schema:

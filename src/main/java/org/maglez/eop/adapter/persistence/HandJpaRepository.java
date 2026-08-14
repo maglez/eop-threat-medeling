@@ -33,4 +33,20 @@ interface HandJpaRepository extends JpaRepository<HandJpaEntity, UUID> {
      * @return the dealt hands, ascending by seat order, empty if nothing has been dealt
      */
     List<HandJpaEntity> findByGameSessionIdOrderBySeatOrderAsc(UUID gameSessionId);
+
+    /**
+     * Answers whether a session has ever been dealt.
+     *
+     * <p>This is not a shortcut for reading the hands, and nothing that needs the cards may
+     * use it — the paragraph above about vacuous invariants still stands. It exists for one
+     * refusal: {@code current_leader_seat} being null means either that no hand has been
+     * dealt or that a hand has been dealt and played out, and only the presence of hand rows
+     * tells those apart. A caller that has to choose between
+     * {@code HandNotDealtException} and {@code HandCompleteException} is asking a question
+     * about existence, not about content, and this answers exactly that.
+     *
+     * @param gameSessionId the session to check
+     * @return true when at least one hand row exists for the session
+     */
+    boolean existsByGameSessionId(UUID gameSessionId);
 }

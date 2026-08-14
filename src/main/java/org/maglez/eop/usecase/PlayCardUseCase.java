@@ -3,6 +3,7 @@ package org.maglez.eop.usecase;
 import java.time.Clock;
 import java.util.Objects;
 import org.maglez.eop.entity.CardNotFoundException;
+import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
@@ -18,8 +19,10 @@ import org.maglez.eop.entity.TrickPlay;
  * an open trick with no plays in it &mdash; and would need its own authorisation and its own
  * refusals for no gain.
  *
- * <p>Authorisation is the first statement of {@link #execute}, before any read of the hands and
- * before any write. Neither {@link HandRepository} nor {@link TrickRepository} takes an acting
+ * <p>Authorisation is the first <em>port call</em> of {@link #execute}, before any read of the hands
+ * and before any write; only a null check on the command and the read of its session identifier
+ * precede it, and neither touches a port or the table's state. Neither {@link HandRepository} nor
+ * {@link TrickRepository} takes an acting
  * player, so this is the only place it can happen, and the refusals below it are informative enough
  * to describe the table's state to whoever asks (ADR-024). The acting seat is then taken from the
  * resolved player and nowhere else: {@link PlayCardCommand} cannot carry one.
@@ -32,10 +35,17 @@ import org.maglez.eop.entity.TrickPlay;
  * <p>The second of those lookups is run once here, before {@link TrickRepository#openTrick}, and then
  * again inside {@link Trick#acceptPlay} which remains the sole authority on legality. The
  * duplication buys ordering, not safety: opening commits a row, and if the play were refused
- * afterwards the session would be left holding an open trick that nobody can play into. At the end
- * of a hand every hand is empty, and {@link Trick#assertSeatMayPlay} answers a trick opened on a
- * seat holding no cards with an {@link IllegalStateException} &mdash; a 500 for what is really "you
- * have no cards left". Refusing first turns that into the 422 it should be.
+ * afterwards the session would be left holding an open trick that nobody can play into.
+ *
+ * <p>A hand that has been played out is refused before any of that, by name. Every hand is empty
+ * once the last trick is resolved, and each of the three checks below it would otherwise answer the
+ * same state with something untrue: {@link org.maglez.eop.entity.Hand#resolve} reports a card the
+ * player does not hold, which is a 422 saying the caller named the wrong card when there is no card
+ * left to name; {@link HandRepository#findCurrentLeaderSeat} finds no leader recorded and cannot tell
+ * a spent hand from an undealt one; and {@link Trick#assertSeatMayPlay} answers a trick opened on a
+ * seat holding no cards with an {@link IllegalStateException}, a 500 for an ordinary end of play.
+ * {@link HandCompleteException} is checked here so the honest answer arrives first, and it is checked
+ * after the seat, because who the caller is settles before what the table is doing.
  *
  * <p>Turn order is pre-flighted for the same reason, and it has to be a separate check: a player who
  * genuinely holds the card but is not the one to lead passes the resolve above, so without this guard
@@ -66,6 +76,16 @@ import org.maglez.eop.entity.TrickPlay;
  * dealt rather than as claimed. The updated trick is returned because a played card is face up on
  * the table; nothing in it is private.
  *
+ * <p>Once the play is appended, {@code card-played} is announced through
+ * {@link SessionEventPublisher}. The announcement is made after the write returns, so a refused play
+ * announces nothing, and it carries no part of the play: {@link SessionEvent} names a type, a session
+ * and an instant, leaving every recipient to re-read the state of play for itself (ADR-014). That is
+ * what keeps one producer of the answer rather than two that can disagree, and it is also why the
+ * caller is told whose turn it is by that read rather than by this response. Publishing is not
+ * guarded here because it must not fail a request &mdash; an obligation
+ * {@link SessionEventPublisher} places on its implementation &mdash; and delivery is unordered with
+ * respect to this response, so a caller may be notified of its own play.
+ *
  * <p>A complete trick is not resolved here. Resolution is {@link ResolveTrickUseCase}'s, and a play
  * that silently resolved would make one caller's refusal depend on another caller's timing.
  */
@@ -76,6 +96,7 @@ public class PlayCardUseCase {
     private final TrickRepository trickRepository;
     private final CardRepository cardRepository;
     private final IdentifierGenerator identifierGenerator;
+    private final SessionEventPublisher sessionEventPublisher;
     private final Clock clock;
 
     /**
@@ -86,6 +107,7 @@ public class PlayCardUseCase {
      * @param trickRepository opens tricks and appends plays
      * @param cardRepository resolves the played card against the deck
      * @param identifierGenerator mints trick and play identifiers
+     * @param sessionEventPublisher announces that a card was played, naming none of it
      * @param clock supplies the instant the play was made at
      */
     public PlayCardUseCase(
@@ -94,6 +116,7 @@ public class PlayCardUseCase {
             final TrickRepository trickRepository,
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
+            final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         this.resolvePlayerUseCase =
                 Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
@@ -103,6 +126,8 @@ public class PlayCardUseCase {
         this.cardRepository = Objects.requireNonNull(cardRepository, "cardRepository is required");
         this.identifierGenerator =
                 Objects.requireNonNull(identifierGenerator, "identifierGenerator is required");
+        this.sessionEventPublisher =
+                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
@@ -117,6 +142,7 @@ public class PlayCardUseCase {
      *     table, or no token was given
      * @throws HandNotDealtException if this session has not been dealt
      * @throws PlayerNotInSessionException if the acting player holds no hand in this session
+     * @throws HandCompleteException if every card dealt in this session has already been played
      * @throws CardNotFoundException if the card identifier names no card in the deck
      * @throws org.maglez.eop.entity.CardNotInHandException if the player does not hold that card
      * @throws org.maglez.eop.entity.OutOfTurnException if it is not this seat's turn
@@ -146,6 +172,9 @@ public class PlayCardUseCase {
                         .orElseThrow(() -> new HandNotDealtException(sessionId));
         if (!hands.hasSeat(actingSeat)) {
             throw new PlayerNotInSessionException(sessionId);
+        }
+        if (hands.allEmpty()) {
+            throw new HandCompleteException(sessionId);
         }
         final var hand = hands.handOf(actingSeat);
 
@@ -197,6 +226,7 @@ public class PlayCardUseCase {
         final var accepted = updated.plays().getLast();
 
         trickRepository.appendPlay(sessionId, trick.trickId(), leaderSeat, accepted);
+        sessionEventPublisher.publish(new SessionEvent(SessionEventType.CARD_PLAYED, sessionId, now));
         return updated;
     }
 }

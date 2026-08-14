@@ -19,6 +19,16 @@ No use case in this repository logs anything. Not one of the eleven:
 `JoinSessionUseCase`, `ListCardsUseCase`, `PlayCardUseCase`, `ReadOwnHandUseCase`,
 `ResolvePlayerUseCase`, `ResolveTrickUseCase`, `StartSessionUseCase`.
 
+*(Amended 2026-08-14, EOP-14 Slice E — read the sentence and the list above as the state on
+2026-08-13, when this ADR was written; both are kept unaltered as history. There are now **twelve**
+use cases, and the twelfth is `GetTrickStateUseCase`, the state-of-play read behind
+`GET /api/v1/sessions/{sessionId}/tricks/current`. It logs nothing either, so the decision below is
+unchanged in substance and wider by one in scope. Both halves were re-derived rather than assumed:
+`ls src/main/java/org/maglez/eop/usecase/ | grep -c 'UseCase.java$'` answers 12, and
+`grep -rn 'slf4j\|Logger' src/main/java/org/maglez/eop/usecase/` still matches nothing at all. Where
+this ADR says "eleven" below, the arity is stale and the claim it carries is not; the twelve are
+enumerated in this ADR's row in [README.md](README.md).)*
+
 Dealing a hand, playing a card and resolving a trick are game-affecting actions by any reading, so
 the three added by EOP-14 Slice C2 are squarely inside the rule. So are the seven that preceded them.
 Logging in this codebase currently lives in the web adapter, where `GlobalExceptionHandler` records
@@ -82,7 +92,10 @@ Whichever is chosen must also answer three things the rule raises but does not s
 ## Consequences
 
 - The obligation is now recorded somewhere that outlives a review conversation, and it names all eleven
-  use cases so a future reader does not have to rediscover the scope.
+  use cases so a future reader does not have to rediscover the scope. *(2026-08-14, EOP-14 Slice E:
+  **twelve**. The load-bearing claim is that the scope is enumerated rather than left to be
+  rediscovered, and it still holds — the Context amendment above names the twelfth,
+  `GetTrickStateUseCase`, which this consequence's original arity predates.)*
 - It stays outstanding, and it stays outstanding **uniformly**: no use case logs, so no use case is the
   odd one out. Adding logging to only the three from Slice C2 would have made the codebase less
   consistent, which is the reason all three gates declined to require it there.
@@ -119,7 +132,8 @@ Whichever is chosen must also answer three things the rule raises but does not s
   option 4 above would make that the only place it ever exists.
 - **ADR-021** (trusted proxies and `Forwarded-For`) — constrains where an `X-Correlation-Id` header may
   be trusted from, so the MDC requirement cannot be settled without it.
-- **ADR-025** (dealing is its own use case) — added three of the eleven unobserved use cases and
-  is the slice during which this gap was found.
+- **ADR-025** (dealing is its own use case) — added three of the twelve unobserved use cases and
+  is the slice during which this gap was found. *(The denominator was eleven until EOP-14 Slice E
+  added the twelfth; three is unchanged.)*
 - **`.opencode/rules/clean-architecture.md`** — the constraint that rules out the obvious
   implementation, and the reason this needs an ADR rather than a commit.

@@ -23,7 +23,9 @@ import org.junit.jupiter.api.Test;
  * <p>It exists because prose lost to arithmetic. The paragraph beside ADR-023's constraint-name
  * translation table states how many exceptions arise with no constraint violated, and it said two,
  * then three, then six before nine. Each wrong count was written carefully and reviewed carefully,
- * which is the argument for deriving the number instead of restating it.
+ * which is the argument for deriving the number instead of restating it. EOP-14 Slice E took the
+ * count from nine to ten by naming the third state of {@code current_leader_seat}, and this class
+ * is why that arrived as a failing build rather than as a paragraph nobody re-read.
  *
  * <p>How it derives. Every construction of a type the adapter imports from {@code
  * org.maglez.eop.entity} is classified by <em>where</em> it sits. Inside {@code dealFailure}, {@code
@@ -67,10 +69,10 @@ class TrickPlayExceptionOriginTest {
 
     /**
      * The count as it stands. Asserted against the derived set rather than trusted, so this
-     * constant cannot drift from the code the way the prose did — if the adapter grows a tenth
-     * origin, the derivation returns ten and this fails.
+     * constant cannot drift from the code the way the prose did — if the adapter grows an eleventh
+     * origin, the derivation returns eleven and this fails.
      */
-    private static final int EXPECTED_ORIGIN_COUNT = 9;
+    private static final int EXPECTED_ORIGIN_COUNT = 10;
 
     private static String adapterSource() throws IOException {
         return Files.readString(ADAPTER, StandardCharsets.UTF_8);
@@ -81,14 +83,14 @@ class TrickPlayExceptionOriginTest {
     }
 
     @Test
-    @DisplayName("derives exactly nine of them from the adapter source")
-    void shouldDeriveNineOriginsFromTheAdapter() throws IOException {
+    @DisplayName("derives exactly ten of them from the adapter source")
+    void shouldDeriveTenOriginsFromTheAdapter() throws IOException {
         final Set<String> derived = nonConstraintOrigins(adapterSource());
 
         assertThat(derived)
                 .as(
                         "the adapter's non-constraint refusal vocabulary, derived by position. If "
-                                + "this is not nine the ADR is stale and so is the constant above")
+                                + "this is not ten the ADR is stale and so is the constant above")
                 .hasSize(EXPECTED_ORIGIN_COUNT);
     }
 
