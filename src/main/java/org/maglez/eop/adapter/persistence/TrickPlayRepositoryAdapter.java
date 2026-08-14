@@ -47,11 +47,24 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>This class implements both trick-play ports. That is deliberate rather than
  * economy: playing a card removes a row from {@code hand_card} and inserts rows into
  * {@code trick_play} and {@code trick_play_component}, and those writes have to
- * succeed or fail together. Splitting them across two adapters would leave only two
- * options, and both are worse than one class with two interfaces — two transactions,
- * which can leave a card gone from a hand with no play recorded, or a transaction
- * declared in the use case layer, which would put {@code org.springframework
- * .transaction} on the wrong side of the dependency rule.
+ * succeed or fail together. Splitting them across two adapters would hand that
+ * atomicity to somebody else, and the obvious decomposition gives two transactions,
+ * which can leave a card gone from a hand with no play recorded.
+ *
+ * <p>An earlier version of this paragraph went further and claimed the only other
+ * option was a transaction declared in the use case layer, on the wrong side of the
+ * dependency rule. That was false and is retracted. A transactional method in the
+ * outer ring composes two adapters perfectly well through Spring's default
+ * {@code REQUIRED} propagation, because a method already annotated joins an enclosing
+ * transaction rather than starting its own, and nothing about that arrangement puts a
+ * framework import inside {@code usecase}. ADR-024 carries the mechanism and the
+ * retraction. Naming an option that exists as an option that does not is how an
+ * argument avoids being made.
+ *
+ * <p>What survives is ownership, not impossibility. The transaction is a detail of the
+ * persistence mechanism, so the ring that owns the mechanism owns its atomic unit, and
+ * composing these two writes further out would move an invariant into every caller
+ * that has to remember it.
  *
  * <p>Two responsibilities live here and nowhere else. The first is the transaction
  * boundary, for the reason above. The second is translating a constraint violation

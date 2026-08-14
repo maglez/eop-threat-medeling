@@ -185,11 +185,19 @@ applies them, on an **opening** play — the only path that writes a trick row:
 | `CardNotInHandException` (raised in `Hand.java:115`, reached through `assertLegalPlay` at `Trick.java:205`) | Pre-flighted by the same `hand.resolve(card)` — the use case calls the identical method on the identical hand before the write. |
 | `MustFollowSuitException` (`Trick.java:214`, same helper) | Cannot fire on an opening play: no suit has been led, so `ledSuit()` is empty and `assertLegalPlay` returns at `Trick.java:209`. |
 
-`Trick`'s private constructor adds five more refusals — a seat playing twice, the same card twice, one
-player holding two seats, duplicate play identifiers, and a winner foreign to the trick
-(`Trick.java:61-81`) — all raised as `IllegalArgumentException`. None can fire here either: the trick
-is empty when it is opened, so the four duplication invariants have nothing to duplicate, and
-`acceptPlay` sets no winner. Note that `AlreadyPlayedInTrickException` and `CardAlreadyPlayedException`
+`Trick`'s private constructor adds eight more refusals — a sequence below one, a leader seat outside
+the seat range, a seat playing twice, the same card twice, one player holding two seats, duplicate
+play identifiers, a winner foreign to the trick, and a first play that does not belong to the leading
+seat (`Trick.java:37-86`) — all raised as `IllegalArgumentException`. None can fire here either: the
+trick is empty when it is opened, so the four duplication invariants have nothing to duplicate;
+`acceptPlay` sets no winner; the sequence and the leader seat are supplied by `PlayCardUseCase` from a
+read rather than by a caller. The last of the eight deserves naming, because it is the only refusal
+whose predicate is first evaluated on exactly the opening play — the path this table exists to
+exhaust — and an earlier version of this table omitted it: a first play that does not belong to the
+leading seat cannot arise, because `seatToPlay` returns `leaderSeat` while `plays` is empty
+(`Trick.java:265-269`), `assertSeatMayPlay` forces `actingSeat == leaderSeat` (`Trick.java:381`), and
+`Trick.java:371-372` forces the candidate's own seat to equal `actingSeat`. Note that
+`AlreadyPlayedInTrickException` and `CardAlreadyPlayedException`
 are *declared* in `entity` and *mapped* in `GlobalExceptionHandler`, but nothing in production throws
 either; the constructor's `IllegalArgumentException`s are the refusals that actually stand in their
 place. An earlier version of this decision listed those two exceptions among the refusals `acceptPlay`
