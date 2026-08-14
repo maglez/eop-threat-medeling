@@ -158,8 +158,10 @@ class.
 contract for the four trick-play routes and, with it, the three names: `hand-dealt`, `card-played` and
 `trick-resolved` are now constants on `SessionEventType` and members of the `SessionEvent.type` enum in
 `docs/api/openapi.yml`, marked **reserved** there because nothing emits them yet. A test reads the
-contract as text and asserts every constant's wire name appears in it, so the enum and the published
-contract cannot drift apart. The reasoning above is why they were minted in Slice D and not here: a
+contract as text and asserts every constant's wire name appears in it, so a name deleted from either
+side fails the build. That guard is a text match rather than a parse: it proves the name is present in
+the document, not that it sits under `SessionEvent`. Binding the contract to a YAML parser in `verify`
+is a separate follow-up. The reasoning above is why they were minted in Slice D and not here: a
 wire name belongs to the slice that is allowed to publish one. What remains is Slice E's half — passing
 the publisher into the use cases and calling it on each write — so the stream is still silent for a
 whole trick, and a client still learns of a deal, a play or a resolution only by re-reading.

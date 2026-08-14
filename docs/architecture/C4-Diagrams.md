@@ -311,11 +311,13 @@ restating now, because Slice D changed it again in the one way that matters:
   `claimDeal`, `touchWhileLeaderSeatIs` and `advanceLeaderSeat` each take the session row's lock
   before any hand or trick row, which is what serialises two simultaneous deals or two plays for the
   same seat. The use cases do not choose this; they cannot see it.
-- **All three use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
-  `PlayCardUseCase` and `ResolveTrickUseCase` into `ResolvePlayerUseCase` are drawn as first-class
+- **All four use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
+  `PlayCardUseCase`, `ResolveTrickUseCase` and — since Slice D — `ReadOwnHandUseCase` into
+  `ResolvePlayerUseCase` are drawn as first-class
   edges rather than left implicit because the *ordering* is the slice's main security property, and
   a component view that omitted them would hide it: `DealHandsUseCase.java:120`,
-  `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:111` are each the first executable
+  `PlayCardUseCase.java:139`, `ResolveTrickUseCase.java:111` and `ReadOwnHandUseCase.java:64` are
+  each the first executable
   statement of their `execute` method, before any read, any port call and any state test
   ([ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) records why the adapter cannot do
   this for them — no port method takes an acting player).
@@ -498,7 +500,7 @@ lands on a table this component view already draws. It exists purely as the refe
 target for the two composite foreign keys described in the schema section below, and it adds no
 invariant of its own, because `player.id` is already the primary key. Neither the session adapter
 nor the trick-play one changes as a result: `PlayerJpaEntity` has no setter for `seatOrder` at all
-(`PlayerJpaEntity.java:145-147` is the only accessor and the class declares no setters), and no
+(`PlayerJpaEntity.java:145-147` is the only accessor for it besides `getId()`, and the class declares no setters), and no
 write path in this diagram touches a `player` row, so nothing here can produce a seat change for
 that constraint to reject.
 
@@ -530,7 +532,7 @@ Unlike the two generators, this one is registered unconditionally: it is a `@Com
 of `eop.features.trick-play`, because it holds no state and reaches no table. What the flag gates is
 the four use cases and `TrickController` — the five beans that would reach the database or accept a
 request — and `TrickPlayDisabledIntegrationTest` asserts all five absent as well as the four routes
-answering 404 (`TrickPlayDisabledIntegrationTest.java:47-66`).
+answering 404 (`TrickPlayDisabledIntegrationTest.java:82-143`).
 
 ---
 

@@ -858,17 +858,19 @@ class TrickControllerIntegrationTest {
             // So this asserts the property rather than the enumeration. What a caller is owed is a
             // conflict, as a problem document, naming some rule - and an enumeration of a race is a
             // guess that passes until the machine is faster. The rule that fired is diagnostic, not
-            // contractual, so the title is printed on failure rather than matched.
+            // contractual, so it is interpolated into the failure messages below rather than matched:
+            // a diagnostician still learns which rule won the race, without a test asserting it.
             final var loser = outcomes.stream()
                     .filter(result -> result.getResponse().getStatus() == 409)
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("no contender was refused"));
             assertProblemJson(loser);
             final var refusal = JsonPath.parse(loser.getResponse().getContentAsString());
+            final var refusedBy = refusal.read("$.title", String.class);
             Assertions.assertThat(refusal.read("$.status", Integer.class))
-                    .as("the problem document agrees with the status line")
+                    .as("the problem document agrees with the status line, refused by: %s", refusedBy)
                     .isEqualTo(409);
-            Assertions.assertThat(refusal.read("$.title", String.class))
+            Assertions.assertThat(refusedBy)
                     .as("the refusal names the rule that stopped it rather than leaving the caller to guess")
                     .isNotBlank();
         }
