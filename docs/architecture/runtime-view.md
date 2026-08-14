@@ -308,6 +308,9 @@ sequenceDiagram
         DB-->>SRA: DataIntegrityViolationException
         SRA-->>SC: JoinCodeUnavailableException
         Note over SC,SRA: Retry with a fresh code, bounded attempts.<br/>The database decides, not a pre-insert SELECT.
+        opt all five attempts collided
+            SC-->>F: 503 with Retry-After — capacity, not fault (EOP-17)
+        end
     else inserted
         DB-->>SRA: ok
     end
@@ -347,6 +350,10 @@ sequenceDiagram
                     DB-->>SRA: DataIntegrityViolationException
                     SRA-->>JU: SeatAlreadyTakenException
                     Note over SRA: Two joiners cannot both take seat 3.<br/>The constraint decides — retry takes the next seat.
+                    opt all eight attempts lost their race
+                        JU-->>SC: refused
+                        SC-->>P2: 409 — the lobby filled while you were joining (EOP-17)
+                    end
                 else inserted
                     DB-->>SRA: ok
                 end
