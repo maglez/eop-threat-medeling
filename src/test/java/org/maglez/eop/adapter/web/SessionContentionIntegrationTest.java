@@ -1,6 +1,7 @@
 package org.maglez.eop.adapter.web;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -75,6 +76,8 @@ class SessionContentionIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"Trent\"}"))
                 .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.title").value("The lobby filled while you were joining"))
                 .andExpect(jsonPath("$.detail").value("Another player took the seat on every attempt. Read the session and try again."));
     }
@@ -89,12 +92,14 @@ class SessionContentionIntegrationTest {
                         .content("{\"displayName\":\"Grace\"}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "5"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(503))
                 .andExpect(jsonPath("$.title").value("No lobby could be opened"))
                 .andExpect(jsonPath("$.detail").value("The service could not open a new lobby. Try again in a few seconds."));
     }
 
     @Test
-    @DisplayName("with both switches open a lobby is created and joined exactly as before")
+    @DisplayName("with neither switch thrown a lobby is created and joined exactly as before")
     void shouldLeaveTheUncontestedPathUntouched() throws Exception {
         final String joinCode = joinCodeOfANewLobby("Grace");
 

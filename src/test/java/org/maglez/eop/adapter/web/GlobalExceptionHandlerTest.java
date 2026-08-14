@@ -370,6 +370,9 @@ class GlobalExceptionHandlerTest {
             assertThat(emitted.list).hasSize(1);
             assertThat(emitted.list.getFirst().getLevel()).as("capacity evidence an operator should see, but not a fault")
                     .isEqualTo(Level.WARN);
+            assertThat(emitted.list.getFirst().getThrowableProxy())
+                    .as("the trace is the point here: this path is not caller-provokable, so each occurrence is worth diagnosing")
+                    .isNotNull();
         }
 
         @Test
