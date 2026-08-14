@@ -74,6 +74,31 @@ retrying on violation, with a bounded number of attempts before failing. The
 database, not a pre-insert `SELECT`, decides whether a code is taken — a check-then-
 insert has a race window and this endpoint is concurrent by nature.
 
+> **Amended 2026-08-14 — what "before failing" answers with (EOP-17).**
+> This section, and the seat-order section below, each specify a bounded retry and
+> then say only that the attempt "fails". Neither named a status, so both budgets
+> exhausted into `handleUnexpected` and answered **500 with a stack trace** until
+> EOP-17. The statuses are recorded here, next to the retry loops that produce them,
+> for the same reason the 429 below is recorded inline rather than left to the
+> handler: a status is part of the design of a bounded retry, not an implementation
+> detail of it.
+>
+> - An exhausted **join-code** budget answers **503 with `Retry-After: 5`**. It is a
+>   capacity statement, not a fault: the code space is finite and thirty bits wide,
+>   the same request is expected to succeed shortly, and nothing malfunctioned. A
+>   caller cannot provoke it, so each occurrence is genuine capacity evidence and is
+>   logged at `WARN` with its trace.
+> - An exhausted **seat** budget answers **409**, beside `SessionFullException`. Both
+>   mean "the lobby filled underneath you"; they differ only in whether the domain
+>   saw it before the write or the unique constraint said so during it, and that
+>   distinction is deliberately invisible to a client whose next move is identical
+>   either way. A caller holding a valid join code *can* provoke it, so it is logged
+>   at `DEBUG` without a trace — the trace would be the flood.
+>
+> The asymmetry in log levels is therefore derived from provokability, not from
+> severity. Five seconds is a guess; it only has to be a defensible one, since there
+> is no queue draining at a known rate to compute it from.
+
 ### Join attempts are rate-limited in memory, per IP and per code
 
 A sliding window over failed attempts, keyed both by client address and by the code
