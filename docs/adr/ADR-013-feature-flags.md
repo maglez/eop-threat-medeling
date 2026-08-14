@@ -154,8 +154,9 @@ the two: its use-case beans are unconditional, so nothing fails the context and
 `session-lifecycle: off` — which YAML 1.1 reads as boolean false, and which is the idiom an
 operator is likeliest to reach for — would silently **enable** five live routes an operator
 believed were off. Fail-open, not cosmetic. It is left for its own commit under its own Jira
-key rather than buried in a feature branch; `application.yml` currently sets the literal
-`false`, so the shipped default is safe and the exposure is latent operator error.
+key rather than buried in a feature branch — that key is **EOP-48**, raised before Slice D's pull
+request was opened; `application.yml` currently sets the literal `false`, so the shipped default is
+safe and the exposure is latent operator error.
 **Every `@ConditionalOnProperty` on a flag in this repository must carry
 `havingValue = "true"`.**
 

@@ -248,7 +248,10 @@ checked against it, row by row.
   session has hands is wrong. `HandRepository.findBySessionId` answers empty there, and
   `HandNotDealtException` is the mapped 409 for anything that needs them.
 - Three use cases now exist that can reach the five trick-play tables C1 shipped, so
-  `eop.features.trick-play` gates the three beans in `UseCaseConfiguration`. With the flag off no
+  `eop.features.trick-play` gates the three beans in `UseCaseConfiguration`. *(2026-08-14, EOP-14
+  Slice D: four beans and `TrickController`. The containment claim below is unchanged by that —
+  a fourth caller of the ports is still a caller withheld by the same flag — but the count is not.
+  ADR-013 is the register and states it.)* With the flag off no
   bean exists that calls the ports which write a hand, a trick or a play — the adapter behind those
   ports is an unconditional `@Repository` and is created either way, so what the flag withholds is
   every caller of it rather than the capability itself — which is what makes C1's containment claim
