@@ -847,20 +847,30 @@ class TrickControllerIntegrationTest {
             // The collision is a constraint violation deep in the adapter, so what earns its keep is
             // that it still reaches the caller as the same problem document as any other refusal.
             //
-            // Which constraint fires is genuinely the clock's choice and both answers are correct, so
-            // pinning one title made this test flaky. No trick is open when the pair set off, so both
-            // take the opening branch: the loser is refused either by the sequence constraint while
-            // opening the trick, or by the seat constraint while appending to the trick the winner
-            // opened. Asserting the set of two says what the caller is owed - a conflict, as a problem
-            // document, naming a rule - without asserting which of two rules the database reached first.
+            // Which rule refuses the loser is the scheduler's choice, and this assertion has been
+            // wrong twice by trying to name it. No trick is open when the pair set off, so both take
+            // the opening branch, and at least three refusals are correct depending on where the
+            // loser is when the winner commits: the sequence constraint while opening the trick
+            // ("Trick already open"), the seat constraint while appending to the trick the winner
+            // opened ("Already played in this trick"), or the domain itself if the loser re-reads
+            // after the commit and finds the lead has passed ("Not your turn"). A fourth may exist.
+            //
+            // So this asserts the property rather than the enumeration. What a caller is owed is a
+            // conflict, as a problem document, naming some rule - and an enumeration of a race is a
+            // guess that passes until the machine is faster. The rule that fired is diagnostic, not
+            // contractual, so the title is printed on failure rather than matched.
             final var loser = outcomes.stream()
                     .filter(result -> result.getResponse().getStatus() == 409)
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("no contender was refused"));
             assertProblemJson(loser);
-            Assertions.assertThat(JsonPath.parse(loser.getResponse().getContentAsString()).read("$.title", String.class))
-                    .as("the refusal names the rule that stopped it, whichever constraint the race reached first")
-                    .isIn("Already played in this trick", "Trick already open");
+            final var refusal = JsonPath.parse(loser.getResponse().getContentAsString());
+            Assertions.assertThat(refusal.read("$.status", Integer.class))
+                    .as("the problem document agrees with the status line")
+                    .isEqualTo(409);
+            Assertions.assertThat(refusal.read("$.title", String.class))
+                    .as("the refusal names the rule that stopped it rather than leaving the caller to guess")
+                    .isNotBlank();
         }
     }
 

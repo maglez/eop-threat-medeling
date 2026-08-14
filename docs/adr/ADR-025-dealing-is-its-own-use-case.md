@@ -154,6 +154,16 @@ silent. Slice D owns the event names in the contract; Slice E owns passing `Sess
 these three use cases and publishing on each write, which is one constructor parameter and one call per
 class.
 
+**2026-08-14, EOP-14 Slice D.** The first half of that handoff is discharged. Slice D published the
+contract for the four trick-play routes and, with it, the three names: `hand-dealt`, `card-played` and
+`trick-resolved` are now constants on `SessionEventType` and members of the `SessionEvent.type` enum in
+`docs/api/openapi.yml`, marked **reserved** there because nothing emits them yet. A test reads the
+contract as text and asserts every constant's wire name appears in it, so the enum and the published
+contract cannot drift apart. The reasoning above is why they were minted in Slice D and not here: a
+wire name belongs to the slice that is allowed to publish one. What remains is Slice E's half — passing
+the publisher into the use cases and calling it on each write — so the stream is still silent for a
+whole trick, and a client still learns of a deal, a play or a resolution only by re-reading.
+
 What makes this worth a numbered decision rather than a handoff note is that **nothing in the
 repository fails while it is missing.** There is no test that a deal publishes, because a publisher that
 is not a collaborator cannot be asserted on; the flag being false hides the gap rather than reporting

@@ -44,7 +44,7 @@ could not see them. It needed **no new port method** — `HandRepository.findByS
 Containment is still the feature flag, and the flag now withholds more than it did: four use-case
 beans *and* the controller exist only while `eop.features.trick-play` is `true`, and
 `application.yml` leaves it `false`
-([`application.yml:76-90`](../../src/main/resources/application.yml)). It stays `false` on merge —
+([`application.yml:76-91`](../../src/main/resources/application.yml)). It stays `false` on merge —
 `TrickDto` deliberately publishes no turn, completeness or next-leader field, so no client can yet
 learn whose turn it is. See ADR-013 for the register entry and ADR-027 for why `/hand` is singular.
 
@@ -291,7 +291,7 @@ restating now, because Slice D changed it again in the one way that matters:
 - **Five beans do not exist unless a flag says so:** the four use cases and now the controller.
   `UseCaseConfiguration` declares the use cases behind
   `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")`
-  (`UseCaseConfiguration.java:195-270`), `TrickController` carries the same condition with the same
+  (`UseCaseConfiguration.java:196-260`), `TrickController` carries the same condition with the same
   `havingValue`, and `application.yml` sets the flag `false`. Containment is a flag rather than an
   absent caller, which is a stronger guarantee under test and a weaker one under operator error — a
   flag can be flipped, an absent class cannot. `TrickPlayDisabledIntegrationTest` therefore asserts
@@ -659,14 +659,17 @@ about how the measurements were taken and nothing any longer about reachability.
 
 What contains those gaps today **is** a feature flag, and naming it precisely matters as much as
 naming its absence did. `HandRepository` and `TrickRepository` now have callers:
-`DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`, added by EOP-14 Slice C2. There is
-still no path from an HTTP request to a trick-play row, because no controller injects any of the
-three and no route exists — that is Slice D's — but containment by absence of a caller is over, and
-what replaces it is `eop.features.trick-play`. `application.yml` now declares **two** flags, not one:
-`features.session-lifecycle` and `features.trick-play`, both `false`
-(`application.yml:75-86`), and the three use-case beans carry
+`DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`, added by EOP-14 Slice C2, and
+`ReadOwnHandUseCase`, added by Slice D. There **is** now a path from an HTTP request to a trick-play
+row: `TrickController` injects all four and publishes four routes. An earlier version of this
+paragraph said no controller injected any of them and no route existed, and called that Slice D's
+work; Slice D did it, so containment by absence of a caller is over twice over — once because the
+callers exist and once because the caller of the callers does. What replaces it is
+`eop.features.trick-play`. `application.yml` declares **two** flags, both `false`
+(`application.yml:75-91`), and the four use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
-`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:195-248`). With the flag
+`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:196-260`), as does
+`TrickController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
 code can call them.
 
