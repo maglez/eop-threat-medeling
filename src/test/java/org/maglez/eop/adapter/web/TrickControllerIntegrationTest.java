@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,6 +61,8 @@ class TrickControllerIntegrationTest {
     private static final String PROBLEM_JSON = "application/problem+json";
 
     private static final String TAMPERING = "TAMPERING";
+
+    private static final String TRUMP = "ELEVATION_OF_PRIVILEGE";
 
     private static final int PLAYERS = 3;
 
@@ -425,6 +429,28 @@ class TrickControllerIntegrationTest {
         }
 
         @Test
+        @DisplayName("accepts a play that says outright it is not threat linked")
+        void shouldAcceptAnExplicitlyUnlinkedPlay() throws Exception {
+            final var table = dealtTable();
+            final var leader = table.seats().get(leaderSeatOf(table));
+            final var card = handOf(table.sessionId(), leader).get(0);
+
+            final var played = playCard(table.sessionId(), leader.playerToken(),
+                    "{\"cardId\":\"%s\",\"threatLinked\":false}".formatted(card.cardId()));
+
+            // Sending false and omitting the field are different requests that must reach the
+            // same outcome. The flag is boxed so an absent value can be told from a false one
+            // inside the request record, and this is the arm that proves the two then converge.
+            Assertions.assertThat(played.getResponse().getStatus())
+                    .as("saying no threat was linked is as ordinary as not saying anything")
+                    .isEqualTo(201);
+            Assertions.assertThat(JsonPath.parse(played.getResponse().getContentAsString())
+                            .read("$.plays[0].threatLinked", Boolean.class))
+                    .as("an explicit false survives the boundary as false")
+                    .isFalse();
+        }
+
+        @Test
         @DisplayName("refuses a null inside the component list rather than passing it inward")
         void shouldRefuseANullComponent() throws Exception {
             final var table = dealtTable();
@@ -547,7 +573,7 @@ class TrickControllerIntegrationTest {
         @DisplayName("names the winning seat once every seat has played")
         void shouldNameTheWinningSeat() throws Exception {
             final var table = dealtTable();
-            playWholeTrick(table);
+            final var plays = playWholeTrick(table);
 
             final var resolved = resolve(table.sessionId(), table.facilitator().playerToken());
 
@@ -557,8 +583,8 @@ class TrickControllerIntegrationTest {
                     .as("a trick holds one card from each seat still holding cards")
                     .hasSize(PLAYERS);
             Assertions.assertThat((Integer) document.read("$.winningSeat"))
-                    .as("the winning seat appears only once the trick is resolved")
-                    .isBetween(0, PLAYERS - 1);
+                    .as("the highest card of the led suit takes the trick unless a trump was played: %s", plays)
+                    .isEqualTo(expectedWinner(plays));
         }
 
         @Test
@@ -693,23 +719,57 @@ class TrickControllerIntegrationTest {
      * <p>Each seat follows suit when it can, which is what a client with only its own hand would do. The first seat is
      * the leader, and the rest go clockwise from there.</p>
      *
+     * <p>The cards played are returned so a caller can work out for itself which seat ought to take the trick. A test
+     * that only knew the trick was complete could assert no more than that the winning seat is a seat, which an
+     * implementation naming the same seat every time would satisfy.</p>
+     *
      * @param table a dealt table
+     * @return what each seat played, keyed by seat order, in the order the cards were played
      * @throws Exception if any play is refused
      */
-    private void playWholeTrick(final Table table) throws Exception {
+    private Map<Integer, CardView> playWholeTrick(final Table table) throws Exception {
         final var leaderSeat = leaderSeatOf(table);
+        final Map<Integer, CardView> played = new LinkedHashMap<>();
         String ledSuit = null;
 
         for (var offset = 0; offset < PLAYERS; offset++) {
             final var player = table.seats().get((leaderSeat + offset) % PLAYERS);
             final var card = choose(handOf(table.sessionId(), player), ledSuit);
-            final var played = playCard(table.sessionId(), player.playerToken(), playRequest(card.cardId()));
+            final var accepted = playCard(table.sessionId(), player.playerToken(), playRequest(card.cardId()));
 
-            Assertions.assertThat(played.getResponse().getStatus())
+            Assertions.assertThat(accepted.getResponse().getStatus())
                     .as("seat %d plays %s", player.seatOrder(), card.cardId())
                     .isEqualTo(201);
-            ledSuit = card.suit();
+            played.put(player.seatOrder(), card);
+
+            if (ledSuit == null) {
+                ledSuit = card.suit();
+            }
         }
+
+        return played;
+    }
+
+    /**
+     * Works out which seat ought to take a completed trick, from the cards that were played.
+     *
+     * <p>This repeats the rule rather than asking the server: the highest Elevation of Privilege beats everything, and
+     * with no trump in the trick the highest card of the led suit wins. Ties cannot arise because no card is dealt
+     * twice. Deriving the answer independently is the whole value of the assertion.</p>
+     *
+     * @param plays  what each seat played, keyed by seat order, the first entry being the lead
+     * @return the seat that takes the trick
+     */
+    private static int expectedWinner(final Map<Integer, CardView> plays) {
+        final var ledSuit = plays.values().iterator().next().suit();
+        final var trumped = plays.entrySet().stream().anyMatch(play -> TRUMP.equals(play.getValue().suit()));
+        final var contending = trumped ? TRUMP : ledSuit;
+
+        return plays.entrySet().stream()
+                .filter(play -> contending.equals(play.getValue().suit()))
+                .max(Comparator.comparingInt(play -> play.getValue().rankValue()))
+                .orElseThrow(() -> new AssertionError("no card of the contending suit was played"))
+                .getKey();
     }
 
     /**
