@@ -21,6 +21,7 @@ import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.Hand;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NotYourSeatException;
@@ -375,20 +376,23 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
             final UUID sessionId,
             final Trick resolved,
             final int expectedLeaderSeat,
-            final int nextLeaderSeat,
+            final OptionalInt nextLeaderSeat,
             final Instant occurredAt) {
         Objects.requireNonNull(sessionId, SESSION_ID_REQUIRED);
         Objects.requireNonNull(resolved, "resolved is required");
+        Objects.requireNonNull(nextLeaderSeat, "nextLeaderSeat is required");
         Objects.requireNonNull(occurredAt, OCCURRED_AT_REQUIRED);
         final TrickPlay winner = resolved.winner()
                 .orElseThrow(() -> new IllegalStateException("Trick " + resolved.trickId() + " is not resolved"));
 
-        final int advanced = sessionRows.advanceLeaderSeat(
-                sessionId,
-                expectedLeaderSeat,
-                seatToWrite(nextLeaderSeat, "nextLeaderSeat"),
-                PLAYABLE,
-                at(occurredAt));
+        // An empty next leader is written as null rather than as some substitute seat: after the
+        // last trick of a hand there is no seat that can lead, and a number in the column would
+        // say there is. seatToWrite is only consulted for a seat that reaches the column.
+        final Integer seatToLead = nextLeaderSeat.isPresent()
+                ? seatToWrite(nextLeaderSeat.getAsInt(), "nextLeaderSeat")
+                : null;
+        final int advanced =
+                sessionRows.advanceLeaderSeat(sessionId, expectedLeaderSeat, seatToLead, PLAYABLE, at(occurredAt));
         if (advanced == 0) {
             throw sessionMoved(sessionId, expectedLeaderSeat);
         }
@@ -604,7 +608,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * read is safe here in a way it would not be after a constraint violation: no
      * exception has been raised, so the transaction is still usable.
      *
-     * <p>All five answers are refusals a caller can earn, including the one that says no
+     * <p>All six answers are refusals a caller can earn, including the one that says no
      * hands have been dealt. It is tempting to read that branch as unreachable — the leader
      * seat is only ever read from {@link #findCurrentLeaderSeat(UUID)}, which answers empty
      * until the deal claims it, so a caller with a witness must have got it from a dealt
@@ -619,6 +623,17 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * vocabulary gap rather than a policy error: {@link HandAlreadyDealtException} named one
      * state of {@code current_leader_seat} and nothing named the other, so the other had to
      * borrow a type that could not describe it.
+     *
+     * <p>EOP-14 Slice E split that branch in two for the same reason. A null leader seat now
+     * means either that no hand has been dealt or that a hand has been dealt and played out,
+     * and only the hand rows tell them apart, so one more read buys
+     * {@link HandCompleteException} for the second. Nothing reaches it today: for the last
+     * trick to have been resolvable every seat that still held a card had already played, so
+     * no play can be in flight behind it. It is here because the alternative is a branch that
+     * tells a caller its cards have not been dealt when they were dealt and finished, and an
+     * unreachable branch answering a lie is worth less than an unreachable branch answering
+     * the truth. Should the deal-once gate ever be reopened, this is the branch that already
+     * knows the difference.
      *
      * @param sessionId          the session the update named
      * @param expectedLeaderSeat the leader seat the caller observed, or {@code null}
@@ -639,7 +654,9 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
             return new HandAlreadyDealtException(sessionId);
         }
         if (leaderSeat == null) {
-            return new HandNotDealtException(sessionId);
+            return handRows.existsByGameSessionId(sessionId)
+                    ? new HandCompleteException(sessionId)
+                    : new HandNotDealtException(sessionId);
         }
         return new OutOfTurnException(leaderSeat, expectedLeaderSeat);
     }

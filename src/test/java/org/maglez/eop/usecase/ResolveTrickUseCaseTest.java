@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,20 +34,25 @@ import org.maglez.eop.entity.TrickPlay;
 /**
  * Exercises the resolve path of a trick.
  *
- * <p>Three assertions in here earn their keep. The first is that a refusal records no resolution:
+ * <p>Four assertions in here earn their keep. The first is that a refusal records no resolution:
  * every one of the four refusals below is a state a seated member can reach by asking at an ordinary
  * moment, and a use case that wrote before refusing would advance the recorded leader seat for a
  * trick that had not finished, which no later request could undo.
  *
  * <p>The second is the value sent as the next leader. While any seat still holds a card the winner
- * leads next, and once no seat does, the port has no way to say "nobody" — it takes an {@code int}
- * and rejects anything outside the seat range — so the winning seat is sent as a placeholder. Both
- * branches are pinned here, because the day a later slice learns to recognise the end of a hand it
- * needs to know which of the two it is changing.
+ * leads next; once no seat does, the port is sent an empty {@link java.util.OptionalInt} rather than
+ * a seat, because naming one would have the session row assert that a seat may lead when it holds
+ * nothing to lead with. Both branches are pinned here, and so is the third shape in between, where
+ * the winner is out of cards but somebody else is not.
  *
  * <p>The third is that any member may resolve, not only the facilitator. Resolution is a mechanical
  * consequence of the last card, so a test that only ever resolved as the facilitator would let a
  * facilitator-only check be added later without anything failing.
+ *
+ * <p>The fourth is that the announcement follows the write. A subscriber told that the trick was
+ * resolved re-reads the state of play to learn who won and which seat leads next, so one told before
+ * the resolution was recorded would read the trick it already had and receive no second prompt. The
+ * shared interaction log is asserted for that ordering, and a refused resolution announces nothing.
  *
  * <p>Tricks here are built by playing into them through {@link Trick#acceptPlay}, one seat at a
  * time, against the hands as they stood before that seat played. Reconstituting a finished trick
@@ -83,6 +89,8 @@ class ResolveTrickUseCaseTest {
     private final InMemoryHandRepository handRepository = new InMemoryHandRepository(order);
 
     private final InMemoryTrickRepository trickRepository = new InMemoryTrickRepository(order);
+
+    private final RecordingSessionEventPublisher publisher = new RecordingSessionEventPublisher(order);
 
     /**
      * Seats three players at a table already in play.
@@ -191,6 +199,7 @@ class ResolveTrickUseCaseTest {
                 new ResolvePlayerUseCase(new InMemorySessionRepository(order, session)),
                 handRepository,
                 trickRepository,
+                publisher,
                 FIXED);
     }
 
@@ -207,20 +216,37 @@ class ResolveTrickUseCaseTest {
         final var resolved = useCaseFor(session)
                 .execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
-        assertThat(order).containsExactly("recordResolution");
+        assertThat(order).containsExactly("recordResolution", "publish");
         assertThat(resolved.winningSeat()).isEqualTo(WINNING_SEAT);
         assertThat(trickRepository.resolutions()).hasSize(1);
 
         final var resolution = trickRepository.resolutions().get(0);
         assertThat(resolution.trick().winningSeat()).isEqualTo(WINNING_SEAT);
         assertThat(resolution.expectedLeaderSeat()).isEqualTo(LEADER_SEAT);
-        assertThat(resolution.nextLeaderSeat()).isEqualTo(WINNING_SEAT);
+        assertThat(resolution.nextLeaderSeat()).hasValue(WINNING_SEAT);
         assertThat(resolution.occurredAt()).isEqualTo(NOW);
+
+        assertThat(publisher.published())
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.type()).isEqualTo(SessionEventType.TRICK_RESOLVED);
+                    assertThat(event.sessionId()).isEqualTo(session.sessionId());
+                    assertThat(event.occurredAt()).isEqualTo(NOW);
+                });
     }
 
+    /**
+     * The end of a hand, where the port is told that no seat leads.
+     *
+     * <p>Three cards over three seats leaves every hand empty once the trick is played, so there is
+     * no seat the lead could pass to. An empty value is sent rather than the winning seat, which is
+     * what stops the session row from asserting that a seat may lead when it holds nothing to lead
+     * with, and what makes the end of a hand a fact the database states rather than one every reader
+     * has to re-derive.
+     */
     @Test
-    @DisplayName("sends the winning seat as the next leader once no seat holds a card")
-    void shouldSendTheWinningSeatWhenNoSeatHoldsACard() {
+    @DisplayName("records no next leader once no seat holds a card")
+    void shouldRecordNoNextLeaderWhenNoSeatHoldsACard() {
         final GameSession session = seatedTable();
         final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
         final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
@@ -233,7 +259,8 @@ class ResolveTrickUseCaseTest {
         assertThat(underWay.remaining().allEmpty()).isTrue();
         assertThat(resolved.nextLeaderSeat(underWay.remaining().seatsHoldingCards())).isEmpty();
         assertThat(trickRepository.resolutions().get(0).nextLeaderSeat())
-                .isEqualTo(resolved.winningSeat());
+                .as("no seat holds a card, so no seat is named")
+                .isEmpty();
     }
 
     /**
@@ -271,8 +298,25 @@ class ResolveTrickUseCaseTest {
                 .containsExactly(LEADER_SEAT);
         assertThat(trickRepository.resolutions().get(0).nextLeaderSeat())
                 .as("the winner holds nothing, so the lead passes clockwise to seat zero")
-                .isEqualTo(LEADER_SEAT)
-                .isNotEqualTo(resolved.winningSeat());
+                .hasValue(LEADER_SEAT)
+                .isNotEqualTo(OptionalInt.of(resolved.winningSeat()));
+    }
+
+    @Test
+    @DisplayName("announces nothing when the resolution is refused")
+    void shouldAnnounceNothingWhenTheResolutionIsRefused() {
+        final GameSession session = seatedTable();
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final ResolveTrickUseCase useCase = useCaseFor(session);
+        final UUID sessionId = session.sessionId();
+
+        assertThatExceptionOfType(TrickNotCompleteException.class)
+                .isThrownBy(() -> useCase.execute(sessionId, tokenForSeat(LEADER_SEAT)));
+
+        assertThat(publisher.published()).isEmpty();
     }
 
     @Test

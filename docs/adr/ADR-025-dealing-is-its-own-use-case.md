@@ -1,6 +1,8 @@
 # ADR-025: Dealing Is Its Own Use Case, and the Deal Follows the Start Write
 
-**Status:** Accepted
+**Status:** Accepted (decided 2026-08-13; the two handoffs it deferred were both discharged
+2026-08-14 — Slice D minted the three event names, Slice E wired the publisher and deleted the
+`nextLeaderSeat` placeholder; see the dated notes under decision 8 and in Consequences)
 **Date:** 2026-08-13
 **Deciders:** @architecture-guardian, @security-auditor, @tech-lead
 
@@ -132,7 +134,7 @@ private information — the reason `Hands.toString()` names no card — and the 
 right to see the table's cards than anyone else. Each player reads their own hand through a
 per-player query in a later slice.
 
-### 8. None of the three broadcasts anything, and that is a gap whose only enforcement is this page
+### 8. None of the three broadcasts anything, and that is a gap whose only enforcement is this page — closed 2026-08-14, EOP-14 Slice E
 
 `DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase` take no `SessionEventPublisher`. Every
 state change the system had before this slice announces itself — `SessionEventType` declares
@@ -166,6 +168,20 @@ wire name belongs to the slice that is allowed to publish one. What remains is S
 the publisher into the use cases and calling it on each write — so the stream is still silent for a
 whole trick, and a client still learns of a deal, a play or a resolution only by re-reading.
 
+**2026-08-14, EOP-14 Slice E.** The second half is discharged, and the two paragraphs above are now
+history rather than description. All three use cases take a `SessionEventPublisher` as a constructor
+parameter and publish on the write: `DealHandsUseCase.java:162` emits `HAND_DEALT`,
+`PlayCardUseCase.java:229` emits `CARD_PLAYED` and `ResolveTrickUseCase.java:162` emits
+`TRICK_RESOLVED`. Read the present tense of decision 8 as "as at Slice C2"; the stream is no longer
+silent for a whole trick, and the three names are no longer **reserved** in the contract. Two
+properties of the wiring are worth recording because they were choices, not consequences. Each
+`publish` call sits **after** the port write has returned, so a broadcast can only describe a change
+that is already durable, and a publisher that throws cannot fail a request that succeeded. And the
+event carries no part of the change — no card, no seat, no trick — so a subscriber learns only that
+something moved and must re-read to find out what, which keeps the per-player confidentiality of
+ADR-027's singular `/hand` intact on a fan-out transport. Re-reading is therefore still how a client
+learns *what* happened; what it no longer has to do is poll to discover *that* something did.
+
 What makes this worth a numbered decision rather than a handoff note is that **nothing in the
 repository fails while it is missing.** There is no test that a deal publishes, because a publisher that
 is not a collaborator cannot be asserted on; the flag being false hides the gap rather than reporting
@@ -173,6 +189,13 @@ it; and a reader of the three use cases sees no absence, only a shorter construc
 read once, by the next person to pick up the story, and then never again. This paragraph is the only
 artefact that a maintainer who wonders in six months why the stream goes quiet during a trick will
 find, and that is exactly the job an ADR exists to do.
+
+**2026-08-14, EOP-14 Slice E.** That is no longer true either, and it is the best evidence that the
+gap is closed: because the publisher is now a collaborator, it can be asserted on, and
+`DealHandsUseCaseTest`, `PlayCardUseCaseTest` and `ResolveTrickUseCaseTest` each assert their own
+event. The paragraph above is kept because it is the reason this decision was written down rather
+than filed as a handoff, and because it is the argument to reach for the next time a slice is tempted
+to leave an absence that nothing can fail on.
 
 ### 9. The trick row is opened before the play is accepted, and that ordering is safe only by exhaustion
 
@@ -267,12 +290,23 @@ checked against it, row by row.
   mislead a legal move — and Slice E replaces that line together with the port signature that forces
   it. A reviewer of Slice E should expect the diff to touch both. **An earlier version of this bullet
   pinned the shortfall to `ResolveTrickUseCase.java:134`, which is the `throw` inside the
-  `WinningPlayNotInTrickException` guard at `:131-135` — an integrity check, not a placeholder. An
+  `WinningPlayNotInTrickException` guard — that guard stood at `:131-135` when this bullet was written
+  and stands at `:151-157` after Slice E, and it is an integrity check, not a placeholder. An
   implementer who had followed that citation literally would have deleted the guard. Corrected
   2026-08-13; the `.orElse` expression is quoted above so the pin cannot rot back into pointing at a
   guard.**
+  **2026-08-14, EOP-14 Slice E.** Discharged, and the diff did touch both. The `.orElse` is deleted:
+  `ResolveTrickUseCase.java:159` now reads
+  `final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);` and passes the
+  `OptionalInt` through untouched, because `TrickRepository.recordResolution`'s next-leader parameter
+  widened from `int` to `OptionalInt` (`TrickRepository.java:163-164`). A played-out hand now records
+  `current_leader_seat = NULL`, which needed no schema change — changeset `005`'s CHECK already
+  permitted null. The third state that column now carries is recorded in ADR-020 and the decision not
+  to release or score on it in ADR-028.
 - Nothing in the system announces a deal, a play or a resolution. See decision 8: the stream is silent
   for the whole of a trick, and the only closing date is Slice E's.
+  **2026-08-14, EOP-14 Slice E.** Closed. All three announce, after the write returns; see the dated
+  note under decision 8 for the two properties of the wiring that were choices.
 
 ## Alternatives considered
 
@@ -331,7 +365,9 @@ is its own use case.
 - **ADR-014** — Server-Sent Events as the real-time transport. None of these three use cases takes a
   `SessionEventPublisher`, so none of them broadcasts, and the stream says nothing for the whole of a
   trick; decision 8 records why and who closes it. The same publisher being non-transactional is what
-  rules out the outer-ring composer under Alternatives considered.
+  rules out the outer-ring composer under Alternatives considered. *(**2026-08-14, EOP-14 Slice E.**
+  All three now take one and all three broadcast; the non-transactional argument is unchanged and is
+  why each `publish` sits after the write.)*
 - **ADR-004** — contract-first. The wire names for a deal, a play and a resolution belong in
   `docs/api/openapi.yml`, which is why this slice mints no `SessionEventType` constant.
 - **ADR-018** — UUIDv7 identifiers minted above the persistence layer, which is why the deal mints a

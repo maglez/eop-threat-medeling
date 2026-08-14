@@ -4,25 +4,31 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-14 Slice D** (the trick-play HTTP
-routes), on top of Slice C2's use-case layer, Slice C1's persistence layer (Liquibase changeset
-`005`), Slice B's trick-play schema (changeset `004`) and the client-address resolution from EOP-26
-(ADR-021). Sequences 1 to 3 are the EOP-10 session lifecycle and **Slice D alters none of them.**
-Sequences 4, 5 and 6 are dealing, playing and resolving.
+Everything here reflects the code as it stands after **EOP-14 Slice E** (end of hand, the
+state-of-play read and the three broadcasts), on top of Slice D's trick-play HTTP routes, Slice C2's
+use-case layer, Slice C1's persistence layer (Liquibase changeset `005`), Slice B's trick-play schema
+(changeset `004`) and the client-address resolution from EOP-26 (ADR-021). Sequences 1 to 3 are the
+EOP-10 session lifecycle and **neither Slice D nor Slice E alters them.**
+Sequences 4, 5 and 6 are dealing, playing and resolving. Slice E changes all three: each now ends in
+an SSE broadcast, and sequence 6 records the end of a hand instead of writing a placeholder.
 
 **They now begin at a caller that exists.** Three earlier versions of this paragraph said the
 opposite — that Slice C2 added no route, no controller method and no DTO, and that the first
 participant of each new sequence was drawn as a caller a later slice would supply. Slice D supplies
-it: `TrickController` maps `POST /api/v1/sessions/{sessionId}/deal`,
-`GET /api/v1/sessions/{sessionId}/hand`, `POST /api/v1/sessions/{sessionId}/plays` and
+it, and Slice E adds a fifth route: `TrickController` maps
+`POST /api/v1/sessions/{sessionId}/deal`,
+`GET /api/v1/sessions/{sessionId}/hand`, `POST /api/v1/sessions/{sessionId}/plays`,
+`GET /api/v1/sessions/{sessionId}/tricks/current` and
 `POST /api/v1/sessions/{sessionId}/tricks/current/resolve`, each returning a transport record rather
-than a domain object. The controller and all four use-case beans exist only while
+than a domain object. The controller and all five use-case beans exist only while
 `eop.features.trick-play` is `true`, which `application.yml` still leaves `false`, so the routes
 answer 404 as shipped — but that is now a flag position rather than an absence of code, and the
-distinction matters because it is testable in both directions. The refusals were always real:
+distinction matters because it is testable in both directions. It stays `false` after Slice E for
+reasons that are not about gameplay, recorded in
+[ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md). The refusals were always real:
 `GlobalExceptionHandler` maps every exception drawn below, including
-`NoTrickToResolveException` at `GlobalExceptionHandler.java:452` and `TrickNotCompleteException` at
-`:486`, both 409.
+`NoTrickToResolveException` at `GlobalExceptionHandler.java:484` and `TrickNotCompleteException` at
+`:518`, both 409, joined in Slice E by `HandCompleteException` at `:449`, also 409.
 
 There is deliberately **no seventh sequence for `GET /api/v1/sessions/{sessionId}/hand`.** A
 sequence diagram earns its place when the order of interactions is the thing worth pinning, and
@@ -42,17 +48,19 @@ violation. **Slice C2 discharges that on the play path by construction rather th
 Slice D preserves it across the HTTP boundary.**
 `PlayCardCommand` has no seat component and no player component at all
 (`PlayCardCommand.java:35-41`, argued at `:10-17`), so `PlayCardUseCase` derives the acting seat
-from the resolved player (`PlayCardUseCase.java:139-141`): a caller cannot name a seat it does not
+from the resolved player (`PlayCardUseCase.java:165-167`): a caller cannot name a seat it does not
 hold, which makes the 403 with `NotYourSeatException` inexpressible from the outside rather than
 merely refused. `PlayCardRequest` — the request record Slice D adds — carries no seat, player, suit
 or rank either, so the property survives the one change that could have quietly undone it, and a
 test posts a body naming all four for an impostor and asserts the published play still carries the
 token's seat and the deck's suit. A caller outside the session is refused with
-`PlayerNotInSessionException` (`PlayCardUseCase.java:147-149`), a 404 chosen so the status does not
+`PlayerNotInSessionException` (`PlayCardUseCase.java:173-175`), a 404 chosen so the status does not
 itself disclose that the session exists. If a future slice adds or alters an interaction, this
 paragraph is the first thing to correct — one version of it claimed EOP-10 two stories after that
 stopped being the whole truth, the version before last claimed Slice C1 one slice after the same
-thing, and the last one claimed the caller did not exist for a whole slice after Slice D built it.
+thing, the one before this claimed the caller did not exist for a whole slice after Slice D built it,
+and Slice E shipped a controller with a fifth route and three broadcasts while this whole file still
+described four routes and total silence.
 
 Where a sequence has a weakness, the prose says so rather than leaving the diagram to imply
 everything is fine.
@@ -416,13 +424,14 @@ sequenceDiagram
     participant IDG as IdentifierGenerator
     participant TPRA as TrickPlayRepositoryAdapter
     participant DB as PostgreSQL
+    participant EV as SessionEventPublisher
 
-    Note over CL,DB: Precondition: the session is already IN_PROGRESS.<br/>Sequence 3 put it there, in an earlier request and<br/>an earlier transaction (ADR-025).
+    Note over CL,EV: Precondition: the session is already IN_PROGRESS.<br/>Sequence 3 put it there, in an earlier request and<br/>an earlier transaction (ADR-025).
 
     CL->>DH: execute(sessionId, playerToken)
 
     DH->>RP: execute(sessionId, playerToken)
-    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:120. Nothing is<br/>read, shuffled or written before it.
+    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:133. Nothing is<br/>read, shuffled or written before it.
     RP-->>DH: ResolvedPlayer, or 404 SessionNotFoundException<br/>or 403 PlayerNotRecognisedException
 
     alt not the facilitator
@@ -455,6 +464,8 @@ sequenceDiagram
                 TPRA->>DB: INSERT hand, then one INSERT per card held
             end
             TPRA-->>DH: void
+            DH->>EV: publish(HAND_DEALT, sessionId, now)
+            Note over DH,EV: EOP-14 Slice E, DealHandsUseCase.java:162.<br/>After the write returns, so the broadcast can only<br/>describe a durable deal. Carries no card and no seat:<br/>a subscriber learns *that* hands exist and re-reads<br/>sequence 1 or GET /hand to learn what it holds (ADR-027).
             DH-->>CL: nothing — the deal returns void
         end
     end
@@ -487,9 +498,17 @@ every card in canonical order (suit, then ascending rank); randomising is the us
 job. A paginated deal would be one forgotten loop away from a truncated deck, and a
 canonical order means a test can pin a deal by pinning the shuffler.
 
-**Nothing is broadcast.** `DealHandsUseCase` takes no `SessionEventPublisher`. A client
-learns that hands exist by re-reading — sequence 1 — and wiring the SSE notification is
-Slice E's work, recorded as decision 8 of ADR-025.
+**The deal is broadcast, after it is durable.** `DealHandsUseCase` takes a
+`SessionEventPublisher` and publishes `HAND_DEALT` at `DealHandsUseCase.java:162`, on the
+line after `recordDeal` returns. The ordering is the decision: a broadcast that preceded
+the write could announce a deal that then rolled back, and a publisher that threw could
+fail a request whose write had already succeeded. What the event does *not* carry is any
+part of the deal — no seat, no card, no count — so a subscriber still re-reads to learn
+what it holds, which is what keeps a per-player hand off a fan-out transport
+([ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md)). Slice D minted the name in the
+contract; Slice E published it, closing the first half of decision 8 of
+[ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md), which is amended in place to say
+so.
 
 ---
 
@@ -509,18 +528,21 @@ sequenceDiagram
     participant CRA as CardRepositoryAdapter
     participant TPRA as TrickPlayRepositoryAdapter
     participant DB as PostgreSQL
+    participant EV as SessionEventPublisher
 
     CL->>PC: execute(PlayCardCommand)
     Note over CL,PC: The command carries sessionId, token, cardId,<br/>threatLinked, components and notes.<br/>No seat, no playerId, no suit, no rank.
 
     PC->>RP: execute(sessionId, playerToken)
     RP-->>PC: ResolvedPlayer, or 404 / 403
-    Note over PC: The acting seat and player id are taken from the<br/>resolved player and from nowhere else<br/>(PlayCardUseCase.java:139-141).
+    Note over PC: The acting seat and player id are taken from the<br/>resolved player and from nowhere else<br/>(PlayCardUseCase.java:165-167).
 
     PC->>TPRA: findBySessionId(sessionId)
     TPRA->>DB: SELECT hand and hand_card for the session
     TPRA-->>PC: Hands, or empty which is 409 HandNotDealtException
-    Note over PC: A resolved player holding no seat in those hands<br/>is 404 PlayerNotInSessionException — the status<br/>does not confirm the session exists.
+    Note over PC: A resolved player holding no seat in those hands<br/>is 404 PlayerNotInSessionException — the status<br/>does not confirm the session exists<br/>(PlayCardUseCase.java:173-175).
+    PC->>PC: hands.allEmpty() → 409 HandCompleteException
+    Note over PC: EOP-14 Slice E, PlayCardUseCase.java:176-177.<br/>Asked before the card is even looked up, so a play<br/>into a played-out hand is told the hand is over<br/>rather than that its card is not in it.
 
     PC->>CRA: findById(cardId)
     CRA->>DB: SELECT from card WHERE id = ?
@@ -556,6 +578,9 @@ sequenceDiagram
     TPRA->>DB: INSERT trick_play, then one row per named component
     end
 
+    PC->>EV: publish(CARD_PLAYED, sessionId, now)
+    Note over PC,EV: EOP-14 Slice E, PlayCardUseCase.java:229.<br/>After the writes, and carrying no card, no seat and<br/>no trick — a subscriber is told a play happened and<br/>re-reads GET /tricks/current to learn what it was.
+
     PC-->>CL: the updated Trick
     Note over PC,CL: A complete trick is NOT resolved here.<br/>Resolution is sequence 6, a separate request.
 ```
@@ -567,8 +592,12 @@ already refuse a card the seat does not hold and a play out of turn; checking fi
 changes nothing about what is *permitted*. What it changes is what is *left behind*.
 Without the turn-order guard, an out-of-turn opening play would commit a trick row and
 only then be refused, leaving an open trick nobody may play into. Without
-`hand.resolve(card)`, an end-of-hand play would surface as an `IllegalStateException` and
-a 500 instead of a 422.
+`hand.resolve(card)`, a play of a card the seat does not hold would surface as an
+`IllegalStateException` and a 500 instead of a 422. Slice E added a third guard above the
+rect, `hands.allEmpty()` at `PlayCardUseCase.java:176-177`, for the same reason one step
+earlier: a play into a hand that has been played out now answers 409 `HandCompleteException`
+rather than reporting that some particular card is not held, which was the only answer
+available before the end of a hand had a name.
 
 **The leader seat always comes from the read, never from the caller.** It is the
 compare-and-set witness of ADR-020: `openTrick`, `appendPlay` and `recordResolution` all
@@ -589,9 +618,17 @@ constructor reopens
 the window**, which is why ADR-025 records the reasoning rather than only the conclusion — as a
 table, row by row against the method, in its decision 9.
 
-**Nothing is broadcast here either.** No `SessionEventPublisher` reaches this use case, so
-the other players at the table learn of a play by re-reading. That is the second half of
-what Slice E owes.
+**The play is broadcast, after the writes.** `PlayCardUseCase` takes a
+`SessionEventPublisher` and publishes `CARD_PLAYED` at `PlayCardUseCase.java:229`, once
+`appendPlay` has returned. The event names the session and nothing else: not the card,
+not the seat, not the trick. That is what makes it safe on a fan-out transport where
+every subscriber of a session receives every event — the other players learn *that* the
+table moved and re-read `GET /tricks/current` to learn whose turn it now is, and a
+per-player hand never crosses the stream ([ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md)).
+This closes the second half of decision 8 of
+[ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md), amended in place to say so.
+Delivery is not ordered and not guaranteed, so a client that missed an event is in
+exactly the position it was in before Slice E: it re-reads.
 
 ---
 
@@ -605,12 +642,13 @@ sequenceDiagram
     participant RP as ResolvePlayerUseCase
     participant TPRA as TrickPlayRepositoryAdapter
     participant DB as PostgreSQL
+    participant EV as SessionEventPublisher
 
     CL->>RT: execute(sessionId, playerToken)
 
     RT->>RP: execute(sessionId, playerToken)
     RP-->>RT: ResolvedPlayer, or 404 / 403
-    Note over RT,RP: Membership only — the resolved player is not<br/>otherwise used. Any member may resolve, because<br/>resolution is arithmetic and gating it on the<br/>facilitator would stall a table whose<br/>facilitator dropped.
+    Note over RT,RP: Membership only — the resolved player is not<br/>otherwise used (ResolveTrickUseCase.java:133).<br/>Any member may resolve, because resolution is<br/>arithmetic and gating it on the facilitator<br/>would stall a table whose facilitator dropped.
 
     RT->>TPRA: findBySessionId(sessionId)
     TPRA-->>RT: Hands, or empty which is 409 HandNotDealtException
@@ -623,12 +661,16 @@ sequenceDiagram
         RT-->>CL: 409 TrickNotCompleteException — names the seat still to play
     else complete
         RT->>RT: trick.resolved() — highest card of the led suit takes it
-        RT->>RT: nextLeaderSeat = next seat holding cards, else the winning seat
-        Note over RT: The nextLeaderSeat assignment —<br/>resolved.nextLeaderSeat(seatsHoldingCards).orElse(resolved.winningSeat())<br/>ResolveTrickUseCase.java:137 today; find it by the expression, not the number.<br/>The port takes an int and<br/>has no value for "nobody left to lead", so at end of<br/>hand the winning seat is written as a placeholder.<br/>This is the single line Slice E replaces.
+        RT->>RT: the winning play must be one of this trick's plays,<br/>or 422 WinningPlayNotInTrickException (ResolveTrickUseCase.java:151-157)
+        RT->>RT: nextLeaderSeat = OptionalInt — the next seat still holding<br/>cards, or empty when the hand is played out
+        Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:159:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
         RT->>TPRA: recordResolution(sessionId, resolved, leaderSeat, nextLeaderSeat, now)
-        TPRA->>DB: UPDATE game_session SET current_leader_seat = next<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
+        TPRA->>DB: UPDATE game_session SET current_leader_seat = next, or NULL<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
+        Note over TPRA,DB: NULL is the end of the hand, recorded rather than<br/>released or scored: the status stays IN_PROGRESS and<br/>no score is written (ADR-028). Changeset 005's CHECK<br/>already permitted NULL, so no migration was needed.
         TPRA->>DB: UPDATE trick SET winner_play_id = ?<br/>WHERE id = ? AND winner_play_id IS NULL
         Note over TPRA,DB: 0 rows on the second UPDATE is a replay, not a fault:<br/>when the leader also won, the first UPDATE is<br/>idempotent and lets a repeat through. Answered 409.
+        RT->>EV: publish(TRICK_RESOLVED, sessionId, now)
+        Note over RT,EV: EOP-14 Slice E, ResolveTrickUseCase.java:162.<br/>After the write returns, and naming no winner and no<br/>seat — a subscriber re-reads GET /tricks/current, which<br/>is also where it learns that the hand is complete.
         RT-->>CL: the resolved Trick
     end
 ```
@@ -647,11 +689,30 @@ second request. A seat ordinal is not a secret — the state DTO already lists e
 to every member — and the refusal is only reachable by a caller already resolved as a
 member of that session (ADR-005 for the problem-detail shape).
 
-**End of hand is not recognised here, and the placeholder is visible in the diagram.**
-When no seat holds a card, `nextLeaderSeat` falls back to the winning seat because
-`recordResolution` takes an `int` and the schema has no "no leader" value. It is harmless
-today — nobody can play, so nothing consults the column — but it is a placeholder rather
-than a meaning, and Slice E owns replacing it along with the end-of-hand transition.
+**End of hand is recognised here, and the placeholder is gone.** When no seat holds a
+card, `Trick.nextLeaderSeat(seatsHoldingCards)` returns an empty `OptionalInt` and
+`ResolveTrickUseCase.java:159` passes it straight through, because
+`TrickRepository.recordResolution`'s next-leader parameter widened from `int` to
+`OptionalInt` (`TrickRepository.java:163-164`). `advanceLeaderSeat` then writes
+`current_leader_seat = NULL`. No migration was needed: changeset `005`'s CHECK already
+permitted null. Before Slice E the same situation wrote the winning seat as a stand-in,
+which was harmless only because nobody could play — it was a placeholder rather than a
+meaning, and [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md)'s consequences
+pinned it to that one line, now amended in place to record its deletion.
+
+**What that NULL costs, and what it does not buy.** The column now carries two meanings —
+"not yet dealt" and "played out, nobody leads" — so it is no longer the whole deal-once
+gate on its own; a second deal into a played-out session is refused one statement later by
+`uq_hand_session_seat`, as the same 409, and
+[ADR-020](../adr/ADR-020-session-concurrency-control.md) is amended with both that
+narrowing and the sixth answer `sessionMoved` gained to tell the two null states apart.
+What the NULL does *not* do is finish the game: the session status stays `IN_PROGRESS`,
+nothing is scored, and a client learns the hand is over from `handComplete` on
+`GET .../tricks/current` — `GetTrickStateUseCase.java:114`, computed from
+`Hands.allEmpty()` — or from a 409 `HandCompleteException` if it tries to play anyway.
+Releasing and scoring belong to EOP-15;
+[ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) records that choice and
+names EOP-15 as one of the three predecessors of turning the flag on.
 
 ---
 
@@ -667,4 +728,6 @@ than a meaning, and Slice E owns replacing it along with the end-of-hand transit
 - [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) — the remainder rule, turn order, and what the schema deliberately does not enforce
 - [ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) — the trick-play ports, and why authorisation is the use case's job
 - [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) — why dealing is its own use case, and the started-but-undealt window
+- [ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md) — why a hand is read per player, which is why no broadcast above carries one
+- [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
 - [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all five routes

@@ -2,6 +2,7 @@ package org.maglez.eop.usecase;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 import org.maglez.eop.entity.AlreadyPlayedInTrickException;
 import org.maglez.eop.entity.CardAlreadyPlayedException;
@@ -134,10 +135,19 @@ public interface TrickRepository {
      * deriving it needs the seats that still hold cards — a session-wide fact this port
      * has no business computing, and one the domain already answers.
      *
+     * <p>It is an {@link OptionalInt} because the last trick of a hand has no next leader.
+     * Every seat is out of cards by then, so there is no seat that could lead and no seat
+     * that could be named without saying something false. EOP-14 Slice D sent the winning
+     * seat in that case, which was harmless only because nobody could play; the type now
+     * carries the distinction rather than relying on that. An empty value means no seat
+     * leads, and the implementation is expected to record the absence rather than a
+     * substitute.
+     *
      * @param sessionId the session the trick belongs to
      * @param resolved the trick, carrying its winning play
      * @param expectedLeaderSeat the leader seat the caller's snapshot showed
-     * @param nextLeaderSeat the seat that leads the next trick
+     * @param nextLeaderSeat the seat that leads the next trick, or empty when the hand is
+     *     played out and no seat leads
      * @param occurredAt the instant recorded as the session's last update
      * @throws SessionNotFoundException if the session no longer exists
      * @throws SessionNotJoinableException if the session is no longer in play
@@ -151,5 +161,5 @@ public interface TrickRepository {
      *     {@code winner_play_id IS NULL} predicate is what refuses it. See ADR-020
      */
     void recordResolution(
-            UUID sessionId, Trick resolved, int expectedLeaderSeat, int nextLeaderSeat, Instant occurredAt);
+            UUID sessionId, Trick resolved, int expectedLeaderSeat, OptionalInt nextLeaderSeat, Instant occurredAt);
 }

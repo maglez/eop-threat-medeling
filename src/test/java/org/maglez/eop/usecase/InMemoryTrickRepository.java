@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 
 import org.maglez.eop.entity.Trick;
@@ -33,10 +34,10 @@ final class InMemoryTrickRepository implements TrickRepository {
      *
      * @param trick the resolved trick, as the domain returned it
      * @param expectedLeaderSeat the compare-and-set witness the use case passed
-     * @param nextLeaderSeat the seat the use case said should lead next
+     * @param nextLeaderSeat the seat the use case said should lead next, or empty when it said none does
      * @param occurredAt the instant the use case supplied
      */
-    record Resolution(Trick trick, int expectedLeaderSeat, int nextLeaderSeat, Instant occurredAt) {
+    record Resolution(Trick trick, int expectedLeaderSeat, OptionalInt nextLeaderSeat, Instant occurredAt) {
     }
 
     /**
@@ -111,7 +112,7 @@ final class InMemoryTrickRepository implements TrickRepository {
 
     @Override
     public void recordResolution(final UUID sessionId, final Trick resolved, final int expectedLeaderSeat,
-            final int nextLeaderSeat, final Instant occurredAt) {
+            final OptionalInt nextLeaderSeat, final Instant occurredAt) {
         order.add("recordResolution");
         resolutions.add(new Resolution(resolved, expectedLeaderSeat, nextLeaderSeat, occurredAt));
         current = resolved;

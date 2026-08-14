@@ -7,6 +7,7 @@ import org.maglez.eop.usecase.DealHandsUseCase;
 import org.maglez.eop.usecase.DeckShuffler;
 import org.maglez.eop.usecase.GetCardUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
+import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.HandRepository;
 import org.maglez.eop.usecase.IdentifierGenerator;
 import org.maglez.eop.usecase.IdentityTokenGenerator;
@@ -189,6 +190,7 @@ public class UseCaseConfiguration {
      * @param deckShuffler the port that randomises the deck before it is dealt
      * @param handRepository the port the deal is recorded through
      * @param identifierGenerator the source of the hand identifiers
+     * @param sessionEventPublisher the transport that announces the deal to connected clients
      * @param clock the clock the dealt timestamp is read from
      * @return the deal-hands use case
      */
@@ -200,9 +202,16 @@ public class UseCaseConfiguration {
             final DeckShuffler deckShuffler,
             final HandRepository handRepository,
             final IdentifierGenerator identifierGenerator,
+            final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         return new DealHandsUseCase(
-                resolvePlayerUseCase, cardRepository, deckShuffler, handRepository, identifierGenerator, clock);
+                resolvePlayerUseCase,
+                cardRepository,
+                deckShuffler,
+                handRepository,
+                identifierGenerator,
+                sessionEventPublisher,
+                clock);
     }
 
     /**
@@ -231,6 +240,7 @@ public class UseCaseConfiguration {
      * @param trickRepository the port a trick is opened and a play appended through
      * @param cardRepository the port the played card is resolved through
      * @param identifierGenerator the source of the trick and play identifiers
+     * @param sessionEventPublisher the transport that announces the play to connected clients
      * @param clock the clock the played timestamp is read from
      * @return the play-card use case
      */
@@ -242,9 +252,37 @@ public class UseCaseConfiguration {
             final TrickRepository trickRepository,
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
+            final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         return new PlayCardUseCase(
-                resolvePlayerUseCase, handRepository, trickRepository, cardRepository, identifierGenerator, clock);
+                resolvePlayerUseCase,
+                handRepository,
+                trickRepository,
+                cardRepository,
+                identifierGenerator,
+                sessionEventPublisher,
+                clock);
+    }
+
+    /**
+     * Declares the trick-state use case, behind {@code eop.features.trick-play}.
+     *
+     * <p>Reads two ports because the answer needs both: the trick in front of the players, and the
+     * hands that decide which seats still hold cards. A use case is where two aggregates are put
+     * together, so the web adapter never has to know how they relate.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param handRepository the port the hands and the current leader seat are read through
+     * @param trickRepository the port the current trick is read through
+     * @return the trick-state use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public GetTrickStateUseCase getTrickStateUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final HandRepository handRepository,
+            final TrickRepository trickRepository) {
+        return new GetTrickStateUseCase(resolvePlayerUseCase, handRepository, trickRepository);
     }
 
     /**
@@ -253,6 +291,7 @@ public class UseCaseConfiguration {
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands are read through
      * @param trickRepository the port the resolution is recorded through
+     * @param sessionEventPublisher the transport that announces the resolution to connected clients
      * @param clock the clock the resolved timestamp is read from
      * @return the resolve-trick use case
      */
@@ -262,7 +301,9 @@ public class UseCaseConfiguration {
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
             final TrickRepository trickRepository,
+            final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
-        return new ResolveTrickUseCase(resolvePlayerUseCase, handRepository, trickRepository, clock);
+        return new ResolveTrickUseCase(
+                resolvePlayerUseCase, handRepository, trickRepository, sessionEventPublisher, clock);
     }
 }

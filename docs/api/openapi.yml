@@ -1347,18 +1347,25 @@ components:
     Conflict:
       description: |
         The request is valid but the session's current state does not allow it.
-        The `title` distinguishes the cases, and there are more of them than one
-        status can imply on its own: play has already started, the table is full
-        at six players, play cannot start with fewer than three, the cards have
-        not been dealt, they have already been dealt, it is another seat's turn, a
-        trick is already open, there is no trick to resolve, the trick is not
-        complete yet, the trick is already resolved, or every card dealt has been
-        played and the hand is over.
+        The `title` distinguishes the cases, and there are thirteen of them, which
+        is more than one status can imply on its own: play has already started,
+        the table is full at six players, play cannot start with fewer than three,
+        it is another seat's turn, the cards have already been dealt, the cards
+        have not been dealt, every card dealt has been played and the hand is
+        over, there is no trick to resolve, the trick is not complete yet, a trick
+        is already open, the trick is already resolved, the seat has already
+        played into this trick, and the card has already been played into it.
 
         Each of those is a separate `title` rather than a shared one, because a
         client's next move differs: wait for another player, deal, wait your turn,
         resolve, or stop. Collapsing them would leave the client guessing which
         wait it is in.
+
+        Thirteen is the count of handlers in `GlobalExceptionHandler` that answer
+        409, each with a distinct title. It is stated because an enumeration that
+        silently omits a case is worse than no enumeration at all: this list named
+        eleven and omitted the two about a play already in the trick until a
+        review counted the handlers rather than trusting the prose.
       content:
         application/problem+json:
           schema:

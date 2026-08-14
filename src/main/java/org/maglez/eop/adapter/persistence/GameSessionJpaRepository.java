@@ -75,19 +75,34 @@ interface GameSessionJpaRepository extends JpaRepository<GameSessionJpaEntity, U
     /**
      * Claims the right to deal, by writing the opening leader's seat where none is set.
      *
-     * <p>This is the deal-once gate. The column being null is what "not yet dealt" means,
-     * so the first caller to set it wins and every later one changes no rows. Doing it
-     * here rather than by counting hand rows is deliberate: the update takes the row lock
+     * <p>This is the deal-once gate for a session that has never been dealt. The first
+     * caller to set the column wins and every later one changes no rows. Doing it here
+     * rather than by counting hand rows is deliberate: the update takes the row lock
      * on the session before any hand row is written, which is both the lock order the
      * design requires and what serialises two simultaneous deals. Counting hands first
      * would only narrow the window.
+     *
+     * <p><strong>A null column no longer means only "not yet dealt".</strong> Since EOP-14
+     * Slice E it also means "the hand is played out and no seat leads", written by
+     * {@link #advanceLeaderSeat} when the last trick of a hand is resolved. So this
+     * statement will change a row for a session whose cards have all been played, and the
+     * predicate here is no longer the whole of the deal-once gate. What refuses the second
+     * deal in that case is {@code uq_hand_session_seat}: the hand rows are still there, the
+     * insert that follows this claim inside the same transaction violates the unique key,
+     * and {@code TrickPlayRepositoryAdapter.dealFailure} turns that into
+     * {@code HandAlreadyDealtException} — the same 409 the caller would have got before, from
+     * a different check, with this claim rolled back with the rest of the transaction. The
+     * concurrency argument above is untouched, because the column is genuinely null at the
+     * start of a hand and the row lock is taken either way. Only a session that has already
+     * finished a hand reaches the second gate, and there is no legitimate second deal: a game
+     * of Elevation of Privilege is one hand, dealt whole, played out, then scored.
      *
      * @param sessionId  the session to deal into
      * @param leaderSeat the seat that leads the opening trick
      * @param required   the status the caller observed
      * @param now        the new modification timestamp
-     * @return the number of rows changed: one on success, zero if the status moved or
-     *     cards were already dealt
+     * @return the number of rows changed: one on success, zero if the status moved or a
+     *     hand is in progress
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE GameSessionJpaEntity s SET s.currentLeaderSeat = :leaderSeat, s.updatedAt = :now, "
@@ -140,9 +155,17 @@ interface GameSessionJpaRepository extends JpaRepository<GameSessionJpaEntity, U
      * the replay note beside it. This statement's real job is the leader seat and the row lock it
      * takes while doing it.
      *
+     * <p>{@code nextLeaderSeat} is a boxed {@link Integer} and null is a meaningful value: it
+     * records that no seat leads, which is the state after the last trick of a hand, when every
+     * seat is out of cards. Writing some seat's number there instead would have the row assert
+     * that a seat may lead when it holds nothing to lead with. Note that this makes null the
+     * column's second meaning, alongside "not yet dealt" — see {@link #claimDeal} for what still
+     * refuses a second deal once it is written.
+     *
      * @param sessionId          the session to advance
      * @param expectedLeaderSeat the leader seat the caller observed
-     * @param nextLeaderSeat     the seat that leads the next trick
+     * @param nextLeaderSeat     the seat that leads the next trick, or null when the hand is
+     *     played out and no seat leads
      * @param required           the status the caller observed
      * @param now                the new modification timestamp
      * @return the number of rows changed: one on success, zero if the status or the
@@ -155,7 +178,7 @@ interface GameSessionJpaRepository extends JpaRepository<GameSessionJpaEntity, U
     int advanceLeaderSeat(
             @Param("sessionId") UUID sessionId,
             @Param("expectedLeaderSeat") int expectedLeaderSeat,
-            @Param("nextLeaderSeat") int nextLeaderSeat,
+            @Param("nextLeaderSeat") Integer nextLeaderSeat,
             @Param("required") SessionStatus required,
             @Param("now") OffsetDateTime now);
 }

@@ -1,6 +1,6 @@
 # ADR-020: Concurrency Control by Compare-and-Set on `status`, Not by Optimistic Locking
 
-**Status:** Accepted (lock ordering decided 2026-08-12, corrected from a chain to a tree 2026-08-13 — see ADR-023)
+**Status:** Accepted (lock ordering decided 2026-08-12, corrected from a chain to a tree 2026-08-13 — see ADR-023; narrowed twice on 2026-08-14 by EOP-14 Slice E — `current_leader_seat IS NULL` gained a third meaning, so it is no longer the whole deal-once gate, and `sessionMoved` gained a sixth answer to tell the two null states apart)
 **Date:** 2026-08-10
 **Deciders:** @tech-lead, @architecture-guardian, @db-designer
 
@@ -237,17 +237,42 @@ entity's own javadoc gives the reason, and it is the right formulation:
 contended-on as rows — their contention is settled by
 `uq_player_session_seat` instead.
 
-### The deal-once gate: a null column, not a count of rows — amended 2026-08-13, EOP-14 Slice C1
+### The deal-once gate: a null column, not a count of rows — amended 2026-08-13, EOP-14 Slice C1; narrowed 2026-08-14, EOP-14 Slice E
 
 This decision is a widening of the one above and was made in code during Slice C1
 without an ADR to carry it. @architecture-guardian's gate graded that a MAJOR
 finding, correctly: the *rationale* was in a Javadoc comment
-(`GameSessionJpaRepository.java:76-91`) and nowhere in `docs/`, and this ADR — which
+(`GameSessionJpaRepository.java:76-106`, and `:76-91` when this paragraph was written —
+Slice E doubled the length of that comment to record the column's second meaning) and
+nowhere in `docs/`, and this ADR — which
 owns session concurrency control, and which that same slice amended for lock
 ordering — is where it belonged.
 
 **Dealing is serialised on the session row, and `current_leader_seat IS NULL` is the
 definition of "not yet dealt".**
+
+> **Narrowed 2026-08-14, EOP-14 Slice E.** A null column no longer means only "not
+> yet dealt". It now also means "the hand is played out and no seat leads", written by
+> `advanceLeaderSeat` when the last trick of a hand resolves and no seat still holds a
+> card, because naming a seat there would have the row assert that a seat may lead when
+> it holds nothing to lead with. So the predicate below is no longer the whole
+> deal-once gate: for a session whose hand has been played out the claim *succeeds*,
+> and the second deal is refused one statement later by `uq_hand_session_seat`, via
+> `dealFailure`, as the same `HandAlreadyDealtException` and the same 409 — inside the
+> same `@Transactional` method, so the claim rolls back with it and the caller cannot
+> tell the difference. That refusal rests on a premise worth stating, because it is not
+> self-evident from the index alone: a real deal mints a **fresh** hand identifier for
+> every seat through `IdentifierGenerator` (ADR-018), so the second deal's rows are
+> *inserts*, and it is as inserts that they collide with the first deal's on
+> `uq_hand_session_seat`. A caller that reused the identifiers of the first deal would be
+> issuing a *merge* rather than an insert, the index would have nothing to refuse, and the
+> gate would reopen. That is not a hypothetical: it was found the hard way, by a test that
+> handed the same `Hands` back and watched the second deal silently succeed.
+> The serialisation argument below is untouched: at the start of a
+> hand the column is genuinely null, and the row lock is taken either way. There is no
+> legitimate second deal to permit, because a game of Elevation of Privilege is one
+> hand — dealt whole, played out, then scored. What the null column stopped being is
+> the *only* thing refusing one.
 
 ```java
 @Modifying(clearAutomatically = true)
@@ -283,6 +308,19 @@ structurally cannot cover the first, because the first is not a constraint viola
 at all. A reader who uses that table as the complete inventory of how each exception
 is raised will be wrong about this one. That is the price of putting the gate on the
 session row, and it is worth paying; this paragraph is the mitigation.
+
+**A third state, and a sixth answer — 2026-08-14, EOP-14 Slice E.** Because the
+column now carries two meanings when it is null, the shared `sessionMoved` helper can
+no longer answer a null column with one exception. It reads whether any `hand` row
+exists for the session and answers `HandCompleteException` when one does and
+`HandNotDealtException` when none does, taking its total from five answers to six.
+Nothing reaches the new branch today: for the last trick of a hand to have been
+resolvable, every seat still holding a card had already played into it, so no play can
+be in flight behind it. It is written anyway, because the alternative is a branch that
+tells a caller its cards were never dealt when they were dealt and finished, and an
+unreachable branch that answers the truth is worth more than an unreachable branch
+that answers a lie. Should the gate above ever be reopened — a second hand per
+session, say — this branch already knows the difference.
 
 **Why the session row and not the `hand` table.** The seat the deal opens on is
 derived from the cards actually dealt (`Hands.openingLeaderSeat()`), so the deal has

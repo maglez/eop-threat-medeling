@@ -13,6 +13,7 @@ import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.IdentityTokenHash;
 import org.maglez.eop.entity.MustFollowSuitException;
@@ -275,7 +276,10 @@ class GlobalExceptionHandlerTest {
                 handler.handleSessionFull(new SessionFullException(SESSION_ID, 6)).getDetail(),
                 handler.handleTooFewPlayers(new TooFewPlayersException(SESSION_ID, 2, 3)).getDetail(),
                 handler.handlePlayerNotRecognised(new PlayerNotRecognisedException(SESSION_ID)).getDetail(),
-                handler.handleNotFacilitator(new NotFacilitatorException(SESSION_ID, PLAYER_ID)).getDetail());
+                handler.handleNotFacilitator(new NotFacilitatorException(SESSION_ID, PLAYER_ID)).getDetail(),
+                handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID)).getDetail(),
+                handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID)).getDetail(),
+                handler.handleHandComplete(new HandCompleteException(SESSION_ID)).getDetail());
 
         assertThat(details).noneMatch(detail -> detail.contains(plaintext))
                 .noneMatch(detail -> detail.contains(digest))
@@ -410,6 +414,75 @@ class GlobalExceptionHandlerTest {
                     .as("both are 409s on one column, so the title is the only thing that says which way it went")
                     .isNotEqualTo(alreadyDealt.getTitle());
             assertThat(notDealt.getDetail()).isNotEqualTo(alreadyDealt.getDetail());
+        }
+
+        @Test
+        @DisplayName("playing after the last card is a 409 naming the session the caller supplied")
+        void shouldMapHandCompleteToConflict() {
+            final ProblemDetail problem = handler.handleHandComplete(new HandCompleteException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Hand complete");
+            assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        /**
+         * The cards running out is one of the ways play ends, and whether the result is
+         * final is EOP-15's to say. A body that mentioned the score here would be a second
+         * authority on it, and the one nobody would think to keep up to date.
+         */
+        @Test
+        @DisplayName("a spent hand says the cards are gone and nothing about the score")
+        void shouldNotMentionTheScoreWhenTheHandIsSpent() {
+            final ProblemDetail problem = handler.handleHandComplete(new HandCompleteException(SESSION_ID));
+
+            assertThat(problem.getDetail())
+                    .as("the only identifier in the body is the one the caller sent")
+                    .isEqualTo("Every card dealt in session " + SESSION_ID + " has been played");
+            assertThat(problem.getTitle()).doesNotContainIgnoringCase("score");
+            assertThat(problem.getProperties()).isNull();
+        }
+
+        /**
+         * Three states of one column, and the third one is the reason
+         * {@link HandCompleteException} exists at all: before EOP-14 Slice E a spent hand
+         * reached the caller as "hands not dealt", which is false about a hand that was
+         * dealt and finished. Two of these titles invite waiting and one never changes
+         * back, so a client that cannot tell them apart cannot decide whether to retry.
+         */
+        @Test
+        @DisplayName("the three states of a dealt hand are told apart, not dealt from dealt from played out")
+        void shouldNotCollapseTheThreeDealStates() {
+            final ProblemDetail notDealt = handler.handleHandNotDealt(new HandNotDealtException(SESSION_ID));
+            final ProblemDetail alreadyDealt =
+                    handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID));
+            final ProblemDetail complete = handler.handleHandComplete(new HandCompleteException(SESSION_ID));
+
+            assertThat(complete.getStatus()).isEqualTo(notDealt.getStatus()).isEqualTo(alreadyDealt.getStatus());
+            assertThat(List.of(notDealt.getTitle(), alreadyDealt.getTitle(), complete.getTitle()))
+                    .as("three states of one column, three titles")
+                    .doesNotHaveDuplicates();
+            assertThat(List.of(notDealt.getDetail(), alreadyDealt.getDetail(), complete.getDetail()))
+                    .doesNotHaveDuplicates();
+        }
+
+        /**
+         * A hand with no cards left in it is refused before the hand is asked to resolve a
+         * card, so the two never answer the same state. The distinction matters to a
+         * client: a 422 says the request could never succeed as written and invites it to
+         * name a different card, which is advice it cannot take when it holds none.
+         */
+        @Test
+        @DisplayName("a spent hand is a conflict, not the unprocessable answer an empty hand would otherwise give")
+        void shouldNotAnswerASpentHandAsAnUnplayableCard() {
+            final ProblemDetail complete = handler.handleHandComplete(new HandCompleteException(SESSION_ID));
+            final ProblemDetail notInHand =
+                    handler.handleCardNotInHand(
+                            new CardNotInHandException(UUID.randomUUID(), UUID.randomUUID()));
+
+            assertThat(complete.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(notInHand.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
+            assertThat(complete.getTitle()).isNotEqualTo(notInHand.getTitle());
         }
 
         @Test

@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import java.util.Objects;
 import java.util.UUID;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardCommand;
 import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ReadOwnHandUseCase;
@@ -24,8 +25,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * HTTP access to trick play: deal the deck, read your own hand, play a card and
- * resolve the trick once every seat that still holds cards has played.
+ * HTTP access to trick play: deal the deck, read your own hand, play a card, read the
+ * state of play and resolve the trick once every seat that still holds cards has played.
  *
  * <p>This bean only exists when {@code eop.features.trick-play} is true (ADR-013).
  * That flag is separate from {@code eop.features.session-lifecycle} on purpose, so
@@ -75,16 +76,20 @@ public class TrickController {
 
     private final PlayCardUseCase playCardUseCase;
 
+    private final GetTrickStateUseCase getTrickStateUseCase;
+
     private final ResolveTrickUseCase resolveTrickUseCase;
 
     TrickController(
             final DealHandsUseCase dealHandsUseCase,
             final ReadOwnHandUseCase readOwnHandUseCase,
             final PlayCardUseCase playCardUseCase,
+            final GetTrickStateUseCase getTrickStateUseCase,
             final ResolveTrickUseCase resolveTrickUseCase) {
         this.dealHandsUseCase = Objects.requireNonNull(dealHandsUseCase, "dealHandsUseCase is required");
         this.readOwnHandUseCase = Objects.requireNonNull(readOwnHandUseCase, "readOwnHandUseCase is required");
         this.playCardUseCase = Objects.requireNonNull(playCardUseCase, "playCardUseCase is required");
+        this.getTrickStateUseCase = Objects.requireNonNull(getTrickStateUseCase, "getTrickStateUseCase is required");
         this.resolveTrickUseCase = Objects.requireNonNull(resolveTrickUseCase, "resolveTrickUseCase is required");
     }
 
@@ -163,7 +168,7 @@ public class TrickController {
         @ApiResponse(responseCode = "400", description = "The body is malformed, names no card, or breaks an annotation limit."),
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
         @ApiResponse(responseCode = "404", description = "No such session, no such card, or the caller is not a member."),
-        @ApiResponse(responseCode = "409", description = "Not the caller's turn, or the seat or card has already been played."),
+        @ApiResponse(responseCode = "409", description = "Not the caller's turn, the seat or card is played, or the hand is spent."),
         @ApiResponse(responseCode = "422", description = "The caller does not hold the card, or holds the led suit and played another.")
     })
     public TrickDto playCard(
@@ -178,6 +183,42 @@ public class TrickController {
                 request.components(),
                 request.notes());
         return TrickDto.from(playCardUseCase.execute(command));
+    }
+
+    /**
+     * Reads the state of play: the current trick, whose turn it is, and what happens
+     * when the trick is done.
+     *
+     * <p>This is the only route that answers whose turn it is. {@link TrickDto} is
+     * silent on it, and on whether the trick is complete and which seat leads next,
+     * because all three depend on the seats that still hold cards; until this route
+     * existed the only way to learn it was to attempt a play and be refused.
+     *
+     * <p>The path is a singleton subresource rather than a collection, for the same
+     * reason as the resolve route below it: there is one current trick and clients ask
+     * for it without knowing its identifier (ADR-027).
+     *
+     * <p>Any seated player may read it. Nothing in the response is private — cards are
+     * played face up — and no card any seat still holds appears in it, which is what
+     * separates it from the hand route above.
+     *
+     * @param sessionId   the session to read
+     * @param playerToken the caller's credential, absent if it sent none
+     * @return 200 with the state of play
+     */
+    @GetMapping("/{sessionId}/tricks/current")
+    @Operation(summary = "Read the state of play")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The current trick, the seat to play, and whether the trick and hand are done."),
+        @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "409", description = "The deck has not been dealt, so there is no state of play to report.")
+    })
+    public TrickStateDto getTrickState(
+            @PathVariable final UUID sessionId,
+            @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
+        return TrickStateDto.from(getTrickStateUseCase.execute(sessionId, playerToken));
     }
 
     /**

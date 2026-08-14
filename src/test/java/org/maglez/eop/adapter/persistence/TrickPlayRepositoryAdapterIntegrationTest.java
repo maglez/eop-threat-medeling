@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +22,7 @@ import org.maglez.eop.entity.CardNotInHandException;
 import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.Hand;
 import org.maglez.eop.entity.HandAlreadyDealtException;
+import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.JoinCode;
@@ -728,7 +730,7 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             final int nextLeader = resolved.winningSeat();
 
             adapter.recordResolution(
-                    table.sessionId(), resolved, leader, nextLeader, RESOLVED_AT);
+                    table.sessionId(), resolved, leader, OptionalInt.of(nextLeader), RESOLVED_AT);
 
             final Trick stored = adapter.findCurrentTrick(table.sessionId()).orElseThrow();
             assertThat(stored.winner()).isPresent();
@@ -745,7 +747,8 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             final Trick resolved = table.playAndResolveFirstTrick();
             final int leader = table.leaderSeat();
             final int nextLeader = resolved.winningSeat();
-            adapter.recordResolution(table.sessionId(), resolved, leader, nextLeader, RESOLVED_AT);
+            adapter.recordResolution(
+                    table.sessionId(), resolved, leader, OptionalInt.of(nextLeader), RESOLVED_AT);
 
             assertThatExceptionOfType(OutOfTurnException.class)
                     .isThrownBy(
@@ -754,7 +757,7 @@ class TrickPlayRepositoryAdapterIntegrationTest {
                                             table.sessionId(),
                                             resolved,
                                             leader,
-                                            nextLeader,
+                                            OptionalInt.of(nextLeader),
                                             RESOLVED_AT));
         }
 
@@ -794,7 +797,8 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             final Trick resolved = table.playAndResolveFirstTrick();
             final int leader = table.leaderSeat();
 
-            adapter.recordResolution(table.sessionId(), resolved, leader, leader, RESOLVED_AT);
+            adapter.recordResolution(
+                    table.sessionId(), resolved, leader, OptionalInt.of(leader), RESOLVED_AT);
             assertThat(adapter.findCurrentLeaderSeat(table.sessionId()))
                     .as("the lead stays put, which is what makes the guard idempotent")
                     .hasValue(leader);
@@ -806,7 +810,7 @@ class TrickPlayRepositoryAdapterIntegrationTest {
                                             table.sessionId(),
                                             resolved,
                                             leader,
-                                            leader,
+                                            OptionalInt.of(leader),
                                             RESOLVED_AT))
                     .withMessageContaining(resolved.trickId().toString());
         }
@@ -836,7 +840,11 @@ class TrickPlayRepositoryAdapterIntegrationTest {
                     .isThrownBy(
                             () ->
                                     adapter.recordResolution(
-                                            table.sessionId(), open, leader, leader, RESOLVED_AT))
+                                            table.sessionId(),
+                                            open,
+                                            leader,
+                                            OptionalInt.of(leader),
+                                            RESOLVED_AT))
                     .withMessageContaining("is not resolved")
                     .isNotInstanceOf(IllegalArgumentException.class);
         }
@@ -867,6 +875,114 @@ class TrickPlayRepositoryAdapterIntegrationTest {
                     .withMessageContaining("names a winner that was not played into it")
                     .isNotInstanceOf(IllegalArgumentException.class);
         }
+
+        /**
+         * Deals, plays the hand out, then deals again.
+         *
+         * <p>This pins the invariant EOP-14 Slice E moved. Until Slice E, {@code claimDeal}'s
+         * {@code current_leader_seat IS NULL} predicate was the whole deal-once gate. Now that a
+         * played-out hand writes NULL back into that column the predicate matches again, so the
+         * claim succeeds and what refuses the second deal is {@code uq_hand_session_seat}, one
+         * statement later, inside the same transaction — which rolls the claim back with it. The
+         * caller cannot tell the difference and gets the same refusal either way, which is exactly
+         * why this needs a test: the mechanism changed underneath an unchanged answer, and nothing
+         * else in this suite exercises the mechanism that now carries the weight.
+         *
+         * <p>It rests on hand rows never being deleted. Nothing in this codebase deletes one — the
+         * only delete in the persistence layer takes a single card out of a single hand — so if
+         * that ever changes, this is the test that will say so.
+         *
+         * <p>The second deal is handed a fresh set of hand identifiers, because that is what a real
+         * deal brings: {@code DealHandsUseCase} mints one from the identifier generator per seat on
+         * every call. That detail is load-bearing rather than incidental. Passing this table's
+         * original {@code hands()} back in made the first version of this test fail: an entity whose
+         * identifier already exists is merged rather than inserted, so the unique key on
+         * {@code (game_session_id, seat_order)} was never offered a second row to refuse and the deal
+         * silently rewrote the hands in place. The gate is therefore two things at once - the
+         * constraint, and the fact that a deal never reuses a hand identifier.
+         */
+        @Test
+        @DisplayName("refuses a second deal once the hand has been played out")
+        void refusesASecondDealOnceTheHandIsSpent() {
+            final Table table = dealtTable();
+            final Trick resolved = table.playAndResolveFirstTrick();
+            final int leader = table.leaderSeat();
+            adapter.recordResolution(table.sessionId(), resolved, leader, OptionalInt.empty(), RESOLVED_AT);
+
+            assertThat(adapter.findCurrentLeaderSeat(table.sessionId()))
+                    .as("the hand is spent, so no seat leads and the claim predicate matches again")
+                    .isEmpty();
+
+            final Hands rival = table.deal(RIVAL_HAND_SLOT_BASE);
+
+            assertThatExceptionOfType(HandAlreadyDealtException.class)
+                    .isThrownBy(() -> adapter.recordDeal(
+                            table.sessionId(), rival, rival.openingLeaderSeat(), DEALT_AT))
+                    .withMessageContaining(table.sessionId().toString());
+        }
+
+        /**
+         * The end of a hand reaches the database as the absence of a leading
+         * seat, not as a seat that cannot lead. EOP-14 Slice D had no way to say
+         * that: the port took an {@code int}, so the winning seat was written
+         * even when it held nothing, and the row asserted that a seat might lead
+         * while every hand was empty.
+         *
+         * <p>The winner is asserted as well as the missing lead, because both
+         * halves of {@code recordResolution} write and only one of them is under
+         * test here. A resolution that quietly failed would also leave no
+         * leader, and this test would pass on it if it looked no further.
+         */
+        @Test
+        @DisplayName("records no leading seat when no seat holds a card")
+        void recordsNoLeaderWhenNoSeatHoldsACard() {
+            final Table table = dealtTable();
+            final Trick resolved = table.playAndResolveFirstTrick();
+            final int leader = table.leaderSeat();
+
+            adapter.recordResolution(
+                    table.sessionId(), resolved, leader, OptionalInt.empty(), RESOLVED_AT);
+
+            assertThat(adapter.findCurrentLeaderSeat(table.sessionId()))
+                    .as("no seat leads once the hand is played out")
+                    .isEmpty();
+            assertThat(adapter.findCurrentTrick(table.sessionId()).orElseThrow().winner())
+                    .as("the winner is still recorded, so the empty lead is not a failed write")
+                    .isPresent();
+        }
+
+        /**
+         * A null {@code current_leader_seat} carries two meanings since Slice E:
+         * the deal has not happened, or it has happened and finished. The
+         * adapter tells them apart by whether any hand row exists, and this is
+         * the only test that reaches the second branch.
+         *
+         * <p>Nothing in the product can reach it today — for the last trick to
+         * have been resolvable, every seat holding a card had already played, so
+         * no play can be in flight behind it. It is reached here by asking for
+         * the next trick after the lead was cleared, which is exactly the shape
+         * a stale client would send.
+         *
+         * <p>The assertion is on the type rather than the message, because the
+         * defect it guards against is the honest-looking lie: before Slice E
+         * this limb answered {@code HandNotDealtException}, telling a caller its
+         * cards were never dealt when they had been dealt and played out.
+         */
+        @Test
+        @DisplayName("answers a played-out hand rather than an undealt one")
+        void answersAPlayedOutHandRatherThanAnUndealtOne() {
+            final Table table = dealtTable();
+            final Trick resolved = table.playAndResolveFirstTrick();
+            final int leader = table.leaderSeat();
+            adapter.recordResolution(
+                    table.sessionId(), resolved, leader, OptionalInt.empty(), RESOLVED_AT);
+
+            final Trick next = Trick.open(table.trickId(2), 2, leader);
+
+            assertThatExceptionOfType(HandCompleteException.class)
+                    .isThrownBy(() -> adapter.openTrick(table.sessionId(), next, leader, PLAYED_AT))
+                    .withMessageContaining(table.sessionId().toString());
+        }
     }
 
     @Nested
@@ -891,7 +1007,10 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             assertThatNullPointerException()
                     .isThrownBy(() -> adapter.appendPlay(null, trick.trickId(), 0, play));
             assertThatNullPointerException()
-                    .isThrownBy(() -> adapter.recordResolution(null, trick, 0, 0, RESOLVED_AT));
+                    .isThrownBy(
+                            () ->
+                                    adapter.recordResolution(
+                                            null, trick, 0, OptionalInt.of(0), RESOLVED_AT));
         }
 
         @Test
@@ -914,9 +1033,18 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             assertThatNullPointerException()
                     .isThrownBy(() -> adapter.appendPlay(sessionId, trick.trickId(), 0, null));
             assertThatNullPointerException()
-                    .isThrownBy(() -> adapter.recordResolution(sessionId, null, 0, 0, RESOLVED_AT));
+                    .isThrownBy(
+                            () ->
+                                    adapter.recordResolution(
+                                            sessionId, null, 0, OptionalInt.of(0), RESOLVED_AT));
             assertThatNullPointerException()
-                    .isThrownBy(() -> adapter.recordResolution(sessionId, trick, 0, 0, null));
+                    .isThrownBy(
+                            () ->
+                                    adapter.recordResolution(
+                                            sessionId, trick, 0, OptionalInt.of(0), null));
+            assertThatNullPointerException()
+                    .isThrownBy(
+                            () -> adapter.recordResolution(sessionId, trick, 0, null, RESOLVED_AT));
         }
     }
 

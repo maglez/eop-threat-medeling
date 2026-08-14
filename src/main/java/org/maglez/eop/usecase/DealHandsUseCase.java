@@ -55,6 +55,14 @@ import org.maglez.eop.entity.TooFewPlayersException;
  * has no more right to see the table's cards than anyone else. Each player reads their own hand
  * through their own query.
  *
+ * <p>The same reasoning is what makes announcing the deal safe. {@link SessionEvent} carries a type,
+ * a session and an instant and nothing else, so {@code hand-dealt} reaches every subscriber saying
+ * that the deal happened without saying what anybody was dealt; each player then reads their own
+ * hand through their own query, authorised as their own request (ADR-014). The announcement is made
+ * after the write returns, so a refused deal announces nothing, and it is made through the port
+ * rather than guarded here because publishing must not fail a request &mdash; an obligation
+ * {@link SessionEventPublisher} places on its implementation.
+ *
  * <p>Shuffling happens here, through {@link DeckShuffler}, because {@link Hands#deal} is
  * deliberately a pure function of an ordered deck (ADR-023).
  */
@@ -65,6 +73,7 @@ public class DealHandsUseCase {
     private final DeckShuffler deckShuffler;
     private final HandRepository handRepository;
     private final IdentifierGenerator identifierGenerator;
+    private final SessionEventPublisher sessionEventPublisher;
     private final Clock clock;
 
     /**
@@ -75,6 +84,7 @@ public class DealHandsUseCase {
      * @param deckShuffler randomises the deck before it is dealt
      * @param handRepository records the deal and the opening lead
      * @param identifierGenerator mints one hand identifier per seat
+     * @param sessionEventPublisher announces that the deal happened, naming no card
      * @param clock supplies the instant the deal is recorded at
      */
     public DealHandsUseCase(
@@ -83,6 +93,7 @@ public class DealHandsUseCase {
             final DeckShuffler deckShuffler,
             final HandRepository handRepository,
             final IdentifierGenerator identifierGenerator,
+            final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         this.resolvePlayerUseCase =
                 Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
@@ -91,6 +102,8 @@ public class DealHandsUseCase {
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
         this.identifierGenerator =
                 Objects.requireNonNull(identifierGenerator, "identifierGenerator is required");
+        this.sessionEventPublisher =
+                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
@@ -144,7 +157,8 @@ public class DealHandsUseCase {
 
         final var hands = Hands.deal(deckShuffler.shuffle(cardRepository.findWholeDeck()), seats);
 
-        handRepository.recordDeal(
-                sessionId, hands, hands.openingLeaderSeat(), clock.instant());
+        final var now = clock.instant();
+        handRepository.recordDeal(sessionId, hands, hands.openingLeaderSeat(), now);
+        sessionEventPublisher.publish(new SessionEvent(SessionEventType.HAND_DEALT, sessionId, now));
     }
 }

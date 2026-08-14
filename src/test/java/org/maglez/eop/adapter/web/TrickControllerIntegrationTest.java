@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Exercises the four trick-play routes end to end, through the real use cases, the real adapter and the real database.
+ * Exercises the five trick-play routes end to end, through the real use cases, the real adapter and the real database.
  *
  * <p>Nothing is stubbed. A test that mocked the repository would assert that the controller calls the code the
  * controller calls, which is a tautology: the interesting claims of this slice all live in the seams. That the acting
@@ -47,9 +47,14 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * in the domain tests for {@code Hands}, and repeating it here would test the same code through a slower path.</p>
  *
  * <p>Several tests need to know which seat leads. They work it out by reading every player's hand, which they can do
- * only because a test holds every token. That is worth naming rather than hiding in a helper: no real client can do
- * this, and until a later slice publishes whose turn it is, a real client cannot find the leader at all. The awkwardness
- * of the fixture is the evidence for that gap.</p>
+ * only because a test holds every token. Since EOP-14 Slice E a real client can simply read the state of play, which
+ * publishes the seat to play; the fixture keeps deriving the answer from the cards because a test that asked the server
+ * whose turn it is and then asserted the server's answer would assert nothing. The awkwardness of the fixture is what
+ * makes the assertion independent.</p>
+ *
+ * <p>The state-of-play route is asserted against the same two authorities it publishes: the seat the session row records
+ * as leading and the seat the cards say may play. Those are separately derived on the way out and nothing reconciles
+ * them, so a test that read only one of them would pass while the other drifted.</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -460,16 +465,20 @@ class TrickControllerIntegrationTest {
             final var leader = table.seats().get(leaderSeat);
             final var follower = table.seats().get((leaderSeat + 1) % PLAYERS);
 
-            final var led = handOf(table.sessionId(), leader).get(0);
+            // The refusal only means anything if the follower could have followed suit, so the suit
+            // is chosen from the two hands rather than assumed. An earlier version led an arbitrary
+            // card and asserted the follower happened to hold that suit, on the stated grounds that
+            // every hand holds all six suits at this table size. That is very likely and not true:
+            // 78 cards over three seats leave a hand missing a named suit about three times in a
+            // thousand, which is rare enough to read as certain and often enough to turn a build
+            // red for a reason that is nothing to do with following suit.
+            final var hand = handOf(table.sessionId(), follower);
+            final var led = handOf(table.sessionId(), leader).stream()
+                    .filter(card -> hand.stream().anyMatch(held -> held.suit().equals(card.suit())))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("the leader and the follower share no suit"));
             playCard(table.sessionId(), leader.playerToken(), playRequest(led.cardId()));
 
-            // Every hand holds all six suits at this table size, so the follower certainly holds the
-            // led suit. Asserting that first means a failure below is the rule breaking rather than
-            // the fixture handing the follower a hand that made the play legal.
-            final var hand = handOf(table.sessionId(), follower);
-            Assertions.assertThat(hand)
-                    .as("the refusal only means anything if the follower could have followed suit")
-                    .anyMatch(card -> card.suit().equals(led.suit()));
             final var offSuit = hand.stream()
                     .filter(card -> !card.suit().equals(led.suit()))
                     .findFirst()
@@ -803,6 +812,233 @@ class TrickControllerIntegrationTest {
     }
 
     @Nested
+    @DisplayName("Reading the state of play")
+    class ReadingTheStateOfPlay {
+
+        @Test
+        @DisplayName("names the opening leader before any card is played")
+        void shouldNameTheOpeningLeader() throws Exception {
+            final var table = dealtTable();
+            final var leaderSeat = leaderSeatOf(table);
+
+            final var state = trickState(table.sessionId(), table.facilitator().playerToken());
+
+            Assertions.assertThat(state.getResponse().getStatus()).isEqualTo(200);
+            final var document = JsonPath.parse(state.getResponse().getContentAsString());
+            Assertions.assertThat((Integer) document.read("$.seatToPlay"))
+                    .as("the holder of the lowest Tampering card leads, and the session row records that seat")
+                    .isEqualTo(leaderSeat);
+            Assertions.assertThat(state.getResponse().getContentAsString())
+                    .as("no card has been led, so there is no trick to report yet")
+                    .doesNotContain("\"trick\"")
+                    .contains("\"complete\":false")
+                    .contains("\"handComplete\":false");
+        }
+
+        @Test
+        @DisplayName("names the seat still to play once the trick is under way")
+        void shouldNameTheSeatStillToPlay() throws Exception {
+            final var table = dealtTable();
+            final var leaderSeat = leaderSeatOf(table);
+            final var leader = table.seats().get(leaderSeat);
+            playCard(table.sessionId(), leader.playerToken(),
+                    playRequest(handOf(table.sessionId(), leader).get(0).cardId()));
+
+            final var state = trickState(table.sessionId(), leader.playerToken());
+
+            final var document = JsonPath.parse(state.getResponse().getContentAsString());
+            Assertions.assertThat((Integer) document.read("$.seatToPlay"))
+                    .as("turn order runs clockwise from the leader")
+                    .isEqualTo((leaderSeat + 1) % PLAYERS);
+            Assertions.assertThat((Integer) document.read("$.trick.sequence"))
+                    .as("the first card led opens the first trick")
+                    .isEqualTo(1);
+            Assertions.assertThat((Boolean) document.read("$.complete")).isFalse();
+        }
+
+        @Test
+        @DisplayName("names no seat while a complete trick waits to be resolved")
+        void shouldNameNoSeatWhileTheTrickAwaitsResolution() throws Exception {
+            final var table = dealtTable();
+            playWholeTrick(table);
+
+            final var state = trickState(table.sessionId(), table.facilitator().playerToken());
+
+            Assertions.assertThat(state.getResponse().getContentAsString())
+                    .as("every seat has played, so nothing may be played and no seat leads yet")
+                    .contains("\"complete\":true")
+                    .doesNotContain("seatToPlay")
+                    .doesNotContain("nextLeaderSeat")
+                    .contains("\"handComplete\":false");
+        }
+
+        @Test
+        @DisplayName("names the next leader once the trick is resolved, and the two authorities agree")
+        void shouldNameTheNextLeaderOnceResolved() throws Exception {
+            final var table = dealtTable();
+            final var plays = playWholeTrick(table);
+            resolve(table.sessionId(), table.facilitator().playerToken());
+
+            final var state = trickState(table.sessionId(), table.facilitator().playerToken());
+
+            final var document = JsonPath.parse(state.getResponse().getContentAsString());
+            Assertions.assertThat((Integer) document.read("$.nextLeaderSeat"))
+                    .as("the winner still holds twenty-five cards, so the winner leads: %s", plays)
+                    .isEqualTo(expectedWinner(plays));
+            Assertions.assertThat((Integer) document.read("$.seatToPlay"))
+                    .as("the session row and the cards are separate authorities, and here they must agree")
+                    .isEqualTo(document.read("$.nextLeaderSeat"));
+        }
+
+        /**
+         * Reads the state of play and asserts it names no card any seat still holds.
+         *
+         * <p>{@code TrickStateDto} has no field that could carry one, so this passes today by
+         * construction — which is the reason to assert it rather than trust it. That any seated
+         * player may read this without learning another seat's hand is a claim about the shape of
+         * the response, and a field added to {@code TrickDto}, or a {@code seatsHoldingCards}
+         * accessor promoted onto {@code TrickState}, would break it without failing anything else
+         * in this class.
+         *
+         * <p>The led card is asserted present as well. Without that, the test would also pass
+         * against a response that named no cards at all, including the ones it is meant to publish.
+         */
+        @Test
+        @DisplayName("names no card any seat still holds")
+        void shouldNameNoCardStillHeld() throws Exception {
+            final var table = dealtTable();
+            final var leaderSeat = leaderSeatOf(table);
+            final var leader = table.seats().get(leaderSeat);
+            final var led = handOf(table.sessionId(), leader).get(0);
+            playCard(table.sessionId(), leader.playerToken(), playRequest(led.cardId()));
+
+            final var stillHeld = new java.util.ArrayList<String>();
+            for (final var seat : table.seats()) {
+                for (final var card : handOf(table.sessionId(), seat)) {
+                    stillHeld.add(card.cardId());
+                }
+            }
+
+            final var body = trickState(table.sessionId(), leader.playerToken())
+                    .getResponse()
+                    .getContentAsString();
+
+            Assertions.assertThat(stillHeld)
+                    .as("the seats still hold cards, so there is something here to leak")
+                    .isNotEmpty();
+            Assertions.assertThat(body)
+                    .as("the card that was played is face up and belongs in the response")
+                    .contains(led.cardId());
+            Assertions.assertThat(body)
+                    .as("no card still in a hand may appear in a response every seat may read")
+                    .doesNotContain(stillHeld.toArray(new String[0]));
+        }
+
+        @Test
+        @DisplayName("plays the whole hand out, then reports it complete and refuses another card")
+        void shouldReportAHandPlayedToItsEnd() throws Exception {
+            final var table = dealtTable();
+            final var facilitator = table.facilitator().playerToken();
+
+            // Seventy-eight cards over three seats is twenty-six each, so every seat runs out on the same trick
+            // and no seat is ever handed a lead it cannot use. Whose turn it is is taken from the route under
+            // test rather than derived from the cards, so playing the hand out is also a long exercise of it.
+            for (int trick = 1; trick <= CARDS_EACH; trick++) {
+                final var opening = JsonPath.parse(
+                        trickState(table.sessionId(), facilitator).getResponse().getContentAsString());
+                final int leaderSeat = (Integer) opening.read("$.seatToPlay");
+                String ledSuit = null;
+
+                for (int seatsPlayed = 0; seatsPlayed < PLAYERS; seatsPlayed++) {
+                    final var player = table.seats().get((leaderSeat + seatsPlayed) % PLAYERS);
+                    final var card = choose(handOf(table.sessionId(), player), ledSuit);
+                    final var played = playCard(table.sessionId(), player.playerToken(), playRequest(card.cardId()));
+                    Assertions.assertThat(played.getResponse().getStatus())
+                            .as("trick %d, seat %d should accept a legal play", trick, player.seatOrder())
+                            .isEqualTo(201);
+                    ledSuit = ledSuit == null ? card.suit() : ledSuit;
+                }
+
+                Assertions.assertThat(resolve(table.sessionId(), facilitator).getResponse().getStatus())
+                        .as("trick %d should resolve once every seat has played", trick)
+                        .isEqualTo(200);
+            }
+
+            final var spent = trickState(table.sessionId(), facilitator);
+
+            Assertions.assertThat(spent.getResponse().getContentAsString())
+                    .as("every card dealt has been played, so no seat leads and no seat may play")
+                    .contains("\"handComplete\":true")
+                    .contains("\"complete\":true")
+                    .doesNotContain("seatToPlay")
+                    .doesNotContain("nextLeaderSeat");
+
+            final var refused = playCard(table.sessionId(), facilitator,
+                    playRequest(java.util.UUID.randomUUID().toString()));
+
+            assertProblem(refused, 409, "Hand complete");
+        }
+
+        @Test
+        @DisplayName("refuses before the deal, because there is no state of play yet")
+        void shouldRefuseBeforeTheDeal() throws Exception {
+            final var table = startedTable();
+
+            final var refused = trickState(table.sessionId(), table.facilitator().playerToken());
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("nothing the caller named is missing, so this is a state problem and not a 404")
+                    .isEqualTo(409);
+            assertProblemJson(refused);
+        }
+
+        @Test
+        @DisplayName("refuses a caller with no credential")
+        void shouldRefuseAnAnonymousCaller() throws Exception {
+            final var table = dealtTable();
+
+            final var refused = trickState(table.sessionId(), null);
+
+            assertProblem(refused, 403, "Player not recognised");
+        }
+
+        @Test
+        @DisplayName("refuses a token minted for another session")
+        void shouldRefuseAForeignToken() throws Exception {
+            final var table = dealtTable();
+            final var elsewhere = seatedTable();
+
+            final var refused = trickState(table.sessionId(), elsewhere.facilitator().playerToken());
+
+            assertProblem(refused, 403, "Player not recognised");
+        }
+
+        @Test
+        @DisplayName("reports an unknown session")
+        void shouldReportAnUnknownSession() throws Exception {
+            final var table = dealtTable();
+
+            final var missing = trickState(UUID.randomUUID().toString(), table.facilitator().playerToken());
+
+            Assertions.assertThat(missing.getResponse().getStatus()).isEqualTo(404);
+            assertProblemJson(missing);
+        }
+
+        @Test
+        @DisplayName("refuses a session identifier that is not a UUID")
+        void shouldRefuseANonUuidSession() throws Exception {
+            final var table = dealtTable();
+
+            final var refused = trickState("not-a-uuid", table.facilitator().playerToken());
+
+            Assertions.assertThat(refused.getResponse().getStatus())
+                    .as("an unreadable identifier is refused before anything is looked up")
+                    .isEqualTo(400);
+            assertProblemJson(refused);
+        }
+    }
+
+    @Nested
     @DisplayName("Two plays racing for one seat")
     class ConcurrentPlays {
 
@@ -1093,6 +1329,18 @@ class TrickControllerIntegrationTest {
     private MvcResult resolve(final String sessionId, final String token) throws Exception {
         return mockMvc.perform(withToken(post(SESSIONS + "/" + sessionId + "/tricks/current/resolve"), token))
                 .andReturn();
+    }
+
+    /**
+     * Reads the state of play.
+     *
+     * @param sessionId the session
+     * @param token     the caller's credential, or {@code null} to send none
+     * @return the result, whatever its status
+     * @throws Exception if the request cannot be performed
+     */
+    private MvcResult trickState(final String sessionId, final String token) throws Exception {
+        return mockMvc.perform(withToken(get(SESSIONS + "/" + sessionId + "/tricks/current"), token)).andReturn();
     }
 
     /**

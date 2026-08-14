@@ -18,8 +18,9 @@ sits. No Level 1, and no Level 3 beyond the one component detail.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-14 Slice D** (the trick-play HTTP
-routes), on top of Slice C2's use-case layer, Slice C1's persistence layer (Liquibase changeset
+Everything below reflects the code as it stands after **EOP-14 Slice E** (end of hand, the
+state-of-play read and the three broadcasts), on top of Slice D's trick-play HTTP routes, Slice
+C2's use-case layer, Slice C1's persistence layer (Liquibase changeset
 `005`), the trick-play schema from Slice B (changeset `004`), the client-address resolution
 introduced by EOP-26 (ADR-021) and the session lifecycle from EOP-10. Slice B was schema-only.
 Slice C1 added the persistence components — one adapter, two ports, five JPA entities and five
@@ -29,24 +30,43 @@ tenth — and one new adapter class (`SecureRandomDeckShuffler`). `CardRepositor
 has been the card-catalogue port since EOP-13, and Slice C2 only added a third method to it
 (`findWholeDeck()`).
 
-**Slice D writes the route, and that is the change the component view below records.** Three
-earlier versions of this section said there was no controller, no request DTO and no path reaching
-those use cases, and drew a `NOROUTE` node to make the missing caller visible; all of it is now
-false and has been removed. Slice D adds a second controller — `TrickController`, with four routes
-(`POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`,
+**Slice D wrote the route and Slice E widened it, and both are what the component view below
+records.** Three earlier versions of this section said there was no controller, no request DTO and
+no path reaching those use cases, and drew a `NOROUTE` node to make the missing caller visible; all
+of it is now false and has been removed. Slice D added a second controller — `TrickController`,
+with four routes (`POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`,
 `POST /{sessionId}/tricks/current/resolve`) — four transport records (`HandDto`, `TrickDto`,
-`TrickPlayDto`, `PlayCardRequest`) and one further use case, `ReadOwnHandUseCase`, the eleventh.
-That use case is the slice's one declared scope addition: Slice C promised a route returning the
-caller's own hand and neither C1 nor C2 shipped it, so without it a player who had been dealt cards
-could not see them. It needed **no new port method** — `HandRepository.findBySessionId` then
-`Hands#handOf` — so the port count below is unchanged at ten.
+`TrickPlayDto`, `PlayCardRequest`) and one further use case, `ReadOwnHandUseCase`, the eleventh at
+that date. That use case was the slice's one declared scope addition: Slice C promised a route
+returning the caller's own hand and neither C1 nor C2 shipped it, so without it a player who had
+been dealt cards could not see them. It needed **no new port method** —
+`HandRepository.findBySessionId` then `Hands#handOf`.
 
-Containment is still the feature flag, and the flag now withholds more than it did: four use-case
-beans *and* the controller exist only while `eop.features.trick-play` is `true`, and
-`application.yml` leaves it `false`
-([`application.yml:76-91`](../../src/main/resources/application.yml)). It stays `false` on merge —
-`TrickDto` deliberately publishes no turn, completeness or next-leader field, so no client can yet
-learn whose turn it is. See ADR-013 for the register entry and ADR-027 for why `/hand` is singular.
+**Slice E adds a fifth route, a twelfth use case and three edges that were not there before.** The
+route is `GET /{sessionId}/tricks/current`, served by `GetTrickStateUseCase` — the twelfth use case
+in the application and the fifth behind the flag — which returns a `TrickState` that the new
+`TrickStateDto` carries over the wire. It is the first use case to join two aggregates: it reads
+the hands *and* the current trick, so that `adapter/web` never has to learn how a trick and a hand
+relate in order to answer whose turn it is. It needed no new port either, so **the port count below
+is unchanged at ten** — what changed is who calls them. `TrickRepository` gains a third caller, and
+`SessionEventPublisher` gains three: `DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`
+each now take the publisher and emit `HAND_DEALT`, `CARD_PLAYED` and `TRICK_RESOLVED` after their
+write returns. Those three edges are drawn below; before Slice E the only use cases reaching that
+port were `JoinSessionUseCase` and `StartSessionUseCase`.
+
+Containment is still the feature flag, and the flag now withholds more than it did: five use-case
+beans *and* the controller — six beans in all — exist only while `eop.features.trick-play` is
+`true`, and `application.yml` leaves it `false`
+([`application.yml:81-99`](../../src/main/resources/application.yml)). It stays `false` on merge,
+but no longer because a client could not play: Slice E's state-of-play read publishes whose turn it
+is, whether the trick is complete, which seat leads next and whether the hand is over, so the
+gameplay gap that kept the flag down through Slice D is closed. The reasons it stays down are now
+elsewhere, and [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) names three
+predecessors for the story that flips it: ADR-026, still `Proposed`, which would give the
+game-affecting writes the audit logging `observability.md` requires; EOP-48, which fixes the sibling
+`session-lifecycle` flag failing open for want of a `havingValue`; and EOP-15, which scores a hand,
+because until it lands a player can play every card and the session still reports `IN_PROGRESS` with
+no score anywhere. See ADR-013 for the register entry and ADR-027 for why `/hand` is singular.
 
 The component view below has also been completed in one respect that is not new work: the card
 catalogue from EOP-13 (`CardController`, `GetCardUseCase`, `ListCardsUseCase`, `CardRepository`,
@@ -140,8 +160,8 @@ Slice D, whose nodes say so in their labels.
 flowchart LR
     subgraph web["adapter/web — Frameworks and Drivers"]
         SC["SessionController<br/>five routes<br/>@ConditionalOnProperty<br/>bean absent when flag is off"]
-        TC["TrickController<br/>EOP-14 Slice D<br/>POST /deal · GET /hand · POST /plays · POST /tricks/current/resolve<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>the acting seat is never read from a request"]
-        TDTO["HandDto · TrickDto · TrickPlayDto · PlayCardRequest<br/>EOP-14 Slice D<br/>PlayCardRequest carries no seat, no player, no suit, no rank<br/>TrickDto omits turn, completeness and next leader — it cannot know them"]
+        TC["TrickController<br/>EOP-14 Slice D, fifth route added by Slice E<br/>POST /deal · GET /hand · POST /plays<br/>GET /tricks/current · POST /tricks/current/resolve<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>the acting seat is never read from a request"]
+        TDTO["HandDto · TrickDto · TrickPlayDto · PlayCardRequest · TrickStateDto<br/>EOP-14 Slice D, TrickStateDto added by Slice E<br/>PlayCardRequest carries no seat, no player, no suit, no rank<br/>TrickDto omits turn, completeness and next leader — it cannot know them<br/>TrickStateDto carries all four, from a use case that reads both aggregates"]
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
         SSE["SseSessionEventPublisher<br/>in-process subscriber registry"]
@@ -167,16 +187,17 @@ flowchart LR
         DEAL["DealHandsUseCase<br/>EOP-14 Slice C2<br/>facilitator only<br/>bean exists only while eop.features.trick-play is true"]
         PLAY["PlayCardUseCase<br/>EOP-14 Slice C2<br/>takes PlayCardCommand — no seat, no player, no suit, no rank<br/>bean exists only while eop.features.trick-play is true"]
         RESTRICK["ResolveTrickUseCase<br/>EOP-14 Slice C2<br/>any member, not just the facilitator<br/>bean exists only while eop.features.trick-play is true"]
-        READHAND["ReadOwnHandUseCase<br/>EOP-14 Slice D — the eleventh use case<br/>returns the caller's own hand and nothing else<br/>no sibling returns another player's hand or all hands<br/>bean exists only while eop.features.trick-play is true"]
+        READHAND["ReadOwnHandUseCase<br/>EOP-14 Slice D — the eleventh use case at that date<br/>returns the caller's own hand and nothing else<br/>no sibling returns another player's hand or all hands<br/>bean exists only while eop.features.trick-play is true"]
+        GETSTATE["GetTrickStateUseCase<br/>EOP-14 Slice E — the twelfth use case<br/>joins two aggregates: the hands and the current trick<br/>returns TrickState — turn, completeness, next leader, hand complete<br/>names no card any seat is holding<br/>bean exists only while eop.features.trick-play is true"]
 
         P1(["SessionRepository"])
-        P2(["SessionEventPublisher"])
+        P2(["SessionEventPublisher<br/>reached by five use cases since EOP-14 Slice E<br/>every trick-play write publishes after it returns"])
         P3(["IdentifierGenerator"])
         P4(["IdentityTokenGenerator"])
         P5(["JoinCodeGenerator"])
         P6(["JoinAttemptLimiter"])
-        P7(["HandRepository<br/>EOP-14 Slice C1<br/>called by all three Slice C2 use cases, and by ReadOwnHandUseCase from Slice D"])
-        P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases"])
+        P7(["HandRepository<br/>EOP-14 Slice C1<br/>called by all three Slice C2 use cases, by ReadOwnHandUseCase from Slice D<br/>and by GetTrickStateUseCase from Slice E — five callers"])
+        P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases, and by GetTrickStateUseCase from Slice E<br/>recordResolution's next-leader parameter is an OptionalInt since Slice E"])
         P9(["CardRepository<br/>EOP-13 — third method findWholeDeck added by Slice C2"])
         P10(["DeckShuffler<br/>EOP-14 Slice C2<br/>a port so the security choice is made once, in one class"])
     end
@@ -209,11 +230,15 @@ flowchart LR
     TC --> DEAL
     TC --> READHAND
     TC --> PLAY
+    TC --> GETSTATE
     TC --> RESTRICK
     TC -.->|"maps domain results through"| TDTO
     TC -.->|"throws domain exceptions"| GEH
     READHAND --> RESOLVE
     READHAND --> P7
+    GETSTATE -->|"first statement — authorise, then decide"| RESOLVE
+    GETSTATE --> P7
+    GETSTATE --> P8
 
     CREATE --> P1
     CREATE --> P3
@@ -232,18 +257,21 @@ flowchart LR
     LISTCARDS --> P9
 
     DEAL -->|"first statement — authorise, then decide"| RESOLVE
-    PLAY -->|"first statement — authorise, then decide"| RESOLVE
+    PLAY -->|"first port call — authorise, then decide"| RESOLVE
     RESTRICK -->|"first statement — authorise, then decide"| RESOLVE
     DEAL --> P9
     DEAL --> P10
     DEAL --> P7
     DEAL --> P3
+    DEAL -->|"EOP-14 Slice E — HAND_DEALT, after the write"| P2
     PLAY --> P7
     PLAY --> P8
     PLAY --> P9
     PLAY --> P3
+    PLAY -->|"EOP-14 Slice E — CARD_PLAYED, after the write"| P2
     RESTRICK --> P7
     RESTRICK --> P8
+    RESTRICK -->|"EOP-14 Slice E — TRICK_RESOLVED, after the write"| P2
 
     P1 -.->|implements| SRA
     P2 -.->|implements| SSE
@@ -275,27 +303,35 @@ type, and that was re-measured for this slice —
 returns nothing.
 
 **Three of those ten ports gained a caller in Slice C2:** `HandRepository`, `TrickRepository` and the
-new `DeckShuffler`. `HandRepository` is called by all three Slice C2 use cases and, since Slice D, by
-`ReadOwnHandUseCase` as well; `TrickRepository` by `PlayCardUseCase` and `ResolveTrickUseCase` only,
-which is why its label still says two callers — Slice D added a reader of hands, not of tricks. The
+new `DeckShuffler`. `HandRepository` is now called by five use cases — all three from Slice C2, plus
+`ReadOwnHandUseCase` from Slice D and `GetTrickStateUseCase` from Slice E. `TrickRepository` had two
+callers for two slices and has three since Slice E, because the state-of-play read is the first read
+of a trick that is not also a write of one. **A fourth port changed hands in Slice E without gaining
+a new implementation:** `SessionEventPublisher` was reached only by `JoinSessionUseCase` and
+`StartSessionUseCase` until Slice E gave it three more callers, one per trick-play write. The
 sentence this section carried for two slices — that nothing calls them, that the reachable surface of
 five tables ended at a bean nothing injected — stopped being true in C2. What replaced it needs
-restating now, because Slice D changed it again in the one way that matters:
+restating now, because Slice D changed it again in the one way that matters, and Slice E finished the
+job:
 
-- **The routes exist.** `TrickController` reaches all four use cases, `PlayCardRequest` is the request
-  DTO a play was missing, and `docs/api/openapi.yml` carries all four paths — hand-authored and
-  committed in `1fd5718` *before* the controller, per ADR-004. Three earlier versions of this bullet
-  said the opposite and pointed at a `NOROUTE` node to make the missing caller visible; the node and
-  the claim are both gone. What is *not* reachable is a client that can play a whole trick unaided,
-  because `TrickDto` publishes no turn, completeness or next-leader field — see the flag note below.
-- **Five beans do not exist unless a flag says so:** the four use cases and now the controller.
+- **The routes exist, and they are now sufficient.** `TrickController` reaches all five use cases,
+  `PlayCardRequest` is the request DTO a play was missing, and `docs/api/openapi.yml` carries all five
+  trick-play paths among its twelve — each hand-authored and committed *before* the controller method
+  that serves it, per ADR-004. Three earlier versions of this bullet said the opposite and pointed at
+  a `NOROUTE` node to make the missing caller visible; the node and the claim are both gone. A fourth
+  said that a client still could not play a whole trick unaided because `TrickDto` publishes no turn,
+  completeness or next-leader field. That is no longer true either: Slice E added
+  `GET /{sessionId}/tricks/current`, whose `TrickStateDto` carries all three and `handComplete` as
+  well. What keeps the feature unreleased is now the flag alone, and the flag's reasons are not about
+  gameplay — see the flag note below.
+- **Six beans do not exist unless a flag says so:** the five use cases and the controller.
   `UseCaseConfiguration` declares the use cases behind
   `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")`
-  (`UseCaseConfiguration.java:196-260`), `TrickController` carries the same condition with the same
+  (`UseCaseConfiguration.java:197-308`), `TrickController` carries the same condition with the same
   `havingValue`, and `application.yml` sets the flag `false`. Containment is a flag rather than an
   absent caller, which is a stronger guarantee under test and a weaker one under operator error — a
   flag can be flipped, an absent class cannot. `TrickPlayDisabledIntegrationTest` therefore asserts
-  both halves: all five beans absent *and* all four routes answering 404, because the status is what a
+  both halves: all six beans absent *and* all five routes answering 404, because the status is what a
   client is promised while the absence is what pins the mechanism.
 - **A read is gated alongside the writers, and that is deliberate.** `ReadOwnHandUseCase` only reads,
   so gating it looks inconsistent until you ask what it would answer with the flag off: no hand was
@@ -311,16 +347,34 @@ restating now, because Slice D changed it again in the one way that matters:
   `claimDeal`, `touchWhileLeaderSeatIs` and `advanceLeaderSeat` each take the session row's lock
   before any hand or trick row, which is what serialises two simultaneous deals or two plays for the
   same seat. The use cases do not choose this; they cannot see it.
-- **All four use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
-  `PlayCardUseCase`, `ResolveTrickUseCase` and — since Slice D — `ReadOwnHandUseCase` into
+- **Every trick-play write now also broadcasts, and the edge direction is the point.** The three new
+  `--> SessionEventPublisher` edges are outward from `usecase` to a port `usecase` owns, so the
+  dependency still points inward; `SseSessionEventPublisher` in `adapter/sse` implements it. Each
+  `publish` sits *after* the port write returns — `DealHandsUseCase.java:162`,
+  `PlayCardUseCase.java:229`, `ResolveTrickUseCase.java:162` — so a broadcast can only describe a
+  durable change and a throwing publisher cannot fail a request whose write succeeded. None of the
+  three events carries any part of the change, which is what keeps a per-player hand off a fan-out
+  transport (ADR-027) and what makes re-reading still the only way to learn *what* happened.
+- **All five use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
+  `PlayCardUseCase`, `ResolveTrickUseCase`, `ReadOwnHandUseCase` from Slice D and
+  `GetTrickStateUseCase` from Slice E into
   `ResolvePlayerUseCase` are drawn as first-class
   edges rather than left implicit because the *ordering* is the slice's main security property, and
-  a component view that omitted them would hide it: `DealHandsUseCase.java:120`,
-  `PlayCardUseCase.java:139`, `ResolveTrickUseCase.java:111` and `ReadOwnHandUseCase.java:64` are
-  each the first executable
-  statement of their `execute` method, before any read, any port call and any state test
+  a component view that omitted them would hide it: `DealHandsUseCase.java:133`,
+  `PlayCardUseCase.java:165`, `ResolveTrickUseCase.java:133`, `ReadOwnHandUseCase.java:64` and
+  `GetTrickStateUseCase.java:83` are
+  each the first port call of their `execute` method, before any read of a hand or a trick and before
+  any state test
   ([ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) records why the adapter cannot do
-  this for them — no port method takes an acting player).
+  this for them — no port method takes an acting player). Every one of those five numbers moved in
+  Slice E and four of them were wrong on this page until it was corrected; find them by the call, not
+  by the line.
+- **The new read is where two aggregates meet, and that is the only place they may.**
+  `GetTrickStateUseCase` has edges to both `HandRepository` and `TrickRepository` because whose turn
+  it is cannot be derived from either alone: `seatToPlay` comes from the cards already in an open
+  trick, and from `HandRepository.findCurrentLeaderSeat` when no trick is open
+  (`GetTrickStateUseCase.java:100-103`). A controller that fetched both and combined them would put
+  that rule in `adapter/web`; `TrickStateDto` therefore maps a `TrickState` and computes nothing.
 
 ### `SessionController` — five routes that may not exist at all
 
@@ -353,22 +407,24 @@ fail-open where the rest of the flag machinery is fail-closed. `TrickController`
 carries `havingValue = "true"` for exactly this reason; correcting `SessionController`
 belongs to its own change under its own Jira key (ADR-013 records the rule).
 
-### `TrickController` — four routes that may not exist at all
+### `TrickController` — five routes that may not exist at all
 
-Added by EOP-14 Slice D. The contract for all four was hand-authored in
-`docs/api/openapi.yml` and committed **before** this class existed (ADR-004).
+Added by EOP-14 Slice D with four routes; Slice E added the fifth. The contract for all
+five was hand-authored in `docs/api/openapi.yml` and committed **before** the method that
+serves it (ADR-004).
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/sessions/{sessionId}/deal` | facilitator deals the whole deck; 204, no body |
 | `GET` | `/api/v1/sessions/{sessionId}/hand` | the caller's **own** hand — and no other (ADR-027) |
 | `POST` | `/api/v1/sessions/{sessionId}/plays` | play a card; 201 with the trick as it now stands |
+| `GET` | `/api/v1/sessions/{sessionId}/tricks/current` | state of play — turn, completeness, next leader, hand complete; 200 |
 | `POST` | `/api/v1/sessions/{sessionId}/tricks/current/resolve` | resolve a complete trick; 200 |
 
 Annotated `@ConditionalOnProperty(prefix = "eop.features", name = "trick-play",
-havingValue = "true")`, matching the condition on all four of its use-case beans, so the
+havingValue = "true")`, matching the condition on all five of its use-case beans, so the
 flag cannot register the routes without their collaborators. With the flag off the bean
-does not exist and all four paths answer 404.
+does not exist and all five paths answer 404.
 
 Two properties of this class are load-bearing rather than incidental:
 
@@ -377,12 +433,17 @@ Two properties of this class are load-bearing rather than incidental:
   from the identity token; the suit and rank come from the deck row the card id names. Two
   earlier defects were exactly a caller-supplied seat (playing out of another player's
   hand) and a caller-supplied suit and rank (a forged card taking a trick).
-- **It reaches for one aggregate only.** `TrickDto` therefore publishes no field for whose
-  turn it is, whether the trick is complete, or which seat leads next: all three depend on
-  which seats still hold cards, which is a property of the hands rather than of the trick.
-  A controller that fetched the hands to compute them would put the turn rule in
-  `adapter/web`. The cost is that the flag cannot be turned on until a later slice adds a
-  read that exposes them.
+- **Each route reaches for one aggregate only, and where two are needed a use case joins
+  them.** `TrickDto` publishes no field for whose turn it is, whether the trick is
+  complete, or which seat leads next: all three depend on which seats still hold cards,
+  which is a property of the hands rather than of the trick. A controller that fetched the
+  hands to compute them would put the turn rule in `adapter/web`. Slice E answered that by
+  adding a use case rather than a second fetch in the controller —
+  `GetTrickStateUseCase` reads both aggregates and returns a `TrickState`, and
+  `TrickStateDto` maps it without computing anything. The cost this bullet used to record —
+  that the flag could not be turned on until a later slice added a read exposing those
+  three answers — is paid: the read exists, `GET /tricks/current` publishes it, and the
+  reasons the flag stays down are now the three predecessors ADR-028 names.
 
 ### `SseSessionEventPublisher` — a broadcast registry, and not a presence list
 
@@ -488,13 +549,23 @@ Spring Data interfaces behind it, collapsed to one node because the diagram is a
 five near-identical nodes would cost more legibility than they buy. The old justification for
 leaving them off, that this was the EOP-10 component view and Slice B added no component to it,
 lapsed with Slice C1, which adds components to exactly this view. The second justification
-lapsed with Slice C2: it used to be that nothing above these components called in, and now four
-use cases do, so `HandRepository` is drawn with inbound edges from the deal, play and resolve nodes
-and from `ReadOwnHandUseCase`, the reader Slice D added, while `TrickRepository` keeps edges from
-play and resolve only — dealing never touches it, and neither does reading a hand. An earlier
+lapsed with Slice C2: it used to be that nothing above these components called in, and now **five**
+use cases do, so `HandRepository` is drawn with **five** inbound edges — from the deal, play and
+resolve nodes, from `ReadOwnHandUseCase`, the reader Slice D added, and from `GetTrickStateUseCase`,
+the reader Slice E added (`READHAND --> P7`, `GETSTATE --> P7`, `DEAL --> P7`, `PLAY --> P7`,
+`RESTRICK --> P7`) — while `TrickRepository` has **three**, from play, from resolve and from that
+same Slice E reader (`GETSTATE --> P8`, `PLAY --> P8`, `RESTRICK --> P8`): dealing never touches it,
+and neither does reading a hand. An earlier
 version of this sentence said three, and counted the Slice C2 callers rather than the edges the
 diagram draws; a cardinal in this document is a claim about the artefact beside it, so re-derive it
-from the edge list rather than reading it for plausibility.
+from the edge list rather than reading it for plausibility. **It went wrong a second time in exactly
+that way at EOP-14 Slice E**, which added `GETSTATE --> P7` and `GETSTATE --> P8` to the diagram
+above and left this paragraph saying four and "play and resolve only", contradicting both the edge
+list and the node labels beside it. Two corrections for one error class is the argument for deriving
+these two numbers from the edge list of the diagram above before editing this sentence, not for
+reading it more carefully — and note that this paragraph now quotes those edges, so a whole-file
+`grep -c -- '--> P7'` counts the prose as well and answers 9 rather than 5; the five edges are the
+ones inside the `flowchart` block.
 
 The unique count on this node did have to move, from three to **four**, and it was the only number
 Slice B changed anywhere in this diagram. Changeset `004` adds `uq_player_id_seat` on
@@ -533,9 +604,9 @@ decision to every caller. Tests substitute the port, not the generator
 
 Unlike the two generators, this one is registered unconditionally: it is a `@Component` regardless
 of `eop.features.trick-play`, because it holds no state and reaches no table. What the flag gates is
-the four use cases and `TrickController` — the five beans that would reach the database or accept a
-request — and `TrickPlayDisabledIntegrationTest` asserts all five absent as well as the four routes
-answering 404 (`TrickPlayDisabledIntegrationTest.java:82-143`).
+the five use cases and `TrickController` — the six beans that would reach the database or accept a
+request — and `TrickPlayDisabledIntegrationTest` asserts all six absent as well as all five routes
+answering 404 (`TrickPlayDisabledIntegrationTest.java:83-168`).
 
 ---
 
@@ -616,7 +687,7 @@ constructible and was declined, because a copy that can disagree with `trick.gam
 constrains the copy rather than the truth; enforcement is Slice C2's play use case, which **as of
 that slice does resolve** the acting player from the identity token instead of trusting a request
 field — `PlayCardCommand` has no seat and no player component at all
-(`PlayCardCommand.java:35-41`), so `PlayCardUseCase.java:139-141` can only take the seat from the
+(`PlayCardCommand.java:35-41`), so `PlayCardUseCase.java:165-167` can only take the seat from the
 player `ResolvePlayerUseCase` returned. The storage gap is unchanged and still real; what has
 changed is that no request can express the seat needed to reach it from outside the process. Nor is a card
 scoped to one hand or one trick *per session* — only per hand and per trick — which is the other
@@ -642,9 +713,10 @@ status that refusal carries — are in
 only that `trick.winner_play_id` names some `trick_play` row — not one of *this* trick's plays, and
 not one from this session. That needs neither a second session nor a second player, so no
 cross-session fix bounds it, and Slice C's resolve-trick use case owed the check. **Slice C2
-discharges it:** `ResolveTrickUseCase.java:131-135` refuses a resolution whose winning play is not
+discharges it:** `ResolveTrickUseCase.java:151-157` refuses a resolution whose winning play is not
 one of the plays of the trick being resolved, throwing `WinningPlayNotInTrickException` (422) at
-`:134`. The
+`:155-156`. Slice E moved that guard down the file without changing it — it stood at `:131-135` when
+this paragraph was written — so find it by the `anyMatch`, not by the number. The
 guard is unreachable through today's domain — `Trick`'s constructor already refuses a foreign winner
 — and was written anyway, because the constraint that would confine the winner to *this* trick's
 plays is a composite key Liquibase cannot express. Two checks in two rings is defence in depth, not
@@ -664,16 +736,17 @@ about how the measurements were taken and nothing any longer about reachability.
 
 What contains those gaps today **is** a feature flag, and naming it precisely matters as much as
 naming its absence did. `HandRepository` and `TrickRepository` now have callers:
-`DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`, added by EOP-14 Slice C2, and
-`ReadOwnHandUseCase`, added by Slice D. There **is** now a path from an HTTP request to a trick-play
-row: `TrickController` injects all four and publishes four routes. An earlier version of this
+`DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`, added by EOP-14 Slice C2,
+`ReadOwnHandUseCase`, added by Slice D, and `GetTrickStateUseCase`, added by Slice E — which is the
+first caller to read both ports in one request. There **is** now a path from an HTTP request to a
+trick-play row: `TrickController` injects all five and publishes five routes. An earlier version of this
 paragraph said no controller injected any of them and no route existed, and called that Slice D's
 work; Slice D did it, so containment by absence of a caller is over twice over — once because the
 callers exist and once because the caller of the callers does. What replaces it is
 `eop.features.trick-play`. `application.yml` declares **two** flags, both `false`
-(`application.yml:75-91`), and the four use-case beans carry
+(`application.yml:75-99`), and the five use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
-`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:196-260`), as does
+`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:197-308`), as does
 `TrickController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
 code can call them.
@@ -689,12 +762,14 @@ the seat check it performs is a check on the *row*, not on the requester
 
 Two of ADR-023's four cross-session obligations are discharged by Slice C2 and two are not.
 Discharged: the play path cannot express a foreign seat (`PlayCardCommand.java:35-41`), and the
-winning play is confined to its own trick (`ResolveTrickUseCase.java:131-135`). Not discharged, and
+winning play is confined to its own trick (`ResolveTrickUseCase.java:151-157`). Not discharged, and
 still storage-shaped: `trick_play` and `hand` still accept a row naming a player from another
 session, so the seat- and card-lockout denial of service enumerated above survives any use-case
 check, because it does not depend on a forged request — it depends on a genuine request from a
 genuine member of a *different* session. Slice D's route makes those two reachable from outside the
-process for the first time, and
+process for the first time, and Slice E neither widened nor narrowed them: the state-of-play read
+writes nothing, and the end-of-hand change moves a value inside an existing `UPDATE` rather than
+adding a row that could name a foreign player.
 [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) holds the measurements.
 
 > **Corrected 2026-08-13, EOP-14 Slice C2.** The four paragraphs above previously said that no use
