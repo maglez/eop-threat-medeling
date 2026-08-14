@@ -1116,6 +1116,12 @@ components:
         defects fixed during development were exactly a client-supplied seat,
         which let a player play out of another player's hand, and a
         client-supplied suit and rank, which let a forged card take a trick.
+
+        A body carrying any of those fields is accepted and the field is
+        ignored: nothing reads it. The seat and player published back in the
+        `Trick` are always the token's, and the suit and rank are always the
+        deck's, so a forged field changes nothing. Clients should not send them,
+        and a future release may begin refusing them outright.
       required: [cardId]
       properties:
         cardId:

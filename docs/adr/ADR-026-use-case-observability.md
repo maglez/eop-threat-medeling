@@ -13,16 +13,24 @@ identifier taken from an `X-Correlation-Id` header on every line, `INFO` at oper
 "audit logging for game-affecting actions (card draws, privilege escalations) at `INFO` level with
 actor context".
 
-No use case in this repository logs anything. Not one of the ten:
+No use case in this repository logs anything. Not one of the eleven:
 
 `CreateSessionUseCase`, `DealHandsUseCase`, `GetCardUseCase`, `GetSessionStateUseCase`,
-`JoinSessionUseCase`, `ListCardsUseCase`, `PlayCardUseCase`, `ResolvePlayerUseCase`,
-`ResolveTrickUseCase`, `StartSessionUseCase`.
+`JoinSessionUseCase`, `ListCardsUseCase`, `PlayCardUseCase`, `ReadOwnHandUseCase`,
+`ResolvePlayerUseCase`, `ResolveTrickUseCase`, `StartSessionUseCase`.
 
 Dealing a hand, playing a card and resolving a trick are game-affecting actions by any reading, so
 the three added by EOP-14 Slice C2 are squarely inside the rule. So are the seven that preceded them.
 Logging in this codebase currently lives in the web adapter, where `GlobalExceptionHandler` records
 server faults at `ERROR` and `WinningPlayNotInTrickException` at `WARN`.
+
+EOP-14 Slice D then added the eleventh use case, `ReadOwnHandUseCase`, and `TrickController`: the
+first HTTP routes through which dealing, playing and resolving can actually be invoked. That slice
+deliberately left the gap alone. Putting a logger in `TrickController` would have adopted option 4
+below by default, in a feature slice, without weighing the other three — and it would have made this
+one controller the only observed entry point in the application, which is exactly the non-uniformity
+the consequences section gives as the reason the gap is currently tolerable. The routes existing does
+raise the stakes, though: until this ADR is resolved, the actions are now reachable *and* unobserved.
 
 Three review gates raised this against Slice C2 — `@tester-unit-and-quality` as a finding,
 `@code-reviewer` as its single warning, and `@architecture-guardian` as a MAJOR — and all three
@@ -73,7 +81,7 @@ Whichever is chosen must also answer three things the rule raises but does not s
 
 ## Consequences
 
-- The obligation is now recorded somewhere that outlives a review conversation, and it names all ten
+- The obligation is now recorded somewhere that outlives a review conversation, and it names all eleven
   use cases so a future reader does not have to rediscover the scope.
 - It stays outstanding, and it stays outstanding **uniformly**: no use case logs, so no use case is the
   odd one out. Adding logging to only the three from Slice C2 would have made the codebase less
@@ -103,7 +111,7 @@ Whichever is chosen must also answer three things the rule raises but does not s
   option 4 above would make that the only place it ever exists.
 - **ADR-021** (trusted proxies and `Forwarded-For`) — constrains where an `X-Correlation-Id` header may
   be trusted from, so the MDC requirement cannot be settled without it.
-- **ADR-025** (dealing is its own use case) — added the last three of the ten unobserved use cases and
+- **ADR-025** (dealing is its own use case) — added three of the eleven unobserved use cases and
   is the slice during which this gap was found.
 - **`.opencode/rules/clean-architecture.md`** — the constraint that rules out the obvious
   implementation, and the reason this needs an ADR rather than a commit.

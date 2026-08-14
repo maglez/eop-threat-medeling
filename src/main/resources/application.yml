@@ -79,8 +79,13 @@ eop:
     session-lifecycle: false
 
     # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this
-    # is false the deal-hands, play-card and resolve-trick beans do not exist, so
-    # nothing in the application calls the ports that write a hand, a trick or a play, even though the
-    # tables and the ports are already there. The route arrives in a later slice and
-    # is gated on this same flag.
+    # is false the deal-hands, read-own-hand, play-card and resolve-trick beans do not
+    # exist, so nothing in the application calls the ports that write a hand, a trick
+    # or a play, even though the tables and the ports are already there. TrickController
+    # is gated on this same flag, so /deal, /hand, /plays and /tricks/current/resolve
+    # return the framework's own 404 while it is off.
+    #
+    # It stays false on merge. Turning it on needs one more slice: a client can read its
+    # own hand and gets the trick back from its own play, but nothing yet tells it whose
+    # turn it is, whether the trick is complete or which seat leads next.
     trick-play: false
