@@ -178,7 +178,7 @@ public interface TrickRepository {
      * second authority on the same fact. It also matters to the answer: the plays of an unfinished
      * trick have already scored their threats even though nobody has taken it yet.
      *
-     * <p>Authorises nobody, exactly as the reads above do not. There is no acting player here for an
+     * <p>Authorises nobody, exactly as the read above does not. There is no acting player here for an
      * implementation to check against, so a caller that has not already established membership is
      * handing a stranger the whole history of a session they guessed the identifier of (ADR-024).
      *

@@ -756,7 +756,7 @@ reachable at once, and the flag will not be the thing holding them shut.
 > **Corrected again 2026-08-14, EOP-14 Slice D:** the containment described above is spent. C2
 > added the use cases and Slice D added the route — `TrickController`, four paths — so nothing
 > is now held back by absence. What holds these gaps back is `eop.features.trick-play` alone,
-> `false` at `application.yml:91`, withholding four use-case beans and the controller. A flag
+> `false` at `application.yml:112`, withholding four use-case beans and the controller. A flag
 > can be flipped, so every gap enumerated below is one property change away from reachable and
 > must be read that way rather than as latent.
 >
@@ -1301,8 +1301,8 @@ exception type and its 422, and it is not a restatement of any of the other thre
 > revalidation on read in `winnerAmong` is now joined by a refusal on the write path, one layer
 > higher, where the trick and its plays are both in hand. Containment is also no longer only
 > "no route": since Slice C2 there are callers of the trick-play ports, and what withholds them
-> is `eop.features.trick-play`, declared `false` at `application.yml:91`. As of EOP-14 Slice D it
-> gates six use-case beans and both `TrickController` and `ScoreController` (`UseCaseConfiguration.java:219-343`), which now
+> is `eop.features.trick-play`, declared `false` at `application.yml:112`. As of EOP-14 Slice D it
+> gates four use-case beans and `TrickController` (`UseCaseConfiguration.java:219-302`), which now
 > supplies the route this paragraph once said was absent. A flag is weaker than an absent class
 > and is named as such rather than presented as equivalent. See
 > [ADR-025](ADR-025-dealing-is-its-own-use-case.md).

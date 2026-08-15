@@ -214,6 +214,25 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
 - A client watching only `GET /api/v1/sessions/{sessionId}` still never sees a session finish. That
   gap is slice C's, and it is the one thing left before the flag can be flipped.
 
+**Carried conditions for slice C** (re-derived from the tree; these are what the architecture gate
+will check before approving slice C):
+
+1. Keep `eop.features.trick-play: false` on merge; flipping the flag is its own story and its own
+   audit.
+2. Close the `COMPLETED` transition so a client watching only `GET /api/v1/sessions/{sessionId}`
+   sees a session finish. This is the one thing left before the flag can be flipped.
+3. Persisted standings stay conditional: justify by a purpose derivation cannot serve, and a
+   persisted standing must never be read back to answer the score — not even for a `COMPLETED` game.
+4. Rewrite `SessionStatus`'s class javadoc; its "because playing cards arrives with EOP-14" clause
+   was already false before either slice.
+5. Resolve the use-case observability gap: thirteen use cases, none logging, against
+   `observability.md`'s INFO-at-boundaries requirement. ADR-026 is a flag-on predecessor; the flag
+   must not go `true` while thirteen use cases log nothing.
+6. Fix `TrickRepository.findTricks`'s javadoc NIT: "the read above does not" (singular — only
+   `findCurrentTrick` precedes it).
+7. Re-derive every cardinal in the same commit that prints it; grep the previous value and check
+   each hit's enumeration and line citations, not just its number.
+
 ## Related
 
 - [ADR-004](ADR-004-api-contract-first.md) — the contract was hand-authored before the controller,

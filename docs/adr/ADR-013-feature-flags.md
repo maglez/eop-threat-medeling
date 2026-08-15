@@ -130,7 +130,7 @@ it. The flag now withholds **four use-case beans and one controller**: `DealHand
 `ReadOwnHandUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase` and `TrickController`, whose
 four routes — `POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`
 and `POST /{sessionId}/tricks/current/resolve` — answer the framework's own 404 while it is
-off. `TrickPlayDisabledIntegrationTest` now asserts both halves: all eight beans absent *and*
+off. `TrickPlayDisabledIntegrationTest` now asserts both halves: all five beans absent *and*
 all four routes 404, because the status is what a client is promised while the absence is
 what pins the mechanism, and a test asserting only the status would pass against a design
 this ADR forbids. It stays `false` on merge.
