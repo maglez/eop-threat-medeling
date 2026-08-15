@@ -3,8 +3,10 @@ package org.maglez.eop.config;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.adapter.web.ScoreController;
 import org.maglez.eop.adapter.web.TrickController;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ReadOwnHandUseCase;
@@ -28,12 +30,12 @@ import org.springframework.context.ApplicationContext;
  * assert what the default context could have answered for free.
  *
  * <p>The assertion is on the bean rather than on behaviour, which is what keeps this test honest
- * about its subject: the wiring is what is under test, and the five use cases have their own unit
+ * about its subject: the wiring is what is under test, and the six use cases have their own unit
  * tests for what they do once wired.
  *
- * <p>The controller is asserted here too, and it is the bean this pair most needs to cover. The
- * five use cases are only reachable by something that injects them, so with the flag off they are
- * unreachable code; the controller is the thing that makes them reachable over HTTP, and a flag
+ * <p>Both controllers are asserted here too, and they are the beans this pair most needs to cover.
+ * The six use cases are only reachable by something that injects them, so with the flag off they are
+ * unreachable code; the controllers are the things that make them reachable over HTTP, and a flag
  * that withheld the use cases but left the routes mapped would fail at request time with a missing
  * dependency rather than with the 404 the contract promises.
  */
@@ -88,7 +90,7 @@ class TrickPlayEnabledIntegrationTest {
      * name, or a bean method left off the configuration altogether, is absent in both positions, and
      * only this test tells an intentionally withheld bean from a missing one.
      *
-     * <p>It is the newest of the five and the one a reader is most likely to forget. EOP-14 Slice E
+     * <p>It was the newest of EOP-14's five and the one a reader is most likely to forget. EOP-14 Slice E
      * added it, and this pair had asserted four use cases up to that point, so the off position
      * knew about the fifth bean before the on position did.
      */
@@ -106,6 +108,36 @@ class TrickPlayEnabledIntegrationTest {
     void shouldRegisterTheTrickController() {
         Assertions.assertThat(context.getBeanNamesForType(TrickController.class))
                 .as("the routes and the use cases are behind one flag, so both must appear together")
+                .isNotEmpty();
+    }
+
+    /**
+     * Asserts the score use case is registered while the flag is on.
+     *
+     * <p>The newest of the six, and the one the off position is least able to vouch for on its
+     * own: a bean that was never declared is absent in both positions, so only this assertion
+     * separates a flag that withholds the score from a score that was never wired at all.
+     */
+    @Test
+    @DisplayName("creates the score use case")
+    void shouldRegisterTheGetScoreUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(GetScoreUseCase.class))
+                .as("the flag is on for the suite, so the score must be wired")
+                .isNotEmpty();
+    }
+
+    /**
+     * Asserts the score controller is registered while the flag is on.
+     *
+     * <p>A second controller behind the same flag, carrying the sixth route. It is asserted
+     * separately from the use case because the two are withheld by two different conditions that
+     * happen to name the same property, and a typo in either would leave the other still wired.
+     */
+    @Test
+    @DisplayName("creates the score controller")
+    void shouldRegisterTheScoreController() {
+        Assertions.assertThat(context.getBeanNamesForType(ScoreController.class))
+                .as("the flag is on for the suite, so the score route must be served")
                 .isNotEmpty();
     }
 }

@@ -17,6 +17,7 @@ import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerMismatchException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
+import org.maglez.eop.entity.ScoreNotDerivableException;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
@@ -784,6 +785,32 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, Integer.toString(JOIN_CODE_RETRY_AFTER_SECONDS))
                 .body(problem);
+    }
+
+    /**
+     * Answers a score that cannot be derived with a 500.
+     *
+     * <p>A server fault, not a client one, and the second mapping here to say so. Every refusal this
+     * exception carries means the stored game contradicts itself — a play attributed to a player who
+     * holds no seat, two tricks claiming one place in the order, a player seated twice. None of them
+     * is something a caller can reword a request to avoid, so none of them is a 4xx.
+     *
+     * <p>The reason is logged and withheld from the response, and so are the identifiers the message
+     * names. A caller can do nothing with them, and a play or trick identifier belonging to a session
+     * they may not even be able to see is exactly the sort of internal key that should not be echoed
+     * back to whoever asked. The body is the same one every other server fault gets, so this one is
+     * indistinguishable from the rest (ADR-031).
+     *
+     * @param exception the exception raised while deriving the score
+     * @return a problem detail describing an internal error
+     */
+    @ExceptionHandler(ScoreNotDerivableException.class)
+    public ProblemDetail handleScoreNotDerivable(final ScoreNotDerivableException exception) {
+        LOG.error("A score could not be derived: {}", exception.reason(), exception);
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+        problem.setTitle("Internal server error");
+        problem.setDetail("The request could not be completed.");
+        return problem;
     }
 
     /**

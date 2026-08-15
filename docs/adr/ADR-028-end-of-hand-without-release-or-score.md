@@ -23,7 +23,14 @@ build would have objected to it.
 The first is whether Slice E should turn `eop.features.trick-play` on. Everything the
 five slices built is behind that one flag, and with it `false` the five routes do not
 exist and the five use cases behind them — five of the twelve the application declares —
-are not registered as beans. It is tempting
+are not registered as beans.
+
+> **Amended 2026-08-15 (EOP-15 slice B, [ADR-031](ADR-031-the-score-is-read-through-its-own-route.md)).**
+> Those three figures were true when this ADR was written and are not now. The flag withholds
+> **six** use-case beans and **two** controllers — eight beans in all — and **six** routes, the sixth
+> being `GET /{sessionId}/score`; and the application declares **thirteen** use cases, not twelve.
+> The argument below is unaffected: it is about whether to flip the flag, not about how much sits
+> behind it, and the answer is still no. It is tempting
 to finish the feature by releasing it in the same pull request that completes it.
 Against that stands a condition @security-auditor attached to its approval of Slice D:
 dealing, playing and resolving are the product's first competitively meaningful writes,

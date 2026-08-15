@@ -1,6 +1,7 @@
 package org.maglez.eop.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.maglez.eop.entity.PlayerBuilder.aPlayer;
@@ -105,7 +106,8 @@ class ScoredPlayTest {
         void shouldRefuseToScoreAPlayAgainstAPlayerWhoDidNotMakeIt() {
             final TrickPlay bySeatOne = aPlayBy(1, FIVE_OF_SPOOFING).build();
 
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoredPlay.of(player(2), bySeatOne, false));
+            assertThatExceptionOfType(ScoreNotDerivableException.class).isThrownBy(() -> ScoredPlay.of(player(2), bySeatOne, false))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.PLAY_NOT_BY_THIS_PLAYER);
 
             assertThat(ScoredPlay.of(player(1), bySeatOne, false).seatOrder()).isEqualTo(1);
         }

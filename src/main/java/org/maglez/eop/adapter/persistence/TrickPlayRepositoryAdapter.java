@@ -103,7 +103,7 @@ import org.springframework.transaction.annotation.Transactional;
  * player a row names is seated at the seat that row claims — but that is a check on
  * the <em>row</em>, not on the requester, and it is the only membership check in the
  * class. {@link #openTrick} and {@link #recordResolution} make none. Neither do any
- * of the three reads, and there they are not merely absent but impossible: the ports
+ * of the four reads, and there they are not merely absent but impossible: the ports
  * carry no acting-player parameter for a read to check against.
  *
  * <p>Establishing that the requester belongs in this session is therefore the use
@@ -297,6 +297,50 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
         return trickRows.findFirstByGameSessionIdOrderBySequenceDesc(sessionId).map(this::assemble);
     }
 
+    /**
+     * Reads every trick of a session, in the order they were played.
+     *
+     * <p>Nothing is filtered. A trick still on the table is returned alongside the resolved ones,
+     * unresolved, because whether a trick is finished is a question the trick answers about itself
+     * once it has been rebuilt. A query that asked for {@code winner_play_id IS NOT NULL} would be
+     * a second authority on that, and one that a caller deriving a running score would be wrong to
+     * trust: the plays of an unfinished trick still scored their threats.
+     *
+     * <p>Four reads serve the whole session rather than three per trick. Assembling each trick on
+     * its own would cost seventy-nine round trips at three players, for an answer whose size the deck
+     * already bounds.
+     *
+     * <p>Authorises nobody, and cannot: there is no acting player in the signature to check against
+     * (ADR-024). A caller that has not already established membership is handing a stranger a
+     * session's whole history, so that has to be settled before this is called.
+     *
+     * @param sessionId identifier of the session
+     * @return the session's tricks in sequence order, empty when none has been opened
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Trick> findTricks(final UUID sessionId) {
+        Objects.requireNonNull(sessionId, SESSION_ID_REQUIRED);
+        final List<TrickJpaEntity> rows = trickRows.findByGameSessionIdOrderBySequenceAsc(sessionId);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        final List<TrickPlayJpaEntity> playedRows = playRows.findByTrickIdIn(
+                rows.stream().map(TrickJpaEntity::getId).toList());
+        final Map<UUID, Card> catalogue = catalogue(
+                playedRows.stream().map(TrickPlayJpaEntity::getCardId).toList());
+        final Map<UUID, List<String>> componentsByPlay = componentsByPlay(playedRows);
+        final Map<UUID, List<TrickPlayJpaEntity>> playsByTrick = new HashMap<>();
+        for (final TrickPlayJpaEntity played : playedRows) {
+            playsByTrick.computeIfAbsent(played.getTrickId(), key -> new ArrayList<>()).add(played);
+        }
+        final List<Trick> tricks = new ArrayList<>(rows.size());
+        for (final TrickJpaEntity row : rows) {
+            tricks.add(assemble(row, playsByTrick.getOrDefault(row.getId(), List.of()), catalogue, componentsByPlay));
+        }
+        return List.copyOf(tricks);
+    }
+
     @Override
     @Transactional
     public void openTrick(
@@ -424,16 +468,25 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      */
     private Trick assemble(final TrickJpaEntity row) {
         final List<TrickPlayJpaEntity> rows = playRows.findByTrickId(row.getId());
-        final Map<UUID, Card> catalogue = catalogue(
-                rows.stream().map(TrickPlayJpaEntity::getCardId).toList());
-        final Map<UUID, List<String>> componentsByPlay = new HashMap<>();
-        for (final TrickPlayComponentJpaEntity named :
-                componentRows.findByTrickPlayIdInOrderByTrickPlayIdAscOrdinalAsc(
-                        rows.stream().map(TrickPlayJpaEntity::getId).toList())) {
-            componentsByPlay
-                    .computeIfAbsent(named.getTrickPlayId(), key -> new ArrayList<>())
-                    .add(named.getComponentName());
-        }
+        return assemble(row, rows, catalogue(rows.stream().map(TrickPlayJpaEntity::getCardId).toList()),
+                componentsByPlay(rows));
+    }
+
+    /**
+     * Rebuilds a trick from its row and plays that have already been read.
+     *
+     * <p>Separated from the overload above so that a whole session's tricks can be built from
+     * four reads rather than three per trick. Everything the rebuild needs is passed in, and
+     * nothing here touches a repository.
+     *
+     * @param row              the trick row
+     * @param rows             the plays belonging to this trick, in any order
+     * @param catalogue        the cards those plays name, by card identifier
+     * @param componentsByPlay the components named on each play, by play identifier
+     * @return the trick, resolved if its winner is recorded
+     */
+    private Trick assemble(final TrickJpaEntity row, final List<TrickPlayJpaEntity> rows,
+            final Map<UUID, Card> catalogue, final Map<UUID, List<String>> componentsByPlay) {
         final int leaderSeat = row.getLeaderSeat();
         final List<TrickPlay> plays = rows.stream()
                 .sorted(Comparator.comparingInt(
@@ -443,6 +496,27 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
                         componentsByPlay.getOrDefault(play.getId(), List.of())))
                 .toList();
         return row.toDomain(plays, winnerAmong(row, plays));
+    }
+
+    /**
+     * Reads the components named on the given plays.
+     *
+     * <p>Ordered by ordinal within each play, because the order a player named the parts of the
+     * system in is the order they meant, and the ordinal column is the only record of it.
+     *
+     * @param rows the plays to read components for
+     * @return the component names of each play, by play identifier, empty for a play that named none
+     */
+    private Map<UUID, List<String>> componentsByPlay(final List<TrickPlayJpaEntity> rows) {
+        final Map<UUID, List<String>> componentsByPlay = new HashMap<>();
+        for (final TrickPlayComponentJpaEntity named
+                : componentRows.findByTrickPlayIdInOrderByTrickPlayIdAscOrdinalAsc(
+                        rows.stream().map(TrickPlayJpaEntity::getId).toList())) {
+            componentsByPlay
+                    .computeIfAbsent(named.getTrickPlayId(), key -> new ArrayList<>())
+                    .add(named.getComponentName());
+        }
+        return componentsByPlay;
     }
 
     /**

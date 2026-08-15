@@ -75,7 +75,7 @@ addressable and listing them is legitimate.
   `nextLeaderSeat` and `handComplete` (`TrickStateDto.java:38-41`), so `TrickDto`'s omissions no longer
   leave a client unable to play — they are simply not that DTO's job, which is the naming point this
   ADR is actually about. `eop.features.trick-play` still ships `false`
-  (`src/main/resources/application.yml:99`), and [ADR-013](ADR-013-feature-flags.md) — the flag
+  (`src/main/resources/application.yml:112`), and [ADR-013](ADR-013-feature-flags.md) — the flag
   register — now records that the three remaining reasons are ADR-026, EOP-48 and EOP-15, not the
   missing read. Follow that link for the current answer rather than the clause above.)*
 

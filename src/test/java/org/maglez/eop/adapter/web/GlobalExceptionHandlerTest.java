@@ -32,6 +32,7 @@ import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerMismatchException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
+import org.maglez.eop.entity.ScoreNotDerivableException;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
@@ -486,6 +487,29 @@ class GlobalExceptionHandlerTest {
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
             assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
             assertThat(problem.getDetail()).doesNotContain("78");
+        }
+
+        /**
+         * Asserts a score that cannot be derived is answered as a server fault that names nobody.
+         *
+         * <p>Every reason this exception carries means the stored game contradicts itself, so there
+         * is nothing a caller can do differently and nothing it is owed beyond the fact that the
+         * request failed. The body is the same one a deck holding no tampering card produces, which
+         * is deliberate: two different server faults that a caller cannot act on should not be
+         * distinguishable from outside. The reason and the identifiers reach the log instead.
+         */
+        @Test
+        @DisplayName("a score that cannot be derived is a server fault, 500, and names no player")
+        void shouldMapScoreNotDerivableToServerError() {
+            final UUID absent = UUID.randomUUID();
+
+            final ProblemDetail problem =
+                    handler.handleScoreNotDerivable(ScoreNotDerivableException.playerNotSeated(absent));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            assertThat(problem.getTitle()).isEqualTo("Internal server error");
+            assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
+            assertThat(problem.getDetail()).doesNotContain(absent.toString());
         }
     }
 

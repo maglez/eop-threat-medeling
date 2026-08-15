@@ -1,5 +1,6 @@
 package org.maglez.eop.adapter.persistence;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -31,6 +32,19 @@ interface TrickJpaRepository extends JpaRepository<TrickJpaEntity, UUID> {
      * @return the highest-numbered trick, or empty if no trick has been opened
      */
     Optional<TrickJpaEntity> findFirstByGameSessionIdOrderBySequenceDesc(UUID gameSessionId);
+
+    /**
+     * Reads every trick of a session, oldest first.
+     *
+     * <p>Ordered by sequence rather than by any timestamp, because sequence is the order of play and
+     * is unique within a session. No predicate on {@code winner_play_id}: a trick still on the table
+     * belongs in this answer, and filtering here would make the query a second authority on whether
+     * a trick is finished.
+     *
+     * @param gameSessionId identifier of the session
+     * @return the session's trick rows in ascending sequence order, empty when it has none
+     */
+    List<TrickJpaEntity> findByGameSessionIdOrderBySequenceAsc(UUID gameSessionId);
 
     /**
      * Records the winning play of a trick, if that trick has no winner yet.

@@ -1,6 +1,7 @@
 package org.maglez.eop.usecase;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
@@ -162,4 +163,28 @@ public interface TrickRepository {
      */
     void recordResolution(
             UUID sessionId, Trick resolved, int expectedLeaderSeat, OptionalInt nextLeaderSeat, Instant occurredAt);
+
+    /**
+     * Reads every trick of a session, in the order they were played.
+     *
+     * <p>The whole history rather than the current trick, because a score is derived from all of it:
+     * one point for each threat a player connected, and one for each trick they took. Deriving it is
+     * what keeps the score honest — there is no counter to drift from the play that produced it, and
+     * no number a client could assert instead (ADR-030).
+     *
+     * <p>Nothing is filtered out. A trick still on the table comes back unresolved, alongside the
+     * finished ones, because whether a trick is finished is a question the trick answers about
+     * itself once it has been rebuilt, and a query that filtered on the stored winner would be a
+     * second authority on the same fact. It also matters to the answer: the plays of an unfinished
+     * trick have already scored their threats even though nobody has taken it yet.
+     *
+     * <p>Authorises nobody, exactly as the read above does not. There is no acting player here for an
+     * implementation to check against, so a caller that has not already established membership is
+     * handing a stranger the whole history of a session they guessed the identifier of (ADR-024).
+     *
+     * @param sessionId identifier of the session, never {@code null}
+     * @return the session's tricks ordered by sequence, empty when no trick has been opened
+     * @throws NullPointerException if {@code sessionId} is {@code null}
+     */
+    List<Trick> findTricks(UUID sessionId);
 }

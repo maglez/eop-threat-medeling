@@ -41,3 +41,5 @@ Spring Boot provides several error-handling mechanisms: `@ExceptionHandler` per 
 - [Error Handling Rules](../../.opencode/rules/error-handling.md)
 - [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
 - [ADR-004: API Contract-First](./ADR-004-api-contract-first.md)
+
+> **Extended by [ADR-031](ADR-031-the-score-is-read-through-its-own-route.md) §7.** That section settles what a refusal looks like when the *stored game* contradicts itself rather than the request: one problem type per client-actionable condition, and there is exactly one such condition here — none — so eight domain refusals collapse into a single `ScoreNotDerivableException` answered as a 500 whose body is byte-identical to every other server fault, with the reason and the identifiers going to the log instead. The rule generalises beyond scoring to any read of persisted aggregate state, which is why it is recorded there and pointed at from here.

@@ -20,7 +20,7 @@ it, and Slice E adds a fifth route: `TrickController` maps
 `GET /api/v1/sessions/{sessionId}/hand`, `POST /api/v1/sessions/{sessionId}/plays`,
 `GET /api/v1/sessions/{sessionId}/tricks/current` and
 `POST /api/v1/sessions/{sessionId}/tricks/current/resolve`, each returning a transport record rather
-than a domain object. The controller and all five use-case beans exist only while
+than a domain object. Both controllers and all six use-case beans exist only while
 `eop.features.trick-play` is `true`, which `application.yml` still leaves `false`, so the routes
 answer 404 as shipped — but that is now a flag position rather than an absence of code, and the
 distinction matters because it is testable in both directions. It stays `false` after Slice E for
@@ -512,7 +512,7 @@ the write could announce a deal that then rolled back, and a publisher that thre
 fail a request whose write had already succeeded. What the event does *not* carry is any
 part of the deal — no seat, no card, no count — so a subscriber still re-reads to learn
 what it holds, which is what keeps a per-player hand off a fan-out transport
-([ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md)). Slice D minted the name in the
+([ADR-027](../adr/ADR-027-singleton-subresource-naming.md)). Slice D minted the name in the
 contract; Slice E published it, closing the first half of decision 8 of
 [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md), which is amended in place to say
 so.
@@ -631,7 +631,7 @@ table, row by row against the method, in its decision 9.
 not the seat, not the trick. That is what makes it safe on a fan-out transport where
 every subscriber of a session receives every event — the other players learn *that* the
 table moved and re-read `GET /tricks/current` to learn whose turn it now is, and a
-per-player hand never crosses the stream ([ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md)).
+per-player hand never crosses the stream ([ADR-027](../adr/ADR-027-singleton-subresource-naming.md)).
 This closes the second half of decision 8 of
 [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md), amended in place to say so.
 Delivery is not ordered and not guaranteed, so a client that missed an event is in
@@ -723,6 +723,77 @@ names EOP-15 as one of the three predecessors of turning the flag on.
 
 ---
 
+## 7. Reading the score — derived on every read, gated by nothing but membership
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CL as ScoreController — GET /api/v1/sessions/{sessionId}/score
+    participant GS as GetScoreUseCase
+    participant RP as ResolvePlayerUseCase
+    participant TPRA as TrickPlayRepositoryAdapter
+    participant DB as PostgreSQL
+    participant SS as ScoreSheet — entity
+
+    CL->>GS: execute(sessionId, playerToken)
+
+    GS->>RP: execute(sessionId, playerToken)
+    RP-->>GS: ResolvedPlayer, or 404 SessionNotFoundException / 403 PlayerNotRecognisedException
+    Note over GS,RP: This is the whole gate, and it is a complete one:<br/>a token is only ever matched against the players of<br/>the session it was presented for, so a stranger who<br/>guesses a session identifier is refused here without<br/>any further seat check (ADR-015, ADR-024). The resolved<br/>session also carries its players, which is why this use<br/>case reads no session repository of its own.
+
+    GS->>TPRA: findTricks(sessionId)
+    TPRA->>DB: SELECT * FROM trick WHERE game_session_id = ? ORDER BY sequence ASC
+    TPRA->>DB: SELECT * FROM trick_play WHERE trick_id IN (…)
+    TPRA->>DB: SELECT * FROM card WHERE id IN (…)
+    TPRA->>DB: SELECT * FROM trick_play_component WHERE trick_play_id IN (…) ORDER BY trick_play_id, ordinal
+    Note over TPRA,DB: Four reads for the whole session — the tricks, then their<br/>plays, cards and components one batch each. Mapping the<br/>single-trick assembler over every row would have cost three<br/>reads per trick: seventy-nine in a twenty-six-trick hand.<br/>No predicate on winner_play_id — whether a trick is finished<br/>is a question the trick answers about itself, and a second<br/>authority in SQL would disagree the moment that changed.
+    TPRA-->>GS: List&lt;Trick&gt;, the whole history, unresolved tricks included
+
+    GS->>SS: ScoreSheet.of(session.players(), tricks)
+
+    alt the stored game contradicts itself
+        SS-->>GS: ScoreNotDerivableException, carrying a typed Reason
+        GS-->>CL: 500 — the reason and the identifiers are logged,<br/>the body says only that the request could not be completed
+    else the game is consistent
+        SS->>SS: one point for a linked threat, one for taking the trick;<br/>an unresolved trick contributes threat points but no trick point
+        SS->>SS: competition ranking — 7, 5, 5, 2 hold positions 1, 2, 2, 4;<br/>a shared first place is shown as a tie, never broken
+        SS-->>GS: ScoreSheet — rows and standings
+        GS-->>CL: the sheet, rendered as ScoreSheetDto
+    end
+```
+
+### What this sequence settles, and what it deliberately does not
+
+**Nothing is accumulated, so nothing can drift.** The score is a pure function of the plays
+and each trick's winner, recomputed on every read. There is no counter to increment on the
+play path, so there is no second transaction to fail independently and no total that can be
+wrong with no read able to detect it. The cost is bounded by the rules of the game rather than
+by a limit in code — a 78-card deck is at most 78 rows and at most six standings — which is
+why ADR-030 accepts the recomputation and declines to cache it.
+
+**There is no 409 on this path, and its absence is the interesting part.** Every other read
+in this document can be asked before the state it reports exists: `GET /tricks/current` answers
+`HandNotDealtException` before the deal, because there is no state of play to report. A score
+before the deal is different — everybody on nothing is a *true* answer, not a missing one. That
+is why this use case reaches neither `HandRepository` nor the session's status: it has nothing
+to refuse. `GetScoreUseCaseTest` pins it, and so does the HTTP test that reads a score from a
+started table before a card is played.
+
+**A contradiction is a server fault, not the caller's mistake.** The eight refusals inside
+`ScoreSheet` and `ScoredPlay` all mean the stored game disagrees with itself — a play attributed
+to a seat nobody occupies, two tricks claiming one sequence number. None is actionable by any
+caller, so all eight became one `ScoreNotDerivableException` mapped to 500 with a body
+byte-identical to the no-tampering-card fault. Before slice B they were `IllegalArgumentException`,
+which the global handler answers **400 with the message echoed** — so a data contradiction would
+have been reported as a bad request and would have echoed a player identifier back to whoever
+guessed the session. The reason survives in the log, where it is useful; nothing survives in the
+response, where it would only be a hint.
+
+**This sequence does not end the game.** Reading a score changes no state and moves no session
+out of `IN_PROGRESS`. Sequence 6 records the end of a *hand* by writing a NULL leader seat; this
+one reports what that hand was worth. Deciding that the game is over, writing `COMPLETED` and
+declaring a winner is the third slice of EOP-15 (ADR-028, ADR-031).
+
 ## Related
 
 - [`C4-Diagrams.md`](C4-Diagrams.md) — the containers and components these sequences move through
@@ -735,6 +806,6 @@ names EOP-15 as one of the three predecessors of turning the flag on.
 - [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) — the remainder rule, turn order, and what the schema deliberately does not enforce
 - [ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) — the trick-play ports, and why authorisation is the use case's job
 - [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) — why dealing is its own use case, and the started-but-undealt window
-- [ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md) — why a hand is read per player, which is why no broadcast above carries one
+- [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) — why a hand is read per player, which is why no broadcast above carries one
 - [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
-- [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all five routes
+- [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all six trick-play routes
