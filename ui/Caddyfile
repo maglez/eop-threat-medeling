@@ -40,7 +40,15 @@
 	# This discards an attacker's invented chain, but means a legitimate second
 	# proxy in front of Caddy would have its chain destroyed, and the application
 	# would then key every request on that outer proxy's single address.
+	#
+	# Body-size cap (EOP-19): reject requests larger than 16 KB before they reach
+	# the application. This is the only body-size layer — there is no application-side
+	# cap (server.tomcat.max-swallow-size does not cap request bodies; see ADR-033).
+	# The limit applies to all /api/* paths, which is where the only write endpoints live.
 	handle /api/* {
+		request_body {
+			max_size 16KB
+		}
 		reverse_proxy app:8080 {
 			header_up X-Forwarded-For {remote_host}
 		}

@@ -299,30 +299,57 @@ sequenceDiagram
     autonumber
     participant F as Facilitator
     participant P2 as Player 2
+    participant CY as Caddy
     participant SC as SessionController
     participant CAR as ClientAddressResolver
+    participant CLIM as InMemorySessionCreationLimiter
     participant LIM as InMemoryJoinAttemptLimiter
     participant JU as JoinSessionUseCase
     participant SRA as SessionRepositoryAdapter
     participant DB as PostgreSQL
     participant PUB as SseSessionEventPublisher
 
-    F->>SC: POST /api/v1/sessions
-    SC->>SRA: createLobby(session)
-    SRA->>DB: INSERT game_session, then INSERT player seat 0
-    alt uq_game_session_join_code violated
-        DB-->>SRA: DataIntegrityViolationException
-        SRA-->>SC: JoinCodeUnavailableException
-        Note over SC,SRA: Retry with a fresh code, bounded attempts.<br/>The database decides, not a pre-insert SELECT.
-        opt all five attempts collided
-            SC-->>F: 503 with Retry-After — capacity, not fault (EOP-17)
-        end
-    else inserted
-        DB-->>SRA: ok
-    end
-    SRA-->>SC: GameSession
-    SC-->>F: 201 sessionId, joinCode, identityToken
-    Note over F: The token plaintext leaves the server<br/>exactly once, here.
+     F->>CY: POST /api/v1/sessions (body ≤ 16 KB enforced by Caddy)
+     alt body > 16 KB
+         CY-->>F: 413 Request Entity Too Large
+     else body within limit
+         CY->>SC: POST /api/v1/sessions (proxied)
+         SC->>CAR: of(request)
+         Note over SC,CAR: X-Forwarded-For is read only if the peer is on<br/>eop.web.trusted-proxies — empty by default.<br/>Otherwise getRemoteAddr wins (ADR-021).
+         CAR-->>SC: canonical client address
+         SC->>CLIM: checkAllowed(clientAddress) — best-effort pre-check
+         alt allowance exhausted (window full)
+             CLIM-->>SC: RateLimitedException
+             SC-->>F: 429 with Retry-After
+         else table saturated (10 000 distinct keys, new address)
+             Note over CLIM: Evict aged-out windows first.<br/>If still full, fail-closed: refuse before any DB work (EOP-19, ADR-033).
+             CLIM-->>SC: RateLimitedException
+             SC-->>F: 429 with Retry-After
+         else permitted
+             SC->>CLIM: recordCreation(clientAddress) — atomic gate, before DB write
+             alt slot refused (race: two threads both cleared checkAllowed)
+                 CLIM-->>SC: RateLimitedException
+                 SC-->>F: 429 with Retry-After
+             else slot reserved
+                 SC->>SRA: createLobby(session)
+                 SRA->>DB: INSERT game_session, then INSERT player seat 0
+                 alt uq_game_session_join_code violated
+                     DB-->>SRA: DataIntegrityViolationException
+                     SRA-->>SC: JoinCodeUnavailableException
+                     Note over SC,SRA: Retry with a fresh code, bounded attempts.<br/>The database decides, not a pre-insert SELECT.
+                     opt all five attempts collided
+                         SC->>CLIM: refundCreation(clientAddress) — slot returned on failure
+                         SC-->>F: 503 with Retry-After — capacity, not fault (EOP-17)
+                     end
+                 else inserted
+                     DB-->>SRA: ok
+                 end
+                 SRA-->>SC: GameSession
+                 SC-->>F: 201 sessionId, joinCode, identityToken
+                 Note over F: The token plaintext leaves the server<br/>exactly once, here.
+             end
+         end
+     end
 
     P2->>SC: POST /api/v1/sessions/{joinCode}/players
     SC->>CAR: of(request)
@@ -422,6 +449,13 @@ bucket the caller can choose is not a throttle. Until EOP-26 `X-Forwarded-For` w
 believed from anyone, so rotating it once per request gave a fresh empty window every
 time; the header is now read only from a peer on the `eop.web.trusted-proxies`
 allow-list, which is empty unless a deployment says otherwise (ADR-021).
+
+**The creation limiter uses the same address resolution and the same reserve-before-work
+principle.** `InMemorySessionCreationLimiter` (EOP-19, ADR-033) reserves a slot
+*before* the database write and refunds it if the use case fails — so a refused request
+never commits a row. The body-size cap (16 KB) is enforced by Caddy before the request
+reaches the application; there is no application-side cap (the `max-swallow-size`
+property does not cap request bodies and was deliberately not added).
 
 ---
 

@@ -648,4 +648,82 @@ class SessionControllerIntegrationTest {
                 .doesNotContain(facilitator.playerToken())
                 .doesNotContain(participant.playerToken());
     }
+
+    /**
+     * Verifies that {@code POST /api/v1/sessions} returns HTTP 429 with a
+     * {@code Retry-After} header once the per-address creation limit is breached.
+     *
+     * <p>Uses a dedicated Spring context with {@code session-creation-limit=1} so
+     * the limit is crossed after a single creation without affecting the outer
+     * class's shared context (which runs with {@code Integer.MAX_VALUE}).
+     *
+     * <p>{@code @DirtiesContext(BEFORE_EACH_TEST_METHOD)} gives each test method a
+     * fresh limiter so the single-creation window resets between methods.
+     */
+    @SpringBootTest(properties = {
+        "spring.datasource.url=jdbc:h2:mem:creation-throttle-test;DB_CLOSE_DELAY=-1",
+        "eop.web.session-creation-limit=1"
+    })
+    @AutoConfigureMockMvc
+    @Nested
+    @DisplayName("throttling session creation")
+    @DirtiesContext(classMode = ClassMode.BEFORE_EACH_TEST_METHOD)
+    class ThrottlingCreation {
+
+        @Autowired
+        private MockMvc throttleMvc;
+
+        @Test
+        @DisplayName("second creation from the same address is refused with 429 and Retry-After")
+        void shouldThrottleCreationAfterLimit() throws Exception {
+            // First creation succeeds.
+            throttleMvc.perform(post(SESSIONS)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(nameRequest("Alice")))
+                    .andExpect(status().isCreated());
+
+            // Second creation from the same address (127.0.0.1 in MockMvc) is refused.
+            final var refused = throttleMvc.perform(post(SESSIONS)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(nameRequest("Bob")))
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.title").value("Too many requests"))
+                    .andReturn()
+                    .getResponse();
+
+            assertThat(refused.getHeader("Retry-After"))
+                    .isNotNull()
+                    .satisfies(h -> assertThat(Long.parseLong(h)).isBetween(1L, 60L));
+        }
+
+        @Test
+        @DisplayName("a use-case failure refunds the slot so the next creation is not refused")
+        void shouldRefundSlotOnUseCaseFailure() throws Exception {
+            // A display name containing a control character passes @Valid (not blank, within
+            // length) but is rejected by DisplayName.of() inside the controller body — after
+            // recordCreation has already reserved the slot. The controller's catch block must
+            // call refundCreation so the slot is returned and the next valid creation succeeds.
+            //
+            // The JSON body uses the JSON escape sequence \u0001 (written as \\u0001 in the Java
+            // string literal) so that Jackson can parse the body and decode the character before
+            // passing it to DisplayName.of(). A raw U+0001 byte in the JSON body would be
+            // invalid JSON and would be rejected by Jackson before the controller is entered,
+            // which would make this test vacuous.
+            final String bodyWithControlChar = "{\"displayName\":\"Alice\\u0001\"}";
+
+            // First creation: the use case fails (control character in name) → slot refunded.
+            throttleMvc.perform(post(SESSIONS)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(bodyWithControlChar))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.title").value("Invalid request"));
+
+            // Second creation: slot was refunded, so this succeeds with 201.
+            throttleMvc.perform(post(SESSIONS)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(nameRequest("Bob")))
+                    .andExpect(status().isCreated());
+        }
+    }
 }

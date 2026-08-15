@@ -336,7 +336,8 @@ status enum so that the concept has somewhere to live when it is needed.
 - [ADR-012](ADR-012-deployment-target.md) — one process, no TLS, restart on deploy; the EC2 target is withdrawn but every premise this ADR borrows from it still holds
 - [ADR-016](ADR-016-local-container-runtime.md) — the local container stack this actually runs in, and the restart that resets the limiter
 - [ADR-021](ADR-021-trusted-proxy-forwarded-for.md) — restores the primary control this ADR depends on. The decision here is unchanged and nothing in it is withdrawn; ADR-021 records that the address the limiter keys on was caller-supplied until EOP-26, so the throttle that makes thirty bits acceptable could be bypassed by rotating one header
+- [ADR-033](ADR-033-session-creation-rate-limit-and-body-size-cap.md) — the companion creation-rate limiter and body-size cap introduced by EOP-19; counts successes rather than failures, one window not two, reserve-before-work pattern
 - [Runtime view](../architecture/runtime-view.md) — the reconnect, subscribe and create/join/start sequences
 - [C4 container diagram](../architecture/C4-Diagrams.md) — where the controller, the publisher and the limiter sit
 - [PRD §3, §4, §5](../requirements/PRD-eop-card-game.md) — the workflow, the player range, and the domain model
-- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing), EOP-18 (harden limiter: fail-closed saturation, atomic check-and-record)
+- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing), EOP-18 (harden limiter: fail-closed saturation, atomic check-and-record), EOP-19 (session creation limiter and body-size cap — see ADR-033)

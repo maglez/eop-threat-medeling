@@ -12,6 +12,7 @@ import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
 import org.maglez.eop.usecase.JoinSessionUseCase;
 import org.maglez.eop.usecase.ResolvePlayerUseCase;
+import org.maglez.eop.usecase.SessionCreationLimiter;
 import org.maglez.eop.usecase.StartSessionUseCase;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
@@ -85,6 +86,8 @@ public class SessionController {
 
     private final ClientAddressResolver clientAddressResolver;
 
+    private final SessionCreationLimiter sessionCreationLimiter;
+
     SessionController(
             final CreateSessionUseCase createSessionUseCase,
             final JoinSessionUseCase joinSessionUseCase,
@@ -92,7 +95,8 @@ public class SessionController {
             final StartSessionUseCase startSessionUseCase,
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final SseSessionEventPublisher sessionEventPublisher,
-            final ClientAddressResolver clientAddressResolver) {
+            final ClientAddressResolver clientAddressResolver,
+            final SessionCreationLimiter sessionCreationLimiter) {
         this.createSessionUseCase = Objects.requireNonNull(createSessionUseCase, "createSessionUseCase is required");
         this.joinSessionUseCase = Objects.requireNonNull(joinSessionUseCase, "joinSessionUseCase is required");
         this.getSessionStateUseCase = Objects.requireNonNull(getSessionStateUseCase, "getSessionStateUseCase is required");
@@ -100,20 +104,40 @@ public class SessionController {
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.sessionEventPublisher = Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clientAddressResolver = Objects.requireNonNull(clientAddressResolver, "clientAddressResolver is required");
+        this.sessionCreationLimiter = Objects.requireNonNull(sessionCreationLimiter, "sessionCreationLimiter is required");
     }
 
     /**
      * Opens a lobby and seats its facilitator.
      *
-     * @param request the display name to seat the facilitator under
+     * <p>Rate-limited by {@code eop.web.session-creation-limit} creations per address
+     * per minute (default 5, ADR-033). The slot is reserved atomically before any
+     * database work via {@link SessionCreationLimiter#recordCreation}, so a refused
+     * request never commits a row. If the use case fails after the slot is reserved,
+     * {@link SessionCreationLimiter#refundCreation} returns it so that a transient
+     * error does not permanently consume a creation allowance.
+     *
+     * @param request     the display name to seat the facilitator under
+     * @param httpRequest the servlet request, read only for the caller's address
      * @return 201 with the new session, the facilitator's identifier and its credential
      */
     @PostMapping
     @Operation(summary = "Create a session and become its facilitator")
-    public ResponseEntity<SessionAdmissionDto> createSession(@Valid @RequestBody final CreateSessionRequest request) {
-        final var admission = createSessionUseCase.execute(DisplayName.of(request.displayName()));
-        final var location = URI.create("/api/v1/sessions/" + admission.session().sessionId());
-        return ResponseEntity.created(location).body(SessionAdmissionDto.from(admission));
+    public ResponseEntity<SessionAdmissionDto> createSession(
+            @Valid @RequestBody final CreateSessionRequest request,
+            final HttpServletRequest httpRequest) {
+        final String clientAddress = clientAddressResolver.of(httpRequest);
+        sessionCreationLimiter.checkAllowed(clientAddress);
+        sessionCreationLimiter.recordCreation(clientAddress);
+        try {
+            final var admission = createSessionUseCase.execute(DisplayName.of(request.displayName()));
+            final var location = URI.create("/api/v1/sessions/" + admission.session().sessionId());
+            return ResponseEntity.created(location).body(SessionAdmissionDto.from(admission));
+        }
+        catch (final RuntimeException ex) {
+            sessionCreationLimiter.refundCreation(clientAddress);
+            throw ex;
+        }
     }
 
     /**

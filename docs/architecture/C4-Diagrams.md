@@ -170,8 +170,9 @@ flowchart LR
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
         SSE["SseSessionEventPublisher<br/>in-process subscriber registry"]
-        LIM["InMemoryJoinAttemptLimiter<br/>process-local — A SECURITY CONTROL"]
-        CA["ClientAddressResolver<br/>the one answer to who the caller is<br/>ignores X-Forwarded-For unless the peer is allow-listed"]
+         LIM["InMemoryJoinAttemptLimiter<br/>process-local — A SECURITY CONTROL"]
+         CLIM["InMemorySessionCreationLimiter<br/>process-local — A SECURITY CONTROL<br/>EOP-19 — counts successes, not failures<br/>reserve-before-work: slot reserved before DB write, refunded on failure"]
+         CA["ClientAddressResolver<br/>the one answer to who the caller is<br/>ignores X-Forwarded-For unless the peer is allow-listed"]
         TP["TrustedProxies + IpLiterals<br/>eop.web.trusted-proxies — empty by default, so deny-all<br/>malformed entry fails startup; addresses canonicalised"]
     end
 
@@ -203,6 +204,7 @@ flowchart LR
         P4(["IdentityTokenGenerator"])
         P5(["JoinCodeGenerator"])
         P6(["JoinAttemptLimiter"])
+        P11(["SessionCreationLimiter<br/>EOP-19 — checkAllowed · recordCreation · refundCreation"])
         P7(["HandRepository<br/>EOP-14 Slice C1<br/>called by all three Slice C2 use cases, by ReadOwnHandUseCase from Slice D<br/>and by GetTrickStateUseCase from Slice E — five callers"])
         P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases, by GetTrickStateUseCase from Slice E and by GetScoreUseCase from EOP-15 Slice B<br/>findTricks returns the session's whole history and filters nothing — an unresolved trick comes back unresolved<br/>recordResolution's next-leader parameter is an OptionalInt since Slice E"])
         P9(["CardRepository<br/>EOP-13 — third method findWholeDeck added by Slice C2"])
@@ -260,6 +262,7 @@ flowchart LR
     CREATE --> P3
     CREATE --> P4
     CREATE --> P5
+    CREATE --> P11
     JOIN --> P1
     JOIN --> P2
     JOIN --> P3
@@ -296,6 +299,7 @@ flowchart LR
     P4 -.->|implements| TOK
     P5 -.->|implements| JC
     P6 -.->|implements| LIM
+    P11 -.->|implements| CLIM
     P7 -.->|implements| TPRA
     P8 -.->|implements| TPRA
     P9 -.->|implements| CRA
@@ -573,6 +577,38 @@ a restart is operator-initiated and an attacker cannot trigger one. That argumen
 sound today and depends on the deployment being local and manual; if this ever
 restarts automatically — a crash loop, an orchestrator, a scale-out — the reasoning
 expires and the limiter needs shared state.
+
+### `InMemorySessionCreationLimiter` — process-local mutable state that is a security control (EOP-19)
+
+This is the companion to `InMemoryJoinAttemptLimiter` and shares every structural
+property: process-local `ConcurrentHashMap`, injected `Clock`, fail-closed saturation,
+atomic gate under `synchronized(window)`. The differences are deliberate and documented
+in ADR-033.
+
+**Counts successes, not failures.** A facilitator who creates five lobbies in a minute
+is the pattern being limited; there is no "wrong answer" equivalent to a failed join.
+Counting failures would allow unlimited successful creations, which is the attack vector.
+
+**One window, not two.** The join limiter uses two windows (per-address and per-code)
+because a distributed guessing attack can rotate source addresses while targeting one
+code. Session creation has no per-code analogue: a session does not exist until it is
+created, so there is no code to walk. The per-address window alone is sufficient.
+
+**Reserve-before-work pattern.** `recordCreation` (the authoritative atomic gate) is
+called *before* `createSessionUseCase.execute`, so a refused request never commits a
+row. `refundCreation` returns the slot if the use case throws after the slot was
+reserved — preventing a transient failure from permanently consuming a creation
+allowance.
+
+**Fail-closed on saturation.** When the tracked-key table reaches
+`DEFAULT_MAX_TRACKED_KEYS = 10 000` entries and a new address arrives, both
+`checkAllowed` and `recordCreation` refuse the attempt before any database work.
+Unlike the join limiter's `recordFailure` (which silently drops at saturation),
+`recordCreation` throws — because a silent drop here would mean a creation succeeds
+without being counted, defeating the control.
+
+**Restart amnesia.** The same caveat as the join limiter applies: a restart resets
+every counter. Accepted on the same grounds (ADR-033).
 
 ### `SessionRepositoryAdapter` — one class, two package-private repositories
 

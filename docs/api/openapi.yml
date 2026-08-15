@@ -168,6 +168,10 @@ paths:
                 $ref: '#/components/schemas/SessionAdmission'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -1712,13 +1716,20 @@ components:
 
     TooManyRequests:
       description: |
-        Too many failed join attempts from this source or against this code, and
-        further attempts are refused for a period.
+        Too many requests from this source address and further attempts are
+        refused for a period.
 
-        This is not politeness about load. A six-character code has roughly
-        thirty bits of entropy, which is only unguessable while guessing is
-        rate-limited — so this limiter is a primary security control rather than
-        a courtesy (ADR-019).
+        Two controls can produce this response:
+
+        - **Session creation limiter** — a single address may create at most
+          `eop.web.session-creation-limit` sessions (default 5) per 60-second
+          window. The slot is reserved before any database work, so a refused
+          request never commits a row (ADR-033).
+        - **Join attempt limiter** — too many failed join attempts from this
+          source or against this code. A six-character code has roughly thirty
+          bits of entropy, which is only unguessable while guessing is
+          rate-limited — so this limiter is a primary security control rather
+          than a courtesy (ADR-019).
       headers:
         Retry-After:
           description: Seconds to wait before attempting again.
@@ -1731,6 +1742,14 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
+
+    RequestEntityTooLarge:
+      description: |
+        The request body exceeded the 16 KB limit enforced by the reverse proxy
+        (Caddy `request_body { max_size 16KB }` on `/api/*`).
+
+        This response is produced by the proxy, not the application. The body
+        is a plain-text or empty response, not a problem detail.
 
     ServiceUnavailable:
       description: |
