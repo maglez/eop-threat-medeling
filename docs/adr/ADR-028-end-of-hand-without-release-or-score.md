@@ -41,8 +41,15 @@ are not registered as beans.
 > **six** use-case beans and **two** controllers — eight beans in all — and **six** routes, the sixth
 > being `GET /{sessionId}/score`; and the application declares **thirteen** use cases, not twelve.
 > The argument below is unaffected: it is about whether to flip the flag, not about how much sits
-> behind it, and the answer is still no. It is tempting
-to finish the feature by releasing it in the same pull request that completes it.
+> behind it, and the answer is still no.
+>
+> **Amended 2026-08-15 (EOP-15 Slice C, [ADR-032](ADR-032-end-of-game-transitions.md)).**
+> The figures above were updated again by Slice C. The flag now withholds **seven** use-case beans
+> and **three** controllers — **ten** beans in all — and **seven** routes, the seventh being
+> `POST /{sessionId}/end`; and the application declares **fourteen** use cases, not thirteen.
+> The argument below remains unaffected.
+
+It is tempting
 Against that stands a condition @security-auditor attached to its approval of Slice D:
 dealing, playing and resolving are the product's first competitively meaningful writes,
 they are now reachable over HTTP, and no use case logs anything. ADR-026 holds that gap
