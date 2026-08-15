@@ -519,4 +519,51 @@ class ResolveTrickUseCaseTest {
         assertThat(publisher.published()).singleElement()
                 .satisfies(event -> assertThat(event.type()).isEqualTo(SessionEventType.TRICK_RESOLVED));
     }
+
+    /**
+     * When a concurrent facilitator call wins the race and completes the session
+     * between {@code recordResolution} committing and the auto-complete branch
+     * calling {@code recordCompleted}, the use case must swallow the resulting
+     * {@link org.maglez.eop.entity.SessionNotInProgressException} and still
+     * publish {@code GAME_COMPLETED}.
+     *
+     * <p>The session is force-completed via {@link InMemorySessionRepository#forceComplete}
+     * before the use case runs, so that {@code recordCompleted} throws immediately.
+     * The trick resolution itself was already committed (simulated by the fake
+     * recording the resolution), so the caller must not receive an error.
+     */
+    @Test
+    @DisplayName("tolerates a concurrent facilitator end winning the CAS race on the last trick")
+    void shouldTolerateAConcurrentFacilitatorEndOnTheLastTrick() {
+        final GameSession session = seatedTable();
+        // Three cards over three seats: every hand is empty after one trick
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final var sessionRepository = new InMemorySessionRepository(order, session);
+        // Simulate the concurrent /end winning the race: session is already COMPLETED
+        // before the auto-complete branch reaches recordCompleted
+        sessionRepository.forceComplete(session.sessionId(), NOW.minusSeconds(1));
+        final var useCase = new ResolveTrickUseCase(
+                new ResolvePlayerUseCase(sessionRepository),
+                handRepository,
+                trickRepository,
+                sessionRepository,
+                publisher,
+                FIXED);
+
+        // Must not throw — the session is already COMPLETED, which is the desired outcome
+        useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        assertThat(underWay.remaining().allEmpty())
+                .as("all hands are empty, so the auto-complete path is taken")
+                .isTrue();
+        assertThat(sessionRepository.recordCompletedCalls())
+                .as("recordCompleted was attempted once (and swallowed the SessionNotInProgressException)")
+                .isEqualTo(1);
+        assertThat(publisher.published())
+                .as("GAME_COMPLETED is still published even when the CAS was lost")
+                .anySatisfy(event -> assertThat(event.type()).isEqualTo(SessionEventType.GAME_COMPLETED));
+    }
 }

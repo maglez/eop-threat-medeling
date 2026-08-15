@@ -163,6 +163,32 @@ final class InMemorySessionRepository implements SessionRepository {
     }
 
     /**
+     * Directly marks the session as COMPLETED without going through the CAS check.
+     *
+     * <p>Use this to simulate a concurrent facilitator call winning the race before
+     * the auto-complete branch in {@link ResolveTrickUseCase} reaches
+     * {@code recordCompleted}. The next call to {@code recordCompleted} for this
+     * session will then throw {@link SessionNotInProgressException}, which the use
+     * case must swallow.
+     *
+     * @param sessionId the session to force-complete
+     * @param occurredAt the timestamp to record as the completion moment
+     */
+    void forceComplete(final UUID sessionId, final Instant occurredAt) {
+        final var current = sessions.get(sessionId);
+        if (current == null) {
+            throw new SessionNotFoundException(sessionId);
+        }
+        sessions.put(sessionId, GameSession.reconstitute(
+                current.sessionId(),
+                current.joinCode(),
+                SessionStatus.COMPLETED,
+                current.players(),
+                current.createdAt(),
+                occurredAt));
+    }
+
+    /**
      * @return how many times a lobby insert was attempted
      */
     int createLobbyCalls() {
