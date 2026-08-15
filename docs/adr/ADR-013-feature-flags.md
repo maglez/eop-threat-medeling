@@ -130,7 +130,7 @@ it. The flag now withholds **four use-case beans and one controller**: `DealHand
 `ReadOwnHandUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase` and `TrickController`, whose
 four routes — `POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`
 and `POST /{sessionId}/tricks/current/resolve` — answer the framework's own 404 while it is
-off. `TrickPlayDisabledIntegrationTest` now asserts both halves: all five beans absent *and*
+off. `TrickPlayDisabledIntegrationTest` now asserts both halves: all eight beans absent *and*
 all four routes 404, because the status is what a client is promised while the absence is
 what pins the mechanism, and a test asserting only the status would pass against a design
 this ADR forbids. It stays `false` on merge.
@@ -254,7 +254,7 @@ spellings agree by breaking the one that already worked would pass a single-test
 
 One exception is deliberate and load-bearing: `resolvePlayerUseCase`
 (`UseCaseConfiguration.java:156`) stays **ungated**. It is a pure lookup that writes nothing, and it
-is a constructor dependency of two lifecycle use cases *and* all five trick-play use cases, so
+is a constructor dependency of two lifecycle use cases *and* all six trick-play use cases, so
 gating it on the lifecycle flag would make the lobby-off/trick-play-on combination — the
 combination this repository's own suite runs — an unsatisfiable context rather than a withheld
 feature. The same reasoning already keeps `DeckShuffler` ungated: **a collaborator shared across two

@@ -333,10 +333,10 @@ job:
   `GET /{sessionId}/tricks/current`, whose `TrickStateDto` carries all three and `handComplete` as
   well. What keeps the feature unreleased is now the flag alone, and the flag's reasons are not about
   gameplay — see the flag note below.
-- **Six beans do not exist unless a flag says so:** the five use cases and the controller.
+- **Eight beans do not exist unless a flag says so:** the six use cases and the two controllers.
   `UseCaseConfiguration` declares the use cases behind
   `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")`
-  (`UseCaseConfiguration.java:197-308`), `TrickController` carries the same condition with the same
+  (`UseCaseConfiguration.java:219-343`), `TrickController` and `ScoreController` carry the same condition with the same
   `havingValue`, and `application.yml` sets the flag `false`. Containment is a flag rather than an
   absent caller, which is a stronger guarantee under test and a weaker one under operator error — a
   flag can be flipped, an absent class cannot. `TrickPlayDisabledIntegrationTest` therefore asserts
@@ -364,7 +364,7 @@ job:
   durable change and a throwing publisher cannot fail a request whose write succeeded. None of the
   three events carries any part of the change, which is what keeps a per-player hand off a fan-out
   transport (ADR-027) and what makes re-reading still the only way to learn *what* happened.
-- **All five use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
+- **All six use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
   `PlayCardUseCase`, `ResolveTrickUseCase`, `ReadOwnHandUseCase` from Slice D and
   `GetTrickStateUseCase` from Slice E into
   `ResolvePlayerUseCase` are drawn as first-class
@@ -420,7 +420,7 @@ the application behind it could still create and mutate sessions. EOP-48 closed 
 `joinSessionUseCase`, `getSessionStateUseCase` and `startSessionUseCase`
 (`UseCaseConfiguration.java:101`, `:124`, `:167`, `:182`) — so the flag now withholds **five beans
 in all**, matching the arrangement `TrickController` has had since Slice D. `resolvePlayerUseCase`
-stays ungated on purpose: it writes nothing and is shared with all five trick-play use cases, so
+stays ungated on purpose: it writes nothing and is shared with all six trick-play use cases, so
 gating it would make lobby-off/trick-play-on an unsatisfiable context rather than a withheld
 feature — the same reasoning as the ungated `DeckShuffler` (ADR-013 records both the mandate and
 that exception).
@@ -766,7 +766,7 @@ callers exist and once because the caller of the callers does. What replaces it 
 `eop.features.trick-play`. `application.yml` declares **two** flags, both `false`
 (`application.yml:75-112`), and the six use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
-`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:197-347`), as do
+`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:219-347`), as do
 `TrickController` and `ScoreController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
 code can call them.
