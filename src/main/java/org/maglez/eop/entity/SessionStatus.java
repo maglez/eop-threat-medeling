@@ -7,9 +7,9 @@ package org.maglez.eop.entity;
  * readable and reordering these constants is not a silent data migration.
  *
  * <p>Only {@link #LOBBY} accepts new players, and only {@link #LOBBY} can be
- * started. Every other value is terminal for the purposes of this story:
- * nothing here advances a session out of {@link #IN_PROGRESS}, because playing
- * cards arrives with EOP-14.
+ * started. A session in {@link #IN_PROGRESS} advances to {@link #COMPLETED}
+ * automatically when the last trick is resolved (EOP-15 Slice C), or
+ * immediately when the facilitator calls the end-session endpoint.
  */
 public enum SessionStatus {
 

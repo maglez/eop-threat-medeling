@@ -202,6 +202,32 @@ public final class GameSession {
     }
 
     /**
+     * Ends the session early at the facilitator's request.
+     *
+     * <p>The automatic path — all tricks played — does not call this method;
+     * it goes directly to {@link SessionRepository#recordCompleted} after the
+     * last trick resolves. This method is for the facilitator's explicit
+     * end-session action, which may arrive before every card has been played.
+     *
+     * @param requestedBy the player asking to end the session
+     * @param now         the instant of the transition
+     * @return a new session in {@link SessionStatus#COMPLETED}
+     * @throws PlayerNotRecognisedException    if the requesting player is not at this table
+     * @throws NotFacilitatorException         if the requesting player is not the facilitator
+     * @throws SessionNotInProgressException   if the session is not currently in progress
+     */
+    public GameSession complete(final UUID requestedBy, final Instant now) {
+        final Player requester = playerById(requestedBy).orElseThrow(() -> new PlayerNotRecognisedException(sessionId));
+        if (!requester.canStartPlay()) {
+            throw new NotFacilitatorException(sessionId, requestedBy);
+        }
+        if (status != SessionStatus.IN_PROGRESS) {
+            throw new SessionNotInProgressException(sessionId, status);
+        }
+        return new GameSession(sessionId, joinCode, SessionStatus.COMPLETED, players, createdAt, now);
+    }
+
+    /**
      * Finds the player who holds the token with this digest.
      *
      * @param tokenHash the digest of a presented token

@@ -7,6 +7,7 @@ import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.NoTrickToResolveException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.SessionNotFoundException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
@@ -66,6 +67,18 @@ import org.maglez.eop.entity.WinningPlayNotInTrickException;
  * card-less seat would open a trick nobody could legally play into, and the table would stop with no
  * exception raised and nothing logged (ADR-023).
  *
+ * <p>When the last trick resolves — {@link Trick#nextLeaderSeat} answers empty because no seat holds
+ * a card — the session is automatically transitioned to
+ * {@link org.maglez.eop.entity.SessionStatus#COMPLETED} and a {@code game-completed} event is
+ * published. The transition is a compare-and-swap on {@code IN_PROGRESS}: if the facilitator's
+ * end-session call wins the race in the window between {@code recordResolution} committing and
+ * {@code recordCompleted} being called, the CAS finds zero rows and throws
+ * {@link SessionNotInProgressException}. The auto-complete branch catches that exception and treats
+ * it as success — the session is already {@code COMPLETED}, which is the desired outcome, and the
+ * trick resolution itself was already durably committed. The two writes are in separate transactions
+ * (each adapter method carries its own {@code @Transactional}), so the race is real and the
+ * tolerance is necessary (EOP-15 Slice C, ADR-032).
+ *
  * <p>The resolved trick is returned because everything in it is public: every card in it was played
  * face up and the winner is what the whole table is waiting to see.
  *
@@ -86,6 +99,8 @@ public class ResolveTrickUseCase {
 
     private final TrickRepository trickRepository;
 
+    private final SessionRepository sessionRepository;
+
     private final SessionEventPublisher sessionEventPublisher;
 
     private final Clock clock;
@@ -96,6 +111,7 @@ public class ResolveTrickUseCase {
      * @param resolvePlayerUseCase resolves the acting player from the identity token
      * @param handRepository reads the hands, which say which seats still hold cards
      * @param trickRepository reads the current trick and records its resolution
+     * @param sessionRepository records the session completion when the last trick resolves
      * @param sessionEventPublisher announces that the trick was resolved, naming none of it
      * @param clock supplies the resolution timestamp
      */
@@ -103,11 +119,13 @@ public class ResolveTrickUseCase {
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
             final TrickRepository trickRepository,
+            final SessionRepository sessionRepository,
             final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
         this.trickRepository = Objects.requireNonNull(trickRepository, "trickRepository is required");
+        this.sessionRepository = Objects.requireNonNull(sessionRepository, "sessionRepository is required");
         this.sessionEventPublisher =
                 Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
@@ -128,6 +146,9 @@ public class ResolveTrickUseCase {
      * @throws TrickAlreadyResolvedException if the trick already has a winner
      * @throws WinningPlayNotInTrickException if the winning play was not made into this trick
      * @throws SessionNotJoinableException if the session is no longer playable
+     * @throws SessionNotInProgressException if the session is not in progress when the auto-complete
+     *     CAS is attempted; this is caught and treated as success — the session was already completed
+     *     by a concurrent facilitator call
      */
     public Trick execute(final UUID sessionId, final String playerToken) {
         resolvePlayerUseCase.execute(sessionId, playerToken);
@@ -160,6 +181,17 @@ public class ResolveTrickUseCase {
         final var now = clock.instant();
         trickRepository.recordResolution(sessionId, resolved, trick.leaderSeat(), nextLeaderSeat, now);
         sessionEventPublisher.publish(new SessionEvent(SessionEventType.TRICK_RESOLVED, sessionId, now));
+
+        if (nextLeaderSeat.isEmpty()) {
+            try {
+                sessionRepository.recordCompleted(sessionId, now);
+            }
+            catch (SessionNotInProgressException ignored) {
+                // A concurrent facilitator call already completed the session.
+                // The trick resolution was durably committed; treat this as success.
+            }
+            sessionEventPublisher.publish(new SessionEvent(SessionEventType.GAME_COMPLETED, sessionId, now));
+        }
 
         return resolved;
     }

@@ -54,7 +54,7 @@ class SessionEventTypeTest {
     }
 
     @Test
-    @DisplayName("carries the two lifecycle events and the three trick play events, and nothing else")
+    @DisplayName("carries the two lifecycle events, the three trick play events, and game-completed, and nothing else")
     void shouldCarryTheLifecycleAndTrickPlayEvents() {
         assertThat(SessionEventType.values())
                 .containsExactly(
@@ -62,7 +62,8 @@ class SessionEventTypeTest {
                         SessionEventType.GAME_STARTED,
                         SessionEventType.HAND_DEALT,
                         SessionEventType.CARD_PLAYED,
-                        SessionEventType.TRICK_RESOLVED);
+                        SessionEventType.TRICK_RESOLVED,
+                        SessionEventType.GAME_COMPLETED);
     }
 
     @Test

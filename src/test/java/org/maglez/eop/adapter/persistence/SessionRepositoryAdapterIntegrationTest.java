@@ -20,6 +20,7 @@ import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.PlayerRole;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionNotFoundException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -295,12 +296,67 @@ class SessionRepositoryAdapterIntegrationTest {
     }
 
     @Nested
+    @DisplayName("completing a session")
+    class CompletingASession {
+
+        private static final Instant COMPLETED_AT = Instant.parse("2026-03-01T09:20:00Z");
+
+        @Test
+        @DisplayName("records the completion moment and the new status")
+        void shouldRecordTheCompletionMoment() {
+            final GameSession lobby = freshLobby();
+            adapter.createLobby(lobby);
+            adapter.recordStarted(lobby.sessionId(), STARTED_AT);
+
+            adapter.recordCompleted(lobby.sessionId(), COMPLETED_AT);
+
+            final GameSession found = adapter.findById(lobby.sessionId()).orElseThrow();
+            assertThat(found.status()).isEqualTo(SessionStatus.COMPLETED);
+            assertThat(found.updatedAt()).isEqualTo(COMPLETED_AT);
+            assertThat(found.createdAt()).isEqualTo(CREATED_AT);
+        }
+
+        @Test
+        @DisplayName("cannot be done twice, because the update is conditional on being in progress")
+        void shouldRefuseToCompleteTheSameSessionTwice() {
+            final GameSession lobby = freshLobby();
+            adapter.createLobby(lobby);
+            adapter.recordStarted(lobby.sessionId(), STARTED_AT);
+            adapter.recordCompleted(lobby.sessionId(), COMPLETED_AT);
+
+            assertThatExceptionOfType(SessionNotInProgressException.class)
+                    .isThrownBy(() -> adapter.recordCompleted(lobby.sessionId(), COMPLETED_AT))
+                    .withMessageContaining(SessionStatus.COMPLETED.name());
+        }
+
+        @Test
+        @DisplayName("cannot complete a session that is still in the lobby")
+        void shouldRefuseToCompleteALobbySession() {
+            final GameSession lobby = freshLobby();
+            adapter.createLobby(lobby);
+
+            assertThatExceptionOfType(SessionNotInProgressException.class)
+                    .isThrownBy(() -> adapter.recordCompleted(lobby.sessionId(), COMPLETED_AT))
+                    .withMessageContaining(SessionStatus.LOBBY.name());
+        }
+
+        @Test
+        @DisplayName("completing a session that never existed is a 404 outcome")
+        void shouldRefuseToCompleteASessionThatDoesNotExist() {
+            final UUID absent = identifier(SERIAL.incrementAndGet(), 9);
+
+            assertThatExceptionOfType(SessionNotFoundException.class)
+                    .isThrownBy(() -> adapter.recordCompleted(absent, COMPLETED_AT))
+                    .withMessageContaining(absent.toString());
+        }
+    }
+
+    @Nested
     @DisplayName("reading a row")
     class ReadingARow {
 
         /**
          * The entity revalidates on the way out rather than trusting the row. An
-         * edit made with a SQL client, or by a future migration that widens a
          * column without telling the domain, then fails loudly on the next read
          * instead of dealing a game from an impossible table.
          *
@@ -387,6 +443,7 @@ class SessionRepositoryAdapterIntegrationTest {
             assertThatNullPointerException()
                     .isThrownBy(() -> adapter.seatPlayer(null, participant(1, 1), SEATED_AT));
             assertThatNullPointerException().isThrownBy(() -> adapter.recordStarted(null, STARTED_AT));
+            assertThatNullPointerException().isThrownBy(() -> adapter.recordCompleted(null, STARTED_AT));
         }
 
         @Test
@@ -399,6 +456,7 @@ class SessionRepositoryAdapterIntegrationTest {
             assertThatNullPointerException()
                     .isThrownBy(() -> adapter.seatPlayer(any, participant(1, 1), null));
             assertThatNullPointerException().isThrownBy(() -> adapter.recordStarted(any, null));
+            assertThatNullPointerException().isThrownBy(() -> adapter.recordCompleted(any, null));
         }
     }
 

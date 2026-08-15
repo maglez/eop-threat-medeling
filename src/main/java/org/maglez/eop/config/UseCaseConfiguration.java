@@ -5,6 +5,7 @@ import org.maglez.eop.usecase.CardRepository;
 import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.DealHandsUseCase;
 import org.maglez.eop.usecase.DeckShuffler;
+import org.maglez.eop.usecase.EndSessionUseCase;
 import org.maglez.eop.usecase.GetCardUseCase;
 import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
@@ -312,6 +313,7 @@ public class UseCaseConfiguration {
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands are read through
      * @param trickRepository the port the resolution is recorded through
+     * @param sessionRepository the port the session status is advanced through on auto-complete
      * @param sessionEventPublisher the transport that announces the resolution to connected clients
      * @param clock the clock the resolved timestamp is read from
      * @return the resolve-trick use case
@@ -322,10 +324,37 @@ public class UseCaseConfiguration {
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
             final TrickRepository trickRepository,
+            final SessionRepository sessionRepository,
             final SessionEventPublisher sessionEventPublisher,
             final Clock clock) {
         return new ResolveTrickUseCase(
-                resolvePlayerUseCase, handRepository, trickRepository, sessionEventPublisher, clock);
+                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository, sessionEventPublisher, clock);
+    }
+
+    /**
+     * Declares the end-session use case, behind {@code eop.features.trick-play}.
+     *
+     * <p>Gated on the same flag as the other trick-play use cases. Ending a session
+     * is only meaningful once play has started, and play requires the trick-play flag.
+     * A facilitator calling end on a session that was never in progress reaches
+     * {@link org.maglez.eop.entity.SessionNotInProgressException} rather than a
+     * missing bean, because the session-lifecycle flag is separate and may be on
+     * while trick-play is off.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player
+     * @param sessionRepository the port the session status is advanced through
+     * @param sessionEventPublisher the transport that announces the completion to connected clients
+     * @param clock the clock the completed timestamp is read from
+     * @return the end-session use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public EndSessionUseCase endSessionUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final SessionRepository sessionRepository,
+            final SessionEventPublisher sessionEventPublisher,
+            final Clock clock) {
+        return new EndSessionUseCase(sessionRepository, resolvePlayerUseCase, sessionEventPublisher, clock);
     }
 
     /**

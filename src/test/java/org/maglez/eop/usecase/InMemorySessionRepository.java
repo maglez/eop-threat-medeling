@@ -12,6 +12,7 @@ import org.maglez.eop.entity.JoinCode;
 import org.maglez.eop.entity.JoinCodeUnavailableException;
 import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
@@ -43,6 +44,7 @@ final class InMemorySessionRepository implements SessionRepository {
     private int createLobbyCalls;
     private int seatPlayerCalls;
     private int recordStartedCalls;
+    private int recordCompletedCalls;
 
     InMemorySessionRepository(final GameSession... seed) {
         this(new ArrayList<>(), seed);
@@ -119,6 +121,20 @@ final class InMemorySessionRepository implements SessionRepository {
                 occurredAt));
     }
 
+    @Override
+    public void recordCompleted(final UUID sessionId, final Instant occurredAt) {
+        recordCompletedCalls++;
+        interactions.add("recordCompleted");
+        final var current = requireInProgress(sessionId);
+        sessions.put(sessionId, GameSession.reconstitute(
+                current.sessionId(),
+                current.joinCode(),
+                SessionStatus.COMPLETED,
+                current.players(),
+                current.createdAt(),
+                occurredAt));
+    }
+
     /**
      * Arms the next writes to be rejected as duplicate join codes.
      *
@@ -147,6 +163,32 @@ final class InMemorySessionRepository implements SessionRepository {
     }
 
     /**
+     * Directly marks the session as COMPLETED without going through the CAS check.
+     *
+     * <p>Use this to simulate a concurrent facilitator call winning the race before
+     * the auto-complete branch in {@link ResolveTrickUseCase} reaches
+     * {@code recordCompleted}. The next call to {@code recordCompleted} for this
+     * session will then throw {@link SessionNotInProgressException}, which the use
+     * case must swallow.
+     *
+     * @param sessionId the session to force-complete
+     * @param occurredAt the timestamp to record as the completion moment
+     */
+    void forceComplete(final UUID sessionId, final Instant occurredAt) {
+        final var current = sessions.get(sessionId);
+        if (current == null) {
+            throw new SessionNotFoundException(sessionId);
+        }
+        sessions.put(sessionId, GameSession.reconstitute(
+                current.sessionId(),
+                current.joinCode(),
+                SessionStatus.COMPLETED,
+                current.players(),
+                current.createdAt(),
+                occurredAt));
+    }
+
+    /**
      * @return how many times a lobby insert was attempted
      */
     int createLobbyCalls() {
@@ -168,6 +210,13 @@ final class InMemorySessionRepository implements SessionRepository {
     }
 
     /**
+     * @return how many times a completion was recorded
+     */
+    int recordCompletedCalls() {
+        return recordCompletedCalls;
+    }
+
+    /**
      * @return the names of the port methods called, in order
      */
     List<String> interactions() {
@@ -181,6 +230,17 @@ final class InMemorySessionRepository implements SessionRepository {
         }
         if (current.status() != SessionStatus.LOBBY) {
             throw new SessionNotJoinableException(sessionId, current.status());
+        }
+        return current;
+    }
+
+    private GameSession requireInProgress(final UUID sessionId) {
+        final var current = sessions.get(sessionId);
+        if (current == null) {
+            throw new SessionNotFoundException(sessionId);
+        }
+        if (current.status() != SessionStatus.IN_PROGRESS) {
+            throw new SessionNotInProgressException(sessionId, current.status());
         }
         return current;
     }

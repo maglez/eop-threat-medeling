@@ -4,6 +4,17 @@
 **Date:** 2026-08-14
 **Deciders:** @tech-lead, @architecture-guardian
 
+> **Amended 2026-08-15 (EOP-15 Slice C, [ADR-032](ADR-032-end-of-game-transitions.md)).**
+> The second decision below — "EOP-14 does not transition a session to `COMPLETED`" — is
+> superseded for the **automatic path**: `ResolveTrickUseCase` now calls
+> `SessionRepository.recordCompleted` when `nextLeaderSeat` is empty, so the last trick
+> resolving does transition the session to `COMPLETED`. The facilitator may also end early
+> via `POST /api/v1/sessions/{sessionId}/end`. Both paths are gated on
+> `eop.features.trick-play`. The consequence that "a client watching only
+> `GET /api/v1/sessions/{sessionId}` will never see a session finish" is therefore no
+> longer true once the flag is on. The first decision (flag stays `false`) and the
+> reasoning about ADR-026 and EOP-48 as predecessors of the flag-on story are unaffected.
+
 ## Context
 
 EOP-14 Slice E completed the trick-play mechanics. The whole deck is dealt, cards are
@@ -30,8 +41,15 @@ are not registered as beans.
 > **six** use-case beans and **two** controllers — eight beans in all — and **six** routes, the sixth
 > being `GET /{sessionId}/score`; and the application declares **thirteen** use cases, not twelve.
 > The argument below is unaffected: it is about whether to flip the flag, not about how much sits
-> behind it, and the answer is still no. It is tempting
-to finish the feature by releasing it in the same pull request that completes it.
+> behind it, and the answer is still no.
+>
+> **Amended 2026-08-15 (EOP-15 Slice C, [ADR-032](ADR-032-end-of-game-transitions.md)).**
+> The figures above were updated again by Slice C. The flag now withholds **seven** use-case beans
+> and **three** controllers — **ten** beans in all — and **seven** routes, the seventh being
+> `POST /{sessionId}/end`; and the application declares **fourteen** use cases, not thirteen.
+> The argument below remains unaffected.
+
+It is tempting to finish the feature by releasing it in the same pull request that completes it.
 Against that stands a condition @security-auditor attached to its approval of Slice D:
 dealing, playing and resolving are the product's first competitively meaningful writes,
 they are now reachable over HTTP, and no use case logs anything. ADR-026 holds that gap

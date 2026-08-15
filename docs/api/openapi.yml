@@ -395,6 +395,43 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/v1/sessions/{sessionId}/end:
+    post:
+      tags: [trick-play]
+      summary: End the session early
+      description: |
+        Moves the session from `IN_PROGRESS` to `COMPLETED` before all cards
+        have been played, and publishes a `game-completed` event to all
+        connected clients.
+
+        Facilitator only. The score derived from the plays made so far remains
+        readable from `GET /api/v1/sessions/{sessionId}/score`.
+
+        This endpoint is gated by `eop.features.trick-play` (ADR-013). While
+        that flag is off the handler does not exist and the path returns 404.
+      operationId: endSession
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The session is now COMPLETED.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   /api/v1/sessions/{sessionId}/deal:
     post:
       tags: [trick-play]
@@ -1098,14 +1135,18 @@ components:
 
             `hand-dealt`, `card-played` and `trick-resolved` are emitted by the
             trick-play operations; where that feature is switched off those
-            operations do not exist and those names do not appear. A name in this
-            enum is part of the wire contract and is never renamed.
+            operations do not exist and those names do not appear. `game-completed`
+            is emitted when the session transitions to `COMPLETED`, either
+            automatically when the last trick resolves or via the facilitator's
+            early-end operation. A name in this enum is part of the wire contract
+            and is never renamed.
           enum:
             - player-joined
             - game-started
             - hand-dealt
             - card-played
             - trick-resolved
+            - game-completed
         sessionId:
           type: string
           format: uuid
@@ -1343,9 +1384,11 @@ components:
             Whether every card dealt has been played. No further card can be
             played and no further trick can be opened.
 
-            The session status does not become `COMPLETED` at this point. That
-            word is reserved for a hand whose score is final, and scoring is a
-            separate operation.
+            When this is `true` and the trick is resolved, the session
+            transitions automatically to `COMPLETED` and a `game-completed`
+            event is published. The facilitator may also end the session early
+            via `POST /api/v1/sessions/{sessionId}/end` before all cards are
+            played.
 
     ScoredPlay:
       type: object

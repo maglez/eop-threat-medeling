@@ -21,6 +21,7 @@ import org.maglez.eop.entity.ScoreNotDerivableException;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.TooFewPlayersException;
 import org.maglez.eop.entity.TrickAlreadyOpenException;
@@ -208,6 +209,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleSessionNotJoinable(final SessionNotJoinableException exception) {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Session is not in the lobby");
+        problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * The session is not in progress, so it cannot be ended.
+     *
+     * <p>A conflict rather than a bad request: the request was well formed and the
+     * refusal is about the state of the session. A facilitator calling end on a
+     * session that has already completed or was never started reaches this.
+     *
+     * @param exception the domain exception
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(SessionNotInProgressException.class)
+    public ProblemDetail handleSessionNotInProgress(final SessionNotInProgressException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Session is not in progress");
         problem.setDetail(exception.getMessage());
         return problem;
     }
