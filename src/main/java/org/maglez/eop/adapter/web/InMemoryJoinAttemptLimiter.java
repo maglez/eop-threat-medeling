@@ -347,9 +347,9 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
      * same key creates a fresh deque and the counter resets. This can cause one
      * failure to be silently lost per race. The race is bounded: it requires the map
      * to be at {@code MAX_TRACKED_KEYS} (the only condition under which this method
-     * is called), and the lost record is a single undercount in an adversarial
-     * scenario where the caller was already refused by {@link #checkAllowed}. The
-     * security impact is negligible.
+     * is called), and the lost record is a single undercount for a caller that was
+     * admitted (eviction freed space, so {@link #checkAllowed} passed). The security
+     * impact is negligible.
      *
      * <p>Eviction is O(N) over the map and is called only under saturation pressure,
      * on the request thread. The cost is bounded by {@code MAX_TRACKED_KEYS}. Under

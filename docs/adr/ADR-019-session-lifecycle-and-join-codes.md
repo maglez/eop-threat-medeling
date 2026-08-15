@@ -298,8 +298,10 @@ deque). The thread then appends its failure to an orphaned deque no longer reach
 from the map; the next request for the same key creates a fresh deque and the counter
 resets. This can cause one failure to be silently lost per race. The race is reachable
 only when the map is at `MAX_TRACKED_KEYS` and is bounded to a single undercount per
-event; the caller was already refused by `checkAllowed`, so no bypass results. Accepted
-as a negligible residual risk under an adversarial saturation scenario.
+event; the lost record is a single undercount for a caller that was admitted (eviction
+freed space, so `checkAllowed` passed), bounded to one per race, and does not allow any
+caller to exceed the window allowance. Accepted as a negligible residual risk under an
+adversarial saturation scenario.
 
 **Negative — the client cannot use `EventSource`.** More client code, and a
 `fetch`-based reader must handle partial frames arriving across chunk boundaries,
