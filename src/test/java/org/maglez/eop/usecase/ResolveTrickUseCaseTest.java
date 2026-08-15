@@ -27,7 +27,6 @@ import org.maglez.eop.entity.Rank;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.Trick;
-import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.TrickPlay;

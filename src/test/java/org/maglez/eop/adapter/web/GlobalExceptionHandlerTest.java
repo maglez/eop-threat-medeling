@@ -36,6 +36,7 @@ import org.maglez.eop.entity.ScoreNotDerivableException;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.StrideCategory;
@@ -789,6 +790,34 @@ class GlobalExceptionHandlerTest {
                     .isEqualTo("The play named as the winner was not made into the trick being resolved.")
                     .doesNotContain(TRICK_ID.toString())
                     .doesNotContain(playId.toString());
+        }
+
+        @Test
+        @DisplayName("ending a session that is not in progress is a 409 naming the session and its actual status")
+        void shouldMapSessionNotInProgressToConflict() {
+            final ProblemDetail problem =
+                    handler.handleSessionNotInProgress(
+                            new SessionNotInProgressException(SESSION_ID, SessionStatus.COMPLETED));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Session is not in progress");
+            assertThat(problem.getDetail())
+                    .as("the caller supplied the session, so it must appear; the status tells them why it was refused")
+                    .contains(SESSION_ID.toString())
+                    .containsIgnoringCase("COMPLETED");
+        }
+
+        @Test
+        @DisplayName("session-not-in-progress is a conflict, not the 404 a missing session would give")
+        void shouldNotCollapseSessionNotInProgressIntoNotFound() {
+            final ProblemDetail notInProgress =
+                    handler.handleSessionNotInProgress(
+                            new SessionNotInProgressException(SESSION_ID, SessionStatus.LOBBY));
+            final ProblemDetail notFound = handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID));
+
+            assertThat(notInProgress.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(notFound.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+            assertThat(notInProgress.getTitle()).isNotEqualTo(notFound.getTitle());
         }
     }
 }
