@@ -228,9 +228,7 @@ will check before approving slice C):
 5. Resolve the use-case observability gap: thirteen use cases, none logging, against
    `observability.md`'s INFO-at-boundaries requirement. ADR-026 is a flag-on predecessor; the flag
    must not go `true` while thirteen use cases log nothing.
-6. Fix `TrickRepository.findTricks`'s javadoc NIT: "the read above does not" (singular — only
-   `findCurrentTrick` precedes it).
-7. Re-derive every cardinal in the same commit that prints it; grep the previous value and check
+6. Re-derive every cardinal in the same commit that prints it; grep the previous value and check
    each hit's enumeration and line citations, not just its number.
 
 ## Related

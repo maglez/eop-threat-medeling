@@ -1302,7 +1302,8 @@ exception type and its 422, and it is not a restatement of any of the other thre
 > higher, where the trick and its plays are both in hand. Containment is also no longer only
 > "no route": since Slice C2 there are callers of the trick-play ports, and what withholds them
 > is `eop.features.trick-play`, declared `false` at `application.yml:112`. As of EOP-14 Slice D it
-> gates four use-case beans and `TrickController` (`UseCaseConfiguration.java:219-302`), which now
+> gates four use-case beans and `TrickController` (`UseCaseConfiguration.java:219`, `:250`, `:269`,
+> `:320` and `TrickController.java:69`), which now
 > supplies the route this paragraph once said was absent. A flag is weaker than an absent class
 > and is named as such rather than presented as equivalent. See
 > [ADR-025](ADR-025-dealing-is-its-own-use-case.md).
