@@ -19,10 +19,10 @@ Four of those conditions shaped the design rather than merely being discharged b
   echoing the message verbatim. A route reaching `ScoreSheet` would therefore have reported a
   server-side data contradiction as a client error, with a `playerId` or `trickPlayId` in the
   problem body. Nothing could reach those guards before this slice; everything can now.
-- [ADR-024](ADR-024-hand-and-trick-ports.md) forbids an acting player in any repository port
+- [ADR-024](ADR-024-trick-play-persistence-boundary.md) forbids an acting player in any repository port
   signature, so a new read cannot authorise anybody and the use case is the only place membership
   can be established.
-- [ADR-027](ADR-027-singular-hand-resource.md) forbids a collection of every hand. A score sheet is
+- [ADR-027](ADR-027-singleton-subresource-naming.md) forbids a collection of every hand. A score sheet is
   by construction every player's rows, so the prohibition has to be answered in writing rather than
   stepped around.
 - [ADR-004](ADR-004-api-contract-first.md) requires `docs/api/openapi.yml` to be hand-authored
@@ -97,13 +97,14 @@ Filtering would also be wrong for scoring: the plays of an unresolved trick have
 their threat points, so dropping the trick would under-report a running score. `ScoreSheet` handles
 this itself, giving no trick point to a trick with no winner.
 
-### Three reads for the whole session, not three per trick
+### Four reads for the whole session, not three per trick
 
 `assemble` costs three queries per trick — its plays, its cards and its components. A three-player
-game reaches twenty-six tricks, so mapping it over the history would cost seventy-eight round trips
+game reaches twenty-six tricks, so mapping it over the history would cost seventy-nine round trips — one for the trick rows and three for each trick
 for one score read. `findTricks` instead fetches all plays with one `findByTrickIdIn`, one card
 catalogue read and one components read, then groups in memory and reuses the existing rotation
-comparator per trick. Three reads regardless of how far the game has gone.
+comparator per trick. Four reads regardless of how far the game has gone: the trick rows, then their plays, cards and
+components one batch each.
 
 `assemble` was split into a fetching method and a pure overload to make this possible, and the
 components accumulation was extracted into a helper both paths share.
@@ -147,8 +148,13 @@ Its HTTP tests nevertheless live in `TrickControllerIntegrationTest`, as a `Read
 Every fixture that seats a table, deals, plays a whole trick and resolves it is private to that
 class, and a separate test class would have to duplicate some two hundred lines of it. One
 controller per concern and one integration test per feature flag is the split, and it means the
-flag's whole surface is asserted in one place: seven beans absent and six routes 404 with the flag
-off, seven beans present with it on.
+flag's whole surface is asserted in one place: eight beans absent and six routes 404 with the flag
+off, eight beans present with it on.
+
+That reason is a fact about `TrickControllerIntegrationTest` today, not a law, so it is worth naming
+the exit condition: the moment those helpers move to a package-private fixture class, a separate
+`ScoreControllerIntegrationTest` becomes the better arrangement and the next route behind this flag
+should not be a third nested group by default.
 
 ### Multi-trick accumulation is pinned at use-case level, not over HTTP
 
@@ -185,7 +191,7 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
   double copy the *domain* records use is belt-and-braces; the detector is satisfied by one.
 - **`eop.features.trick-play` remains `false`.** Nothing shipped here is reachable in a deployed
   container, and flipping the flag is still its own story per
-  [ADR-028](ADR-028-trick-play-behind-a-flag.md).
+  [ADR-028](ADR-028-end-of-hand-without-release-or-score.md).
 - The comment block above that flag in `application.yml` had to be corrected in this slice. It
   justified naming EOP-15 a predecessor on the grounds that "a player could play every card and the
   session would still report `IN_PROGRESS` with no score anywhere" — the second half is now false,
@@ -212,26 +218,36 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
 
 - [ADR-004](ADR-004-api-contract-first.md) — the contract was hand-authored before the controller,
   and the new path and schemas were validated by parsing rather than by reading.
+- [ADR-005](ADR-005-error-handling-strategy.md) — the decision this slice's seventh section
+  extends: one problem type per client-actionable condition is what makes eight refusals one
+  exception and one 500, and what keeps the identifiers out of the body.
 - [ADR-006](ADR-006-build-quality-gates.md) — amended here to collect the branch minimum it held in
   reserve, now that the bundle measures 90.19%.
-- [ADR-013](ADR-013-feature-flags-via-conditional-on-property.md) — the sixth route is withheld by
+- [ADR-013](ADR-013-feature-flags.md) — the sixth route is withheld by
   `@ConditionalOnProperty`, so with the flag off the bean does not exist rather than the handler
   refusing.
-- [ADR-014](ADR-014-server-sent-events.md) — the contract tells a client to prefer the event stream
+- [ADR-014](ADR-014-realtime-transport.md) — the contract tells a client to prefer the event stream
   and use this route to recover, because an event says only that the session moved.
-- [ADR-015](ADR-015-identity-tokens.md) — the token is the entire control, and it is matched only
+- [ADR-015](ADR-015-player-identity.md) — the token is the entire control, and it is matched only
   against the players of the session it was presented for, which is what makes the membership check
   free.
-- [ADR-020](ADR-020-conditional-update-concurrency.md) — a read needs none of the compare-and-set
-  machinery, and adds no state for it to protect.
-- [ADR-024](ADR-024-hand-and-trick-ports.md) — `findTricks` takes no acting player, so authorising
+- [ADR-020](ADR-020-session-concurrency-control.md) governs every write through the port this slice
+  extended. `findTricks` is a read, so it takes no witness and no conditional update — but it was added to
+  the interface whose other four methods all carry one, and the reason the asymmetry is safe is that a read
+  claims nothing and so has no state to protect. Slice three's `COMPLETED` transition is a write and will be
+  bound by it in full.
+- [ADR-023](ADR-023-deal-remainder-and-turn-order.md) supplies the arithmetic section six rests on: the whole
+  78-card deck is dealt, so three players hold 26 cards each and a hand runs to 26 tricks. That is where the
+  seventy-nine reads a per-trick assembler would have cost comes from, and it is also why the sheet counts the
+  plays it finds rather than assuming a trick holds one card per seat.
+- [ADR-024](ADR-024-trick-play-persistence-boundary.md) — `findTricks` takes no acting player, so authorising
   the requester stays the use case's obligation.
 - [ADR-026](ADR-026-use-case-observability.md) — still `Proposed`, so neither the new controller nor
   the new use case logs anything; only the exception handler does, and that class already had a
   logger.
-- [ADR-027](ADR-027-singular-hand-resource.md) — cited for its prohibition. The argument above is
+- [ADR-027](ADR-027-singleton-subresource-naming.md) — cited for its prohibition. The argument above is
   the written answer that slice A's gates required.
-- [ADR-028](ADR-028-trick-play-behind-a-flag.md) — the flag stays `false`, and this slice discharges
+- [ADR-028](ADR-028-end-of-hand-without-release-or-score.md) — the flag stays `false`, and this slice discharges
   one of the two remaining predecessors it names.
 - [ADR-030](ADR-030-scoring-is-derived-not-accumulated.md) — the decision this slice makes readable,
   and the source of the debts discharged here.

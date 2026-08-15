@@ -191,8 +191,10 @@ slice.
 - The reading slice needs one new read method on `TrickRepository` returning a session's
   tricks. It must carry no acting player, per ADR-024: authorising the requester is the
   use case's job and no port's.
-- Two known debts are deliberately left for the second slice, both raised in review of
-  this one and both harmless only while nothing can reach this code over HTTP. First, the
+- Two known debts were raised in review of this slice and left for the second, both
+  harmless only while nothing could reach this code over HTTP. **The first is now
+  discharged and the second is not**, and they are recorded separately below so that
+  closing one cannot be read as closing both. First, the
   refusals in `ScoreSheet.of`, `ScoreSheet.pointsOf` and `ScoredPlay.of` throw
   `IllegalArgumentException` with
   an identifier — a `playerId`, `trickPlayId` or `trickId` — interpolated into the message,
@@ -200,14 +202,18 @@ slice.
   all. The house
   style is a named domain exception carrying typed fields — which exists precisely so that
   a boundary can refuse without echoing an identifier into a Problem Details body. Those
-  must become named types before a route can reach them, and `pointsOf` is the one to start
-  from: it is the only one of the three a reading route calls with a client-supplied
-  identifier, so it is the first that could echo one into a response. Second, `ScoredPlay`'s canonical
+  had to become named types before a route could reach them, and `pointsOf` was the one to
+  start from: it is the only one of the three a reading route calls with a client-supplied
+  identifier, so it was the first that could echo one into a response. **Discharged by the
+  second slice**, which is the slice that made them reachable: all eight became
+  `ScoreNotDerivableException` carrying a typed reason, mapped to 500 with a body that names
+  no identifier ([ADR-031](ADR-031-the-score-is-read-through-its-own-route.md)). Second, `ScoredPlay`'s canonical
   constructor accepts `components` and `notes` as raw strings with no length or
   control-character bound; today every value on the shipped path has already passed
   `TrickPlay`'s validation, so the guarantee rests on `ScoredPlay.of` being the only
-  caller rather than on the type. Neither is a defect in this slice; both are preconditions
-  for the next.
+  caller rather than on the type. Neither was a defect in this slice. The first is closed; **the second is
+  still open**, and it closes when any path builds a `ScoredPlay` from something other than a
+  `TrickPlay` that has already been revalidated on the way out of the database.
 - One documentation claim was falsified by this slice itself and is corrected within the
   same slice, before the branch merges: `TrickPlay`'s Javadoc said that scoring "decides
   what it does with a linked
@@ -220,8 +226,10 @@ slice.
   `IN_PROGRESS` "because playing cards arrives with EOP-14", and playing cards has
   arrived — only the consequent still holds, and it holds until the third slice. The
   `eop.features.trick-play` comment block in `application.yml`, which names EOP-15 as an
-  outstanding blocker, is entirely true after this slice and goes stale when the third
-  lands. `TrickState.handComplete`'s "says nothing about the score" stays true and stays as
+  outstanding blocker, was entirely true after this slice, and went stale on the **second**
+  rather than the third: a score can now be read, so the clause claiming there was none
+  anywhere was rewritten where it sat, not pointed at from here
+  ([ADR-031](ADR-031-the-score-is-read-through-its-own-route.md)). `TrickState.handComplete`'s "says nothing about the score" stays true and stays as
   written — the flag genuinely says nothing about the score; it is the sheet that says it.
 - ADR-018 predicted that "EOP-15 adds scoring rows". This decision adds none, and may never
   add any. That prediction should be read as superseded here rather than as a plan.

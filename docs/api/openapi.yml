@@ -63,8 +63,9 @@ tags:
       notifications, start play. Gated by `eop.features.session-lifecycle`.
   - name: trick-play
     description: |
-      Dealing the deck, playing a card into the current trick and resolving who
-      took it. Gated by `eop.features.trick-play`, a separate flag from
+      Dealing the deck, playing a card into the current trick, resolving who
+      took it, and reading the score derived from the play so far. Gated by
+      `eop.features.trick-play`, a separate flag from
       `eop.features.session-lifecycle` (ADR-013), so trick play can be held back
       while the lobby is live.
 
@@ -775,6 +776,22 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/SessionNotFound'
+        '500':
+          description: |
+            The stored game contradicts itself and no score can be derived from
+            it — a play attributed to a seat nobody occupies, or two tricks
+            claiming one sequence number. Nothing a caller can change will help,
+            so a client should stop rather than retry, and report the session
+            identifier to whoever runs the service.
+
+            The body deliberately names nothing: no player, play or trick
+            identifier, and the same title and detail as any other server fault.
+            The reason is recorded in the server's log, where it is useful to
+            somebody who can act on it.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
 
 components:
   schemas:

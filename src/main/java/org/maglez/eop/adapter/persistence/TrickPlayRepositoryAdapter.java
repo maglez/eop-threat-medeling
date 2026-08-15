@@ -103,7 +103,7 @@ import org.springframework.transaction.annotation.Transactional;
  * player a row names is seated at the seat that row claims — but that is a check on
  * the <em>row</em>, not on the requester, and it is the only membership check in the
  * class. {@link #openTrick} and {@link #recordResolution} make none. Neither do any
- * of the three reads, and there they are not merely absent but impossible: the ports
+ * of the four reads, and there they are not merely absent but impossible: the ports
  * carry no acting-player parameter for a read to check against.
  *
  * <p>Establishing that the requester belongs in this session is therefore the use
@@ -306,8 +306,8 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * a second authority on that, and one that a caller deriving a running score would be wrong to
      * trust: the plays of an unfinished trick still scored their threats.
      *
-     * <p>Three reads serve the whole session rather than three per trick. Assembling each trick on
-     * its own would cost twenty-six round trips at three players, for an answer whose size the deck
+     * <p>Four reads serve the whole session rather than three per trick. Assembling each trick on
+     * its own would cost seventy-nine round trips at three players, for an answer whose size the deck
      * already bounds.
      *
      * <p>Authorises nobody, and cannot: there is no acting player in the signature to check against
@@ -476,7 +476,7 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * Rebuilds a trick from its row and plays that have already been read.
      *
      * <p>Separated from the overload above so that a whole session's tricks can be built from
-     * three reads rather than three per trick. Everything the rebuild needs is passed in, and
+     * four reads rather than three per trick. Everything the rebuild needs is passed in, and
      * nothing here touches a repository.
      *
      * @param row              the trick row

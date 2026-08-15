@@ -67,7 +67,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/sessions")
 @ConditionalOnProperty(prefix = "eop.features", name = "trick-play", havingValue = "true")
-@Tag(name = "trick-play", description = "Dealing, playing and resolving tricks")
+@Tag(name = "trick-play", description = "Dealing, playing and resolving tricks, and reading the score")
 public class TrickController {
 
     private final DealHandsUseCase dealHandsUseCase;

@@ -40,7 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/sessions")
 @ConditionalOnProperty(prefix = "eop.features", name = "trick-play", havingValue = "true")
-@Tag(name = "trick-play", description = "Dealing, playing and resolving tricks")
+@Tag(name = "trick-play", description = "Dealing, playing and resolving tricks, and reading the score")
 public class ScoreController {
 
     private final GetScoreUseCase getScoreUseCase;
@@ -71,7 +71,9 @@ public class ScoreController {
         @ApiResponse(responseCode = "200", description = "The score of the session."),
         @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
-        @ApiResponse(responseCode = "404", description = "No session exists with that identifier.")
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "500",
+                description = "The stored game contradicts itself, so no score can be derived from it. The body names nothing.")
     })
     public ScoreSheetDto getScore(
             @PathVariable final UUID sessionId,

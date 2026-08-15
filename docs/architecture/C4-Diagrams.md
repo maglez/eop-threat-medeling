@@ -9,7 +9,7 @@ entity-relationship view of the database schema, which is not a C4 level and say
 sits. No Level 1, and no Level 3 beyond the one component detail.
 
 - **Level 1 (System Context) is deliberately deferred**, along with
-  `building-blocks.md`, to a follow-up ticket. They are not missing by accident. A
+  `building-blocks.md`, to a follow-up ticket (EOP-47). They are not missing by accident. A
   context diagram for this system is nearly trivial today — one facilitator, two to
   five other players, three browsers on one machine, no external system of any kind
   — and drawing it now would mostly restate the PRD. It becomes worth having when
@@ -55,7 +55,7 @@ write returns. Those three edges are drawn below; before Slice E the only use ca
 port were `JoinSessionUseCase` and `StartSessionUseCase`.
 
 Containment is still the feature flag, and the flag now withholds more than it did: five use-case
-beans *and* the controller — six beans in all — exist only while `eop.features.trick-play` is
+beans *and* the two controllers — eight beans in all — exist only while `eop.features.trick-play` is
 `true`, and `application.yml` leaves it `false`
 ([`application.yml:81-99`](../../src/main/resources/application.yml)). It stays `false` on merge,
 but no longer because a client could not play: Slice E's state-of-play read publishes whose turn it
@@ -340,7 +340,7 @@ job:
   `havingValue`, and `application.yml` sets the flag `false`. Containment is a flag rather than an
   absent caller, which is a stronger guarantee under test and a weaker one under operator error — a
   flag can be flipped, an absent class cannot. `TrickPlayDisabledIntegrationTest` therefore asserts
-  both halves: all six beans absent *and* all five routes answering 404, because the status is what a
+  both halves: all eight beans absent *and* all six routes answering 404, because the status is what a
   client is promised while the absence is what pins the mechanism.
 - **A read is gated alongside the writers, and that is deliberate.** `ReadOwnHandUseCase` only reads,
   so gating it looks inconsistent until you ask what it would answer with the flag off: no hand was
@@ -623,7 +623,7 @@ decision to every caller. Tests substitute the port, not the generator
 Unlike the two generators, this one is registered unconditionally: it is a `@Component` regardless
 of `eop.features.trick-play`, because it holds no state and reaches no table. What the flag gates is
 the six use cases and the two controllers — the eight beans that would reach the database or accept a
-request — and `TrickPlayDisabledIntegrationTest` asserts all six absent as well as all five routes
+request — and `TrickPlayDisabledIntegrationTest` asserts all eight absent as well as all six routes
 answering 404 (`TrickPlayDisabledIntegrationTest.java:83-168`).
 
 ---
