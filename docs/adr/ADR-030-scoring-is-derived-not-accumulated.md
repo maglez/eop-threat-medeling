@@ -195,7 +195,9 @@ slice.
   this one and both harmless only while nothing can reach this code over HTTP. First, the
   refusals in `ScoreSheet.of`, `ScoreSheet.pointsOf` and `ScoredPlay.of` throw
   `IllegalArgumentException` with
-  the offending `playerId` or `trickPlayId` interpolated into the message, where the house
+  an identifier — a `playerId`, `trickPlayId` or `trickId` — interpolated into the message,
+  except the empty-players and duplicate-sequence refusals, which name no identifier at
+  all. The house
   style is a named domain exception carrying typed fields — which exists precisely so that
   a boundary can refuse without echoing an identifier into a Problem Details body. Those
   must become named types before a route can reach them, and `pointsOf` is the one to start

@@ -1,7 +1,7 @@
 package org.maglez.eop.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.maglez.eop.entity.TrickPlayBuilder.aPlayBy;
 
@@ -250,7 +250,8 @@ class ScoreSheetTest {
         @Test
         @DisplayName("refuses a sheet with nobody seated")
         void shouldRefuseNoPlayers() {
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(List.of(), List.of()));
+            assertThatExceptionOfType(ScoreNotDerivableException.class).isThrownBy(() -> ScoreSheet.of(List.of(), List.of()))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.NO_PLAYERS);
 
             assertThat(ScoreSheet.of(List.of(player(0, PlayerRole.FACILITATOR)), List.of()).standings()).hasSize(1);
         }
@@ -271,7 +272,8 @@ class ScoreSheetTest {
                     .withPlays(aPlayBy(0, ten).withPlayerId(new UUID(42, 42)).build())
                     .build();
 
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)));
+            assertThatExceptionOfType(ScoreNotDerivableException.class).isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.PLAY_BY_UNSEATED_PLAYER);
 
             final Trick seated = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(aPlayBy(0, ten).build()).build();
             assertThat(ScoreSheet.of(threePlayers(), List.of(seated)).rows()).hasSize(1);
@@ -286,7 +288,8 @@ class ScoreSheetTest {
                     .withPlays(aPlayBy(1, ten).withPlayerId(new UUID(700, 2)).build())
                     .build();
 
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)));
+            assertThatExceptionOfType(ScoreNotDerivableException.class).isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick)))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.PLAY_SEAT_MISMATCH);
 
             final Trick agreeing = TrickBuilder.aTrick().withLeaderSeat(1).withPlays(aPlayBy(1, ten).build()).build();
             assertThat(ScoreSheet.of(threePlayers(), List.of(agreeing)).rows()).hasSize(1);
@@ -297,7 +300,9 @@ class ScoreSheetTest {
         void shouldRefuseADuplicateTrick() {
             final Trick trick = firstTrickWonBySeatZero();
 
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick, trick)));
+            assertThatExceptionOfType(ScoreNotDerivableException.class)
+                    .isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(trick, trick)))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.TRICK_REPEATED);
 
             assertThat(ScoreSheet.of(threePlayers(), List.of(trick)).rows()).isNotEmpty();
         }
@@ -309,7 +314,9 @@ class ScoreSheetTest {
             final Trick clash = trickBySeatZeroAt(first.sequence());
             final Trick following = trickBySeatZeroAt(first.sequence() + 1);
 
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(first, clash)));
+            assertThatExceptionOfType(ScoreNotDerivableException.class)
+                    .isThrownBy(() -> ScoreSheet.of(threePlayers(), List.of(first, clash)))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.SEQUENCE_REPEATED);
 
             assertThat(ScoreSheet.of(threePlayers(), List.of(first, following)).rows()).hasSizeGreaterThan(1);
         }
@@ -319,7 +326,8 @@ class ScoreSheetTest {
         void shouldRefuseADuplicatePlayer() {
             final List<Player> twice = List.of(player(0, PlayerRole.FACILITATOR), player(0, PlayerRole.PARTICIPANT));
 
-            assertThatIllegalArgumentException().isThrownBy(() -> ScoreSheet.of(twice, List.of()));
+            assertThatExceptionOfType(ScoreNotDerivableException.class).isThrownBy(() -> ScoreSheet.of(twice, List.of()))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.PLAYER_SEATED_TWICE);
 
             final List<Player> once = List.of(player(0, PlayerRole.FACILITATOR), player(1, PlayerRole.PARTICIPANT));
             assertThat(ScoreSheet.of(once, List.of()).standings()).hasSize(2);
@@ -340,7 +348,8 @@ class ScoreSheetTest {
         void shouldRefuseToScoreAStranger() {
             final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of());
 
-            assertThatIllegalArgumentException().isThrownBy(() -> sheet.pointsOf(new UUID(42, 42)));
+            assertThatExceptionOfType(ScoreNotDerivableException.class).isThrownBy(() -> sheet.pointsOf(new UUID(42, 42)))
+                    .extracting(ScoreNotDerivableException::reason).isEqualTo(ScoreNotDerivableException.Reason.PLAYER_NOT_SEATED);
             assertThatNullPointerException().isThrownBy(() -> sheet.pointsOf(null));
 
             assertThat(sheet.pointsOf(new UUID(700, 0))).isZero();

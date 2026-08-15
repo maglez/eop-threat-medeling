@@ -63,14 +63,15 @@ public final class ScoreSheet {
      * @param players the seated players, at least one
      * @param tricks  the tricks played so far, possibly empty, possibly including one still in progress
      * @return the score of the game as it stands
-     * @throws IllegalArgumentException if there are no players, if one player is seated twice, if two tricks collide on identity or
-     *                                  sequence, or if a play cannot be attributed to a seated player at the seat it names
+     * @throws ScoreNotDerivableException if the game contradicts itself: nobody seated, one player seated twice, two tricks colliding
+     *                                   on identity or sequence, or a play that cannot be attributed to a seated player at the seat
+     *                                   it names
      */
     public static ScoreSheet of(final List<Player> players, final List<Trick> tricks) {
         Objects.requireNonNull(players, "players is required");
         Objects.requireNonNull(tricks, "tricks is required");
         if (players.isEmpty()) {
-            throw new IllegalArgumentException("A score sheet needs at least one seated player");
+            throw ScoreNotDerivableException.noPlayers();
         }
         final Map<UUID, Player> seated = index(players);
         final List<ScoredPlay> scored = new ArrayList<>();
@@ -79,11 +80,10 @@ public final class ScoreSheet {
             for (final TrickPlay play : trick.plays()) {
                 final Player player = seated.get(play.playerId());
                 if (player == null) {
-                    throw new IllegalArgumentException("Play " + play.trickPlayId() + " was made by a player who is not seated");
+                    throw ScoreNotDerivableException.playByUnseatedPlayer(play.trickPlayId());
                 }
                 if (player.seatOrder() != play.seatOrder()) {
-                    throw new IllegalArgumentException("Play " + play.trickPlayId() + " names seat " + play.seatOrder()
-                            + " but its player is seated at " + player.seatOrder());
+                    throw ScoreNotDerivableException.playSeatMismatch(play.trickPlayId(), play.seatOrder(), player.seatOrder());
                 }
                 final boolean tookTrick = winner.isPresent() && winner.get().trickPlayId().equals(play.trickPlayId());
                 scored.add(ScoredPlay.of(player, play, tookTrick));
@@ -97,7 +97,7 @@ public final class ScoreSheet {
         for (final Player player : players) {
             Objects.requireNonNull(player, "A player is required");
             if (seated.put(player.playerId(), player) != null) {
-                throw new IllegalArgumentException("Player " + player.playerId() + " is seated twice");
+                throw ScoreNotDerivableException.playerSeatedTwice(player.playerId());
             }
         }
         return seated;
@@ -109,10 +109,10 @@ public final class ScoreSheet {
         for (final Trick trick : tricks) {
             Objects.requireNonNull(trick, "A trick is required");
             if (!identifiers.add(trick.trickId())) {
-                throw new IllegalArgumentException("Trick " + trick.trickId() + " appears twice");
+                throw ScoreNotDerivableException.trickRepeated(trick.trickId());
             }
             if (!sequences.add(trick.sequence())) {
-                throw new IllegalArgumentException("Two tricks claim sequence " + trick.sequence());
+                throw ScoreNotDerivableException.sequenceRepeated(trick.sequence());
             }
         }
         final List<Trick> ordered = new ArrayList<>(tricks);
@@ -192,7 +192,7 @@ public final class ScoreSheet {
      *
      * @param playerId identifier of a seated player
      * @return that player's points, zero if they have not scored
-     * @throws IllegalArgumentException if the player is not seated in this game
+     * @throws ScoreNotDerivableException if the player is not seated in this game
      */
     public int pointsOf(final UUID playerId) {
         Objects.requireNonNull(playerId, "playerId is required");
@@ -200,7 +200,7 @@ public final class ScoreSheet {
                 .filter(standing -> standing.playerId().equals(playerId))
                 .mapToInt(Standing::points)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("No player " + playerId + " is seated in this game"));
+                .orElseThrow(() -> ScoreNotDerivableException.playerNotSeated(playerId));
     }
 
     @Override

@@ -68,7 +68,11 @@ final class InMemoryTrickRepository implements TrickRepository {
 
     private final List<Resolution> resolutions = new ArrayList<>();
 
+    private final List<Trick> history = new ArrayList<>();
+
     private Trick current;
+
+    private UUID tricksAskedFor;
 
     /**
      * Creates an empty repository, as a session looks before its first lead.
@@ -90,9 +94,31 @@ final class InMemoryTrickRepository implements TrickRepository {
         return this;
     }
 
+    /**
+     * Seeds the tricks that a whole-history read should answer with.
+     *
+     * <p>Kept apart from the current trick on purpose. A score is derived from every trick played,
+     * and a double that answered the history with whatever the last write happened to leave behind
+     * would let a use case that read the wrong thing still pass.
+     *
+     * @param tricks the session's tricks, in the order they were played
+     * @return this repository
+     */
+    InMemoryTrickRepository seededWithHistory(final Trick... tricks) {
+        this.history.clear();
+        this.history.addAll(List.of(tricks));
+        return this;
+    }
+
     @Override
     public Optional<Trick> findCurrentTrick(final UUID sessionId) {
         return Optional.ofNullable(current);
+    }
+
+    @Override
+    public List<Trick> findTricks(final UUID sessionId) {
+        this.tricksAskedFor = sessionId;
+        return List.copyOf(history);
     }
 
     @Override
@@ -147,5 +173,18 @@ final class InMemoryTrickRepository implements TrickRepository {
      */
     List<Resolution> resolutions() {
         return List.copyOf(resolutions);
+    }
+
+    /**
+     * Answers which session the history was last read for.
+     *
+     * <p>The assertion that matters is that it is the session the caller authorised against, and not
+     * some other one: a read scoped to the wrong session would hand a member of one game the history
+     * of another.
+     *
+     * @return the session identifier the history was read for, empty if it was never read
+     */
+    Optional<UUID> tricksAskedFor() {
+        return Optional.ofNullable(tricksAskedFor);
     }
 }

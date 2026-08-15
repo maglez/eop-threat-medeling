@@ -164,6 +164,8 @@ flowchart LR
         SC["SessionController<br/>five routes<br/>@ConditionalOnProperty havingValue=true (EOP-48)<br/>bean absent when eop.features.session-lifecycle is off<br/>so are its four session use cases"]
         TC["TrickController<br/>EOP-14 Slice D, fifth route added by Slice E<br/>POST /deal · GET /hand · POST /plays<br/>GET /tricks/current · POST /tricks/current/resolve<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>the acting seat is never read from a request"]
         TDTO["HandDto · TrickDto · TrickPlayDto · PlayCardRequest · TrickStateDto<br/>EOP-14 Slice D, TrickStateDto added by Slice E<br/>PlayCardRequest carries no seat, no player, no suit, no rank<br/>TrickDto omits turn, completeness and next leader — it cannot know them<br/>TrickStateDto carries all four, from a use case that reads both aggregates"]
+        SCORE["ScoreController<br/>EOP-15 Slice B — one route, the sixth behind this flag<br/>GET /score<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>separate from TrickController because a score is not a move<br/>names only cards already face up, which is what separates it from GET /hand (ADR-027)"]
+        SDTO["ScoreSheetDto · ScoredPlayDto · StandingDto<br/>EOP-15 Slice B<br/>ScoredPlayDto is one row of the printed Score Card — name, points, card, component(s), notes<br/>the display name travels as a plain string; no token digest crosses this boundary<br/>StandingDto publishes position and tied, so a shared first place reads as a tie<br/>no winner field — position 1 held by two seats is the answer"]
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
         SSE["SseSessionEventPublisher<br/>in-process subscriber registry"]
@@ -191,6 +193,7 @@ flowchart LR
         RESTRICK["ResolveTrickUseCase<br/>EOP-14 Slice C2<br/>any member, not just the facilitator<br/>bean exists only while eop.features.trick-play is true"]
         READHAND["ReadOwnHandUseCase<br/>EOP-14 Slice D — the eleventh use case at that date<br/>returns the caller's own hand and nothing else<br/>no sibling returns another player's hand or all hands<br/>bean exists only while eop.features.trick-play is true"]
         GETSTATE["GetTrickStateUseCase<br/>EOP-14 Slice E — the twelfth use case<br/>joins two aggregates: the hands and the current trick<br/>returns TrickState — turn, completeness, next leader, hand complete<br/>names no card any seat is holding<br/>bean exists only while eop.features.trick-play is true"]
+        GETSCORE["GetScoreUseCase<br/>EOP-15 Slice B — the thirteenth use case<br/>reaches two collaborators only: resolving the caller already yields the session and its players<br/>derives the score from the whole trick history — nothing is accumulated (ADR-030)<br/>no HandRepository and no status check: before the deal, everybody on nothing is a true answer<br/>bean exists only while eop.features.trick-play is true"]
 
         P1(["SessionRepository"])
         P2(["SessionEventPublisher<br/>reached by five use cases since EOP-14 Slice E<br/>every trick-play write publishes after it returns"])
@@ -199,7 +202,7 @@ flowchart LR
         P5(["JoinCodeGenerator"])
         P6(["JoinAttemptLimiter"])
         P7(["HandRepository<br/>EOP-14 Slice C1<br/>called by all three Slice C2 use cases, by ReadOwnHandUseCase from Slice D<br/>and by GetTrickStateUseCase from Slice E — five callers"])
-        P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases, and by GetTrickStateUseCase from Slice E<br/>recordResolution's next-leader parameter is an OptionalInt since Slice E"])
+        P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases, by GetTrickStateUseCase from Slice E and by GetScoreUseCase from EOP-15 Slice B<br/>findTricks returns the session's whole history and filters nothing — an unresolved trick comes back unresolved<br/>recordResolution's next-leader parameter is an OptionalInt since Slice E"])
         P9(["CardRepository<br/>EOP-13 — third method findWholeDeck added by Slice C2"])
         P10(["DeckShuffler<br/>EOP-14 Slice C2<br/>a port so the security choice is made once, in one class"])
     end
@@ -235,12 +238,16 @@ flowchart LR
     TC --> GETSTATE
     TC --> RESTRICK
     TC -.->|"maps domain results through"| TDTO
+    SCORE --> GETSCORE
+    SCORE -.->|"maps domain results through"| SDTO
     TC -.->|"throws domain exceptions"| GEH
     READHAND --> RESOLVE
     READHAND --> P7
     GETSTATE -->|"first statement — authorise, then decide"| RESOLVE
     GETSTATE --> P7
     GETSTATE --> P8
+    GETSCORE -->|"first statement — authorise, then decide"| RESOLVE
+    GETSCORE --> P8
 
     CREATE --> P1
     CREATE --> P3
@@ -564,8 +571,8 @@ lapsed with Slice C2: it used to be that nothing above these components called i
 use cases do, so `HandRepository` is drawn with **five** inbound edges — from the deal, play and
 resolve nodes, from `ReadOwnHandUseCase`, the reader Slice D added, and from `GetTrickStateUseCase`,
 the reader Slice E added (`READHAND --> P7`, `GETSTATE --> P7`, `DEAL --> P7`, `PLAY --> P7`,
-`RESTRICK --> P7`) — while `TrickRepository` has **three**, from play, from resolve and from that
-same Slice E reader (`GETSTATE --> P8`, `PLAY --> P8`, `RESTRICK --> P8`): dealing never touches it,
+`RESTRICK --> P7`) — while `TrickRepository` has **four**, from play, from resolve, from the whole-history read EOP-15 Slice B added for the score, and from that
+same Slice E reader (`GETSTATE --> P8`, `PLAY --> P8`, `RESTRICK --> P8`, `GETSCORE --> P8`): dealing never touches it,
 and neither does reading a hand. An earlier
 version of this sentence said three, and counted the Slice C2 callers rather than the edges the
 diagram draws; a cardinal in this document is a claim about the artefact beside it, so re-derive it
@@ -615,7 +622,7 @@ decision to every caller. Tests substitute the port, not the generator
 
 Unlike the two generators, this one is registered unconditionally: it is a `@Component` regardless
 of `eop.features.trick-play`, because it holds no state and reaches no table. What the flag gates is
-the five use cases and `TrickController` — the six beans that would reach the database or accept a
+the six use cases and the two controllers — the eight beans that would reach the database or accept a
 request — and `TrickPlayDisabledIntegrationTest` asserts all six absent as well as all five routes
 answering 404 (`TrickPlayDisabledIntegrationTest.java:83-168`).
 

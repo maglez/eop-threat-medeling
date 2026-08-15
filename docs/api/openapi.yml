@@ -711,6 +711,71 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/v1/sessions/{sessionId}/score:
+    get:
+      tags: [trick-play]
+      summary: Read the score
+      description: |
+        The score of the session, in the shape of the printed Score Card: one
+        row for every card that has been played, and a standing for every
+        player at the table.
+
+        The rule is the shipped one and nothing more. A card scores one point
+        for the threat if its player connected the threat to the system, and
+        one point for taking the trick. A play that connected no threat scores
+        nothing for the threat, though its player can still take the trick
+        with the card.
+
+        Nothing here is accumulated. Every number is derived from the plays and
+        from which play won each trick, so a score cannot drift from the game
+        that produced it, and a client has nothing to assert a score of its
+        own against.
+
+        Any seated player may read it, and there is nothing to gate. Every card
+        it names has already been played face up, and no card that any seat
+        still holds appears in it — which is what separates this from
+        `/hand`, the only route that shows a hand and one that only ever shows
+        the caller's own. A stranger who guesses a session identifier is
+        refused with `403` because they hold no credential for that session,
+        not because the score itself is a secret.
+
+        There is no `409` on this operation and its absence is deliberate. A
+        score is reportable in every state a session can reach: before the deal
+        it is everybody on nothing, which is a true answer rather than a
+        missing one. Unlike the state of play, there is no state for which this
+        read has to refuse.
+
+        `rows` runs in trick order and, within a trick, in the order the cards
+        were played. `standings` runs by position, and players level on points
+        share a position rather than being separated arbitrarily.
+
+        Polling this changes nothing, but a client should prefer the event
+        stream and use this to recover.
+      operationId: getScore
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The score of the session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreSheet'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
 components:
   schemas:
     StrideCategory:
@@ -1264,6 +1329,178 @@ components:
             The session status does not become `COMPLETED` at this point. That
             word is reserved for a hand whose score is final, and scoring is a
             separate operation.
+
+    ScoredPlay:
+      type: object
+      description: |
+        One row of the Score Card: who played, what they played, what they
+        connected it to, and why it scored.
+
+        `threatPoint` and `trickPoint` are published separately rather than
+        pre-summed, so that a reader can see why a row scored rather than only
+        that it did. `points` is their sum and is never anything else.
+
+        A row with `threatPoint` false and `trickPoint` true is ordinary, not
+        an error: the player could not connect a threat, played the card
+        anyway, and took the trick with it.
+      required:
+        - playerId
+        - seatOrder
+        - displayName
+        - card
+        - components
+        - threatPoint
+        - trickPoint
+        - points
+      properties:
+        playerId:
+          type: string
+          format: uuid
+          description: |
+            The player who made the play. This, and not the display name, is
+            what identifies them: two people may choose the same name.
+        seatOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: The seat the play was made from.
+        displayName:
+          allOf:
+            - $ref: '#/components/schemas/DisplayName'
+          description: |
+            The name the player chose, for display only. It is neither unique
+            nor verified, so it must never be used as a key.
+        card:
+          allOf:
+            - $ref: '#/components/schemas/Card'
+          description: |
+            The card that was played. It is named here because it is already
+            face up on the table.
+        components:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 200
+          description: |
+            The parts of the system the player named when connecting the
+            threat, in the order they gave them. This is the Score Card's
+            `Component(s)` column, plural in the original because one threat
+            may touch several. Empty when they named none, which does not stop
+            a connected threat from scoring.
+        notes:
+          type: string
+          maxLength: 2000
+          description: |
+            What the player typed about the threat: the Score Card's `Notes on
+            Threat` column. Absent when they wrote nothing, never an empty
+            string.
+        threatPoint:
+          type: boolean
+          description: |
+            Whether the play scored its point for connecting a threat to the
+            system. False when the player connected none.
+        trickPoint:
+          type: boolean
+          description: |
+            Whether the play took the trick. Only present as true on one play
+            of any resolved trick, and on no play of a trick still on the
+            table.
+        points:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2
+          description: |
+            What the row scored: one for the threat, one for the trick, so
+            never more than two.
+
+    Standing:
+      type: object
+      description: |
+        One player's place in the game.
+
+        Positions are competition ranked, so totals of 7, 5, 5 and 2 hold
+        positions 1, 2, 2 and 4. A tie is shown as a tie and is never broken:
+        the game has no tie-break rule, and inventing one here would report a
+        result the table did not play.
+      required: [playerId, seatOrder, displayName, points, position, tied]
+      properties:
+        playerId:
+          type: string
+          format: uuid
+          description: The player this standing belongs to.
+        seatOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: The seat they hold.
+        displayName:
+          allOf:
+            - $ref: '#/components/schemas/DisplayName'
+          description: The name they chose, for display only.
+        points:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            Their total across every row of the Score Card. Zero for a player
+            who has played nothing, or nothing that scored.
+        position:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |
+            Their place, competition ranked. Players level on points share a
+            position, and the position after a shared one skips accordingly.
+        tied:
+          type: boolean
+          description: |
+            Whether another player holds the same total. Derivable from the
+            standings as a whole, and published anyway so that a client
+            showing one row does not have to recompute it and cannot get it
+            wrong.
+
+    ScoreSheet:
+      type: object
+      description: |
+        The whole score of one session: the Score Card's rows, and the
+        standings derived from them.
+
+        This is every player's rows in one response, which the hand route is
+        forbidden to be. The difference is what is in them: a score names only
+        cards that have already been played, so it discloses nothing that the
+        table cannot already see, whereas a hand names cards its holder alone
+        is entitled to.
+
+        Both lists are always present. Before any card is played `rows` is
+        empty and every standing sits on nothing, which is the score of a game
+        that has not started rather than a missing answer.
+
+        There is no separate winner field. The winner is whoever holds
+        position 1, and if that position is shared then the game is tied — a
+        fact the standings already carry, and one that a second field could
+        only contradict.
+      required: [rows, standings]
+      properties:
+        rows:
+          type: array
+          maxItems: 78
+          items:
+            $ref: '#/components/schemas/ScoredPlay'
+          description: |
+            One row per card played, in trick order and, within a trick, in
+            the order the cards were played. At most one per card in the deck.
+        standings:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/Standing'
+          description: |
+            One standing per seated player, ordered by position and, among
+            players level on points, by seat.
 
     PlayCardRequest:
       type: object

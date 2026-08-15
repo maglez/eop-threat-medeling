@@ -100,8 +100,11 @@ eop:
     # gameplay. Two things must land before this becomes true, both recorded as
     # predecessors in ADR-028: ADR-026, which is still Proposed and would give the
     # game-affecting writes the audit logging observability.md requires; and
-    # EOP-15, which scores a hand, because until it lands a player could play every
-    # card and the session would still report IN_PROGRESS with no score anywhere. Do
+    # EOP-15, which scores a hand. Its first two slices have landed -- the scoring
+    # rule in the domain, and the read that serves it at GET /score -- so a score
+    # can now be derived and shown. Its third has not, so a player could still play
+    # every card and the session would report IN_PROGRESS for ever, which is the
+    # clause that keeps EOP-15 a predecessor (ADR-030, ADR-031). Do
     # not flip this without them. The third predecessor, EOP-48 -- which fixed the
     # sibling flag above failing open for want of a havingValue -- is discharged by
     # commit 34d30d7, and this flag's own conditions have carried havingValue since

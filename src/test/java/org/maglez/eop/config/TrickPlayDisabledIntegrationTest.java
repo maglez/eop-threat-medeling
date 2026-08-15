@@ -10,8 +10,10 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.maglez.eop.adapter.security.SecureRandomDeckShuffler;
+import org.maglez.eop.adapter.web.ScoreController;
 import org.maglez.eop.adapter.web.TrickController;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ReadOwnHandUseCase;
@@ -47,8 +49,8 @@ import org.springframework.test.web.servlet.MockMvc;
  * <p>What the flag withholds is worth stating precisely. An earlier slice put five trick-play tables
  * and two ports into the application, and the adapter implementing those ports is an unconditional
  * {@code @Repository} that is created either way. So the flag does not withhold the capability to
- * write a hand, a trick or a play; it withholds every caller of it — the five use cases and the
- * controller that reaches them over HTTP.
+ * write a hand, a trick or a play; it withholds every caller of it — the six use cases and the two
+ * controllers that reach them over HTTP.
  *
  * <p>The last two tests are the counterweight. A flag that took the rest of the application down
  * with it would be worse than no flag, so the shuffler — deliberately ungated, because a stateless
@@ -119,10 +121,24 @@ class TrickPlayDisabledIntegrationTest {
         Assertions.assertThat(context.getBeanNamesForType(GetTrickStateUseCase.class)).isEmpty();
     }
 
+    /** Asserts the score use case is not created while the flag is off. */
+    @Test
+    @DisplayName("does not create the score use case")
+    void shouldNotRegisterTheGetScoreUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(GetScoreUseCase.class)).isEmpty();
+    }
+
     @Test
     @DisplayName("does not create the controller, so the routes are absent rather than disabled")
     void shouldNotRegisterTheTrickController() {
         Assertions.assertThat(context.getBeanNamesForType(TrickController.class)).isEmpty();
+    }
+
+    /** Asserts the score controller is not created while the flag is off. */
+    @Test
+    @DisplayName("does not create the score controller either, so the score route is absent too")
+    void shouldNotRegisterTheScoreController() {
+        Assertions.assertThat(context.getBeanNamesForType(ScoreController.class)).isEmpty();
     }
 
     /** Asserts the deal route is not served while the flag is off. */
@@ -165,6 +181,13 @@ class TrickPlayDisabledIntegrationTest {
     void shouldNotServeTheResolveRoute() throws Exception {
         mockMvc.perform(post("/api/v1/sessions/{id}/tricks/current/resolve", SOME_SESSION))
                 .andExpect(status().isNotFound());
+    }
+
+    /** Asserts the score route is not served while the flag is off. */
+    @Test
+    @DisplayName("answers 404 to a score read")
+    void shouldNotServeTheScoreRoute() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/score", SOME_SESSION)).andExpect(status().isNotFound());
     }
 
     @Test

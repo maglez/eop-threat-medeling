@@ -65,6 +65,8 @@ class TrickControllerIntegrationTest {
 
     private static final String PROBLEM_JSON = "application/problem+json";
 
+    private static final String UNKNOWN_SESSION_ID = "00000000-0000-7000-8000-0000000000ff";
+
     private static final String TAMPERING = "TAMPERING";
 
     private static final String TRUMP = "ELEVATION_OF_PRIVILEGE";
@@ -1112,6 +1114,206 @@ class TrickControllerIntegrationTest {
         }
     }
 
+    @Nested
+    @DisplayName("Reading the score")
+    class ReadingTheScore {
+
+        /**
+         * Everybody appears before anybody has played, on nothing, level with each other.
+         *
+         * <p>The route has no {@code 409} for an undealt session, and this is the reason: a score of
+         * nothing each is a true answer rather than a missing one, so there is no state in which the
+         * question cannot be answered. That is what separates this read from the state of play above,
+         * which has nothing to report until the deck is dealt.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("reports everybody on nothing before a card is played")
+        void shouldReportEverybodyOnNothingBeforeACardIsPlayed() throws Exception {
+            final Table table = startedTable();
+
+            final MvcResult result = score(table.sessionId(), table.seats().get(0).playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus()).as("status").isEqualTo(200);
+            final String body = result.getResponse().getContentAsString();
+            Assertions.assertThat(JsonPath.<Integer>read(body, "$.rows.length()")).as("rows").isZero();
+            Assertions.assertThat(JsonPath.<Integer>read(body, "$.standings.length()")).as("seats").isEqualTo(PLAYERS);
+            Assertions.assertThat(JsonPath.<List<Integer>>read(body, "$.standings[*].points")).containsOnly(0);
+            Assertions.assertThat(JsonPath.<List<Integer>>read(body, "$.standings[*].position")).containsOnly(1);
+            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.standings[*].tied")).containsOnly(true);
+        }
+
+        /**
+         * A point for the threat and a point for the trick, over HTTP.
+         *
+         * <p>The winning seat is re-derived from the cards rather than read back from the server, so
+         * the assertion would fail against an implementation that gave the trick point to the leader
+         * or to whoever played last.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("gives a point for the threat and a point for the trick")
+        void shouldGiveAPointForTheThreatAndAPointForTheTrick() throws Exception {
+            final Table table = dealtTable();
+            final Map<Integer, CardView> plays = playWholeTrick(table);
+            resolve(table.sessionId(), table.seats().get(0).playerToken());
+
+            final String body = score(table.sessionId(), table.seats().get(0).playerToken())
+                    .getResponse().getContentAsString();
+
+            final int winner = expectedWinner(plays);
+            Assertions.assertThat(JsonPath.<Integer>read(body, "$.rows.length()")).as("rows").isEqualTo(PLAYERS);
+            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.rows[*].threatPoint")).containsOnly(true);
+            Assertions.assertThat(JsonPath.<List<Integer>>read(body, "$.rows[?(@.seatOrder == " + winner + ")].points"))
+                    .as("the winner scores twice").containsExactly(2);
+            Assertions.assertThat(JsonPath.<Integer>read(body, "$.standings[0].seatOrder")).isEqualTo(winner);
+            Assertions.assertThat(JsonPath.<Integer>read(body, "$.standings[0].position")).isEqualTo(1);
+            Assertions.assertThat(JsonPath.<Boolean>read(body, "$.standings[0].tied")).isFalse();
+        }
+
+        /**
+         * A linked threat that names no component still scores.
+         *
+         * <p>The play route accepts a body naming only the card and the fact that a threat was
+         * connected, which is exactly this case. The decision is ADR-030's, and this pins it at the
+         * boundary rather than only in the domain: the row scores, its component list is empty, and
+         * the note is absent from the JSON rather than present and null.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("scores a linked threat that names no component")
+        void shouldScoreALinkedThreatThatNamesNoComponent() throws Exception {
+            final Table table = dealtTable();
+            playWholeTrick(table);
+            resolve(table.sessionId(), table.seats().get(0).playerToken());
+
+            final String body = score(table.sessionId(), table.seats().get(0).playerToken())
+                    .getResponse().getContentAsString();
+
+            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.rows[*].threatPoint")).containsOnly(true);
+            Assertions.assertThat(JsonPath.<List<List<String>>>read(body, "$.rows[*].components"))
+                    .as("no component was named").allSatisfy(named -> Assertions.assertThat(named).isEmpty());
+            Assertions.assertThat(body).as("an absent note is omitted, not null").doesNotContain("notes");
+        }
+
+        /**
+         * A trick still on the table scores its threats but no trick point.
+         *
+         * <p>Which is what makes a running score monotone: the trick point arrives when the trick is
+         * resolved, and nothing already counted is taken away.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("counts threat points only while the trick is still on the table")
+        void shouldCountThreatPointsOnlyWhileTheTrickIsStillOnTheTable() throws Exception {
+            final Table table = dealtTable();
+            playWholeTrick(table);
+
+            final String body = score(table.sessionId(), table.seats().get(0).playerToken())
+                    .getResponse().getContentAsString();
+
+            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.rows[*].trickPoint")).containsOnly(false);
+            Assertions.assertThat(JsonPath.<List<Integer>>read(body, "$.standings[*].points")).containsOnly(1);
+            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.standings[*].tied")).containsOnly(true);
+        }
+
+        /**
+         * The score names only cards that have been played.
+         *
+         * <p>The strongest thing this route can be asked to prove. Every card in the answer is one of
+         * the three that were played into the trick, so no card any seat still holds is named, and the
+         * Score Card is on the safe side of the line the hand route draws.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("names no card that is still in a hand")
+        void shouldNameNoCardThatIsStillInAHand() throws Exception {
+            final Table table = dealtTable();
+            final Map<Integer, CardView> plays = playWholeTrick(table);
+            resolve(table.sessionId(), table.seats().get(0).playerToken());
+
+            final String body = score(table.sessionId(), table.seats().get(0).playerToken())
+                    .getResponse().getContentAsString();
+
+            Assertions.assertThat(JsonPath.<List<String>>read(body, "$.rows[*].card.cardId"))
+                    .as("only the cards that were played")
+                    .containsExactlyInAnyOrderElementsOf(plays.values().stream().map(CardView::cardId).toList());
+        }
+
+        /**
+         * A caller who presents no credential is refused.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("refuses a caller who presents no credential")
+        void shouldRefuseACallerWithNoCredential() throws Exception {
+            final Table table = startedTable();
+
+            final MvcResult result = score(table.sessionId(), null);
+
+            Assertions.assertThat(result.getResponse().getStatus()).as("status").isEqualTo(403);
+            Assertions.assertThat(result.getResponse().getContentType()).startsWith(PROBLEM_JSON);
+        }
+
+        /**
+         * A credential belonging to another session is refused.
+         *
+         * <p>A token is only ever matched against the players of the session it is presented for, so
+         * a real credential from somewhere else is as good as no credential at all.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("refuses a credential from another session")
+        void shouldRefuseACredentialFromAnotherSession() throws Exception {
+            final Table table = startedTable();
+            final Admission elsewhere = createSession("Zoe");
+
+            final MvcResult result = score(table.sessionId(), elsewhere.playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus()).as("status").isEqualTo(403);
+            Assertions.assertThat(result.getResponse().getContentType()).startsWith(PROBLEM_JSON);
+        }
+
+        /**
+         * An unknown session is not found.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("refuses an unknown session")
+        void shouldRefuseAnUnknownSession() throws Exception {
+            final Table table = startedTable();
+
+            final MvcResult result = score(UNKNOWN_SESSION_ID, table.seats().get(0).playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus()).as("status").isEqualTo(404);
+            Assertions.assertThat(result.getResponse().getContentType()).startsWith(PROBLEM_JSON);
+        }
+
+        /**
+         * A session identifier that is not a UUID is a malformed request.
+         *
+         * @throws Exception if a request cannot be performed
+         */
+        @Test
+        @DisplayName("refuses a session identifier that is not a UUID")
+        void shouldRefuseASessionIdentifierThatIsNotAUuid() throws Exception {
+            final Table table = startedTable();
+
+            final MvcResult result = score("not-a-uuid", table.seats().get(0).playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus()).as("status").isEqualTo(400);
+            Assertions.assertThat(result.getResponse().getContentType()).startsWith(PROBLEM_JSON);
+        }
+    }
+
     /**
      * Seats three players in a lobby without starting play.
      *
@@ -1341,6 +1543,18 @@ class TrickControllerIntegrationTest {
      */
     private MvcResult trickState(final String sessionId, final String token) throws Exception {
         return mockMvc.perform(withToken(get(SESSIONS + "/" + sessionId + "/tricks/current"), token)).andReturn();
+    }
+
+    /**
+     * Reads the score of a session.
+     *
+     * @param sessionId the session to read
+     * @param token the credential to present, or {@code null} to present none
+     * @return the raw result, so a caller can assert on a refusal as readily as on a score
+     * @throws Exception if the request cannot be performed
+     */
+    private MvcResult score(final String sessionId, final String token) throws Exception {
+        return mockMvc.perform(withToken(get(SESSIONS + "/" + sessionId + "/score"), token)).andReturn();
     }
 
     /**

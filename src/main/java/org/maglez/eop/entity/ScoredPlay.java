@@ -65,13 +65,13 @@ public record ScoredPlay(UUID playerId, int seatOrder, DisplayName displayName, 
      * @param play      the play as it was recorded
      * @param tookTrick whether this play was the winning play of its trick
      * @return the corresponding Score Card row
-     * @throws IllegalArgumentException if the play was not made by the given player
+     * @throws ScoreNotDerivableException if the play was not made by the given player
      */
     public static ScoredPlay of(final Player player, final TrickPlay play, final boolean tookTrick) {
         Objects.requireNonNull(player, "player is required");
         Objects.requireNonNull(play, "play is required");
         if (!player.playerId().equals(play.playerId())) {
-            throw new IllegalArgumentException("Play " + play.trickPlayId() + " was not made by player " + player.playerId());
+            throw ScoreNotDerivableException.playNotByThisPlayer(play.trickPlayId(), player.playerId());
         }
         return new ScoredPlay(player.playerId(), play.seatOrder(), player.displayName(), play.card(), play.components(),
                 play.notesIfGiven(), play.threatLinked(), tookTrick);

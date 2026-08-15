@@ -6,6 +6,7 @@ import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.DealHandsUseCase;
 import org.maglez.eop.usecase.DeckShuffler;
 import org.maglez.eop.usecase.GetCardUseCase;
+import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.HandRepository;
@@ -325,5 +326,24 @@ public class UseCaseConfiguration {
             final Clock clock) {
         return new ResolveTrickUseCase(
                 resolvePlayerUseCase, handRepository, trickRepository, sessionEventPublisher, clock);
+    }
+
+    /**
+     * Declares the score use case, behind {@code eop.features.trick-play}.
+     *
+     * <p>Two collaborators, not three. Resolving the credential already yields the session, and a
+     * session carries its own players, so the seated players arrive without a second read and the
+     * only port here is the one holding the tricks.
+     *
+     * @param resolvePlayerUseCase the use case that turns a token into a named player and their session
+     * @param trickRepository      the port the session's tricks are read through
+     * @return the score use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
+    public GetScoreUseCase getScoreUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final TrickRepository trickRepository) {
+        return new GetScoreUseCase(resolvePlayerUseCase, trickRepository);
     }
 }

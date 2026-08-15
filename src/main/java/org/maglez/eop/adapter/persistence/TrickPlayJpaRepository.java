@@ -28,4 +28,17 @@ interface TrickPlayJpaRepository extends JpaRepository<TrickPlayJpaEntity, UUID>
      * @return the plays, in no guaranteed order, empty if nobody has played yet
      */
     List<TrickPlayJpaEntity> findByTrickId(UUID trickId);
+
+    /**
+     * Reads the plays of several tricks at once, in no guaranteed order.
+     *
+     * <p>Silent about order for the same reason the single-trick read is: play order within a trick
+     * is rotation from that trick's leader seat, which is a fact the trick row carries and no
+     * {@code ORDER BY} over this table can express. The caller groups by trick and applies the
+     * rotation itself.
+     *
+     * @param trickIds identifiers of the tricks whose plays are wanted
+     * @return every play belonging to any of those tricks, in no guaranteed order
+     */
+    List<TrickPlayJpaEntity> findByTrickIdIn(List<UUID> trickIds);
 }
