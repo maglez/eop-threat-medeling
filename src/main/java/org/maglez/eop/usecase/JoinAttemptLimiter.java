@@ -39,8 +39,17 @@ public interface JoinAttemptLimiter {
      * matched nothing, because from the outside those two are the same answer and
      * counting them differently would make the limiter itself an oracle.
      *
+     * <p>Implementations perform the authoritative atomic check-and-record: the
+     * prune, the limit check, and the insertion are performed under the same lock,
+     * so two concurrent threads racing at the limit boundary cannot both pass.
+     * {@link #checkAllowed} is a best-effort pre-check; this method is the gate.
+     *
      * @param clientAddress the address the attempt arrived from
      * @param joinCodeAttempt the raw code that failed
+     * @throws TooManyJoinAttemptsException if either the per-address or per-code
+     *     window is exhausted after the atomic check-and-record; this supersedes any
+     *     domain exception the caller was about to throw (the caller is throttled,
+     *     so 429 is the correct response regardless of the domain outcome)
      */
     void recordFailure(String clientAddress, String joinCodeAttempt);
 }

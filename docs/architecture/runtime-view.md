@@ -329,8 +329,13 @@ sequenceDiagram
     Note over SC,CAR: X-Forwarded-For is read only if the peer is on<br/>eop.web.trusted-proxies — empty by default.<br/>Otherwise getRemoteAddr wins. The caller cannot<br/>choose the key the throttle counts against (ADR-021).
     CAR-->>SC: canonical client address
     SC->>JU: execute(joinCode, displayName, clientAddress)
-    JU->>LIM: check the sliding windows, per IP and per code
-    alt allowance exhausted
+    JU->>LIM: checkAllowed — best-effort pre-check, per IP and per code
+    alt allowance exhausted (window full)
+        LIM-->>JU: TooManyJoinAttemptsException
+        JU-->>SC: refused
+        SC-->>P2: 429 with Retry-After
+    else table saturated (10 000 distinct keys, new address)
+        Note over LIM: Evict aged-out windows first.<br/>If still full, fail-closed: refuse before any DB work (EOP-18).
         LIM-->>JU: TooManyJoinAttemptsException
         JU-->>SC: refused
         SC-->>P2: 429 with Retry-After
@@ -338,7 +343,8 @@ sequenceDiagram
         JU->>SRA: findByJoinCode — normalised, upper-cased
         alt no such code
             SRA-->>JU: empty
-            JU->>LIM: record the failure
+            JU->>LIM: recordFailure — atomic check-and-record under synchronized(window)<br/>Both address and code windows always recorded (EOP-18)
+            Note over LIM: recordFailure throws TooManyJoinAttemptsException if either<br/>window is exhausted after the atomic prune-check-add.<br/>429 supersedes the domain exception (404/409) — throttled<br/>callers receive 429 regardless of session state (EOP-18).
             JU-->>SC: UnknownJoinCodeException
             SC-->>P2: 404 — byte-for-byte identical for every unusable code
         else found

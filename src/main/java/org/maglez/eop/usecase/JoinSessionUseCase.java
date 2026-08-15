@@ -95,10 +95,12 @@ public class JoinSessionUseCase {
      * @param clientAddress the caller's address, used only to attribute failed attempts
      * @return the session as it stands after the join, with the player's credential
      * @throws NullPointerException if displayName is null
-     * @throws TooManyJoinAttemptsException if this caller has failed too often
+     * @throws TooManyJoinAttemptsException if this caller has failed too often; this
+     *     supersedes any domain exception — a throttled caller receives 429 regardless
+     *     of whether the session is full or not joinable
      * @throws UnknownJoinCodeException if the code matches no session
-     * @throws SessionNotJoinableException if play has started
-     * @throws SessionFullException if the table is full
+     * @throws SessionNotJoinableException if play has started (only when not throttled)
+     * @throws SessionFullException if the table is full (only when not throttled)
      * @throws SeatAlreadyTakenException if every seat claim lost its race
      */
     public SessionAdmission execute(final String rawJoinCode, final DisplayName displayName, final String clientAddress) {
