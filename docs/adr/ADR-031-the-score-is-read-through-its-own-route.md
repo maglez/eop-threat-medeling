@@ -233,8 +233,8 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
   free.
 - [ADR-020](ADR-020-session-concurrency-control.md) governs every write through the port this slice
   extended. `findTricks` is a read, so it takes no witness and no conditional update — but it was added to
-  the interface whose other four methods all carry one, and the reason the asymmetry is safe is that a read
-  claims nothing and so has no state to protect. Slice three's `COMPLETED` transition is a write and will be
+  the interface whose three write methods all carry one, while `findCurrentTrick` — also a read — carries
+  none. The reason the asymmetry is safe is that a read claims nothing and so has no state to protect. Slice three's `COMPLETED` transition is a write and will be
   bound by it in full.
 - [ADR-023](ADR-023-deal-remainder-and-turn-order.md) supplies the arithmetic section six rests on: the whole
   78-card deck is dealt, so three players hold 26 cards each and a hand runs to 26 tricks. That is where the

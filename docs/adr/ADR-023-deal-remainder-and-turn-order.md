@@ -1021,7 +1021,7 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
     > (403) and `PlayerNotInSessionException` (404), with the body parity this obligation
     > requires. That is a check on the **row** — does the player a row names hold the seat that
     > row claims — and not on the **requester**. It runs in `recordDeal` and `appendPlay` only;
-    > `openTrick` and `recordResolution` make no membership check, and the three reads cannot
+    > `openTrick` and `recordResolution` make no membership check, and the four reads cannot
     > make one because the ports carry no acting-player parameter. Deriving the acting player
     > from authenticated identity, refusing a caller-supplied seat, and running that check
     > before any port method is called remain wholly outstanding and remain C2's. The adapter's

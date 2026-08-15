@@ -54,7 +54,7 @@ each now take the publisher and emit `HAND_DEALT`, `CARD_PLAYED` and `TRICK_RESO
 write returns. Those three edges are drawn below; before Slice E the only use cases reaching that
 port were `JoinSessionUseCase` and `StartSessionUseCase`.
 
-Containment is still the feature flag, and the flag now withholds more than it did: five use-case
+Containment is still the feature flag, and the flag now withholds more than it did: six use-case
 beans *and* the two controllers — eight beans in all — exist only while `eop.features.trick-play` is
 `true`, and `application.yml` leaves it `false`
 ([`application.yml:81-99`](../../src/main/resources/application.yml)). It stays `false` on merge,
@@ -755,17 +755,19 @@ about how the measurements were taken and nothing any longer about reachability.
 What contains those gaps today **is** a feature flag, and naming it precisely matters as much as
 naming its absence did. `HandRepository` and `TrickRepository` now have callers:
 `DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase`, added by EOP-14 Slice C2,
-`ReadOwnHandUseCase`, added by Slice D, and `GetTrickStateUseCase`, added by Slice E — which is the
-first caller to read both ports in one request. There **is** now a path from an HTTP request to a
-trick-play row: `TrickController` injects all five and publishes five routes. An earlier version of this
+`ReadOwnHandUseCase`, added by Slice D, `GetTrickStateUseCase`, added by Slice E — which is the
+first caller to read both ports in one request — and `GetScoreUseCase`, added by EOP-15 Slice B,
+which reads the whole trick history of a session. There **is** now a path from an HTTP request to a
+trick-play row: `TrickController` injects five and publishes five routes, and
+`ScoreController` injects the sixth and publishes the sixth. An earlier version of this
 paragraph said no controller injected any of them and no route existed, and called that Slice D's
 work; Slice D did it, so containment by absence of a caller is over twice over — once because the
 callers exist and once because the caller of the callers does. What replaces it is
 `eop.features.trick-play`. `application.yml` declares **two** flags, both `false`
-(`application.yml:75-99`), and the five use-case beans carry
+(`application.yml:75-112`), and the six use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
-`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:197-308`), as does
-`TrickController`. With the flag
+`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:197-347`), as do
+`TrickController` and `ScoreController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
 code can call them.
 

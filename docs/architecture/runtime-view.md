@@ -20,7 +20,7 @@ it, and Slice E adds a fifth route: `TrickController` maps
 `GET /api/v1/sessions/{sessionId}/hand`, `POST /api/v1/sessions/{sessionId}/plays`,
 `GET /api/v1/sessions/{sessionId}/tricks/current` and
 `POST /api/v1/sessions/{sessionId}/tricks/current/resolve`, each returning a transport record rather
-than a domain object. The controller and all five use-case beans exist only while
+than a domain object. Both controllers and all six use-case beans exist only while
 `eop.features.trick-play` is `true`, which `application.yml` still leaves `false`, so the routes
 answer 404 as shipped — but that is now a flag position rather than an absence of code, and the
 distinction matters because it is testable in both directions. It stays `false` after Slice E for
@@ -512,7 +512,7 @@ the write could announce a deal that then rolled back, and a publisher that thre
 fail a request whose write had already succeeded. What the event does *not* carry is any
 part of the deal — no seat, no card, no count — so a subscriber still re-reads to learn
 what it holds, which is what keeps a per-player hand off a fan-out transport
-([ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md)). Slice D minted the name in the
+([ADR-027](../adr/ADR-027-singleton-subresource-naming.md)). Slice D minted the name in the
 contract; Slice E published it, closing the first half of decision 8 of
 [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md), which is amended in place to say
 so.
@@ -631,7 +631,7 @@ table, row by row against the method, in its decision 9.
 not the seat, not the trick. That is what makes it safe on a fan-out transport where
 every subscriber of a session receives every event — the other players learn *that* the
 table moved and re-read `GET /tricks/current` to learn whose turn it now is, and a
-per-player hand never crosses the stream ([ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md)).
+per-player hand never crosses the stream ([ADR-027](../adr/ADR-027-singleton-subresource-naming.md)).
 This closes the second half of decision 8 of
 [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md), amended in place to say so.
 Delivery is not ordered and not guaranteed, so a client that missed an event is in
@@ -806,6 +806,6 @@ declaring a winner is the third slice of EOP-15 (ADR-028, ADR-031).
 - [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) — the remainder rule, turn order, and what the schema deliberately does not enforce
 - [ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) — the trick-play ports, and why authorisation is the use case's job
 - [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) — why dealing is its own use case, and the started-but-undealt window
-- [ADR-027](../adr/ADR-027-read-own-hand-is-a-use-case.md) — why a hand is read per player, which is why no broadcast above carries one
+- [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) — why a hand is read per player, which is why no broadcast above carries one
 - [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
 - [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all five routes
