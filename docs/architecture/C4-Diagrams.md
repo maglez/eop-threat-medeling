@@ -57,7 +57,7 @@ port were `JoinSessionUseCase` and `StartSessionUseCase`.
 Containment is still the feature flag, and the flag now withholds more than it did: six use-case
 beans *and* the two controllers — eight beans in all — exist only while `eop.features.trick-play` is
 `true`, and `application.yml` leaves it `false`
-([`application.yml:81-99`](../../src/main/resources/application.yml)). It stays `false` on merge,
+([`application.yml:75-112`](../../src/main/resources/application.yml)). It stays `false` on merge,
 but no longer because a client could not play: Slice E's state-of-play read publishes whose turn it
 is, whether the trick is complete, which seat leads next and whether the hand is over, so the
 gameplay gap that kept the flag down through Slice D is closed. The reasons it stays down are now

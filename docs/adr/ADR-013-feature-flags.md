@@ -179,14 +179,14 @@ names the same three; neither is to be read as the current count.)*
 The counts also moved, and this is the register's current statement of them. The flag withholds
 **six use-case beans and two controllers — eight beans in all**: `DealHandsUseCase`,
 `ReadOwnHandUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`, `GetTrickStateUseCase` and `GetScoreUseCase`, plus `ScoreController` and
-`TrickController` (`UseCaseConfiguration.java:198`, `:229`, `:248`, `:280`, `:299` and
-`TrickController.java:69`), whose **five** routes — `POST /{sessionId}/deal`,
+`TrickController` (`UseCaseConfiguration.java:219`, `:250`, `:269`, `:301`, `:320`, `:343`,
+`TrickController.java:69` and `ScoreController.java:42`), whose **six** routes — `POST /{sessionId}/deal`,
 `GET /{sessionId}/hand`, `POST /{sessionId}/plays`, `GET /{sessionId}/tricks/current` and
-`POST /{sessionId}/tricks/current/resolve` and `GET /{sessionId}/score` — answer the
+`POST /{sessionId}/tricks/current/resolve`, and `GET /{sessionId}/score` — answer the
 framework's own 404 while it is off.
 `TrickPlayDisabledIntegrationTest` asserts both halves at that arity: eight beans absent
 (`:88`, `:94`, `:100`, `:106`, `:121`, `:128`, `:134`, `:141`) *and* six routes 404 (`:148`,
-`:156`, `:164`, `:174`, `:182`, `:190`). It stays `false` on merge — `application.yml:99`.
+`:156`, `:164`, `:174`, `:182`, `:190`). It stays `false` on merge — `application.yml:112`.
 
 **2026-08-14 — a fail-open condition in the first flag, found reviewing the second.**
 `TrickController` was written with `@ConditionalOnProperty(prefix = "eop.features",

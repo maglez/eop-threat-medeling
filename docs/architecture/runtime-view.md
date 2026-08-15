@@ -808,4 +808,4 @@ declaring a winner is the third slice of EOP-15 (ADR-028, ADR-031).
 - [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) — why dealing is its own use case, and the started-but-undealt window
 - [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) — why a hand is read per player, which is why no broadcast above carries one
 - [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
-- [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all five routes
+- [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all six trick-play routes
