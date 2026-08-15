@@ -356,6 +356,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/sessions/{sessionId}/start:
     post:
@@ -1719,7 +1721,7 @@ components:
         Too many requests from this source address and further attempts are
         refused for a period.
 
-        Two controls can produce this response:
+        Three controls can produce this response:
 
         - **Session creation limiter** — a single address may create at most
           `eop.web.session-creation-limit` sessions (default 5) per 60-second
@@ -1730,10 +1732,15 @@ components:
           bits of entropy, which is only unguessable while guessing is
           rate-limited — so this limiter is a primary security control rather
           than a courtesy (ADR-019).
+        - **Subscriber cap** — too many concurrent SSE subscribers for a session
+          or globally. The cap is not time-bounded, so no `Retry-After` header
+          is emitted for this case (EOP-20, ADR-034).
       headers:
         Retry-After:
-          description: Seconds to wait before attempting again.
-          required: true
+          description: |
+            Seconds to wait before attempting again.
+            Absent for subscriber-cap refusals, which are not time-bounded.
+          required: false
           schema:
             type: integer
             format: int32

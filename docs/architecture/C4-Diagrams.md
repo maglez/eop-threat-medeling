@@ -370,7 +370,7 @@ job:
   same seat. The use cases do not choose this; they cannot see it.
 - **Every trick-play write now also broadcasts, and the edge direction is the point.** The three new
   `--> SessionEventPublisher` edges are outward from `usecase` to a port `usecase` owns, so the
-  dependency still points inward; `SseSessionEventPublisher` in `adapter/sse` implements it. Each
+  dependency still points inward; `SseSessionEventPublisher` in `adapter/web` implements it. Each
   `publish` sits *after* the port write returns — `DealHandsUseCase.java:162`,
   `PlayCardUseCase.java:229`, `ResolveTrickUseCase.java:162` — so a broadcast can only describe a
   durable change and a throwing publisher cannot fail a request whose write succeeded. None of the
@@ -483,13 +483,31 @@ Implements the `SessionEventPublisher` port and `DisposableBean`. Its state:
   `SseEmitter`. Copy-on-write because the list is iterated on every publish and
   mutated rarely, and because iteration must not fail while a dying subscriber is
   removed from it.
+- `ConcurrentHashMap<UUID, Object> sessionLocks` — per-session lock objects for cap
+  enforcement. Entries are never removed, so lock identity is stable across the
+  lifetime of a session entry; this eliminates the race where a lock captured before
+  `synchronized` could be replaced by a concurrent `forgetOne`.
+- `AtomicInteger totalSubscriberCount` — tracks live subscribers across all sessions.
+  The per-session cap is `MAX_SUBSCRIBERS_PER_SESSION = 12` (2× MAXIMUM_PLAYERS);
+  the global cap is `MAX_TOTAL_SUBSCRIBERS = 500`. Both are enforced atomically in
+  `subscribe()`: a `synchronized` block on a per-session lock object held in
+  `sessionLocks` (`ConcurrentHashMap<UUID, Object>`) guards the per-session
+  check and add, combined with a CAS loop on `totalSubscriberCount` for the global
+  check and increment.
 - A single-threaded scheduler on a **daemon** thread named `sse-heartbeat`, firing at
   `eop.realtime.heartbeat-interval`. Daemon so it can never hold the JVM open.
-- Every emitter is constructed `new SseEmitter(0L)` — **no container timeout at all**.
-  That is only safe because of the heartbeat: detecting a dead peer is this class's
-  job, and a container timeout would otherwise close healthy idle lobbies where
-  nothing has happened for a while, which is most of a lobby's life.
-- `onCompletion` and `onTimeout` both deregister the emitter.
+- A bounded `ThreadPoolExecutor` (`sse-send-N`, 4 threads, queue capacity 1000) that
+  receives one task per emitter per heartbeat sweep. The heartbeat thread enqueues
+  tasks and returns immediately; the pool threads do the actual `emitter.send()`.
+  Oldest tasks are discarded when the queue is full — a dropped heartbeat is
+  harmless because the next sweep retries.
+- Every emitter is constructed `new SseEmitter(EMITTER_TIMEOUT_MILLIS)` — a
+  **10-minute container timeout** (ADR-034). The heartbeat keeps live connections
+  alive within that window; stale connections that have silently dropped are
+  reclaimed at most 10 minutes after they disappear.
+- `onCompletion`, `onTimeout`, and `onError` all deregister the emitter via
+  `forgetOne()`, which captures the exact list reference at subscribe time to avoid
+  registry/counter leaks under concurrent races.
 
 Three deliberate absences, all of which a tidier diagram would hide:
 

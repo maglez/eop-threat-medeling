@@ -52,6 +52,12 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
+  mvc:
+    async:
+      # SSE stream lifetime cap, matching SseSessionEventPublisher.EMITTER_TIMEOUT_MILLIS (EOP-20, ADR-034).
+      # The servlet container closes a connection that has been open for this many milliseconds even if
+      # the heartbeat sweep has not yet triggered the onTimeout callback. 600 000 ms = 10 minutes.
+      request-timeout: 600000
 
 eop:
   web:
