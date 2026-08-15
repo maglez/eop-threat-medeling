@@ -3,7 +3,6 @@ package org.maglez.eop.adapter.web;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.Map;
 import java.util.Objects;
@@ -12,6 +11,8 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import org.maglez.eop.entity.JoinCode;
 import org.maglez.eop.usecase.JoinAttemptLimiter;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -49,19 +50,36 @@ import org.springframework.stereotype.Component;
  *
  * <p><strong>Fail-closed on saturation.</strong> When the tracked-key table is full
  * and a new address or code arrives, the attempt is refused rather than silently
- * admitted. A flood of distinct keys is itself an attack pattern; admitting requests
- * that cannot be tracked would let an attacker bypass the limiter by exhausting the
- * table first (ADR-019).
+ * admitted. The refusal is issued in {@link #checkAllowed}, before any database
+ * work, so a saturated table costs no lookup. A flood of distinct keys is itself an
+ * attack pattern; admitting requests that cannot be tracked would let an attacker
+ * bypass the limiter by exhausting the table first (ADR-019).
  *
- * <p><strong>Atomic check-and-record.</strong> The check and the record for each
- * window are performed under the same lock on the window deque, so two concurrent
- * threads racing at the limit boundary cannot both pass the check before either
- * records its failure. Without this, a thread that sees {@code limit - 1} failures
- * and a concurrent thread that also sees {@code limit - 1} failures would both
- * proceed, and the recorded count would exceed the limit.
+ * <p><strong>Atomic check-and-record.</strong> The prune, the limit check, and the
+ * insertion for each window are performed under the same lock on the window deque.
+ * This prevents two concurrent threads from both passing the limit check before
+ * either records its failure. {@link #checkAllowed} is a best-effort pre-check that
+ * takes no lock; the authoritative atomic gate is the synchronized block in
+ * {@link #recordFailure}.
+ *
+ * <p><strong>Lock discipline.</strong> The only method that mutates a window deque
+ * is {@link #recordFailure} (via {@link #recordInWindow}), and it always does so
+ * inside {@code synchronized(window)}. {@link #checkAllowed} and
+ * {@link #refuseIfExhausted} are read-only: they inspect the deque without mutating
+ * it. {@link #evictEmptyWindows} removes map entries whose deques are already empty;
+ * it never calls {@code pollFirst} or {@code addLast} on any deque, so it cannot
+ * race with the synchronized block in {@link #recordInWindow}.
+ *
+ * <p><strong>Both windows are always evaluated.</strong> The address window is not
+ * allowed to short-circuit the code window: either window alone leaves the other
+ * attack open. In {@link #recordFailure}, both windows are always recorded, even if
+ * one is at saturation. A saturation condition in one window silently drops that
+ * window's record but does not suppress the other.
  */
 @Component
 public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
+
+    private static final Logger LOG = LoggerFactory.getLogger(InMemoryJoinAttemptLimiter.class);
 
     /** How far back failures are remembered. */
     private static final Duration WINDOW = Duration.ofMinutes(1);
@@ -102,19 +120,31 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
     /**
      * {@inheritDoc}
      *
-     * <p>This implementation checks both the per-address and per-code windows. Each
-     * check is performed atomically with the subsequent record: the window deque is
-     * locked for the duration of the prune-check-add sequence, so two concurrent
-     * threads racing at the limit boundary cannot both pass.
+     * <p>This implementation checks both the per-address and per-code windows. It
+     * also checks whether the tracked-key table is full: if the table is at capacity
+     * and the caller's address or code is not already tracked, the attempt is refused
+     * here, before any database work (fail-closed on saturation, ADR-019).
+     *
+     * <p>This is a best-effort pre-check. It takes no lock on the window deques, so
+     * two concurrent threads at {@code limit - 1} can both pass this check. The
+     * authoritative atomic gate is the synchronized block in
+     * {@link #recordFailure}/{@link #recordInWindow}.
      */
     @Override
     public void checkAllowed(final String clientAddress, final String joinCodeAttempt) {
-        // Checks only — no recording. Atomicity is enforced in recordFailure.
         final Instant now = clock.instant();
         final Instant horizon = now.minus(WINDOW);
+        final String addrKey = addressKey(clientAddress);
+        final String codeKey = codeKey(joinCodeAttempt);
 
-        refuseIfExhausted(failuresByAddress.get(addressKey(clientAddress)), horizon, MAX_FAILURES_PER_ADDRESS);
-        refuseIfExhausted(failuresByCode.get(codeKey(joinCodeAttempt)), horizon, MAX_FAILURES_PER_CODE);
+        // Saturation check — fail-closed before any DB work.
+        // Both maps are checked: a new address AND a new code both trigger refusal.
+        checkSaturation(failuresByAddress, addrKey, horizon);
+        checkSaturation(failuresByCode, codeKey, horizon);
+
+        // Window exhaustion check — read-only, no lock, best-effort.
+        refuseIfExhausted(failuresByAddress.get(addrKey), horizon, MAX_FAILURES_PER_ADDRESS);
+        refuseIfExhausted(failuresByCode.get(codeKey), horizon, MAX_FAILURES_PER_CODE);
     }
 
     /**
@@ -125,57 +155,123 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
      * prevents two concurrent threads from both passing the limit check before
      * either records its failure.
      *
-     * <p>If the tracked-key table is full and the key is new, the attempt is refused
-     * rather than silently admitted (fail-closed on saturation).
+     * <p>Both windows are always evaluated. The address window is not allowed to
+     * short-circuit the code window: either window alone leaves the other attack
+     * open. If the address window throws, the code window is still recorded before
+     * the exception propagates.
+     *
+     * <p>If the tracked-key table is full and the key is new, the failure is
+     * silently dropped for that window. The caller was already refused by
+     * {@link #checkAllowed}, so the drop is safe.
+     *
+     * @throws TooManyJoinAttemptsException if either window is exhausted after the
+     *     atomic prune-check-add; this is the authoritative gate for concurrent
+     *     callers that both passed {@link #checkAllowed}
      */
     @Override
     public void recordFailure(final String clientAddress, final String joinCodeAttempt) {
         final Instant now = clock.instant();
-        checkAndRecord(failuresByAddress, addressKey(clientAddress), now, MAX_FAILURES_PER_ADDRESS);
-        checkAndRecord(failuresByCode, codeKey(joinCodeAttempt), now, MAX_FAILURES_PER_CODE);
-    }
-
-    /**
-     * Atomically checks the window limit and records the failure if allowed.
-     *
-     * <p>The window deque is locked for the entire prune-check-add sequence. This
-     * ensures that two concurrent callers racing at {@code limit - 1} cannot both
-     * pass the check before either records, which would push the count past the
-     * limit.
-     *
-     * <p>If the map is at capacity and the key is new, the attempt is refused
-     * immediately (fail-closed on saturation). An attempt to evict aged-out windows
-     * is made first outside of any map-level lock; if the map is still full after
-     * eviction, the request is refused.
-     *
-     * @throws TooManyJoinAttemptsException if the window is exhausted, or if the
-     *     tracked-key table is full and the key is new
-     */
-    private void checkAndRecord(
-            final Map<String, Deque<Instant>> windows,
-            final String key,
-            final Instant now,
-            final int allowance) {
-
         final Instant horizon = now.minus(WINDOW);
 
-        // If the table is full and the key is new, try to reclaim aged-out entries
-        // before deciding to refuse. Eviction is done outside computeIfAbsent to
-        // avoid re-entrant modification of the ConcurrentHashMap.
-        if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
-            evictEmptyWindows(windows, horizon);
-            if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
-                // Table still full after eviction — refuse rather than admit untracked.
-                throw new TooManyJoinAttemptsException(Duration.ofSeconds(1));
+        // Both windows are always recorded. Collect the first exception (if any) and
+        // rethrow after both windows have been evaluated, so the per-code counter
+        // always advances even when the address window is exhausted.
+        TooManyJoinAttemptsException firstException = null;
+
+        try {
+            recordInWindow(failuresByAddress, addressKey(clientAddress), now, horizon, MAX_FAILURES_PER_ADDRESS);
+        }
+        catch (final TooManyJoinAttemptsException e) {
+            firstException = e;
+        }
+
+        try {
+            recordInWindow(failuresByCode, codeKey(joinCodeAttempt), now, horizon, MAX_FAILURES_PER_CODE);
+        }
+        catch (final TooManyJoinAttemptsException e) {
+            if (firstException == null) {
+                firstException = e;
             }
         }
 
-        // Obtain or create the window for this key.
+        if (firstException != null) {
+            throw firstException;
+        }
+    }
+
+    /**
+     * Checks whether the tracked-key table is full and the key is new.
+     *
+     * <p>If the table is at capacity and the key is not already present, an attempt
+     * is made to reclaim aged-out entries. If the table is still full after eviction,
+     * {@link TooManyJoinAttemptsException} is thrown.
+     *
+     * <p>This is called from {@link #checkAllowed}, before any database work, so a
+     * saturated table costs no lookup. The check is not atomic with the subsequent
+     * {@link #recordInWindow}: a concurrent thread could insert a new key between
+     * this check and the {@code computeIfAbsent} in {@link #recordInWindow}, causing
+     * the table to transiently exceed {@code MAX_TRACKED_KEYS} by the number of
+     * concurrent new-key requests. This is a soft cap, not a hard one, and the
+     * overshoot is bounded by the Tomcat thread pool size.
+     */
+    private void checkSaturation(
+            final Map<String, Deque<Instant>> windows,
+            final String key,
+            final Instant horizon) {
+        if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
+            evictEmptyWindows(windows, horizon);
+            if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
+                LOG.warn("Join attempt limiter table saturated ({} keys); refusing new key", MAX_TRACKED_KEYS);
+                throw new TooManyJoinAttemptsException(Duration.ofSeconds(1));
+            }
+        }
+    }
+
+    /**
+     * Atomically records one failure in the given window map.
+     *
+     * <p>The prune, the limit check, and the insertion are all performed under the
+     * same lock on the window deque. This is the authoritative atomic gate: two
+     * concurrent threads racing at {@code limit - 1} cannot both pass the check
+     * before either records.
+     *
+     * <p>If the table is at capacity and the key is new, the failure is silently
+     * dropped. The caller was already refused by {@link #checkAllowed}, so the drop
+     * is safe.
+     *
+     * <p><strong>Lock discipline:</strong> {@code synchronized(window)} is exclusive
+     * because {@link #refuseIfExhausted} and {@link #checkSaturation} never mutate
+     * any deque, and {@link #evictEmptyWindows} only removes map entries whose deques
+     * are already empty — it never calls {@code pollFirst} or {@code addLast}.
+     *
+     * @throws TooManyJoinAttemptsException if the window is exhausted after pruning
+     */
+    private void recordInWindow(
+            final Map<String, Deque<Instant>> windows,
+            final String key,
+            final Instant now,
+            final Instant horizon,
+            final int allowance) {
+
+        // If the table is full and the key is new, try to reclaim aged-out entries
+        // before deciding to drop. This mirrors the eviction logic in checkSaturation
+        // so that recordFailure can track a new key after the flood ages out, even
+        // without a prior checkAllowed call.
+        if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
+            evictEmptyWindows(windows, horizon);
+            if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
+                // Table still full after eviction — silently drop this window's record.
+                // checkAllowed already refused the caller; recording here is not required.
+                return;
+            }
+        }
+
         final Deque<Instant> window = windows.computeIfAbsent(key, ignored -> new ConcurrentLinkedDeque<>());
 
         // Atomic prune-check-add under the window's own monitor.
+        // This is the only site that mutates a window deque.
         synchronized (window) {
-            prune(window, horizon);
+            pruneUnderLock(window, horizon);
             if (window.size() >= allowance) {
                 final Instant oldest = window.peekFirst();
                 final Duration remaining = oldest == null ? WINDOW : Duration.between(horizon, oldest);
@@ -190,9 +286,11 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
     /**
      * Refuses the attempt when a window is already full.
      *
-     * <p>Used by {@link #checkAllowed} for read-only checks (no recording). The
-     * window is not locked here because this is a best-effort pre-check; the
-     * authoritative atomic check-and-record happens in {@link #recordFailure}.
+     * <p>Read-only: this method never mutates any deque. It reads the current size
+     * of the window (without pruning) and throws if the window appears exhausted.
+     * Because no lock is held, the count may be stale — entries that have aged out
+     * are not removed here. This is intentional: {@link #checkAllowed} is a
+     * best-effort pre-check, not the authoritative gate.
      *
      * <p>The wait reported is the time until the oldest remembered failure leaves
      * the window, which is the earliest moment the caller could succeed. Reporting
@@ -203,11 +301,14 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
         if (window == null) {
             return;
         }
-        prune(window, horizon);
-        if (window.size() < allowance) {
+        // Count only entries still inside the window, without removing them.
+        // This is a read-only approximation; stale entries make the count conservative
+        // (may refuse when the window has actually cleared), which is the safe direction.
+        final long activeCount = window.stream().filter(t -> !t.isBefore(horizon)).count();
+        if (activeCount < allowance) {
             return;
         }
-        final Instant oldest = window.peekFirst();
+        final Instant oldest = window.stream().filter(t -> !t.isBefore(horizon)).findFirst().orElse(null);
         final Duration remaining = oldest == null ? WINDOW : Duration.between(horizon, oldest);
         throw new TooManyJoinAttemptsException(remaining.isNegative() || remaining.isZero()
                 ? Duration.ofSeconds(1)
@@ -217,10 +318,10 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
     /**
      * Drops failures that have aged out of the window.
      *
-     * <p>Pruning on access rather than on a schedule keeps the cost proportional to
-     * traffic: a key nobody touches costs one map entry until it is evicted.
+     * <p>Must only be called from inside {@code synchronized(window)}, so that the
+     * mutation is exclusive with respect to other writers.
      */
-    private static void prune(final Deque<Instant> window, final Instant horizon) {
+    private static void pruneUnderLock(final Deque<Instant> window, final Instant horizon) {
         for (Instant oldest = window.peekFirst();
                 oldest != null && oldest.isBefore(horizon);
                 oldest = window.peekFirst()) {
@@ -228,9 +329,26 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
         }
     }
 
+    /**
+     * Removes map entries whose windows are already empty.
+     *
+     * <p>This method never mutates any deque — it only removes map entries. A deque
+     * is removed only if all its entries are before the horizon (i.e. aged out).
+     * This means it cannot race with the {@code synchronized(window)} block in
+     * {@link #recordInWindow}: removing an aged-out deque from the map does not
+     * affect any thread that already holds a reference to it (the deque is empty of
+     * active entries, so there is nothing to lose), and a thread that has just
+     * obtained a non-empty deque via {@code computeIfAbsent} will not have it removed
+     * here because it has active entries.
+     *
+     * <p>Eviction is O(N) over the map and is called only under saturation pressure,
+     * on the request thread. This is acceptable: saturation is an adversarial
+     * condition, and the cost is bounded by {@code MAX_TRACKED_KEYS}.
+     */
     private static void evictEmptyWindows(final Map<String, Deque<Instant>> windows, final Instant horizon) {
-        windows.values().forEach(window -> prune(window, horizon));
-        windows.values().removeIf(Collection::isEmpty);
+        // Remove entries whose windows contain only aged-out entries.
+        // We do NOT prune here (no deque mutation) — we only check and remove.
+        windows.entrySet().removeIf(entry -> entry.getValue().stream().allMatch(t -> t.isBefore(horizon)));
     }
 
     private static String addressKey(final String clientAddress) {

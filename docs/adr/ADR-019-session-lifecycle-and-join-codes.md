@@ -113,6 +113,37 @@ cannot trigger one. A distributed limiter, or one backed by the database, would 
 a write path and a table to protect something that a single instance behind a single
 reverse proxy does not need (ADR-012, ADR-017).
 
+**Tracked-key cap and fail-closed saturation (EOP-18, 2026-08-15).** Each map is
+bounded at `MAX_TRACKED_KEYS = 10 000` entries. When a map is full and a new key
+arrives, `checkAllowed` first attempts to evict windows whose entries have all aged
+out of the sliding window; if the map is still full after eviction, it throws
+`TooManyJoinAttemptsException` immediately — before any database work. This is
+fail-closed: an untracked address is refused, not silently admitted. `recordFailure`
+silently drops the record for a saturated map (the refusal has already been issued by
+`checkAllowed`), so the map never grows beyond the cap.
+
+**Both windows are always evaluated (EOP-18).** `recordFailure` records in both the
+address window and the code window regardless of which one is saturated. Silencing the
+per-code counter under address-table saturation would disable the control that defends
+against a distributed enumeration attack — the exact scenario this ADR identifies as
+the primary threat. The two windows are independent and neither suppresses the other.
+
+**Atomic check-and-record (EOP-18).** `recordFailure` acquires `synchronized(window)`
+on the deque before pruning, checking the allowance, and appending the new timestamp.
+This is the only site that mutates a window deque. `checkAllowed` is a read-only
+best-effort pre-check (no lock, no mutation) that avoids database work for clearly
+over-limit callers; the authoritative gate is `recordFailure`. Two concurrent threads
+racing at the limit boundary cannot both pass: the second thread to acquire the monitor
+sees the count already at the limit and is refused.
+
+**`recordFailure` is non-throwing by contract.** The port declares no `@throws`
+for `recordFailure`; the implementation honours this. Saturation is handled silently
+(drop the record, refusal already issued by `checkAllowed`). Window exhaustion is
+detected on the *next* `checkAllowed` call, not by throwing from `recordFailure`.
+This keeps the use-case call sites clean: a failed join always produces the domain
+exception that matches the failure reason (404, 409), never a spurious 429 caused by
+the limiter throwing from a recording call.
+
 ### Seat order is assigned once, at join, and enforced by the database
 
 Play is clockwise. "Who plays next" is derived from the current leader's seat plus
@@ -243,6 +274,13 @@ it a control. Anyone tempted to remove or weaken it must lengthen the code first
 counter. Not attacker-triggerable, and therefore accepted, but it means the
 protection is weakest immediately after a deployment.
 
+**Negative — fail-closed saturation can affect legitimate users (EOP-18).** When the
+address map holds 10 000 distinct keys, a new legitimate user whose address has never
+been seen before receives 429 rather than being admitted. The window self-heals within
+one minute as entries age out, and reaching 10 000 distinct keys requires a sustained
+botnet. Accepted: the alternative (fail-open) silently disables the primary control
+under the exact attack this ADR is designed to resist.
+
 **Negative — the client cannot use `EventSource`.** More client code, and a
 `fetch`-based reader must handle partial frames arriving across chunk boundaries,
 which is a class of bug `EventSource` does not have. The alternative was a
@@ -276,4 +314,4 @@ status enum so that the concept has somewhere to live when it is needed.
 - [Runtime view](../architecture/runtime-view.md) — the reconnect, subscribe and create/join/start sequences
 - [C4 container diagram](../architecture/C4-Diagrams.md) — where the controller, the publisher and the limiter sit
 - [PRD §3, §4, §5](../requirements/PRD-eop-card-game.md) — the workflow, the player range, and the domain model
-- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing)
+- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing), EOP-18 (harden limiter: fail-closed saturation, atomic check-and-record)

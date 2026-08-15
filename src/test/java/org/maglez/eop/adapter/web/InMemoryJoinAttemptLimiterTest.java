@@ -19,6 +19,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.maglez.eop.entity.JoinCode;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
@@ -195,19 +196,56 @@ class InMemoryJoinAttemptLimiterTest {
     class TrackedKeys {
 
         @Test
-        @DisplayName("a flood of one-off keys is refused once the table is full (fail-closed on saturation)")
+        @DisplayName("a flood of one-off keys is refused by checkAllowed once the table is full (fail-closed on saturation)")
         void shouldRefuseNewKeysOnceFull() {
             // Fill the table to capacity with TRACKED_KEYS distinct addresses.
             for (int key = 0; key < TRACKED_KEYS; key++) {
                 limiter.recordFailure("flood-" + key, codeFor(key));
             }
 
-            // A brand-new address arriving when the table is full must be refused,
-            // not silently admitted. Admitting it would let an attacker bypass the
-            // limiter by exhausting the table first (ADR-019).
+            // A brand-new address arriving when the table is full must be refused by
+            // checkAllowed, before any database work. Admitting it would let an attacker
+            // bypass the limiter by exhausting the table first (ADR-019).
             assertThatExceptionOfType(TooManyJoinAttemptsException.class)
-                    .as("a new address arriving at saturation must be refused, not silently passed through")
-                    .isThrownBy(() -> limiter.recordFailure(ADDRESS, CODE));
+                    .as("a new address arriving at saturation must be refused by checkAllowed, not silently passed through")
+                    .isThrownBy(() -> limiter.checkAllowed(ADDRESS, CODE));
+        }
+
+        @Test
+        @DisplayName("recordFailure never throws, even at saturation — the caller was already refused by checkAllowed")
+        void shouldNotThrowFromRecordFailureAtSaturation() {
+            // Fill the table to capacity.
+            for (int key = 0; key < TRACKED_KEYS; key++) {
+                limiter.recordFailure("flood-" + key, codeFor(key));
+            }
+
+            // recordFailure must not throw — it silently drops the record for the
+            // saturated window. The port contract declares no @throws on recordFailure.
+            assertThatCode(() -> limiter.recordFailure(ADDRESS, CODE))
+                    .as("recordFailure must never throw, even at saturation")
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("per-code window still advances even when the address window is at saturation")
+        void shouldAdvanceCodeWindowEvenWhenAddressWindowIsSaturated() {
+            // Fill the address table to capacity with distinct addresses.
+            for (int key = 0; key < TRACKED_KEYS; key++) {
+                limiter.recordFailure("flood-" + key, codeFor(key));
+            }
+
+            // Record failures for ADDRESS (which is new — not in the flood).
+            // The address window is saturated, so ADDRESS's record is silently dropped.
+            // But the code window for CODE must still advance.
+            for (int failure = 0; failure < PER_CODE; failure++) {
+                limiter.recordFailure("flood-" + failure, CODE);
+            }
+
+            // The code window for CODE is now exhausted. A fresh address (not in the
+            // flood) must be refused by the code window.
+            assertThatExceptionOfType(TooManyJoinAttemptsException.class)
+                    .as("the code window must advance even when the address window is saturated")
+                    .isThrownBy(() -> limiter.checkAllowed("198.51.100.99", CODE));
         }
 
         @Test
@@ -221,9 +259,14 @@ class InMemoryJoinAttemptLimiterTest {
             // Advance past the window so all flood entries age out.
             clock.advance(WINDOW.plusSeconds(1));
 
+            // The first post-eviction recordFailure must succeed — eviction freed a slot.
+            assertThatCode(() -> limiter.recordFailure(ADDRESS, CODE))
+                    .as("the first recordFailure after eviction must succeed")
+                    .doesNotThrowAnyException();
+
             // Now the table should be reclaimable: a new address can be tracked and
             // its failures counted normally.
-            for (int failure = 0; failure < PER_ADDRESS; failure++) {
+            for (int failure = 1; failure < PER_ADDRESS; failure++) {
                 limiter.recordFailure(ADDRESS, CODE);
             }
 
@@ -237,19 +280,27 @@ class InMemoryJoinAttemptLimiterTest {
     class Concurrency {
 
         /**
-         * Two threads race at {@code limit - 1} failures. At most one must proceed;
+         * Two threads race at {@code limit - 1} failures. Exactly one must proceed;
          * the second must be refused. The recorded count must never exceed the limit.
          *
-         * <p>This test exercises the atomicity guarantee: without a lock on the
-         * prune-check-add sequence, both threads could read {@code limit - 1} before
-         * either writes, and both would proceed — pushing the count to {@code limit + 1}.
+         * <p>This test is repeated 50 times to increase the probability of hitting the
+         * race window. Without the {@code synchronized(window)} block in
+         * {@code recordInWindow}, both threads could read {@code limit - 1} before
+         * either writes, and both would proceed — pushing the count to
+         * {@code limit + 1}. The assertion {@code successes == 1} would then fail.
+         *
+         * <p>The test uses a {@link CountDownLatch} as a starting gun to maximise the
+         * chance of a real interleaving.
          */
-        @Test
-        @DisplayName("two threads racing at limit-1 produce at most one success and one refusal")
+        @RepeatedTest(50)
+        @DisplayName("two threads racing at limit-1 produce exactly one success and one refusal")
         void shouldRefuseSecondThreadWhenBothRaceAtLimitMinusOne() throws InterruptedException {
+            // Fresh limiter for each repetition.
+            final InMemoryJoinAttemptLimiter raceLimiter = new InMemoryJoinAttemptLimiter(clock);
+
             // Bring the address window to limit - 1 failures.
             for (int failure = 0; failure < PER_ADDRESS - 1; failure++) {
-                limiter.recordFailure(ADDRESS, CODE);
+                raceLimiter.recordFailure(ADDRESS, CODE);
             }
 
             final int threads = 2;
@@ -258,46 +309,47 @@ class InMemoryJoinAttemptLimiterTest {
             final AtomicInteger successes = new AtomicInteger(0);
             final AtomicInteger refusals = new AtomicInteger(0);
 
-            final ExecutorService pool = Executors.newFixedThreadPool(threads);
             final List<Future<?>> futures = new ArrayList<>();
+            try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+                for (int t = 0; t < threads; t++) {
+                    futures.add(pool.submit(() -> {
+                        ready.countDown();
+                        try {
+                            go.await();
+                            raceLimiter.recordFailure(ADDRESS, CODE);
+                            successes.incrementAndGet();
+                        } catch (final TooManyJoinAttemptsException e) {
+                            refusals.incrementAndGet();
+                        } catch (final InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }));
+                }
 
-            for (int t = 0; t < threads; t++) {
-                futures.add(pool.submit(() -> {
-                    ready.countDown();
+                ready.await();
+                go.countDown();
+
+                for (final Future<?> future : futures) {
                     try {
-                        go.await();
-                        limiter.recordFailure(ADDRESS, CODE);
-                        successes.incrementAndGet();
-                    } catch (final TooManyJoinAttemptsException e) {
-                        refusals.incrementAndGet();
-                    } catch (final InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                        future.get();
+                    } catch (final ExecutionException e) {
+                        throw new RuntimeException(e.getCause());
                     }
-                }));
-            }
-
-            ready.await();
-            go.countDown();
-
-            for (final Future<?> future : futures) {
-                try {
-                    future.get();
-                } catch (final ExecutionException e) {
-                    // Unexpected — propagate.
-                    throw new RuntimeException(e.getCause());
                 }
             }
-            pool.shutdown();
 
             assertThat(successes.get() + refusals.get())
                     .as("both threads must have completed (success or refusal)")
                     .isEqualTo(threads);
+            // Exactly one thread must succeed: the one that won the lock.
+            // If both succeed, the synchronized block is missing or broken.
+            // If neither succeeds, there is an off-by-one that treats limit-1 as exhausted.
             assertThat(successes.get())
-                    .as("at most one thread may succeed when racing at limit-1")
-                    .isLessThanOrEqualTo(1);
+                    .as("exactly one thread must succeed when racing at limit-1")
+                    .isEqualTo(1);
             assertThat(refusals.get())
-                    .as("at least one thread must be refused when racing at limit-1")
-                    .isGreaterThanOrEqualTo(1);
+                    .as("exactly one thread must be refused when racing at limit-1")
+                    .isEqualTo(1);
         }
     }
 
@@ -337,7 +389,7 @@ class InMemoryJoinAttemptLimiterTest {
      */
     private static final class TickingClock extends Clock {
 
-        private Instant now;
+        private volatile Instant now;
 
         private TickingClock(final Instant start) {
             this.now = start;

@@ -518,8 +518,35 @@ per-IP because an attacker spread across many addresses is still enumerating one
 keyspace.
 
 It is not a cache, and the project's caching rule ("never manual `ConcurrentHashMap`")
-does not apply to it: there is no expensive computation being memoised and nothing here
-may be silently evicted for capacity. It is enforcement state.
+does not apply to it: there is no expensive computation being memoised. It is
+enforcement state.
+
+**Tracked-key cap and fail-closed saturation (EOP-18).** Each map is bounded at
+`MAX_TRACKED_KEYS = 10 000` entries. When a map is full and a new key arrives,
+`checkAllowed` first attempts to evict windows whose entries have all aged out of the
+sliding window; if the map is still full after eviction, it throws
+`TooManyJoinAttemptsException` immediately — before any database work. This is
+fail-closed: an untracked address is refused, not silently admitted. The cost is that
+a legitimate user whose address has never been seen before receives 429 during extreme
+saturation; this is accepted because reaching 10 000 distinct keys requires a
+sustained botnet and the window self-heals within one minute as entries age out.
+`recordFailure` silently drops the record for a saturated map (the refusal has already
+been issued by `checkAllowed`), so the map never grows beyond the cap.
+
+**Both windows are always evaluated.** `recordFailure` records in both the address
+window and the code window regardless of which one is saturated. An attacker
+distributed across many addresses is still enumerating one keyspace; silencing the
+per-code counter under address-table saturation would disable exactly the control that
+defends against that attack. The two windows are independent and neither suppresses the
+other.
+
+**Atomic check-and-record (EOP-18).** `recordFailure` acquires `synchronized(window)`
+on the deque before pruning, checking the allowance, and appending the new timestamp.
+This is the only site that mutates a window deque. `checkAllowed` is a read-only
+best-effort pre-check (no lock, no mutation) that avoids database work for clearly
+over-limit callers; the authoritative gate is `recordFailure`. Two concurrent threads
+racing at the limit boundary cannot both pass: the second thread to acquire the monitor
+sees the count already at the limit and is refused.
 
 **Why it is load-bearing:** a join code is six Crockford base32 characters, about
 thirty bits of entropy, chosen short deliberately because humans read it aloud on a
