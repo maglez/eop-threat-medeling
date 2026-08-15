@@ -531,7 +531,9 @@ a legitimate user whose address has never been seen before receives 429 during e
 saturation; this is accepted because reaching 10 000 distinct keys requires a
 sustained botnet and the window self-heals within one minute as entries age out.
 `recordFailure` silently drops the record for a saturated map (the refusal has already
-been issued by `checkAllowed`), so the map never grows beyond the cap.
+been issued by `checkAllowed`), so the map stays at or near the cap. This is a soft
+cap: concurrent new-key requests can transiently overshoot `MAX_TRACKED_KEYS` by the
+number of in-flight threads; the overshoot is bounded by the Tomcat thread-pool size.
 
 **Both windows are always evaluated.** `recordFailure` records in both the address
 window and the code window regardless of which one is saturated. An attacker
@@ -542,9 +544,10 @@ other.
 
 **Atomic check-and-record (EOP-18).** `recordFailure` acquires `synchronized(window)`
 on the deque before pruning, checking the allowance, and appending the new timestamp.
-This is the only site that mutates a window deque. `checkAllowed` is a read-only
-best-effort pre-check (no lock, no mutation) that avoids database work for clearly
-over-limit callers; the authoritative gate is `recordFailure`. Two concurrent threads
+This is the only site that mutates a window deque. `checkAllowed` is a best-effort
+pre-check that takes no lock on the window deques; it may evict aged-out map entries
+via `evictEmptyWindows` (a map mutation, not a deque mutation). It avoids database
+work for clearly over-limit callers; the authoritative gate is `recordFailure`. Two concurrent threads
 racing at the limit boundary cannot both pass: the second thread to acquire the monitor
 sees the count already at the limit and is refused.
 

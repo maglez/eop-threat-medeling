@@ -286,11 +286,13 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
     /**
      * Refuses the attempt when a window is already full.
      *
-     * <p>Read-only: this method never mutates any deque. It reads the current size
-     * of the window (without pruning) and throws if the window appears exhausted.
-     * Because no lock is held, the count may be stale — entries that have aged out
-     * are not removed here. This is intentional: {@link #checkAllowed} is a
-     * best-effort pre-check, not the authoritative gate.
+     * <p>Read-only: this method never mutates any deque. It counts only entries
+     * within the current window (filtering out aged-out entries) and throws if the
+     * active count is at or above the allowance. Because no lock is held, the count
+     * may be stale with respect to concurrent {@link #recordInWindow} calls — a
+     * concurrent thread may have just added an entry that is not yet visible here.
+     * This is intentional: {@link #checkAllowed} is a best-effort pre-check, not
+     * the authoritative gate.
      *
      * <p>The wait reported is the time until the oldest remembered failure leaves
      * the window, which is the earliest moment the caller could succeed. Reporting
@@ -302,8 +304,9 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
             return;
         }
         // Count only entries still inside the window, without removing them.
-        // This is a read-only approximation; stale entries make the count conservative
-        // (may refuse when the window has actually cleared), which is the safe direction.
+        // The filter excludes aged-out entries, so the count is accurate for the
+        // current horizon. Concurrent recordInWindow calls may add entries that are
+        // not yet visible here — this is the accepted best-effort approximation.
         final long activeCount = window.stream().filter(t -> !t.isBefore(horizon)).count();
         if (activeCount < allowance) {
             return;

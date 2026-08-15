@@ -230,7 +230,7 @@ class InMemoryJoinAttemptLimiterTest {
         }
 
         @Test
-        @DisplayName("recordFailure never throws, even at saturation — the caller was already refused by checkAllowed")
+        @DisplayName("recordFailure silently drops at saturation — the caller was already refused by checkAllowed")
         void shouldNotThrowFromRecordFailureAtSaturation() {
             // Fill the table to capacity.
             for (int key = 0; key < TRACKED_KEYS; key++) {

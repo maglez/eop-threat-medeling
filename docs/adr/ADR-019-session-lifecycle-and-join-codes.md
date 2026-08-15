@@ -120,7 +120,10 @@ out of the sliding window; if the map is still full after eviction, it throws
 `TooManyJoinAttemptsException` immediately — before any database work. This is
 fail-closed: an untracked address is refused, not silently admitted. `recordFailure`
 silently drops the record for a saturated map (the refusal has already been issued by
-`checkAllowed`), so the map never grows beyond the cap.
+`checkAllowed`), so the map stays at or near the cap. This is a soft cap: concurrent
+new-key requests can transiently overshoot `MAX_TRACKED_KEYS` by the number of
+in-flight threads before any of them inserts; the overshoot is bounded by the Tomcat
+thread-pool size (~200) and is not a security concern.
 
 **Both windows are always evaluated (EOP-18).** `recordFailure` records in both the
 address window and the code window regardless of which one is saturated. Silencing the
@@ -130,9 +133,10 @@ the primary threat. The two windows are independent and neither suppresses the o
 
 **Atomic check-and-record (EOP-18).** `recordFailure` acquires `synchronized(window)`
 on the deque before pruning, checking the allowance, and appending the new timestamp.
-This is the only site that mutates a window deque. `checkAllowed` is a read-only
-best-effort pre-check (no lock, no mutation) that avoids database work for clearly
-over-limit callers; the authoritative gate is `recordFailure`. Two concurrent threads
+This is the only site that mutates a window deque. `checkAllowed` is a best-effort
+pre-check that takes no lock on the window deques; it may evict aged-out map entries
+via `evictEmptyWindows` (a map mutation, not a deque mutation). It avoids database
+work for clearly over-limit callers; the authoritative gate is `recordFailure`. Two concurrent threads
 racing at the limit boundary cannot both pass: the second thread to acquire the monitor
 sees the count already at the limit and is refused.
 
@@ -284,6 +288,18 @@ been seen before receives 429 rather than being admitted. The window self-heals 
 one minute as entries age out, and reaching 10 000 distinct keys requires a sustained
 botnet. Accepted: the alternative (fail-open) silently disables the primary control
 under the exact attack this ADR is designed to resist.
+
+**Negative — bounded eviction race under saturation (EOP-18).** When the tracked-key
+table is at capacity, `checkAllowed` calls `evictEmptyWindows` to reclaim aged-out
+entries. A thread that has just obtained a fresh empty deque via `computeIfAbsent` but
+has not yet entered `synchronized(window)` can have that deque removed by a concurrent
+`evictEmptyWindows` sweep (the `allMatch` predicate is vacuously true for an empty
+deque). The thread then appends its failure to an orphaned deque no longer reachable
+from the map; the next request for the same key creates a fresh deque and the counter
+resets. This can cause one failure to be silently lost per race. The race is reachable
+only when the map is at `MAX_TRACKED_KEYS` and is bounded to a single undercount per
+event; the caller was already refused by `checkAllowed`, so no bypass results. Accepted
+as a negligible residual risk under an adversarial saturation scenario.
 
 **Negative — the client cannot use `EventSource`.** More client code, and a
 `fetch`-based reader must handle partial frames arriving across chunk boundaries,
