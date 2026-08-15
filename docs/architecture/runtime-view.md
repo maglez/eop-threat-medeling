@@ -4,13 +4,16 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-14 Slice E** (end of hand, the
-state-of-play read and the three broadcasts), on top of Slice D's trick-play HTTP routes, Slice C2's
-use-case layer, Slice C1's persistence layer (Liquibase changeset `005`), Slice B's trick-play schema
-(changeset `004`) and the client-address resolution from EOP-26 (ADR-021). Sequences 1 to 3 are the
-EOP-10 session lifecycle and **neither Slice D nor Slice E alters them.**
-Sequences 4, 5 and 6 are dealing, playing and resolving. Slice E changes all three: each now ends in
-an SSE broadcast, and sequence 6 records the end of a hand instead of writing a placeholder.
+Everything here reflects the code as it stands after **EOP-15 Slice C** (end-of-game
+transitions), on top of Slice B's score route, Slice A's pure-domain scoring, EOP-14 Slice E
+(end of hand, the state-of-play read and the three broadcasts), Slice D's trick-play HTTP
+routes, Slice C2's use-case layer, Slice C1's persistence layer (Liquibase changeset `005`),
+Slice B's trick-play schema (changeset `004`) and the client-address resolution from EOP-26
+(ADR-021). Sequences 1 to 3 are the EOP-10 session lifecycle and **neither Slice D nor Slice E
+alters them.** Sequences 4, 5 and 6 are dealing, playing and resolving. Slice E changes all
+three: each now ends in an SSE broadcast, and sequence 6 records the end of a hand instead of
+writing a placeholder. Sequence 7 is the score read (EOP-15 Slice B). Sequence 8 is the
+end-of-game transition (EOP-15 Slice C).
 
 **They now begin at a caller that exists.** Three earlier versions of this paragraph said the
 opposite — that Slice C2 added no route, no controller method and no DTO, and that the first
@@ -20,15 +23,18 @@ it, and Slice E adds a fifth route: `TrickController` maps
 `GET /api/v1/sessions/{sessionId}/hand`, `POST /api/v1/sessions/{sessionId}/plays`,
 `GET /api/v1/sessions/{sessionId}/tricks/current` and
 `POST /api/v1/sessions/{sessionId}/tricks/current/resolve`, each returning a transport record rather
-than a domain object. Both controllers and all six use-case beans exist only while
+than a domain object. EOP-15 Slice B adds `GET /api/v1/sessions/{sessionId}/score` via
+`ScoreController`, and Slice C adds `POST /api/v1/sessions/{sessionId}/end` via
+`EndSessionController`. All three controllers and all seven use-case beans exist only while
 `eop.features.trick-play` is `true`, which `application.yml` still leaves `false`, so the routes
 answer 404 as shipped — but that is now a flag position rather than an absence of code, and the
-distinction matters because it is testable in both directions. It stays `false` after Slice E for
+distinction matters because it is testable in both directions. It stays `false` after Slice C for
 reasons that are not about gameplay, recorded in
 [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md). The refusals were always real:
 `GlobalExceptionHandler` maps every exception drawn below, including
 `NoTrickToResolveException` at `GlobalExceptionHandler.java:484` and `TrickNotCompleteException` at
-`:518`, both 409, joined in Slice E by `HandCompleteException` at `:449`, also 409.
+`:518`, both 409, joined in Slice E by `HandCompleteException` at `:449`, also 409, and in Slice C
+by `SessionNotInProgressException` at `:226`, also 409.
 
 There is deliberately **no seventh sequence for `GET /api/v1/sessions/{sessionId}/hand`.** A
 sequence diagram earns its place when the order of interactions is the thing worth pinning, and
@@ -673,7 +679,7 @@ sequenceDiagram
         Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:159:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
         RT->>TPRA: recordResolution(sessionId, resolved, leaderSeat, nextLeaderSeat, now)
         TPRA->>DB: UPDATE game_session SET current_leader_seat = next, or NULL<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
-        Note over TPRA,DB: NULL is the end of the hand, recorded rather than<br/>released or scored: the status stays IN_PROGRESS and<br/>no score is written (ADR-028). Changeset 005's CHECK<br/>already permitted NULL, so no migration was needed.
+        Note over TPRA,DB: NULL is the end of the hand, recorded rather than<br/>released or scored at this point: the status transitions to<br/>COMPLETED in the next step when nextLeaderSeat is empty<br/>(EOP-15 Slice C, ADR-032). Changeset 005's CHECK<br/>already permitted NULL, so no migration was needed.
         TPRA->>DB: UPDATE trick SET winner_play_id = ?<br/>WHERE id = ? AND winner_play_id IS NULL
         Note over TPRA,DB: 0 rows on the second UPDATE is a replay, not a fault:<br/>when the leader also won, the first UPDATE is<br/>idempotent and lets a repeat through. Answered 409.
         RT->>EV: publish(TRICK_RESOLVED, sessionId, now)
@@ -713,13 +719,14 @@ gate on its own; a second deal into a played-out session is refused one statemen
 `uq_hand_session_seat`, as the same 409, and
 [ADR-020](../adr/ADR-020-session-concurrency-control.md) is amended with both that
 narrowing and the sixth answer `sessionMoved` gained to tell the two null states apart.
-What the NULL does *not* do is finish the game: the session status stays `IN_PROGRESS`,
-nothing is scored, and a client learns the hand is over from `handComplete` on
-`GET .../tricks/current` — `GetTrickStateUseCase.java:114`, computed from
-`Hands.allEmpty()` — or from a 409 `HandCompleteException` if it tries to play anyway.
-Releasing and scoring belong to EOP-15;
-[ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) records that choice and
-names EOP-15 as one of the three predecessors of turning the flag on.
+What the NULL does *not* do on its own is finish the game: the session status stays
+`IN_PROGRESS` until `ResolveTrickUseCase` calls `SessionRepository.recordCompleted` in the
+same execution, after `recordResolution` returns. A client learns the hand is over from
+`handComplete` on `GET .../tricks/current` — `GetTrickStateUseCase.java:114`, computed from
+`Hands.allEmpty()` — or from a 409 `HandCompleteException` if it tries to play anyway. The
+`COMPLETED` transition and the `GAME_COMPLETED` event are sequence 8 below;
+[ADR-032](../adr/ADR-032-end-of-game-transitions.md) records the design choices and the
+two-transaction race that the auto-complete branch tolerates.
 
 ---
 
@@ -790,9 +797,73 @@ guessed the session. The reason survives in the log, where it is useful; nothing
 response, where it would only be a hint.
 
 **This sequence does not end the game.** Reading a score changes no state and moves no session
-out of `IN_PROGRESS`. Sequence 6 records the end of a *hand* by writing a NULL leader seat; this
-one reports what that hand was worth. Deciding that the game is over, writing `COMPLETED` and
-declaring a winner is the third slice of EOP-15 (ADR-028, ADR-031).
+out of `IN_PROGRESS` or `COMPLETED`. Sequence 6 records the end of a *hand* by writing a NULL
+leader seat; this one reports what that hand was worth. Sequence 8 below shows how the session
+reaches `COMPLETED` — automatically when the last trick resolves, or early via the facilitator's
+`POST /end`.
+
+---
+
+## 8. Ending the game — automatic on last trick, or early by the facilitator
+
+Two paths lead to `COMPLETED`. The automatic path fires inside `ResolveTrickUseCase` when
+`nextLeaderSeat` is empty (sequence 6 above). The facilitator path is a separate HTTP call.
+Both are gated on `eop.features.trick-play`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CL as EndSessionController — POST /api/v1/sessions/{sessionId}/end
+    participant ES as EndSessionUseCase
+    participant RP as ResolvePlayerUseCase
+    participant SRA as SessionRepositoryAdapter
+    participant DB as PostgreSQL
+    participant EV as SseSessionEventPublisher
+
+    CL->>ES: execute(sessionId, playerToken)
+
+    ES->>RP: execute(sessionId, playerToken)
+    RP-->>ES: ResolvedPlayer, or 404 SessionNotFoundException / 403 PlayerNotRecognisedException
+    Note over ES,RP: Same gate as every other write: credential resolved first,<br/>before any mutable state is touched. A stranger gets 403<br/>before learning anything about the session.
+
+    ES->>ES: session.complete(requestedBy, now)
+    Note over ES: GameSession.complete() checks in order:<br/>1. player recognised (PlayerNotRecognisedException)<br/>2. player is facilitator (NotFacilitatorException — 403)<br/>3. status == IN_PROGRESS (SessionNotInProgressException — 409)<br/>Authz precedes the state check: a participant probing /end<br/>gets 403 regardless of session state and learns nothing about it.
+
+    ES->>SRA: recordCompleted(sessionId, now)
+    SRA->>DB: UPDATE game_session SET status = COMPLETED, updated_at = now,<br/>version = version + 1<br/>WHERE id = ? AND status = IN_PROGRESS
+    Note over SRA,DB: Compare-and-swap: 0 rows updated means the session moved.<br/>SRA reads the row to distinguish gone (404) from<br/>already-completed (409). A double-/end race loses the<br/>second update cleanly.
+
+    ES->>EV: publish(GAME_COMPLETED, sessionId, now)
+    Note over ES,EV: After the write returns. Clients streaming<br/>GET /sessions/{sessionId}/events receive game-completed<br/>and re-read GET /sessions/{sessionId} to see COMPLETED.
+
+    ES-->>CL: void
+    CL-->>CL: 204 No Content
+```
+
+### Automatic path (inside sequence 6)
+
+When `nextLeaderSeat` is empty after `recordResolution` commits, `ResolveTrickUseCase`
+calls `recordCompleted` and publishes `GAME_COMPLETED` in the same execution — but in a
+**second, separate transaction**. If a facilitator's `POST /end` wins the `advanceStatus`
+race in the window between the two commits, `recordCompleted` finds zero rows and would
+throw `SessionNotInProgressException`. The session is already `COMPLETED` — the desired
+outcome — so the auto-complete branch catches that exception and treats it as success.
+The trick resolution was already durably committed and `TRICK_RESOLVED` already published;
+the caller receives the resolved trick normally. ADR-032 records this choice.
+
+### What this sequence settles
+
+**Authz precedes state.** `GameSession.complete()` checks facilitator status before
+checking `IN_PROGRESS`, so a participant probing `/end` gets 403 regardless of session
+state and learns nothing about it.
+
+**Score is still readable after early end.** `GET /score` is status-agnostic; it returns
+the score of the plays made, which may be a partial game. The facilitator ends early
+because the group has reached a conclusion, not because the score is meaningless.
+
+**`GAME_COMPLETED` carries no payload.** Consistent with ADR-014: the event names the
+session and the time; a subscriber re-reads `GET /sessions/{sessionId}` to see `COMPLETED`
+and `GET /sessions/{sessionId}/score` for the final standings.
 
 ## Related
 
@@ -808,4 +879,5 @@ declaring a winner is the third slice of EOP-15 (ADR-028, ADR-031).
 - [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) — why dealing is its own use case, and the started-but-undealt window
 - [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) — why a hand is read per player, which is why no broadcast above carries one
 - [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
-- [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all six trick-play routes
+- [ADR-032](../adr/ADR-032-end-of-game-transitions.md) — end-of-game design choices: auto-complete placement, no new DB column, two-transaction race, facilitator-only early end
+- [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all seven trick-play routes

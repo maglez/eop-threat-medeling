@@ -165,6 +165,7 @@ flowchart LR
         TC["TrickController<br/>EOP-14 Slice D, fifth route added by Slice E<br/>POST /deal · GET /hand · POST /plays<br/>GET /tricks/current · POST /tricks/current/resolve<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>the acting seat is never read from a request"]
         TDTO["HandDto · TrickDto · TrickPlayDto · PlayCardRequest · TrickStateDto<br/>EOP-14 Slice D, TrickStateDto added by Slice E<br/>PlayCardRequest carries no seat, no player, no suit, no rank<br/>TrickDto omits turn, completeness and next leader — it cannot know them<br/>TrickStateDto carries all four, from a use case that reads both aggregates"]
         SCORE["ScoreController<br/>EOP-15 Slice B — one route, the sixth behind this flag<br/>GET /score<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>separate from TrickController because a score is not a move<br/>names only cards already face up, which is what separates it from GET /hand (ADR-027)"]
+        ESC["EndSessionController<br/>EOP-15 Slice C — one route, the seventh behind this flag<br/>POST /{sessionId}/end<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>facilitator-only: authz in the domain entity before the status check"]
         SDTO["ScoreSheetDto · ScoredPlayDto · StandingDto<br/>EOP-15 Slice B<br/>ScoredPlayDto is one row of the printed Score Card — name, points, card, component(s), notes<br/>the display name travels as a plain string; no token digest crosses this boundary<br/>StandingDto publishes position and tied, so a shared first place reads as a tie<br/>no winner field — position 1 held by two seats is the answer"]
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
@@ -333,14 +334,14 @@ job:
   `GET /{sessionId}/tricks/current`, whose `TrickStateDto` carries all three and `handComplete` as
   well. What keeps the feature unreleased is now the flag alone, and the flag's reasons are not about
   gameplay — see the flag note below.
-- **Eight beans do not exist unless a flag says so:** the six use cases and the two controllers.
+- **Nine beans do not exist unless a flag says so:** the seven use cases and the three controllers.
   `UseCaseConfiguration` declares the use cases behind
   `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")`
-  (`UseCaseConfiguration.java:219-343`), `TrickController` and `ScoreController` carry the same condition with the same
+  (`UseCaseConfiguration.java:219-358`), `TrickController`, `ScoreController` and `EndSessionController` carry the same condition with the same
   `havingValue`, and `application.yml` sets the flag `false`. Containment is a flag rather than an
   absent caller, which is a stronger guarantee under test and a weaker one under operator error — a
   flag can be flipped, an absent class cannot. `TrickPlayDisabledIntegrationTest` therefore asserts
-  both halves: all eight beans absent *and* all six routes answering 404, because the status is what a
+  both halves: all nine beans absent *and* all seven routes answering 404, because the status is what a
   client is promised while the absence is what pins the mechanism.
 - **A read is gated alongside the writers, and that is deliberate.** `ReadOwnHandUseCase` only reads,
   so gating it looks inconsistent until you ask what it would answer with the flag off: no hand was
@@ -622,8 +623,8 @@ decision to every caller. Tests substitute the port, not the generator
 
 Unlike the two generators, this one is registered unconditionally: it is a `@Component` regardless
 of `eop.features.trick-play`, because it holds no state and reaches no table. What the flag gates is
-the six use cases and the two controllers — the eight beans that would reach the database or accept a
-request — and `TrickPlayDisabledIntegrationTest` asserts all eight absent as well as all six routes
+the seven use cases and the three controllers — the nine beans that would reach the database or accept a
+request — and `TrickPlayDisabledIntegrationTest` asserts all nine absent as well as all seven routes
 answering 404 (`TrickPlayDisabledIntegrationTest.java:83-168`).
 
 ---
@@ -758,16 +759,17 @@ naming its absence did. `HandRepository` and `TrickRepository` now have callers:
 `ReadOwnHandUseCase`, added by Slice D, `GetTrickStateUseCase`, added by Slice E — which is the
 first caller to read both ports in one request — and `GetScoreUseCase`, added by EOP-15 Slice B,
 which reads the whole trick history of a session. There **is** now a path from an HTTP request to a
-trick-play row: `TrickController` injects five and publishes five routes, and
-`ScoreController` injects the sixth and publishes the sixth. An earlier version of this
+trick-play row: `TrickController` injects five and publishes five routes,
+`ScoreController` injects the sixth and publishes the sixth, and
+`EndSessionController` injects the seventh and publishes the seventh. An earlier version of this
 paragraph said no controller injected any of them and no route existed, and called that Slice D's
 work; Slice D did it, so containment by absence of a caller is over twice over — once because the
 callers exist and once because the caller of the callers does. What replaces it is
 `eop.features.trick-play`. `application.yml` declares **two** flags, both `false`
-(`application.yml:75-112`), and the six use-case beans carry
+(`application.yml:75-112`), and the seven use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
-`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:219-347`), as do
-`TrickController` and `ScoreController`. With the flag
+`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:219-358`), as do
+`TrickController`, `ScoreController` and `EndSessionController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
 code can call them.
 

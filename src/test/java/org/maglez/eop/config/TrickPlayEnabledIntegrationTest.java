@@ -3,9 +3,11 @@ package org.maglez.eop.config;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.adapter.web.EndSessionController;
 import org.maglez.eop.adapter.web.ScoreController;
 import org.maglez.eop.adapter.web.TrickController;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.EndSessionUseCase;
 import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
@@ -138,6 +140,37 @@ class TrickPlayEnabledIntegrationTest {
     void shouldRegisterTheScoreController() {
         Assertions.assertThat(context.getBeanNamesForType(ScoreController.class))
                 .as("the flag is on for the suite, so the score route must be served")
+                .isNotEmpty();
+    }
+
+    /**
+     * Asserts the end-session use case is registered while the flag is on.
+     *
+     * <p>The newest of the seven, and the one the off position is least able to vouch for on its
+     * own: a bean that was never declared is absent in both positions, so only this assertion
+     * separates a flag that withholds the end-session path from an end-session path that was never
+     * wired at all.
+     */
+    @Test
+    @DisplayName("creates the end-session use case")
+    void shouldRegisterTheEndSessionUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(EndSessionUseCase.class))
+                .as("the flag is on for the suite, so the end-session use case must be wired")
+                .isNotEmpty();
+    }
+
+    /**
+     * Asserts the end-session controller is registered while the flag is on.
+     *
+     * <p>A third controller behind the same flag, carrying the seventh route. Asserted separately
+     * from the use case because the two are withheld by two independent conditions, and a typo in
+     * either would leave the other still wired.
+     */
+    @Test
+    @DisplayName("creates the end-session controller, which is what makes the /end route reachable")
+    void shouldRegisterTheEndSessionController() {
+        Assertions.assertThat(context.getBeanNamesForType(EndSessionController.class))
+                .as("the routes and the use cases are behind one flag, so both must appear together")
                 .isNotEmpty();
     }
 }

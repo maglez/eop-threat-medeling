@@ -10,9 +10,11 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.maglez.eop.adapter.security.SecureRandomDeckShuffler;
+import org.maglez.eop.adapter.web.EndSessionController;
 import org.maglez.eop.adapter.web.ScoreController;
 import org.maglez.eop.adapter.web.TrickController;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.maglez.eop.usecase.EndSessionUseCase;
 import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
@@ -49,8 +51,8 @@ import org.springframework.test.web.servlet.MockMvc;
  * <p>What the flag withholds is worth stating precisely. An earlier slice put five trick-play tables
  * and two ports into the application, and the adapter implementing those ports is an unconditional
  * {@code @Repository} that is created either way. So the flag does not withhold the capability to
- * write a hand, a trick or a play; it withholds every caller of it — the six use cases and the two
- * controllers that reach them over HTTP.
+ * write a hand, a trick or a play; it withholds every caller of it — the seven use cases and the
+ * three controllers that reach them over HTTP.
  *
  * <p>The last two tests are the counterweight. A flag that took the rest of the application down
  * with it would be worse than no flag, so the shuffler — deliberately ungated, because a stateless
@@ -141,6 +143,26 @@ class TrickPlayDisabledIntegrationTest {
         Assertions.assertThat(context.getBeanNamesForType(ScoreController.class)).isEmpty();
     }
 
+    /** Asserts the end-session use case is not created while the flag is off. */
+    @Test
+    @DisplayName("does not create the end-session use case at all")
+    void shouldNotRegisterTheEndSessionUseCase() {
+        Assertions.assertThat(context.getBeanNamesForType(EndSessionUseCase.class)).isEmpty();
+    }
+
+    /**
+     * Asserts the end-session controller is not created while the flag is off.
+     *
+     * <p>The controller and the use case are withheld by two independent
+     * {@code @ConditionalOnProperty} annotations. A typo in either would leave the other still
+     * wired, so both are asserted separately.
+     */
+    @Test
+    @DisplayName("does not create the end-session controller, so the /end route is absent")
+    void shouldNotRegisterTheEndSessionController() {
+        Assertions.assertThat(context.getBeanNamesForType(EndSessionController.class)).isEmpty();
+    }
+
     /** Asserts the deal route is not served while the flag is off. */
     @Test
     @DisplayName("withholds the deal route")
@@ -188,6 +210,14 @@ class TrickPlayDisabledIntegrationTest {
     @DisplayName("answers 404 to a score read")
     void shouldNotServeTheScoreRoute() throws Exception {
         mockMvc.perform(get("/api/v1/sessions/{id}/score", SOME_SESSION)).andExpect(status().isNotFound());
+    }
+
+    /** Asserts the end-session route is not served while the flag is off. */
+    @Test
+    @DisplayName("withholds the end-session route")
+    void shouldNotServeTheEndRoute() throws Exception {
+        mockMvc.perform(post("/api/v1/sessions/{id}/end", SOME_SESSION))
+                .andExpect(status().isNotFound());
     }
 
     @Test

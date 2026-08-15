@@ -1,7 +1,8 @@
-# ADR-032 — End-of-Game Transitions
+# ADR-032: End-of-Game Transitions
 
 **Status:** Accepted  
 **Date:** 2026-08-15  
+**Deciders:** @tech-lead, @architecture-guardian  
 **Story:** EOP-15 Slice C
 
 ---
@@ -52,14 +53,24 @@ be added then with a migration that back-fills it from `updated_at`.
 
 ### 3. `SessionRepository.recordCompleted` is compare-and-swap
 
-The method advances the status from `IN_PROGRESS` to `COMPLETED` atomically.
-If zero rows are updated it reads the row to distinguish:
+The method advances the status from `IN_PROGRESS` to `COMPLETED` in a single conditional
+`UPDATE`. If zero rows are updated it reads the row to distinguish:
 
 - **Gone** → `SessionNotFoundException` (404)
 - **Not `IN_PROGRESS`** → `SessionNotInProgressException` (409)
 
 This mirrors the `recordStarted` pattern (ADR-020) and prevents double-complete
 races from silently succeeding.
+
+**Two-transaction race on the automatic path.** `ResolveTrickUseCase` calls
+`TrickRepository.recordResolution` and `SessionRepository.recordCompleted` in two
+separate transactions — each adapter method carries its own `@Transactional` and the
+use case is a plain class, not a Spring proxy. If a facilitator's `POST /end` wins the
+`advanceStatus` race in the window between the first commit and the second, the
+`recordCompleted` call finds zero rows and would throw `SessionNotInProgressException`.
+The session is already `COMPLETED` — the desired outcome — so the auto-complete branch
+catches that exception and treats it as success rather than propagating a 409 for a
+trick resolution that has already been durably committed.
 
 ### 4. Facilitator-only early end
 
@@ -133,3 +144,22 @@ changeset, a rollback, and a Hibernate mapping for a field nothing reads.
 Rejected. Ending early is a consequential, irreversible action. Restricting it
 to the facilitator matches the pattern established for `start` and `deal`, and
 avoids a situation where one player ends the game before others are ready.
+
+---
+
+## Related
+
+- [ADR-013](ADR-013-feature-flags.md) — `@ConditionalOnProperty` as the flag mechanism,
+  and why the off position is tested with bean-absence assertions as well as 404s.
+- [ADR-014](ADR-014-realtime-transport.md) — state-free events and recovery by re-reading,
+  which is why `GAME_COMPLETED` carries no payload beyond the session identifier.
+- [ADR-020](ADR-020-session-concurrency-control.md) — compare-and-set on `status`, the
+  pattern `recordCompleted` follows.
+- [ADR-026](ADR-026-use-case-observability.md) — still `Proposed`; `EndSessionUseCase`
+  logs nothing, consistent with every other use case.
+- [ADR-028](ADR-028-end-of-hand-without-release-or-score.md) — superseded for the
+  automatic path: the hand ending now triggers the `COMPLETED` transition directly.
+- [ADR-030](ADR-030-scoring-is-derived-not-accumulated.md) — the score is derived from
+  plays; it remains readable after an early end, returning the score of the plays made.
+- [ADR-031](ADR-031-the-score-is-read-through-its-own-route.md) — the score route is
+  status-agnostic; it answers for both `IN_PROGRESS` and `COMPLETED` sessions.

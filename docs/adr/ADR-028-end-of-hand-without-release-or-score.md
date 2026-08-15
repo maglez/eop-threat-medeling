@@ -4,6 +4,17 @@
 **Date:** 2026-08-14
 **Deciders:** @tech-lead, @architecture-guardian
 
+> **Amended 2026-08-15 (EOP-15 Slice C, [ADR-032](ADR-032-end-of-game-transitions.md)).**
+> The second decision below — "EOP-14 does not transition a session to `COMPLETED`" — is
+> superseded for the **automatic path**: `ResolveTrickUseCase` now calls
+> `SessionRepository.recordCompleted` when `nextLeaderSeat` is empty, so the last trick
+> resolving does transition the session to `COMPLETED`. The facilitator may also end early
+> via `POST /api/v1/sessions/{sessionId}/end`. Both paths are gated on
+> `eop.features.trick-play`. The consequence that "a client watching only
+> `GET /api/v1/sessions/{sessionId}` will never see a session finish" is therefore no
+> longer true once the flag is on. The first decision (flag stays `false`) and the
+> reasoning about ADR-026 and EOP-48 as predecessors of the flag-on story are unaffected.
+
 ## Context
 
 EOP-14 Slice E completed the trick-play mechanics. The whole deck is dealt, cards are
