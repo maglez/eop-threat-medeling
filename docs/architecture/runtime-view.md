@@ -344,7 +344,7 @@ sequenceDiagram
         alt no such code
             SRA-->>JU: empty
             JU->>LIM: recordFailure — atomic check-and-record under synchronized(window)<br/>Both address and code windows always recorded (EOP-18)
-            Note over LIM: recordFailure never throws. If the window is now<br/>exhausted the next checkAllowed will refuse.
+            Note over LIM: recordFailure throws TooManyJoinAttemptsException if either<br/>window is exhausted after the atomic prune-check-add.<br/>429 supersedes the domain exception (404/409) — throttled<br/>callers receive 429 regardless of session state (EOP-18).
             JU-->>SC: UnknownJoinCodeException
             SC-->>P2: 404 — byte-for-byte identical for every unusable code
         else found

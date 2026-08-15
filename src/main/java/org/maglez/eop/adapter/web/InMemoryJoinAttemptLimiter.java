@@ -66,9 +66,11 @@ import org.springframework.stereotype.Component;
  * is {@link #recordFailure} (via {@link #recordInWindow}), and it always does so
  * inside {@code synchronized(window)}. {@link #checkAllowed} and
  * {@link #refuseIfExhausted} are read-only: they inspect the deque without mutating
- * it. {@link #evictEmptyWindows} removes map entries whose deques are already empty;
- * it never calls {@code pollFirst} or {@code addLast} on any deque, so it cannot
- * race with the synchronized block in {@link #recordInWindow}.
+ * it. {@link #evictEmptyWindows} removes map entries whose deques are aged out;
+ * it never calls {@code pollFirst} or {@code addLast} on any deque. A bounded race
+ * exists: a freshly-created empty deque can be evicted before its first
+ * {@code addLast}, causing one failure to be silently lost under saturation. See
+ * {@link #evictEmptyWindows} for the full analysis.
  *
  * <p><strong>Both windows are always evaluated.</strong> The address window is not
  * allowed to short-circuit the code window: either window alone leaves the other
@@ -237,12 +239,10 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
      *
      * <p>If the table is at capacity and the key is new, the failure is silently
      * dropped. The caller was already refused by {@link #checkAllowed}, so the drop
-     * is safe.
-     *
-     * <p><strong>Lock discipline:</strong> {@code synchronized(window)} is exclusive
-     * because {@link #refuseIfExhausted} and {@link #checkSaturation} never mutate
-     * any deque, and {@link #evictEmptyWindows} only removes map entries whose deques
-     * are already empty — it never calls {@code pollFirst} or {@code addLast}.
+     * is safe. Note that a freshly-created deque can be evicted by
+     * {@link #evictEmptyWindows} before the first {@code addLast}, causing one
+     * failure to be silently lost; see {@link #evictEmptyWindows} for the bounded
+     * race analysis.
      *
      * @throws TooManyJoinAttemptsException if the window is exhausted after pruning
      */
@@ -330,20 +330,29 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
     }
 
     /**
-     * Removes map entries whose windows are already empty.
+     * Removes map entries whose windows are already empty (all entries aged out).
      *
      * <p>This method never mutates any deque — it only removes map entries. A deque
      * is removed only if all its entries are before the horizon (i.e. aged out).
-     * This means it cannot race with the {@code synchronized(window)} block in
-     * {@link #recordInWindow}: removing an aged-out deque from the map does not
-     * affect any thread that already holds a reference to it (the deque is empty of
-     * active entries, so there is nothing to lose), and a thread that has just
-     * obtained a non-empty deque via {@code computeIfAbsent} will not have it removed
-     * here because it has active entries.
+     *
+     * <p><strong>Bounded race under saturation.</strong> A thread that has just
+     * obtained a fresh empty deque via {@code computeIfAbsent} (in
+     * {@link #recordInWindow}) but has not yet entered {@code synchronized(window)}
+     * can have that deque removed by this method's {@code removeIf} predicate, which
+     * evaluates vacuously true for an empty deque. The thread then appends its failure
+     * to an orphaned deque no longer reachable from the map; the next request for the
+     * same key creates a fresh deque and the counter resets. This can cause one
+     * failure to be silently lost per race. The race is bounded: it requires the map
+     * to be at {@code MAX_TRACKED_KEYS} (the only condition under which this method
+     * is called), and the lost record is a single undercount in an adversarial
+     * scenario where the caller was already refused by {@link #checkAllowed}. The
+     * security impact is negligible.
      *
      * <p>Eviction is O(N) over the map and is called only under saturation pressure,
-     * on the request thread. This is acceptable: saturation is an adversarial
-     * condition, and the cost is bounded by {@code MAX_TRACKED_KEYS}.
+     * on the request thread. The cost is bounded by {@code MAX_TRACKED_KEYS}. Under
+     * sustained saturation (attacker holding 10 000 live keys), each refused request
+     * triggers a full sweep; this is an accepted trade-off against the alternative of
+     * admitting untracked requests.
      */
     private static void evictEmptyWindows(final Map<String, Deque<Instant>> windows, final Instant horizon) {
         // Remove entries whose windows contain only aged-out entries.

@@ -189,6 +189,24 @@ class InMemoryJoinAttemptLimiterTest {
 
             assertThatCode(() -> limiter.checkAllowed("198.51.100.7", "DEF567")).doesNotThrowAnyException();
         }
+
+        @Test
+        @DisplayName("recordFailure throws when the code window is exhausted, even if the address window is fine")
+        void shouldThrowFromRecordFailureWhenCodeWindowExhausted() {
+            // Drive the code window to exhaustion using distinct addresses (so no single
+            // address hits its own per-address limit). Each address contributes one failure.
+            for (int failure = 0; failure < PER_CODE; failure++) {
+                limiter.recordFailure("192.0.2." + failure, CODE);
+            }
+
+            // The code window is now at PER_CODE. The next recordFailure from a fresh
+            // address (whose address window is empty) must throw because the code window
+            // is exhausted. This exercises the code-window throw path in recordFailure
+            // (lines 188-195 in InMemoryJoinAttemptLimiter).
+            assertThatExceptionOfType(TooManyJoinAttemptsException.class)
+                    .as("recordFailure must throw when the code window is exhausted, even if the address window is fine")
+                    .isThrownBy(() -> limiter.recordFailure("198.51.100.99", CODE));
+        }
     }
 
     @Nested
@@ -219,33 +237,45 @@ class InMemoryJoinAttemptLimiterTest {
                 limiter.recordFailure("flood-" + key, codeFor(key));
             }
 
-            // recordFailure must not throw — it silently drops the record for the
-            // saturated window. The port contract declares no @throws on recordFailure.
+            // At saturation, recordInWindow silently drops the record rather than
+            // throwing — the caller was already refused by checkAllowed. The port
+            // declares @throws TooManyJoinAttemptsException on recordFailure, but that
+            // is for the window-exhaustion path (count at limit), not the saturation-drop
+            // path (table full, new key). These are distinct: saturation drops silently,
+            // exhaustion throws.
             assertThatCode(() -> limiter.recordFailure(ADDRESS, CODE))
-                    .as("recordFailure must never throw, even at saturation")
+                    .as("recordFailure must not throw at saturation — it silently drops the record")
                     .doesNotThrowAnyException();
         }
 
         @Test
         @DisplayName("per-code window still advances even when the address window is at saturation")
         void shouldAdvanceCodeWindowEvenWhenAddressWindowIsSaturated() {
-            // Fill the address table to capacity with distinct addresses.
+            // Fill BOTH maps to capacity with TRACKED_KEYS distinct addresses and codes.
+            // After this loop: failuresByAddress has TRACKED_KEYS entries; failuresByCode
+            // has TRACKED_KEYS entries; codeFor(0) has exactly 1 failure in the code map.
             for (int key = 0; key < TRACKED_KEYS; key++) {
                 limiter.recordFailure("flood-" + key, codeFor(key));
             }
 
-            // Record failures for ADDRESS (which is new — not in the flood).
-            // The address window is saturated, so ADDRESS's record is silently dropped.
-            // But the code window for CODE must still advance.
-            for (int failure = 0; failure < PER_CODE; failure++) {
-                limiter.recordFailure("flood-" + failure, CODE);
+            // Both maps are now saturated. Record PER_CODE-1 more failures against
+            // codeFor(0) using NEW addresses (not in the address map). For each call:
+            //   - The address window silently drops (address map saturated, new key).
+            //   - The code window for codeFor(0) must still advance (codeFor(0) IS in
+            //     the code map, so no saturation drop there).
+            // This verifies that a saturated address window does not suppress the code window.
+            final String targetCode = codeFor(0);
+            for (int failure = 0; failure < PER_CODE - 1; failure++) {
+                limiter.recordFailure("new-" + failure, targetCode);
             }
 
-            // The code window for CODE is now exhausted. A fresh address (not in the
-            // flood) must be refused by the code window.
+            // codeFor(0) now has 1 (from flood) + PER_CODE-1 (from second loop) = PER_CODE
+            // failures. An address already in the address map (flood-0) must be refused by
+            // the code window, not by address saturation (flood-0 is already tracked, so
+            // checkSaturation passes for it).
             assertThatExceptionOfType(TooManyJoinAttemptsException.class)
                     .as("the code window must advance even when the address window is saturated")
-                    .isThrownBy(() -> limiter.checkAllowed("198.51.100.99", CODE));
+                    .isThrownBy(() -> limiter.checkAllowed("flood-0", targetCode));
         }
 
         @Test

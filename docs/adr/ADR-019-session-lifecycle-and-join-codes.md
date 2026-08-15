@@ -136,13 +136,17 @@ over-limit callers; the authoritative gate is `recordFailure`. Two concurrent th
 racing at the limit boundary cannot both pass: the second thread to acquire the monitor
 sees the count already at the limit and is refused.
 
-**`recordFailure` is non-throwing by contract.** The port declares no `@throws`
-for `recordFailure`; the implementation honours this. Saturation is handled silently
-(drop the record, refusal already issued by `checkAllowed`). Window exhaustion is
-detected on the *next* `checkAllowed` call, not by throwing from `recordFailure`.
-This keeps the use-case call sites clean: a failed join always produces the domain
-exception that matches the failure reason (404, 409), never a spurious 429 caused by
-the limiter throwing from a recording call.
+**`recordFailure` throws `TooManyJoinAttemptsException` when a window is exhausted
+(EOP-18).** The port declares `@throws TooManyJoinAttemptsException` on
+`recordFailure`; the implementation throws after evaluating both windows. This is the
+authoritative atomic gate for concurrent callers that both passed `checkAllowed`.
+Saturation (table full, new key) is handled silently — the record is dropped and no
+exception is thrown, because `checkAllowed` already refused the caller. Window
+exhaustion (count at limit after the atomic prune-check-add) does throw, and this
+supersedes any domain exception the use case was about to raise: a throttled caller
+receives 429 regardless of whether the session was full, not joinable, or the code was
+unknown. This is intentional — 429 leaks strictly less information than 404 vs 409,
+which serves the anti-oracle intent of the limiter.
 
 ### Seat order is assigned once, at join, and enforced by the database
 
