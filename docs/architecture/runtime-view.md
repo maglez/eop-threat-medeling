@@ -186,6 +186,7 @@ sequenceDiagram
     participant RP as ResolvePlayerUseCase
     participant PUB as SseSessionEventPublisher
     participant HB as sse-heartbeat daemon
+    participant POOL as sse-send-N pool
     participant JU as JoinSessionUseCase
 
     rect rgb(238, 244, 250)
@@ -193,17 +194,25 @@ sequenceDiagram
     BR->>SC: GET /api/v1/sessions/{id}/events<br/>X-EoP-Player-Token
     SC->>RP: execute(sessionId, playerToken)
 
-    alt unrecognised caller
+    alt session or player not found
+        RP-->>SC: SessionNotFoundException
+        SC-->>BR: 404 problem+json
+    else player not authorized
         RP-->>SC: PlayerNotRecognisedException
         SC-->>BR: 403 problem+json
         Note over BR,SC: A problem detail, NOT an empty stream.<br/>resolvePlayerUseCase runs BEFORE subscribe.
     else recognised
         RP-->>SC: ResolvedPlayer
         SC->>PUB: subscribe(sessionId)
-        PUB->>PUB: new SseEmitter(0L) — no container timeout
-        PUB->>PUB: computeIfAbsent(sessionId) then add emitter
-        PUB->>PUB: register onCompletion and onTimeout to deregister
-        PUB-->>BR: 200 text/event-stream, held open
+        alt subscriber cap reached
+            PUB-->>SC: TooManySubscribersException
+            SC-->>BR: 429 problem+json
+        else cap not exceeded
+            PUB->>PUB: new SseEmitter(EMITTER_TIMEOUT_MILLIS) — 10-minute container timeout
+            PUB->>PUB: computeIfAbsent(sessionId) then add emitter
+            PUB->>PUB: register onCompletion, onTimeout and onError to deregister
+            PUB-->>BR: 200 text/event-stream, held open
+        end
     end
     end
 
@@ -211,12 +220,15 @@ sequenceDiagram
     Note over HB,BR: Heartbeat — every eop.realtime.heartbeat-interval
     loop forever, on a daemon thread
         HB->>PUB: beat()
-        PUB->>BR: comment frame
-        alt write succeeds
-            Note over PUB: subscriber still alive
-        else write throws
-            PUB->>PUB: deregister the emitter
-            Note over PUB: This is the ONLY way a dead<br/>subscriber is ever discovered.
+        loop for each emitter
+            PUB->>POOL: submit(send task)
+            POOL->>BR: emitter.send(heartbeat comment)
+            alt write succeeds
+                Note over POOL: subscriber still alive
+            else write throws
+                POOL->>PUB: forgetOne(emitter)
+                Note over PUB: Two ways a dead subscriber is ever discovered:<br/>(1) heartbeat sweep — a write fails with<br/>IOException/IllegalStateException, triggering forgetOne;<br/>(2) 10-minute emitter timeout — onTimeout fires forgetOne directly.
+            end
         end
     end
     end
@@ -260,19 +272,37 @@ alternative was writing a bearer credential into the proxy access log, the brows
 history and the address bar of a screen being shared during the very meeting this game
 is played in (ADR-019).
 
-### Why the emitter has no timeout
+### Why the emitter has a 10-minute timeout
 
-`new SseEmitter(0L)` disables the servlet container's own timeout entirely. That is safe
-**only** because the heartbeat exists. A lobby waiting for a third player is idle by
-nature, sometimes for minutes; a container timeout would close healthy connections and
-present as a flaky server. So detecting a dead peer is deliberately this class's job
-rather than the container's — and the heartbeat is the mechanism, not a nicety.
+`new SseEmitter(EMITTER_TIMEOUT_MILLIS)` sets a 10-minute container timeout (ADR-034). Three reasons:
+
+- **Stale connections are reclaimed.** A client that closes a browser tab without sending a TCP FIN
+  (e.g., a laptop lid closed mid-game, a network partition, a crash) is otherwise invisible until
+  the heartbeat thread next attempts a write. A 10-minute ceiling means the servlet container also
+  closes the async request, returning the file descriptor regardless of whether the heartbeat has
+  noticed.
+
+- **Live connections are unaffected.** The heartbeat runs every `eop.realtime.heartbeat-interval`
+  (a few seconds). Each successful send resets the container's idle timer, so a well-behaved
+  subscriber receiving heartbeats will never reach the 10-minute ceiling.
+
+- **Forced reconnect every 10 minutes is acceptable.** A client that hits the ceiling reconnects
+  with `GET /api/v1/sessions/{sessionId}/events`. The `retry:` field written at subscribe time
+  tells the browser to wait three seconds before reconnecting, giving a restart-safe reconnect
+  without hammering the server.
+
+`spring.mvc.async.request-timeout` is set to `600000` ms so the servlet container's own deadline
+matches the emitter timeout exactly. Without this, the container can close the async request before
+the emitter fires its own timeout, producing a misleading error log.
 
 ### What this sequence cannot do
 
-**A dead subscriber is invisible until the next write.** The `alt` branch in the
-heartbeat block is the *only* place a broken connection is ever discovered. Between the
-moment a client disappears and the next heartbeat, the registry still lists it. The
+**A dead subscriber is invisible until the next write or timeout.** The `alt` branch in the
+heartbeat block is the *primary* place a broken connection is discovered — the heartbeat
+write fails and `forgetOne` is called. The 10-minute emitter timeout provides a backstop:
+`onTimeout` fires `forgetOne` directly, without waiting for a heartbeat write to fail.
+Between the moment a client disappears and the next heartbeat (or at most ten minutes via
+timeout), the registry still lists it. The
 subscriber list therefore **over-reports** — measured in the EOP-8 spike, where two
 already-dead clients were still counted as two — and must never be used as a presence
 list or as an input to a game rule. `connectionStatus` in the state DTO is a display

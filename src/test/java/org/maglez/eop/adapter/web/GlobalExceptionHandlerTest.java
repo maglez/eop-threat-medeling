@@ -48,6 +48,7 @@ import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.RateLimitedException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
+import org.maglez.eop.usecase.TooManySubscribersException;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -301,6 +302,23 @@ class GlobalExceptionHandlerTest {
                     handler.handleTooManyJoinAttempts(new TooManyJoinAttemptsException(Duration.ofMillis(1500)));
 
             assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
+        }
+    }
+
+    @Nested
+    @DisplayName("capping SSE subscribers")
+    class SubscriberCap {
+
+        @Test
+        @DisplayName("too many subscribers is a 429 with no Retry-After header")
+        void shouldMapTooManySubscribersTo429() {
+            final ProblemDetail problem =
+                    handler.handleTooManySubscribers(
+                            new TooManySubscribersException("session already has 12 subscribers"));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+            assertThat(problem.getTitle()).isEqualTo("Too many subscribers");
+            assertThat(problem.getDetail()).contains("12 subscribers");
         }
     }
 

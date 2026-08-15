@@ -9,6 +9,11 @@ import static org.awaitility.Awaitility.await;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -16,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.maglez.eop.config.RealtimeProperties;
 import org.maglez.eop.usecase.SessionEvent;
 import org.maglez.eop.usecase.SessionEventType;
+import org.maglez.eop.usecase.TooManySubscribersException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -42,7 +48,7 @@ class SseSessionEventPublisherTest {
     private final SseSessionEventPublisher publisher = new SseSessionEventPublisher(new RealtimeProperties(BEAT));
 
     @AfterEach
-    void stopTheHeartbeatThread() {
+    void stopTheHeartbeatThread() throws Exception {
         publisher.destroy();
     }
 
@@ -73,6 +79,114 @@ class SseSessionEventPublisherTest {
             assertThatNullPointerException()
                     .isThrownBy(() -> publisher.subscribe(null))
                     .withMessageContaining("sessionId");
+        }
+
+        @Test
+        @DisplayName("the thirteenth subscriber for one session is refused, because the per-session cap is 12")
+        void shouldRejectAThirteenthSubscriberForTheSameSession() {
+            for (int i = 0; i < SseSessionEventPublisher.MAX_SUBSCRIBERS_PER_SESSION; i++) {
+                publisher.subscribe(SESSION_ID);
+            }
+
+            assertThatThrownBy(() -> publisher.subscribe(SESSION_ID))
+                    .isInstanceOf(TooManySubscribersException.class)
+                    .hasMessageContaining(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("a subscriber is refused when the global cap is reached")
+        void shouldEnforceTheGlobalSubscriberCap() throws Exception {
+            final int smallCap = 2;
+            final SseSessionEventPublisher capped =
+                    new SseSessionEventPublisher(new RealtimeProperties(BEAT), smallCap);
+            try {
+                capped.subscribe(SESSION_ID);
+                capped.subscribe(OTHER_SESSION_ID);
+
+                assertThatThrownBy(() -> capped.subscribe(
+                        UUID.fromString("00000000-0000-7000-8000-0000000000dd")))
+                        .isInstanceOf(TooManySubscribersException.class);
+            }
+            finally {
+                capped.destroy();
+            }
+        }
+
+        @Test
+        @DisplayName("the emitter timeout is ten minutes, not unlimited")
+        void shouldUseANonZeroEmitterTimeout() {
+            assertThat(SseSessionEventPublisher.EMITTER_TIMEOUT_MILLIS)
+                    .isEqualTo(TimeUnit.MINUTES.toMillis(10))
+                    .isGreaterThan(0L);
+        }
+
+        @Test
+        @DisplayName("concurrent subscribers cannot exceed the per-session cap")
+        void shouldEnforcePerSessionCapUnderConcurrency() throws Exception {
+            final int threads = 50;
+            final int cap = 12; // MAX_SUBSCRIBERS_PER_SESSION
+            final SseSessionEventPublisher concPublisher =
+                    new SseSessionEventPublisher(new RealtimeProperties(BEAT), cap, 500);
+            final ExecutorService pool = Executors.newFixedThreadPool(threads);
+            final AtomicInteger admitted = new AtomicInteger(0);
+            final AtomicInteger refused = new AtomicInteger(0);
+            final CountDownLatch start = new CountDownLatch(1);
+            final CountDownLatch done = new CountDownLatch(threads);
+
+            try {
+                for (int i = 0; i < threads; i++) {
+                    pool.submit(() -> {
+                        try {
+                            start.await();
+                            concPublisher.subscribe(SESSION_ID);
+                            admitted.incrementAndGet();
+                        } catch (final TooManySubscribersException e) {
+                            refused.incrementAndGet();
+                        } catch (final Exception e) {
+                            // ignore other exceptions
+                        } finally {
+                            done.countDown();
+                        }
+                    });
+                }
+                start.countDown();
+                done.await(5, TimeUnit.SECONDS);
+                pool.shutdown();
+
+                assertThat(admitted.get()).isEqualTo(cap);
+                assertThat(refused.get()).isEqualTo(threads - cap);
+                assertThat(concPublisher.subscriberCount(SESSION_ID)).isEqualTo(cap);
+            } finally {
+                concPublisher.destroy();
+            }
+        }
+
+        @Test
+        @DisplayName("completing a subscriber frees its global slot for a new subscriber")
+        void shouldFreeGlobalSlotWhenSubscriberCompletes() throws Exception {
+            final SseSessionEventPublisher capped =
+                    new SseSessionEventPublisher(new RealtimeProperties(BEAT), 12, 1); // global cap = 1
+            try {
+                final SseEmitter first = capped.subscribe(SESSION_ID);
+                // Global cap is now full
+                assertThatThrownBy(() -> capped.subscribe(SESSION_ID))
+                        .isInstanceOf(TooManySubscribersException.class);
+                // Complete the first subscriber. In unit tests without a servlet container
+                // the SseEmitter handler is never initialized, so complete() only marks the
+                // emitter as done — it does NOT fire the onCompletion callback directly.
+                // The heartbeat discovers the dead emitter on its next sweep (write throws
+                // IllegalStateException), which calls forgetOne and decrements the counter.
+                first.complete();
+                // Wait for the heartbeat to discover the dead emitter and free the slot
+                await().atMost(Duration.ofSeconds(5))
+                        .pollInterval(BEAT)
+                        .untilAsserted(() -> assertThat(capped.subscriberCount(SESSION_ID)).isZero());
+                // Now a new subscriber should be admitted
+                assertThatCode(() -> capped.subscribe(SESSION_ID))
+                        .doesNotThrowAnyException();
+            } finally {
+                capped.destroy();
+            }
         }
     }
 
@@ -163,11 +277,11 @@ class SseSessionEventPublisherTest {
         }
 
         @Test
-        @DisplayName("shutting down closes every stream instead of leaving clients waiting on a dead process")
+        @DisplayName("shutting down closes every stream and stops the heartbeat thread")
         void shouldCompleteEveryStreamOnShutdown() {
             final SseEmitter stream = publisher.subscribe(SESSION_ID);
 
-            publisher.destroy();
+            assertThatCode(() -> publisher.destroy()).doesNotThrowAnyException();
 
             assertThat(publisher.subscriberCount(SESSION_ID)).isZero();
             assertThatThrownBy(() -> stream.send(SseEmitter.event().comment("after shutdown")))

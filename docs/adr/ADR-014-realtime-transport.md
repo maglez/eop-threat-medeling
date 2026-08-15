@@ -195,6 +195,13 @@ Caddy on a single origin (ADR-017) does not change the arithmetic — but anyone
 opening several tabs per browser should expect the seventh to stall rather than
 diagnose a server fault.
 
+### Amendment — EOP-20 (2026-08-15): Emitter timeout reversed
+
+Decision 3 of this ADR (`new SseEmitter(0L)` — no container timeout) is reversed by ADR-034.
+EOP-20 introduces a 10-minute container timeout (`EMITTER_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(10)`)
+to close stale connections that have silently dropped. The heartbeat mechanism (Decision 4) keeps
+live connections alive within the timeout window. See ADR-034 for full rationale.
+
 ## Related
 
 - [ADR-015](ADR-015-player-identity.md) — the other half of this spike

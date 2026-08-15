@@ -31,6 +31,7 @@ import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
 import org.maglez.eop.usecase.RateLimitedException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
+import org.maglez.eop.usecase.TooManySubscribersException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -756,6 +757,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Too many SSE subscribers for a session or globally.
+     *
+     * <p>Returned as a bare problem detail (no {@code Retry-After}) because
+     * reconnection is not time-bounded: a subscriber slot frees up whenever a
+     * connection closes, which is at the client's discretion rather than after a
+     * fixed wait (EOP-20, ADR-034).
+     *
+     * @param exception the refusal, describing which cap was reached
+     * @return a 429 problem detail
+     */
+    @ExceptionHandler(TooManySubscribersException.class)
+    public ProblemDetail handleTooManySubscribers(final TooManySubscribersException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.TOO_MANY_REQUESTS);
+        problem.setTitle("Too many subscribers");
+        problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
      * Every attempt to claim a seat lost its race.
      *
      * <p>A 409 and not a 500. {@link org.maglez.eop.usecase.JoinSessionUseCase}
@@ -772,7 +792,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * a warning with a stack trace per occurrence would hand that caller a
      * log-flooding amplifier — which is the defect this mapping exists to remove,
      * not something to relocate to a lower level. A stack trace of a retry loop that
-     * behaved exactly as designed describes nothing a reader needs.
+     * behaved exactly as designed describes nothing a handler needs.
      *
      * <p>The response names neither the session nor the seat. The exception message
      * carries both, but a joining caller supplied only a join code and never held the
