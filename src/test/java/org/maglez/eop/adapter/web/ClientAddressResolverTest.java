@@ -40,11 +40,11 @@ class ClientAddressResolverTest {
     private static final String FORWARDED_FOR = "X-Forwarded-For";
 
     private static ClientAddressResolver resolverWithNoTrustedProxies() {
-        return new ClientAddressResolver(new TrustedProxyProperties(List.of()));
+        return new ClientAddressResolver(new TrustedProxyProperties(List.of(), 5));
     }
 
     private static ClientAddressResolver resolverTrusting(final String cidr) {
-        return new ClientAddressResolver(new TrustedProxyProperties(List.of(cidr)));
+        return new ClientAddressResolver(new TrustedProxyProperties(List.of(cidr), 5));
     }
 
     @Nested

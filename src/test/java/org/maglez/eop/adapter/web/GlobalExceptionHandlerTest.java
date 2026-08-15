@@ -46,6 +46,7 @@ import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
+import org.maglez.eop.usecase.RateLimitedException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -244,6 +245,34 @@ class GlobalExceptionHandlerTest {
                     .doesNotContainIgnoringCase("member")
                     .doesNotContainIgnoringCase("authoris")
                     .doesNotContainIgnoringCase("forbidden");
+        }
+    }
+
+    @Nested
+    @DisplayName("rate limiting a caller")
+    class RateLimiting {
+
+        @Test
+        @DisplayName("rate limited is a 429 whose Retry-After states the wait in seconds")
+        void shouldMapRateLimitedTo429WithRetryAfter() {
+            final ResponseEntity<ProblemDetail> response =
+                    handler.handleRateLimited(new RateLimitedException(Duration.ofSeconds(37)));
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+            assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("37");
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+            assertThat(response.getBody().getTitle()).isEqualTo("Too many requests");
+            assertThat(response.getBody().getDetail()).contains("retry after 37 seconds");
+        }
+
+        @Test
+        @DisplayName("Retry-After is a whole number of seconds, because the header admits nothing finer")
+        void shouldRoundRetryAfterDownToWholeSeconds() {
+            final ResponseEntity<ProblemDetail> response =
+                    handler.handleRateLimited(new RateLimitedException(Duration.ofMillis(2500)));
+
+            assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("2");
         }
     }
 

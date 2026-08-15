@@ -29,6 +29,7 @@ import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
+import org.maglez.eop.usecase.RateLimitedException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -710,6 +711,27 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         problem.setTitle("Internal server error");
         problem.setDetail("The request could not be completed.");
         return problem;
+    }
+
+    /**
+     * A rate limit was exceeded (e.g. too many session creations from one address).
+     *
+     * <p>Returned as a {@link ResponseEntity} rather than a bare problem detail so
+     * it can carry {@code Retry-After}. The title and detail are neutral: they name
+     * the rate-limit control without disclosing which specific operation was throttled
+     * (ADR-033).
+     *
+     * @param exception the refusal, carrying how long to wait
+     * @return a 429 problem detail with a {@code Retry-After} header
+     */
+    @ExceptionHandler(RateLimitedException.class)
+    public ResponseEntity<ProblemDetail> handleRateLimited(final RateLimitedException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.TOO_MANY_REQUESTS);
+        problem.setTitle("Too many requests");
+        problem.setDetail(exception.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfter().toSeconds()))
+                .body(problem);
     }
 
     /**

@@ -67,6 +67,16 @@ eop:
     # fixed address of the proxy it has to match. A malformed entry fails startup.
     trusted-proxies: []
 
+    # Maximum successful session creations one client address may make in a 60-second
+    # window before receiving HTTP 429 (EOP-19, ADR-033). The default of 5 is the
+    # production limit. Override to Integer.MAX_VALUE in
+    # src/test/resources/application.properties so the shared Spring context is not
+    # exhausted across integration tests (all of which call createSession).
+    # Body-size cap: Caddy enforces request_body { max_size 16KB } on /api/* before
+    # requests reach the application. There is no application-level body cap; direct
+    # access bypasses Caddy and is unprotected. See ADR-033 for the rationale.
+    session-creation-limit: 5
+
   # Feature flags (ADR-013). Every flag is off here so that forgetting to think
   # about one fails closed. A flag is bound at startup, so flipping it restarts the
   # application; in a container that means setting EOP_FEATURES_SESSION_LIFECYCLE
