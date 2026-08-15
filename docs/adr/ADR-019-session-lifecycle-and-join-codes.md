@@ -119,8 +119,9 @@ arrives, `checkAllowed` first attempts to evict windows whose entries have all a
 out of the sliding window; if the map is still full after eviction, it throws
 `TooManyJoinAttemptsException` immediately — before any database work. This is
 fail-closed: an untracked address is refused, not silently admitted. `recordFailure`
-silently drops the record for a saturated map (the refusal has already been issued by
-`checkAllowed`), so the map stays at or near the cap. This is a soft cap: concurrent
+silently drops the record for a saturated map — the key stays untracked while the
+table remains saturated, so this caller's subsequent attempts are refused by
+`checkAllowed`'s saturation check — so the map stays at or near the cap. This is a soft cap: concurrent
 new-key requests can transiently overshoot `MAX_TRACKED_KEYS` by the number of
 in-flight threads before any of them inserts; the overshoot is bounded by the Tomcat
 thread-pool size (~200) and is not a security concern.
@@ -145,7 +146,9 @@ sees the count already at the limit and is refused.
 `recordFailure`; the implementation throws after evaluating both windows. This is the
 authoritative atomic gate for concurrent callers that both passed `checkAllowed`.
 Saturation (table full, new key) is handled silently — the record is dropped and no
-exception is thrown, because `checkAllowed` already refused the caller. Window
+exception is thrown. The key stays untracked while the table remains saturated, so
+this caller's subsequent attempts are refused by `checkAllowed`'s saturation check;
+`recordFailure` need not duplicate that refusal. Window
 exhaustion (count at limit after the atomic prune-check-add) does throw, and this
 supersedes any domain exception the use case was about to raise: a throttled caller
 receives 429 regardless of whether the session was full, not joinable, or the code was
@@ -299,9 +302,9 @@ from the map; the next request for the same key creates a fresh deque and the co
 resets. This can cause one failure to be silently lost per race. The race is reachable
 only when the map is at `MAX_TRACKED_KEYS` and is bounded to a single undercount per
 event; the lost record is a single undercount for a caller that was admitted (eviction
-freed space, so `checkAllowed` passed), bounded to one per race, and does not allow any
-caller to exceed the window allowance. Accepted as a negligible residual risk under an
-adversarial saturation scenario.
+freed space, so `checkAllowed` passed). This permits at most one extra failed attempt
+per race and cannot be amplified beyond that. Accepted as a negligible residual risk
+under an adversarial saturation scenario.
 
 **Negative — the client cannot use `EventSource`.** More client code, and a
 `fetch`-based reader must handle partial frames arriving across chunk boundaries,

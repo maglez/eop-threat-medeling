@@ -64,9 +64,10 @@ import org.springframework.stereotype.Component;
  *
  * <p><strong>Lock discipline.</strong> The only method that mutates a window deque
  * is {@link #recordFailure} (via {@link #recordInWindow}), and it always does so
- * inside {@code synchronized(window)}. {@link #checkAllowed} and
- * {@link #refuseIfExhausted} are read-only: they inspect the deque without mutating
- * it. {@link #evictEmptyWindows} removes map entries whose deques are aged out;
+ * inside {@code synchronized(window)}. {@link #refuseIfExhausted} mutates nothing.
+ * {@link #checkAllowed} mutates no deque, though it may remove aged-out map entries
+ * via {@link #evictEmptyWindows} (a map mutation, not a deque mutation).
+ * {@link #evictEmptyWindows} removes map entries whose deques are aged out;
  * it never calls {@code pollFirst} or {@code addLast} on any deque. A bounded race
  * exists: a freshly-created empty deque can be evicted before its first
  * {@code addLast}, causing one failure to be silently lost under saturation. See
@@ -163,8 +164,10 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
      * the exception propagates.
      *
      * <p>If the tracked-key table is full and the key is new, the failure is
-     * silently dropped for that window. The caller was already refused by
-     * {@link #checkAllowed}, so the drop is safe.
+     * silently dropped for that window. The key stays untracked while the table
+     * remains saturated, so this caller's subsequent attempts are refused by
+     * {@link #checkAllowed}'s saturation check; {@link #recordFailure} need not
+     * duplicate that refusal.
      *
      * @throws TooManyJoinAttemptsException if either window is exhausted after the
      *     atomic prune-check-add; this is the authoritative gate for concurrent
@@ -238,8 +241,9 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
      * before either records.
      *
      * <p>If the table is at capacity and the key is new, the failure is silently
-     * dropped. The caller was already refused by {@link #checkAllowed}, so the drop
-     * is safe. Note that a freshly-created deque can be evicted by
+     * dropped. The key stays untracked while the table remains saturated, so this
+     * caller's subsequent attempts are refused by {@link #checkAllowed}'s saturation
+     * check. Note that a freshly-created deque can be evicted by
      * {@link #evictEmptyWindows} before the first {@code addLast}, causing one
      * failure to be silently lost; see {@link #evictEmptyWindows} for the bounded
      * race analysis.
@@ -261,7 +265,8 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
             evictEmptyWindows(windows, horizon);
             if (windows.size() >= MAX_TRACKED_KEYS && !windows.containsKey(key)) {
                 // Table still full after eviction — silently drop this window's record.
-                // checkAllowed already refused the caller; recording here is not required.
+                // The key stays untracked while the table remains saturated, so this
+                // caller's subsequent attempts are refused by checkAllowed's saturation check.
                 return;
             }
         }
@@ -345,11 +350,12 @@ public class InMemoryJoinAttemptLimiter implements JoinAttemptLimiter {
      * evaluates vacuously true for an empty deque. The thread then appends its failure
      * to an orphaned deque no longer reachable from the map; the next request for the
      * same key creates a fresh deque and the counter resets. This can cause one
-     * failure to be silently lost per race. The race is bounded: it requires the map
-     * to be at {@code MAX_TRACKED_KEYS} (the only condition under which this method
-     * is called), and the lost record is a single undercount for a caller that was
-     * admitted (eviction freed space, so {@link #checkAllowed} passed). The security
-     * impact is negligible.
+      * failure to be silently lost per race. The race is bounded: it requires the map
+      * to be at {@code MAX_TRACKED_KEYS} (the only condition under which this method
+      * is called), and the lost record is a single undercount for a caller that was
+      * admitted (eviction freed space, so {@link #checkAllowed} passed). This permits
+      * at most one extra failed attempt per race and cannot be amplified beyond that.
+      * The security impact is negligible.
      *
      * <p>Eviction is O(N) over the map and is called only under saturation pressure,
      * on the request thread. The cost is bounded by {@code MAX_TRACKED_KEYS}. Under

@@ -530,8 +530,9 @@ fail-closed: an untracked address is refused, not silently admitted. The cost is
 a legitimate user whose address has never been seen before receives 429 during extreme
 saturation; this is accepted because reaching 10 000 distinct keys requires a
 sustained botnet and the window self-heals within one minute as entries age out.
-`recordFailure` silently drops the record for a saturated map (the refusal has already
-been issued by `checkAllowed`), so the map stays at or near the cap. This is a soft
+`recordFailure` silently drops the record for a saturated map — the key stays
+untracked while the table remains saturated, so this caller's subsequent attempts
+are refused by `checkAllowed`'s saturation check — so the map stays at or near the cap. This is a soft
 cap: concurrent new-key requests can transiently overshoot `MAX_TRACKED_KEYS` by the
 number of in-flight threads; the overshoot is bounded by the Tomcat thread-pool size.
 

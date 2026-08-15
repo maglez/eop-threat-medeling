@@ -230,7 +230,7 @@ class InMemoryJoinAttemptLimiterTest {
         }
 
         @Test
-        @DisplayName("recordFailure silently drops at saturation — the caller was already refused by checkAllowed")
+        @DisplayName("recordFailure silently drops at saturation — the key stays untracked, so subsequent attempts are refused by checkAllowed")
         void shouldNotThrowFromRecordFailureAtSaturation() {
             // Fill the table to capacity.
             for (int key = 0; key < TRACKED_KEYS; key++) {
@@ -238,11 +238,12 @@ class InMemoryJoinAttemptLimiterTest {
             }
 
             // At saturation, recordInWindow silently drops the record rather than
-            // throwing — the caller was already refused by checkAllowed. The port
-            // declares @throws TooManyJoinAttemptsException on recordFailure, but that
-            // is for the window-exhaustion path (count at limit), not the saturation-drop
-            // path (table full, new key). These are distinct: saturation drops silently,
-            // exhaustion throws.
+            // throwing. The key stays untracked while the table remains saturated, so
+            // this caller's subsequent attempts are refused by checkAllowed's saturation
+            // check. The port declares @throws TooManyJoinAttemptsException on
+            // recordFailure, but that is for the window-exhaustion path (count at limit),
+            // not the saturation-drop path (table full, new key). These are distinct:
+            // saturation drops silently, exhaustion throws.
             assertThatCode(() -> limiter.recordFailure(ADDRESS, CODE))
                     .as("recordFailure must not throw at saturation — it silently drops the record")
                     .doesNotThrowAnyException();
