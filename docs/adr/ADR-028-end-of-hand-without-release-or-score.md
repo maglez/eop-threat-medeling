@@ -49,7 +49,7 @@ are not registered as beans.
 > `POST /{sessionId}/end`; and the application declares **fourteen** use cases, not thirteen.
 > The argument below remains unaffected.
 
-It is tempting
+It is tempting to finish the feature by releasing it in the same pull request that completes it.
 Against that stands a condition @security-auditor attached to its approval of Slice D:
 dealing, playing and resolving are the product's first competitively meaningful writes,
 they are now reachable over HTTP, and no use case logs anything. ADR-026 holds that gap

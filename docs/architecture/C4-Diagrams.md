@@ -243,7 +243,6 @@ flowchart LR
     SCORE --> GETSCORE
     SCORE -.->|"maps domain results through"| SDTO
     ESC --> ENDSESSION
-    ESC --> RESOLVE
     TC -.->|"throws domain exceptions"| GEH
     READHAND --> RESOLVE
     READHAND --> P7
@@ -375,16 +374,16 @@ job:
   transport (ADR-027) and what makes re-reading still the only way to learn *what* happened.
 - **All seven use cases authorise before they decide anything.** The edges from `DealHandsUseCase`,
   `PlayCardUseCase`, `ResolveTrickUseCase`, `ReadOwnHandUseCase` from Slice D,
-  `GetTrickStateUseCase` from Slice E and `EndSessionUseCase` from EOP-15 Slice C into
+  `GetTrickStateUseCase` from Slice E, `GetScoreUseCase` from EOP-15 Slice B and `EndSessionUseCase` from EOP-15 Slice C into
   `ResolvePlayerUseCase` are drawn as first-class
   edges rather than left implicit because the *ordering* is the slice's main security property, and
   a component view that omitted them would hide it: `DealHandsUseCase.java:133`,
-  `PlayCardUseCase.java:165`, `ResolveTrickUseCase.java:153`, `ReadOwnHandUseCase.java:64` and
-  `GetTrickStateUseCase.java:83` and `EndSessionUseCase.java:70` are
+  `PlayCardUseCase.java:165`, `ResolveTrickUseCase.java:154`, `ReadOwnHandUseCase.java:64`,
+  `GetTrickStateUseCase.java:83`, `GetScoreUseCase.java:72` and `EndSessionUseCase.java:70` are
   each the first port call of their `execute` method, before any read of a hand or a trick and before
   any state test
   ([ADR-024](../adr/ADR-024-trick-play-persistence-boundary.md) records why the adapter cannot do
-  this for them — no port method takes an acting player). Every one of those five numbers moved in
+  this for them — no port method takes an acting player). Every one of those six numbers moved in
   Slice E and four of them were wrong on this page until it was corrected; find them by the call, not
   by the line.
 - **The new read is where two aggregates meet, and that is the only place they may.**
