@@ -11,6 +11,7 @@ import org.maglez.eop.entity.JoinCodeUnavailableException;
 import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionNotFoundException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.usecase.SessionRepository;
@@ -129,6 +130,19 @@ public class SessionRepositoryAdapter implements SessionRepository {
         }
     }
 
+    @Override
+    @Transactional
+    public void recordCompleted(final UUID sessionId, final Instant occurredAt) {
+        Objects.requireNonNull(sessionId, SESSION_ID_REQUIRED);
+        Objects.requireNonNull(occurredAt, OCCURRED_AT_REQUIRED);
+
+        final var advanced = sessionRows.advanceStatus(
+                sessionId, SessionStatus.IN_PROGRESS, SessionStatus.COMPLETED, occurredAt.atOffset(ZoneOffset.UTC));
+        if (advanced == 0) {
+            throw noLongerInProgress(sessionId);
+        }
+    }
+
     /**
      * Rebuilds an aggregate from its row and its seats.
      *
@@ -154,6 +168,19 @@ public class SessionRepositoryAdapter implements SessionRepository {
     private RuntimeException noLongerInLobby(final UUID sessionId) {
         return sessionRows.findById(sessionId)
                 .map(row -> (RuntimeException) new SessionNotJoinableException(sessionId, row.getStatus()))
+                .orElseGet(() -> new SessionNotFoundException(sessionId));
+    }
+
+    /**
+     * Explains a conditional update that changed no rows when the required state
+     * was {@code IN_PROGRESS}.
+     *
+     * <p>The session is either gone or already past in-progress. The caller
+     * needs to tell them apart: gone is a 404, already-completed is a 409.
+     */
+    private RuntimeException noLongerInProgress(final UUID sessionId) {
+        return sessionRows.findById(sessionId)
+                .map(row -> (RuntimeException) new SessionNotInProgressException(sessionId, row.getStatus()))
                 .orElseGet(() -> new SessionNotFoundException(sessionId));
     }
 

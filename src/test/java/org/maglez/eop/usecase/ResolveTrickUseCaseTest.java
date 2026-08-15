@@ -27,6 +27,7 @@ import org.maglez.eop.entity.Rank;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.StrideCategory;
 import org.maglez.eop.entity.Trick;
+import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.TrickPlay;
@@ -195,10 +196,12 @@ class ResolveTrickUseCaseTest {
      * @return the use case under test
      */
     private ResolveTrickUseCase useCaseFor(final GameSession session) {
+        final var sessionRepository = new InMemorySessionRepository(order, session);
         return new ResolveTrickUseCase(
-                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session)),
+                new ResolvePlayerUseCase(sessionRepository),
                 handRepository,
                 trickRepository,
+                sessionRepository,
                 publisher,
                 FIXED);
     }
@@ -421,5 +424,100 @@ class ResolveTrickUseCaseTest {
 
         assertThat(handRepository.sessionsAsked()).isEmpty();
         assertThat(trickRepository.resolutions()).isEmpty();
+    }
+
+    /**
+     * When the last trick of the hand resolves, the session must automatically
+     * transition to COMPLETED. Three cards over three seats empties every hand,
+     * so this is the minimal fixture that reaches the auto-complete path.
+     *
+     * <p>The ordering assertion is the load-bearing one: a subscriber told that
+     * the game is completed re-reads the session to confirm the status, so the
+     * status must be persisted before the event is published. The full sequence
+     * is: recordResolution → TRICK_RESOLVED → recordCompleted → GAME_COMPLETED.
+     */
+    @Test
+    @DisplayName("transitions the session to COMPLETED when the last trick resolves")
+    void shouldCompleteTheSessionWhenTheLastTrickResolves() {
+        final GameSession session = seatedTable();
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final var sessionRepository = new InMemorySessionRepository(order, session);
+        final var useCase = new ResolveTrickUseCase(
+                new ResolvePlayerUseCase(sessionRepository),
+                handRepository,
+                trickRepository,
+                sessionRepository,
+                publisher,
+                FIXED);
+
+        useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        assertThat(underWay.remaining().allEmpty())
+                .as("all hands are empty, so the auto-complete path is taken")
+                .isTrue();
+        assertThat(sessionRepository.recordCompletedCalls())
+                .as("session must be recorded as completed exactly once")
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("stores COMPLETED before announcing GAME_COMPLETED")
+    void shouldStoreCompletedBeforeAnnouncingGameCompleted() {
+        final GameSession session = seatedTable();
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final var sessionRepository = new InMemorySessionRepository(order, session);
+        final var useCase = new ResolveTrickUseCase(
+                new ResolvePlayerUseCase(sessionRepository),
+                handRepository,
+                trickRepository,
+                sessionRepository,
+                publisher,
+                FIXED);
+
+        useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        assertThat(order).containsExactly(
+                "recordResolution", "publish", "recordCompleted", "publish");
+        assertThat(publisher.published()).hasSize(2);
+        assertThat(publisher.published().get(0).type()).isEqualTo(SessionEventType.TRICK_RESOLVED);
+        assertThat(publisher.published().get(1).type()).isEqualTo(SessionEventType.GAME_COMPLETED);
+    }
+
+    @Test
+    @DisplayName("does not complete the session when cards remain in other hands")
+    void shouldNotCompleteTheSessionWhenCardsRemain() {
+        final GameSession session = seatedTable();
+        // Six cards over three seats: each seat gets two, so after one trick every seat still holds one
+        final Hands dealt = dealTo(
+                session, Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX, Rank.SEVEN);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final var sessionRepository = new InMemorySessionRepository(order, session);
+        final var useCase = new ResolveTrickUseCase(
+                new ResolvePlayerUseCase(sessionRepository),
+                handRepository,
+                trickRepository,
+                sessionRepository,
+                publisher,
+                FIXED);
+
+        useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        assertThat(underWay.remaining().allEmpty())
+                .as("hands are not empty, so the auto-complete path is not taken")
+                .isFalse();
+        assertThat(sessionRepository.recordCompletedCalls())
+                .as("session must not be recorded as completed when cards remain")
+                .isZero();
+        assertThat(order).containsExactly("recordResolution", "publish");
+        assertThat(publisher.published()).singleElement()
+                .satisfies(event -> assertThat(event.type()).isEqualTo(SessionEventType.TRICK_RESOLVED));
     }
 }

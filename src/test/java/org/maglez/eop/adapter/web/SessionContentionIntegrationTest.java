@@ -198,5 +198,10 @@ class SessionContentionIntegrationTest {
         public void recordStarted(final UUID sessionId, final Instant occurredAt) {
             delegate.recordStarted(sessionId, occurredAt);
         }
+
+        @Override
+        public void recordCompleted(final UUID sessionId, final Instant occurredAt) {
+            delegate.recordCompleted(sessionId, occurredAt);
+        }
     }
 }

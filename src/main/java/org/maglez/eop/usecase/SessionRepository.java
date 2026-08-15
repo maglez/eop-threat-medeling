@@ -10,6 +10,8 @@ import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 
+import org.maglez.eop.entity.SessionNotInProgressException;
+
 /**
  * Port through which the application reads and writes game sessions.
  *
@@ -84,4 +86,19 @@ public interface SessionRepository {
      *     lobby, which is how two facilitators clicking at once is resolved
      */
     void recordStarted(UUID sessionId, Instant occurredAt);
+
+    /**
+     * Moves a session from in-progress to completed.
+     *
+     * <p>Called both by the automatic path (last trick resolved) and by the
+     * facilitator's explicit end-session action. The compare-and-swap on
+     * {@code IN_PROGRESS} means a concurrent call from either path is safe:
+     * exactly one will update a row and the other will find zero rows changed.
+     *
+     * @param sessionId  the session to complete
+     * @param occurredAt the instant recorded as the session's last update
+     * @throws SessionNotInProgressException if the session was not in progress,
+     *     which is how a double-complete race is resolved
+     */
+    void recordCompleted(UUID sessionId, Instant occurredAt);
 }

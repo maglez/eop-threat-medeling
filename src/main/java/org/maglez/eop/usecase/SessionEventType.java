@@ -10,13 +10,14 @@ package org.maglez.eop.usecase;
  *
  * <p>Pure domain-adjacent type: no Spring, no Jakarta, no persistence annotations.
  *
- * <p>Every constant here is published. {@link #HAND_DEALT}, {@link #CARD_PLAYED}
- * and {@link #TRICK_RESOLVED} were minted before anything emitted them, because a
- * wire name belongs to the contract and a client matching on a name must keep
- * working unchanged once the server starts sending it; EOP-14 Slice E wired the
- * publisher into the three trick-play use cases, so they are emitted now. That
- * asymmetry is deliberate and survives: a later release may begin emitting a name
- * declared here, but it may never rename one.
+ * <p>Every constant here is published. {@link #HAND_DEALT}, {@link #CARD_PLAYED},
+ * {@link #TRICK_RESOLVED} and {@link #GAME_COMPLETED} were minted before anything
+ * emitted them, because a wire name belongs to the contract and a client matching
+ * on a name must keep working unchanged once the server starts sending it; EOP-14
+ * Slice E wired the publisher into the three trick-play use cases, so they are
+ * emitted now, and EOP-15 Slice C wires {@link #GAME_COMPLETED}. That asymmetry
+ * is deliberate and survives: a later release may begin emitting a name declared
+ * here, but it may never rename one.
  *
  * <p>They reach a subscriber only where {@code eop.features.trick-play} is on,
  * which is a fact about a deployment rather than about this type.
@@ -36,7 +37,15 @@ public enum SessionEventType {
     CARD_PLAYED("card-played"),
 
     /** A trick was resolved and the seat that took it is known. */
-    TRICK_RESOLVED("trick-resolved");
+    TRICK_RESOLVED("trick-resolved"),
+
+    /**
+     * Every trick has been played and the score is final, or the facilitator
+     * ended the session early. Either way the session is now
+     * {@link org.maglez.eop.entity.SessionStatus#COMPLETED} and no further
+     * play is possible.
+     */
+    GAME_COMPLETED("game-completed");
 
     private final String wireName;
 
