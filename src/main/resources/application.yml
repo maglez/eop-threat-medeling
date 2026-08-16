@@ -109,6 +109,11 @@ eop:
     # Note: this also activates ExpiredSessionSweepScheduler (hourly, 5-min initial
     # delay). eop.features.trick-play remains false; the lobby-only surface shipped.
     session-lifecycle: true
+    
+    # Game lobby UI: create or join a session from the browser (EOP-11).
+    # While this is false the lobby UI buttons remain disabled.
+    # This flag is implemented as a Vite build-time env var VITE_LOBBY_UI_ENABLED.
+    lobby-ui: false
 
     # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this is
     # false the deal-hands, read-own-hand, play-card, trick-state, resolve-trick and

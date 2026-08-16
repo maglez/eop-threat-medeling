@@ -88,3 +88,107 @@ export async function fetchCards(size = 20): Promise<PagedResponse<Card>> {
 
   return (await response.json()) as PagedResponse<Card>;
 }
+
+// Session API types
+export interface PlayerDto {
+  readonly playerId: string;
+  readonly displayName: string;
+  readonly seatOrder: number;
+  readonly role: 'FACILITATOR' | 'PLAYER';
+  readonly connectionStatus: string;
+}
+
+export interface SessionStateDto {
+  readonly sessionId: string;
+  readonly joinCode: string;
+  readonly status: 'LOBBY' | 'IN_PROGRESS' | 'ENDED';
+  readonly players: readonly PlayerDto[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface SessionAdmissionDto {
+  readonly playerToken: string;
+  readonly playerId: string;
+  readonly session: SessionStateDto;
+}
+
+// Header name constant (matches backend)
+export const PLAYER_TOKEN_HEADER = 'X-EoP-Player-Token';
+
+/**
+ * Create a new session
+ */
+export async function createSession(displayName: string): Promise<SessionAdmissionDto> {
+  const response = await fetch('/api/v1/sessions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({ displayName }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as SessionAdmissionDto;
+}
+
+/**
+ * Join an existing session
+ */
+export async function joinSession(joinCode: string, displayName: string): Promise<SessionAdmissionDto> {
+  const response = await fetch(`/api/v1/sessions/${joinCode}/players`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({ displayName }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as SessionAdmissionDto;
+}
+
+/**
+ * Get session state
+ */
+export async function getSession(sessionId: string, playerToken: string): Promise<SessionStateDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}`, {
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as SessionStateDto;
+}
+
+/**
+ * Start the game (facilitator only)
+ */
+export async function startGame(sessionId: string, playerToken: string): Promise<SessionStateDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/start`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as SessionStateDto;
+}
