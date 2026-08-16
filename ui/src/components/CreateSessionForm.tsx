@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { createSession } from '../api';
+import { createSession, type SessionAdmissionDto } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 
 interface CreateSessionFormProps {
-  readonly onSubmit: (admission: import('../api').SessionAdmissionDto) => void;
+  readonly onSubmit: (admission: SessionAdmissionDto) => void;
   readonly onError: (message: string) => void;
 }
 
@@ -63,7 +63,7 @@ export function CreateSessionForm({ onSubmit, onError }: CreateSessionFormProps)
         />
       )}
       
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={(e) => { void handleSubmit(e); }} noValidate>
         <div className={`govuk-form-group ${hasDisplayNameError ? 'govuk-form-group--error' : ''}`}>
           <h1 className="govuk-label-wrapper">
             <label className="govuk-label govuk-label--l" htmlFor="display-name">
@@ -71,12 +71,12 @@ export function CreateSessionForm({ onSubmit, onError }: CreateSessionFormProps)
             </label>
           </h1>
           
-          <p className="govuk-hint">
+          <p id="display-name-hint" className="govuk-hint">
             Enter your name to create a new game session
           </p>
           
           {hasDisplayNameError && (
-            <p className="govuk-error-message">
+            <p id="display-name-error" className="govuk-error-message">
               <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.includes('name'))}
             </p>
           )}
@@ -84,11 +84,13 @@ export function CreateSessionForm({ onSubmit, onError }: CreateSessionFormProps)
           <input
             type="text"
             id="display-name"
+            name="display-name"
             className={`govuk-input ${hasDisplayNameError ? 'govuk-input--error' : ''}`}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={isSubmitting}
             autoComplete="name"
+            aria-describedby={`display-name-hint${hasDisplayNameError ? ' display-name-error' : ''}`}
           />
         </div>
         

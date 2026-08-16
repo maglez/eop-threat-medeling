@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getSession, startGame, type SessionStateDto } from '../api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getSession, startGame, ApiError, PLAYER_TOKEN_HEADER, type SessionStateDto } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 import type { PlayerDto } from '../api';
 
@@ -20,10 +20,11 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentPlayer = session?.players.find(p => p.playerId === playerId);
   const isFacilitator = currentPlayer?.role === 'FACILITATOR';
-  const canStartGame = isFacilitator && session?.players.length !== undefined && session.players.length >= 2;
+  const canStartGame = isFacilitator && session !== null && session.players.length >= 2;
 
   const refreshSession = useCallback(async () => {
     try {
@@ -34,8 +35,9 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
       const message = err instanceof Error ? err.message : 'Failed to load session';
       setError(message);
       
-      // If it's a 403 or 404, the session is no longer accessible
-      if (err instanceof Error && (message.includes('403') || message.includes('404'))) {
+      // If it's a 403 or 404, the session is no longer accessible — branch on
+      // the numeric status carried by ApiError, not on the human-readable message.
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
         onSessionEnd();
       }
     }
@@ -57,10 +59,23 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
       fetch(`/api/v1/sessions/${sessionId}/events`, {
         headers: { 
           'Accept': 'text/event-stream',
-          'X-EoP-Player-Token': playerToken,
+          [PLAYER_TOKEN_HEADER]: playerToken,
         },
         signal: eventSource.signal,
       }).then(async (res) => {
+        // A non-2xx response (e.g. 403 expired token, 404 session gone) returns a
+        // JSON problem-detail body, not an SSE stream. Surface it as an error rather
+        // than silently discarding it.
+        if (!res.ok) {
+          if (!abandoned) {
+            const message = `SSE endpoint returned ${res.status}`;
+            setError(message);
+            if (res.status === 403 || res.status === 404) {
+              onSessionEnd();
+            }
+          }
+          return;
+        }
         if (!res.body) return;
         
         const reader = res.body.getReader();
@@ -71,12 +86,10 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
             const { done, value } = await reader.read();
             if (done) break;
             
-            const text = decoder.decode(value);
+            const text = decoder.decode(value, { stream: true });
             if (text.includes('data:')) {
               // Session changed - re-fetch state
-              if (!abandoned) {
-                await refreshSession();
-              }
+              await refreshSession();
             }
           }
         } catch (err) {
@@ -84,6 +97,8 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
           if (!abandoned) {
             console.warn('SSE stream error:', err);
           }
+        } finally {
+          reader.releaseLock();
         }
       }).catch((err) => {
         // Connection failed - this is expected on unmount
@@ -105,8 +120,12 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
       if (eventSource) {
         eventSource.abort();
       }
+      // Clear any pending clipboard-feedback timer
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
     };
-  }, [sessionId, playerToken, refreshSession]);
+  }, [sessionId, playerToken, refreshSession, onSessionEnd]);
 
   const handleStartGame = async () => {
     if (!session) return;
@@ -130,7 +149,14 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
     try {
       await navigator.clipboard.writeText(session.joinCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      // Clear any existing timer before setting a new one
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
     } catch (err) {
       console.error('Failed to copy join code:', err);
     }
@@ -140,7 +166,15 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
     return (
       <div className="govuk-width-container">
         <main className="govuk-main-wrapper" id="main-content">
-          <h1 className="govuk-heading-xl">Loading session...</h1>
+          {error ? (
+            <ErrorSummary
+              title="Could not load session"
+              errors={[error]}
+              onDismiss={() => setError(null)}
+            />
+          ) : (
+            <h1 className="govuk-heading-xl">Loading session...</h1>
+          )}
         </main>
       </div>
     );
@@ -171,7 +205,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
               <button 
                 type="button"
                 className="govuk-button govuk-button--secondary"
-                onClick={copyJoinCode}
+                onClick={() => { void copyJoinCode(); }}
               >
                 {copied ? 'Copied!' : 'Copy code'}
               </button>
@@ -210,7 +244,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
                 className="govuk-button"
                 data-module="govuk-button"
                 disabled={!canStartGame || isStarting}
-                onClick={handleStartGame}
+                onClick={() => { void handleStartGame(); }}
               >
                 {isStarting ? 'Starting game...' : 'Start game'}
               </button>

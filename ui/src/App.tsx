@@ -15,6 +15,17 @@ interface StoredSession {
   readonly sessionId: string;
 }
 
+/** Runtime type guard — rejects any stored object missing required string fields. */
+function isStoredSession(value: unknown): value is StoredSession {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v['playerToken'] === 'string' &&
+    typeof v['playerId'] === 'string' &&
+    typeof v['sessionId'] === 'string'
+  );
+}
+
 // View types
 type View =
   | { readonly screen: 'home' }
@@ -27,17 +38,26 @@ type View =
  */
 export default function App(): React.JSX.Element {
   const [view, setView] = useState<View>(() => {
+    // The feature flag must be checked here too — not only on the home screen
+    // buttons — so that a stored session cannot bypass the flag entirely.
+    const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
+    if (!isLobbyUiEnabled) return { screen: 'home' };
+
     // Check if we have stored session credentials
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        const session: StoredSession = JSON.parse(stored);
-        return {
-          screen: 'lobby',
-          sessionId: session.sessionId,
-          playerId: session.playerId,
-          playerToken: stored.playerToken
-        };
+        const parsed: unknown = JSON.parse(stored);
+        if (isStoredSession(parsed)) {
+          return {
+            screen: 'lobby',
+            sessionId: parsed.sessionId,
+            playerId: parsed.playerId,
+            playerToken: parsed.playerToken,
+          };
+        }
+        // Stored object is missing required fields — discard it
+        sessionStorage.removeItem(STORAGE_KEY);
       } catch {
         // Invalid stored data, clear it
         sessionStorage.removeItem(STORAGE_KEY);

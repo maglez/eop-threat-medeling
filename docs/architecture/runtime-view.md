@@ -164,12 +164,22 @@ same 403, so the endpoint cannot be used to confirm which tokens are real.
 
 ### The weakness in this path today
 
-The token has to come from somewhere, and **on the client it currently comes from
-nowhere.** `ui/` holds only a health-check shell; `sessionStorage` appears nowhere in
-it. So the sequence above is fully implemented server-side and cannot yet be executed by
-the real front end — it is exercised by tests and by `curl -H`. EOP-11 delivers the
-custody half. Until then, "a player refreshes and resumes" is a property of the server,
-not an observable behaviour of the product (ADR-015).
+**The custody half now exists, and the recovery half does not.** EOP-11 delivered the
+client: the token is written to `sessionStorage` under `eop_session` on admission, and
+`App.tsx` rehydrates straight into the lobby on boot, so "a player refreshes and resumes"
+is finally an observable behaviour of the product rather than a property of the server
+exercised only by tests and `curl -H` (ADR-015).
+
+What is still missing is the *failure* arm of this sequence. The 403 described above —
+the one an expired session now produces routinely under ADR-036's 24-hour TTL — is
+detected client-side by testing the error message for the strings `403` or `404`
+(`ui/src/components/LobbyScreen.tsx`). `GlobalExceptionHandler` sets a human-readable
+`detail` on every one of those responses ("The session has expired. Please start a new
+session."), and the client surfaces that `detail`, which contains no digits. So the
+branch never fires: the stale `eop_session` key is never cleared and the tab sits on a
+permanent error instead of returning to the home screen. The re-read half of "a re-read,
+never a replay" works; the give-up half is unreachable. `ApiError` already carries the
+numeric `status`, so the correction is to branch on that rather than on prose.
 
 ---
 

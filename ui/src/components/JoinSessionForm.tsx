@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { joinSession } from '../api';
+import { joinSession, type SessionAdmissionDto } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 
 interface JoinSessionFormProps {
-  readonly onSubmit: (admission: import('../api').SessionAdmissionDto) => void;
+  readonly onSubmit: (admission: SessionAdmissionDto) => void;
   readonly onError: (message: string) => void;
 }
 
@@ -69,7 +69,7 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
         />
       )}
       
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={(e) => { void handleSubmit(e); }} noValidate>
         <div className={`govuk-form-group ${hasJoinCodeError ? 'govuk-form-group--error' : ''}`}>
           <h1 className="govuk-label-wrapper">
             <label className="govuk-label govuk-label--l" htmlFor="join-code">
@@ -77,12 +77,12 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
             </label>
           </h1>
           
-          <p className="govuk-hint">
+          <p id="join-code-hint" className="govuk-hint">
             Enter the join code provided by the facilitator
           </p>
           
           {hasJoinCodeError && (
-            <p className="govuk-error-message">
+            <p id="join-code-error" className="govuk-error-message">
               <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.includes('join code'))}
             </p>
           )}
@@ -90,11 +90,13 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
           <input
             type="text"
             id="join-code"
+            name="join-code"
             className={`govuk-input govuk-input--width-10 ${hasJoinCodeError ? 'govuk-input--error' : ''}`}
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             disabled={isSubmitting}
             autoComplete="off"
+            aria-describedby={`join-code-hint${hasJoinCodeError ? ' join-code-error' : ''}`}
           />
         </div>
         
@@ -103,12 +105,12 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
             Your name
           </label>
           
-          <p className="govuk-hint">
+          <p id="display-name-hint" className="govuk-hint">
             Enter your name as you'd like it to appear in the game
           </p>
           
           {hasDisplayNameError && (
-            <p className="govuk-error-message">
+            <p id="display-name-error" className="govuk-error-message">
               <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.includes('name'))}
             </p>
           )}
@@ -116,11 +118,13 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
           <input
             type="text"
             id="display-name"
+            name="display-name"
             className={`govuk-input ${hasDisplayNameError ? 'govuk-input--error' : ''}`}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={isSubmitting}
             autoComplete="name"
+            aria-describedby={`display-name-hint${hasDisplayNameError ? ' display-name-error' : ''}`}
           />
         </div>
         
