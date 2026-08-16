@@ -74,6 +74,7 @@ interface CardFaceProps {
 function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
   const suitColour = SUIT_COLOURS[card.suit] ?? '#0b0c0c';
   const suitLabel = SUIT_LABELS[card.suit] ?? card.suit[0];
+  const [focused, setFocused] = React.useState(false);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
@@ -81,6 +82,10 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
       onSelect();
     }
   };
+
+  // GOV.UK focus pattern: yellow outline + dark inset companion for SC 1.4.11 Non-text Contrast (AA).
+  // The inset is applied via inline style so it is not overridden by the CSS class rule.
+  const focusBoxShadow = '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c';
 
   return (
     <div
@@ -93,6 +98,8 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
       onClick={disabled ? undefined : onSelect}
       onKeyDown={handleKeyDown}
       onPointerDown={disabled ? undefined : onPointerDown}
+      onFocus={() => { setFocused(true); }}
+      onBlur={() => { setFocused(false); }}
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
@@ -105,7 +112,7 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         backgroundColor: '#ffffff',
         cursor: disabled ? 'not-allowed' : dragging ? 'grabbing' : 'grab',
         opacity: disabled ? 0.45 : 1,
-        boxShadow: selected ? '0 0 0 3px #ffdd00' : dragging ? '4px 4px 12px rgba(0,0,0,0.3)' : '1px 1px 4px rgba(0,0,0,0.15)',
+        boxShadow: focused ? focusBoxShadow : selected ? '0 0 0 3px #ffdd00' : dragging ? '4px 4px 12px rgba(0,0,0,0.3)' : '1px 1px 4px rgba(0,0,0,0.15)',
         userSelect: 'none',
         touchAction: 'none',
         transition: 'box-shadow 0.1s, opacity 0.1s',

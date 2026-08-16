@@ -461,4 +461,26 @@ describe('GameScreen', () => {
       expect(card).toHaveClass('eop-card');
     });
   });
+
+  it('applies GOV.UK focus box-shadow (yellow + dark inset) when card receives focus', async () => {
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    render(<GameScreen {...defaultProps} />);
+
+    const card = await screen.findByRole('button', { name: /A of spoofing/i });
+
+    // Before focus: no GOV.UK focus shadow
+    expect(card).not.toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });
+
+    // Trigger focus
+    fireEvent.focus(card);
+    expect(card).toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });
+
+    // Trigger blur — focus shadow removed
+    fireEvent.blur(card);
+    expect(card).not.toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });
+  });
 });
