@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { CreateSessionForm } from './components/CreateSessionForm';
 import { JoinSessionForm } from './components/JoinSessionForm';
 import { LobbyScreen } from './components/LobbyScreen';
+import { GameScreen } from './components/GameScreen';
 import { CardCatalogue } from './components/CardCatalogue';
-import type { SessionAdmissionDto } from './api';
+import type { SessionAdmissionDto, SessionStateDto } from './api';
 
 // Storage key for session credentials
 const STORAGE_KEY = 'eop_session';
@@ -31,16 +32,22 @@ type View =
   | { readonly screen: 'home' }
   | { readonly screen: 'create' }
   | { readonly screen: 'join' }
-  | { readonly screen: 'lobby'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string };
+  | { readonly screen: 'lobby'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string }
+  | { readonly screen: 'game'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string; readonly session: SessionStateDto };
 
 /**
  * The application shell with view switching logic.
  */
 export default function App(): React.JSX.Element {
+  // Feature flags — read at component scope so they are available throughout the
+  // component, including in renderView. They must also be checked in the useState
+  // initializer below so that a stored session cannot bypass the flag entirely.
+  const isGameScreenEnabled = import.meta.env.VITE_GAME_SCREEN_ENABLED === 'true';
+
   const [view, setView] = useState<View>(() => {
-    // The feature flag must be checked here too — not only on the home screen
-    // buttons — so that a stored session cannot bypass the flag entirely.
-    const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
+  // The feature flag must be checked here too — not only on the home screen
+  // buttons — so that a stored session cannot bypass the flag entirely.
+  const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
     if (!isLobbyUiEnabled) return { screen: 'home' };
 
     // Check if we have stored session credentials
@@ -53,7 +60,7 @@ export default function App(): React.JSX.Element {
             screen: 'lobby',
             sessionId: parsed.sessionId,
             playerId: parsed.playerId,
-            playerToken: parsed.playerToken,
+            playerToken: parsed.playerToken
           };
         }
         // Stored object is missing required fields — discard it
@@ -140,6 +147,28 @@ export default function App(): React.JSX.Element {
             sessionId={view.sessionId}
             playerId={view.playerId}
             playerToken={view.playerToken}
+            onSessionEnd={handleSessionEnd}
+            onGameStarted={(session) => {
+              if (isGameScreenEnabled) {
+                setView({
+                  screen: 'game',
+                  sessionId: view.sessionId,
+                  playerId: view.playerId,
+                  playerToken: view.playerToken,
+                  session
+                });
+              }
+            }}
+          />
+        );
+      
+      case 'game':
+        return (
+          <GameScreen
+            sessionId={view.sessionId}
+            playerId={view.playerId}
+            playerToken={view.playerToken}
+            session={view.session}
             onSessionEnd={handleSessionEnd}
           />
         );

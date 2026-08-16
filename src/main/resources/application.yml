@@ -140,6 +140,11 @@ eop:
     # 56c31b1, so the same caveat applies here: only the literal true turns it on.
     trick-play: false
 
+    # Game screen UI: virtual table, hand display, drag-and-drop card play (EOP-60).
+    # While this is false the lobby shows "The game has started" warning.
+    # This flag is implemented as a Vite build-time env var VITE_GAME_SCREEN_ENABLED.
+    game-screen: false
+
   # Expired-session sweep configuration (ADR-036). These are infrastructure
   # toggles, not feature flags — they belong under eop.* directly rather than
   # eop.features.*. The sweep bean is only active when eop.features.session-lifecycle

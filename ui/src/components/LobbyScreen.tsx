@@ -8,6 +8,7 @@ interface LobbyScreenProps {
   readonly playerId: string;
   readonly playerToken: string;
   readonly onSessionEnd: () => void;
+  readonly onGameStarted?: (session: SessionStateDto) => void;
 }
 
 /**
@@ -15,7 +16,7 @@ interface LobbyScreenProps {
  * 
  * Displays the join code, player list, and start game button for facilitators.
  */
-export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: LobbyScreenProps): React.JSX.Element {
+export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, onGameStarted }: LobbyScreenProps): React.JSX.Element {
   const [session, setSession] = useState<SessionStateDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -31,6 +32,11 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
       const sessionData = await getSession(sessionId, playerToken);
       setSession(sessionData);
       setError(null);
+      
+      // Check if game has started and notify parent if needed
+      if (sessionData.status === 'IN_PROGRESS' && onGameStarted) {
+        onGameStarted(sessionData);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load session';
       setError(message);
@@ -41,7 +47,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
         onSessionEnd();
       }
     }
-  }, [sessionId, playerToken, onSessionEnd]);
+  }, [sessionId, playerToken, onSessionEnd, onGameStarted]);
 
   // Initial load and setup SSE stream
   useEffect(() => {
