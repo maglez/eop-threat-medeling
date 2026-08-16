@@ -1,6 +1,7 @@
 package org.maglez.eop.usecase;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.maglez.eop.entity.GameSession;
@@ -101,4 +102,35 @@ public interface SessionRepository {
      *     which is how a double-complete race is resolved
      */
     void recordCompleted(UUID sessionId, Instant occurredAt);
+
+    /**
+     * Returns the identifiers of all sessions whose {@code expires_at} is before
+     * the given instant and whose status is not yet {@code ABANDONED}.
+     *
+     * <p>The sweep calls this to discover which sessions to transition and delete.
+     * Returning identifiers rather than full aggregates keeps the sweep lightweight:
+     * it does not need to reconstitute players or validate domain rules.
+     *
+     * @param before the cutoff instant — sessions expiring before this are returned
+     * @return a list of session identifiers, possibly empty
+     */
+    List<UUID> findExpiredSessionIds(Instant before);
+
+    /**
+     * Transitions a session to {@link org.maglez.eop.entity.SessionStatus#ABANDONED}
+     * and then deletes it together with its players.
+     *
+     * <p>The update is unconditional: it sets the status to {@code ABANDONED}
+     * regardless of the session's current status. The delete runs immediately
+     * after in the same transaction, so the {@code ABANDONED} state is never
+     * observable by any reader — it exists only to satisfy the version increment
+     * and to make the intent of the operation explicit in the audit log.
+     *
+     * <p>If the session does not exist (e.g. it was already deleted by a concurrent
+     * sweep call), the update is a no-op and the delete is also a no-op; no
+     * exception is thrown.
+     *
+     * @param sessionId the session to abandon and delete
+     */
+    void abandonAndDelete(UUID sessionId);
 }

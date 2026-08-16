@@ -9,7 +9,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-
 /**
  * Covers the identifier accessors on the exception types that carry one.
  *
@@ -57,7 +56,11 @@ class SessionBearingExceptionTest {
                 entry(
                         "NoTrickToResolveException",
                         NoTrickToResolveException::new,
-                        NoTrickToResolveException::sessionId));
+                        NoTrickToResolveException::sessionId),
+                entry(
+                        "SessionExpiredException",
+                        SessionExpiredException::new,
+                        SessionExpiredException::sessionId));
     }
 
     private static <E extends RuntimeException> Object[] entry(
@@ -104,6 +107,8 @@ class SessionBearingExceptionTest {
         assertThat(new HandNotDealtException(SESSION_ID).getMessage())
                 .contains(SESSION_ID.toString());
         assertThat(new NoTrickToResolveException(SESSION_ID).getMessage())
+                .contains(SESSION_ID.toString());
+        assertThat(new SessionExpiredException(SESSION_ID).getMessage())
                 .contains(SESSION_ID.toString());
     }
 

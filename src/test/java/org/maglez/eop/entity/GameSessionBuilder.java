@@ -29,6 +29,7 @@ public final class GameSessionBuilder {
     private List<Player> players = List.of(aPlayer().build());
     private Instant createdAt = Instant.parse("2026-01-01T10:00:00Z");
     private Instant updatedAt = Instant.parse("2026-01-01T10:00:00Z");
+    private Instant expiresAt = Instant.parse("2099-12-31T23:59:59Z");
 
     private GameSessionBuilder() {
     }
@@ -116,9 +117,18 @@ public final class GameSessionBuilder {
     }
 
     /**
+     * @param value the expiry instant to use
+     * @return this builder
+     */
+    public GameSessionBuilder withExpiresAt(final Instant value) {
+        this.expiresAt = value;
+        return this;
+    }
+
+    /**
      * @return the session described by this builder
      */
     public GameSession build() {
-        return GameSession.reconstitute(sessionId, joinCode, status, players, createdAt, updatedAt);
+        return GameSession.reconstitute(sessionId, joinCode, status, players, createdAt, updatedAt, expiresAt);
     }
 }

@@ -18,11 +18,12 @@ sits. No Level 1, and no Level 3 beyond the one component detail.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-14 Slice E** (end of hand, the
-state-of-play read and the three broadcasts), on top of Slice D's trick-play HTTP routes, Slice
-C2's use-case layer, Slice C1's persistence layer (Liquibase changeset
-`005`), the trick-play schema from Slice B (changeset `004`), the client-address resolution
-introduced by EOP-26 (ADR-021) and the session lifecycle from EOP-10. Slice B was schema-only.
+Everything below reflects the code as it stands after **EOP-22** (session expiry, the sweep
+scheduler and the `expires_at` column — changeset `006`), on top of EOP-14 Slice E (end of hand,
+the state-of-play read and the three broadcasts), Slice D's trick-play HTTP routes, Slice C2's
+use-case layer, Slice C1's persistence layer (Liquibase changeset `005`), the trick-play schema
+from Slice B (changeset `004`), the client-address resolution introduced by EOP-26 (ADR-021) and
+the session lifecycle from EOP-10. Slice B was schema-only.
 Slice C1 added the persistence components — one adapter, two ports, five JPA entities and five
 Spring Data interfaces — but no caller. Slice C2 wrote the caller: three use cases
 (`DealHandsUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`), one new port — `DeckShuffler`, the
@@ -102,6 +103,7 @@ flowchart TD
             UC["usecase<br/>ports and use cases — no framework imports"]
             DOM["entity<br/>immutable domain, zero framework imports"]
             PERS["adapter/persistence<br/>JPA entities and repositories"]
+            SCHED["adapter/scheduling<br/>ExpiredSessionSweepScheduler (EOP-22)<br/>bean absent when eop.features.session-lifecycle is off"]
         end
 
         subgraph dbC["Container: db<br/>[PostgreSQL 17-alpine]"]
@@ -120,6 +122,7 @@ flowchart TD
     WEB --> UC
     SEC --> UC
     PERS --> UC
+    SCHED --> UC
     UC --> DOM
     WEB -.->|"never bypasses the use case"| DOM
     PERS -->|"JDBC, inside the Compose network only"| PG
@@ -197,6 +200,7 @@ flowchart LR
         GETSTATE["GetTrickStateUseCase<br/>EOP-14 Slice E — the twelfth use case<br/>joins two aggregates: the hands and the current trick<br/>returns TrickState — turn, completeness, next leader, hand complete<br/>names no card any seat is holding<br/>bean exists only while eop.features.trick-play is true"]
         GETSCORE["GetScoreUseCase<br/>EOP-15 Slice B — the thirteenth use case<br/>reaches two collaborators only: resolving the caller already yields the session and its players<br/>derives the score from the whole trick history — nothing is accumulated (ADR-030)<br/>no HandRepository and no status check: before the deal, everybody on nothing is a true answer<br/>bean exists only while eop.features.trick-play is true"]
         ENDSESSION["EndSessionUseCase<br/>EOP-15 Slice C — the fourteenth use case<br/>facilitator-only: authz in the domain entity before the status check<br/>auto-complete also fires from ResolveTrickUseCase when nextLeaderSeat is empty<br/>bean exists only while eop.features.trick-play is true"]
+        SWEEP["SweepExpiredSessionsUseCase<br/>EOP-22 — the fifteenth use case<br/>finds sessions where expires_at &lt; now and deletes them<br/>bean exists only while eop.features.session-lifecycle is true"]
 
         P1(["SessionRepository"])
         P2(["SessionEventPublisher<br/>reached by six use cases since EOP-15 Slice C<br/>every trick-play write publishes after it returns"])
@@ -218,8 +222,12 @@ flowchart LR
         UUIDG["HibernateUuidV7IdentifierGenerator"]
         CRA["CardRepositoryAdapter<br/>EOP-13 — one aggregate, one adapter<br/>findWholeDeck() reuses its existing DECK_ORDER sort"]
         CJR["CardJpaRepository<br/>package-private"]
-        TPRA["TrickPlayRepositoryAdapter<br/>EOP-14 Slice C1<br/>one class implementing both trick-play ports<br/>authorises nobody — no port takes an acting player"]
+        TPRA["TrickPlayRepositoryAdapter<br/>EOP-14 Slice C1<br/>one class implementing both trick-play ports<br/>authorises nobody — no port method takes an acting player"]
         TPJR["trick-play JPA repositories ×5<br/>EOP-14 Slice C1<br/>hand, hand_card, trick, trick_play, trick_play_component<br/>all package-private"]
+    end
+
+    subgraph sched["adapter/scheduling"]
+        SCHEDCOMP["ExpiredSessionSweepScheduler<br/>EOP-22<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.session-lifecycle is off<br/>@Scheduled — fires every hour (configurable via eop.sweep.interval-ms)<br/>delegates entirely to SweepExpiredSessionsUseCase"]
     end
 
     DB[("PostgreSQL<br/>4 unique constraints and 2 range CHECKs on game_session and player<br/>version BIGINT DEFAULT 0")]
@@ -257,6 +265,9 @@ flowchart LR
     ENDSESSION -->|"first statement — authorise, then decide"| RESOLVE
     ENDSESSION --> P1
     ENDSESSION -->|"EOP-15 Slice C — GAME_COMPLETED, after the write"| P2
+
+    SCHEDCOMP --> SWEEP
+    SWEEP --> P1
 
     CREATE --> P1
     CREATE --> P3

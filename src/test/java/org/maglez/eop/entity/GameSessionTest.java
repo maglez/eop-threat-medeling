@@ -40,6 +40,7 @@ class GameSessionTest {
             assertThat(session.players()).containsExactly(facilitator);
             assertThat(session.createdAt()).isEqualTo(NOW);
             assertThat(session.updatedAt()).isEqualTo(NOW);
+            assertThat(session.expiresAt()).isEqualTo(NOW.plus(GameSession.SESSION_TTL));
         }
 
         @Test
@@ -91,7 +92,7 @@ class GameSessionTest {
             final List<Player> shuffled = List.of(aParticipant(2).build(), aPlayer().build(), aParticipant(1).build());
 
             final GameSession session = GameSession.reconstitute(
-                    SESSION_ID, CODE, SessionStatus.LOBBY, shuffled, NOW, LATER);
+                    SESSION_ID, CODE, SessionStatus.LOBBY, shuffled, NOW, LATER, LATER.plusSeconds(3600));
 
             assertThat(session.players()).extracting(Player::seatOrder).containsExactly(0, 1, 2);
         }
@@ -103,7 +104,7 @@ class GameSessionTest {
 
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> GameSession.reconstitute(
-                            SESSION_ID, CODE, SessionStatus.LOBBY, clashing, NOW, LATER))
+                            SESSION_ID, CODE, SessionStatus.LOBBY, clashing, NOW, LATER, LATER.plusSeconds(3600)))
                     .withMessageContaining("Two players cannot hold the same seat");
         }
 
@@ -305,7 +306,8 @@ class GameSessionTest {
         final GameSession session = aSession().withPlayerCount(3).build();
 
         assertThat(session).hasToString(
-                "GameSession[sessionId=" + SESSION_ID + ", status=LOBBY, players=3]");
+                "GameSession[sessionId=" + SESSION_ID + ", status=LOBBY, players=3"
+                        + ", expiresAt=2099-12-31T23:59:59Z]");
     }
 
     @Test

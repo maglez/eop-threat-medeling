@@ -197,7 +197,7 @@ class ResolveTrickUseCaseTest {
     private ResolveTrickUseCase useCaseFor(final GameSession session) {
         final var sessionRepository = new InMemorySessionRepository(order, session);
         return new ResolveTrickUseCase(
-                new ResolvePlayerUseCase(sessionRepository),
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 sessionRepository,
@@ -445,7 +445,7 @@ class ResolveTrickUseCaseTest {
         trickRepository.seededWith(underWay.trick());
         final var sessionRepository = new InMemorySessionRepository(order, session);
         final var useCase = new ResolveTrickUseCase(
-                new ResolvePlayerUseCase(sessionRepository),
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 sessionRepository,
@@ -472,7 +472,7 @@ class ResolveTrickUseCaseTest {
         trickRepository.seededWith(underWay.trick());
         final var sessionRepository = new InMemorySessionRepository(order, session);
         final var useCase = new ResolveTrickUseCase(
-                new ResolvePlayerUseCase(sessionRepository),
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 sessionRepository,
@@ -500,7 +500,7 @@ class ResolveTrickUseCaseTest {
         trickRepository.seededWith(underWay.trick());
         final var sessionRepository = new InMemorySessionRepository(order, session);
         final var useCase = new ResolveTrickUseCase(
-                new ResolvePlayerUseCase(sessionRepository),
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 sessionRepository,
@@ -546,7 +546,7 @@ class ResolveTrickUseCaseTest {
         // before the auto-complete branch reaches recordCompleted
         sessionRepository.forceComplete(session.sessionId(), NOW.minusSeconds(1));
         final var useCase = new ResolveTrickUseCase(
-                new ResolvePlayerUseCase(sessionRepository),
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 sessionRepository,

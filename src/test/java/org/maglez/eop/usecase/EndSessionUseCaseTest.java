@@ -36,7 +36,8 @@ class EndSessionUseCaseTest {
     private final RecordingSessionEventPublisher publisher = new RecordingSessionEventPublisher(order);
 
     private EndSessionUseCase useCaseFor(final InMemorySessionRepository repository) {
-        return new EndSessionUseCase(repository, new ResolvePlayerUseCase(repository), publisher, FIXED);
+        return new EndSessionUseCase(repository,
+                new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()), publisher, FIXED);
     }
 
     @Test

@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.web.servlet.MockMvc;
@@ -83,6 +84,9 @@ class SessionControllerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     /**
      * What a caller keeps after being admitted to a session.
@@ -434,6 +438,25 @@ class SessionControllerIntegrationTest {
             readState("not-a-uuid", "not-a-credential-anyone-holds")
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+        }
+
+        @Test
+        @DisplayName("an expired session is a 403 with title 'Session expired', not a 404")
+        void shouldRefuseAnExpiredSessionWithForbidden() throws Exception {
+            // Arrange — create a session and then back-date its expires_at to the past
+            final var facilitator = createSession("Ada");
+            final UUID sessionId = UUID.fromString(facilitator.sessionId());
+            jdbc.update(
+                    "UPDATE game_session SET expires_at = TIMESTAMPADD(HOUR, -1, CURRENT_TIMESTAMP) WHERE id = ?",
+                    sessionId);
+
+            // Act + Assert — the expiry guard fires before the token check
+            readState(facilitator.sessionId(), facilitator.playerToken())
+                    .andExpect(status().isForbidden())
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.title").value("Session expired"))
+                    .andExpect(jsonPath("$.detail")
+                            .value("The session has expired. Please start a new session."));
         }
     }
 

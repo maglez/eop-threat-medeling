@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.adapter.scheduling.ExpiredSessionSweepScheduler;
+import org.maglez.eop.usecase.SweepExpiredSessionsUseCase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -50,6 +52,13 @@ class SessionControllerDisabledIntegrationTest {
     @DisplayName("does not create the controller at all")
     void shouldNotRegisterTheController() {
         Assertions.assertThat(context.getBeanNamesForType(SessionController.class)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("does not create the sweep scheduler when the flag is off")
+    void shouldNotRegisterTheSweepScheduler() {
+        Assertions.assertThat(context.getBeanNamesForType(ExpiredSessionSweepScheduler.class)).isEmpty();
+        Assertions.assertThat(context.getBeanNamesForType(SweepExpiredSessionsUseCase.class)).isEmpty();
     }
 
     @Test

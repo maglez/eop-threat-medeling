@@ -299,3 +299,14 @@ makes `ddl-auto: validate` load-bearing, which
   — the first flag in the codebase, and why it is gated but not typed
 - [Product requirements](../requirements/PRD-eop-card-game.md)
 - [Configuration rules](../../.opencode/rules/configuration.md)
+
+## Amendments
+
+**2026-08-16 (EOP-22).** `eop.features.session-lifecycle` now governs two additional beans:
+`SweepExpiredSessionsUseCase` and `ExpiredSessionSweepScheduler`. The flag's scope is widened from
+"session-lifecycle HTTP endpoints" to "session-lifecycle endpoints and the abandoned-session sweep".
+`ResolvePlayerUseCase` remains ungated (it is a shared chokepoint used by both flags, and its
+expiry guard is a read-only check). The sweep's deletion behaviour means that removing this flag
+makes the sweep unconditional and permanent — verify the sweep cadence and remove any environment
+overrides before removing the flag. See [ADR-036](ADR-036-session-expiry-and-sweep.md) for the
+full rationale.

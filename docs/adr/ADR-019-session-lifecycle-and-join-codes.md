@@ -324,6 +324,14 @@ seventh join is a 409, not a resizing decision.
 application will see, a cleanup job is speculative work; `ABANDONED` exists in the
 status enum so that the concept has somewhere to live when it is needed.
 
+> **Amended 2026-08-16 (EOP-22).** This consequence is reversed by
+> [ADR-036](ADR-036-session-expiry-and-sweep.md). EOP-22 introduces a 24-hour TTL
+> (`expires_at` column, Liquibase changeset `006`), an expiry guard in
+> `ResolvePlayerUseCase`, and a scheduled sweep (`SweepExpiredSessionsUseCase` +
+> `ExpiredSessionSweepScheduler`) gated on `eop.features.session-lifecycle`. The
+> rationale for the reversal — credential lifetime rather than volume — is recorded
+> in ADR-036.
+
 ## Related
 
 - [ADR-014](ADR-014-realtime-transport.md) — SSE, and why reconnection is a re-read rather than a replay

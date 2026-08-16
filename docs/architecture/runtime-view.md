@@ -935,6 +935,83 @@ because the group has reached a conclusion, not because the score is meaningless
 session and the time; a subscriber re-reads `GET /sessions/{sessionId}` to see `COMPLETED`
 and `GET /sessions/{sessionId}/score` for the final standings.
 
+---
+
+## Sequence 9 — Expired-session sweep (EOP-22)
+
+**Precondition:** `eop.features.session-lifecycle=true` (flag off → `ExpiredSessionSweepScheduler`
+bean absent, sweep never fires). One or more sessions have `expires_at < now`.
+
+**Actors:** `ExpiredSessionSweepScheduler` (Spring `@Scheduled` adapter), `SweepExpiredSessionsUseCase`,
+`SessionRepositoryAdapter`, PostgreSQL.
+
+```mermaid
+sequenceDiagram
+    participant SCHED as ExpiredSessionSweepScheduler
+    participant UC as SweepExpiredSessionsUseCase
+    participant SRA as SessionRepositoryAdapter
+    participant DB as PostgreSQL
+
+    Note over SCHED: @Scheduled fires every eop.sweep.interval-ms (default 1 h)<br/>initial delay eop.sweep.initial-delay-ms (default 5 min)<br/>bean absent when eop.features.session-lifecycle is off
+
+    SCHED->>UC: execute()
+    Note over UC: Instant.now(clock) — uses injected Clock,<br/>not a direct Instant.now() call
+
+    UC->>SRA: findExpiredSessionIds(now)
+    SRA->>DB: SELECT s.id FROM game_session s<br/>WHERE s.expires_at &lt; :before<br/>AND s.status &lt;&gt; 'ABANDONED'
+    DB-->>SRA: [id1, id2, ...]
+    SRA-->>UC: List&lt;UUID&gt;
+
+    loop for each expired session id
+        UC->>SRA: abandonAndDelete(id)
+        Note over SRA: Single @Transactional — mark then delete<br/>in one commit; no ABANDONED row survives
+        SRA->>DB: UPDATE game_session SET status = 'ABANDONED',<br/>version = version + 1 WHERE id = :id
+        SRA->>DB: DELETE FROM game_session WHERE id = :id<br/>(cascades to player, hand, trick, trick_play, trick_play_component)
+        DB-->>SRA: void
+        SRA-->>UC: void
+        Note over UC: Per-session try/catch: a failure on one session<br/>is logged at WARN and the sweep continues.<br/>The failed session remains eligible next cycle.
+    end
+
+    UC-->>SCHED: void
+    Note over SCHED: Next fire scheduled after interval-ms from completion
+```
+
+### What this sequence settles
+
+**The sweep is a background driver, not a domain rule.** `SweepExpiredSessionsUseCase` owns the
+policy (which sessions to delete, how to handle per-session failures); `ExpiredSessionSweepScheduler`
+owns only the trigger. The use case is testable without Spring; the scheduler is a thin adapter.
+
+**Expiry is enforced at the `ResolvePlayerUseCase` boundary.** `ResolvePlayerUseCase` rejects any
+request whose session has `expiresAt < now(clock)` with 403 `"Session expired"`. The sweep then
+removes the row so it does not accumulate indefinitely. The two checks are independent: the guard
+fires on every authenticated request; the sweep fires on a schedule.
+
+**Accepted limitation — the join path is not guarded.** `JoinSessionUseCase` does not check
+`session.expiresAt()`. A player can join an expired `LOBBY` session via join code and receive a
+token; that token will be rejected by `ResolvePlayerUseCase` on the next call. The gap is
+documented in ADR-036 and deferred to a future story.
+
+**The ABANDONED write is not observable.** `markAbandoned` and `deleteById` share a transaction, so
+no row ever commits with `status = ABANDONED`. The UPDATE exists to bump the version column (optimistic
+locking) and to make the intent legible in the code; the net committed effect is the delete. The
+`LOG.info` line in `SweepExpiredSessionsUseCase` is the only audit record that a session was swept.
+
+**Single-instance assumption.** Two replicas sweeping the same ID set concurrently will both attempt
+the same deletes; the second attempt is silently ignored — `deleteById` on a missing row is a no-op
+(`findById(id).ifPresent(this::delete)`), so no exception is thrown and no warning is logged. The
+application is deployed as a single container (ADR-012, ADR-016), so this is not a current concern,
+but it is an unstated precondition for any future multi-instance deployment. ADR-036 records the
+assumption and defers distributed coordination to a future story.
+
+**Clock authority.** `expires_at` is set by the domain at `openLobby()` time using the injected
+`Clock` (`GameSession.java:106`). The database column carries a `defaultValueComputed` expression
+only as a fallback for rows inserted outside the domain (e.g. test fixtures via raw JDBC). The
+sweep compares against the same application JVM `Clock`. Under clock skew between the JVM and the
+database, the DB default may produce a slightly different expiry than the domain would — but the
+domain path is authoritative for all production inserts. ADR-036 §2 records this as a known
+limitation.
+
 ## Related
 
 - [`C4-Diagrams.md`](C4-Diagrams.md) — the containers and components these sequences move through
@@ -950,4 +1027,5 @@ and `GET /sessions/{sessionId}/score` for the final standings.
 - [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) — why a hand is read per player, which is why no broadcast above carries one
 - [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
 - [ADR-032](../adr/ADR-032-end-of-game-transitions.md) — end-of-game design choices: auto-complete placement, no new DB column, two-transaction race, facilitator-only early end
+- [ADR-036](../adr/ADR-036-session-expiry-and-sweep.md) — session expiry TTL, the sweep scheduler, and the single-instance deployment assumption
 - [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all seven trick-play routes

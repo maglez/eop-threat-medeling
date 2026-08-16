@@ -37,6 +37,9 @@ public final class GameSession {
     /** Fewest players the game works with. A rule, not a threshold. */
     public static final int MINIMUM_PLAYERS_TO_START = 3;
 
+    /** How long a session lives before it expires. */
+    public static final java.time.Duration SESSION_TTL = java.time.Duration.ofHours(24);
+
     private final UUID sessionId;
 
     private final JoinCode joinCode;
@@ -49,18 +52,22 @@ public final class GameSession {
 
     private final Instant updatedAt;
 
+    private final Instant expiresAt;
+
     private GameSession(
             final UUID sessionId,
             final JoinCode joinCode,
             final SessionStatus status,
             final List<Player> players,
             final Instant createdAt,
-            final Instant updatedAt) {
+            final Instant updatedAt,
+            final Instant expiresAt) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId is required");
         this.joinCode = Objects.requireNonNull(joinCode, "joinCode is required");
         this.status = Objects.requireNonNull(status, "status is required");
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt is required");
         this.updatedAt = Objects.requireNonNull(updatedAt, "updatedAt is required");
+        this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt is required");
         Objects.requireNonNull(players, "players is required");
         final List<Player> ordered = new ArrayList<>(players);
         ordered.sort(Comparator.comparingInt(Player::seatOrder));
@@ -74,7 +81,7 @@ public final class GameSession {
     }
 
     /**
-     * Opens a new lobby with its facilitator already seated.
+     * Opens a new lobby
      *
      * <p>A session never exists without at least one player: the act of creating
      * one is the act of the facilitator joining it, so there is no window in
@@ -96,7 +103,7 @@ public final class GameSession {
         if (!facilitator.canStartPlay()) {
             throw new IllegalArgumentException("The creating player is the facilitator");
         }
-        return new GameSession(sessionId, joinCode, SessionStatus.LOBBY, List.of(facilitator), now, now);
+        return new GameSession(sessionId, joinCode, SessionStatus.LOBBY, List.of(facilitator), now, now, now.plus(SESSION_TTL));
     }
 
     /**
@@ -121,8 +128,9 @@ public final class GameSession {
             final SessionStatus status,
             final List<Player> players,
             final Instant createdAt,
-            final Instant updatedAt) {
-        return new GameSession(sessionId, joinCode, status, players, createdAt, updatedAt);
+            final Instant updatedAt,
+            final Instant expiresAt) {
+        return new GameSession(sessionId, joinCode, status, players, createdAt, updatedAt, expiresAt);
     }
 
     /**
@@ -168,7 +176,7 @@ public final class GameSession {
         }
         final List<Player> seated = new ArrayList<>(players);
         seated.add(joining);
-        return new GameSession(sessionId, joinCode, status, seated, createdAt, now);
+        return new GameSession(sessionId, joinCode, status, seated, createdAt, now, expiresAt);
     }
 
     /**
@@ -198,7 +206,7 @@ public final class GameSession {
         if (players.size() < MINIMUM_PLAYERS_TO_START) {
             throw new TooFewPlayersException(sessionId, players.size(), MINIMUM_PLAYERS_TO_START);
         }
-        return new GameSession(sessionId, joinCode, SessionStatus.IN_PROGRESS, players, createdAt, now);
+        return new GameSession(sessionId, joinCode, SessionStatus.IN_PROGRESS, players, createdAt, now, expiresAt);
     }
 
     /**
@@ -224,7 +232,7 @@ public final class GameSession {
         if (status != SessionStatus.IN_PROGRESS) {
             throw new SessionNotInProgressException(sessionId, status);
         }
-        return new GameSession(sessionId, joinCode, SessionStatus.COMPLETED, players, createdAt, now);
+        return new GameSession(sessionId, joinCode, SessionStatus.COMPLETED, players, createdAt, now, expiresAt);
     }
 
     /**
@@ -308,6 +316,18 @@ public final class GameSession {
         return updatedAt;
     }
 
+    /**
+     * When this session expires.
+     *
+     * <p>Set to {@link #SESSION_TTL} after {@link #createdAt()} when the lobby is
+     * opened. The expiry is fixed at creation time and is not extended by activity.
+     *
+     * @return the expiry instant
+     */
+    public Instant expiresAt() {
+        return expiresAt;
+    }
+
     @Override
     public boolean equals(final Object other) {
         if (this == other) {
@@ -321,16 +341,18 @@ public final class GameSession {
                 && status == that.status
                 && players.equals(that.players)
                 && createdAt.equals(that.createdAt)
-                && updatedAt.equals(that.updatedAt);
+                && updatedAt.equals(that.updatedAt)
+                && expiresAt.equals(that.expiresAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(sessionId, joinCode, status, players, createdAt, updatedAt);
+        return Objects.hash(sessionId, joinCode, status, players, createdAt, updatedAt, expiresAt);
     }
 
     @Override
     public String toString() {
-        return "GameSession[sessionId=" + sessionId + ", status=" + status + ", players=" + players.size() + "]";
+        return "GameSession[sessionId=" + sessionId + ", status=" + status
+                + ", players=" + players.size() + ", expiresAt=" + expiresAt + "]";
     }
 }

@@ -599,7 +599,7 @@ class PlayCardUseCaseTest {
      */
     private PlayCardUseCase useCaseWith(final GameSession session, final IdentifierGenerator generator) {
         return new PlayCardUseCase(
-                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session)),
+                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session), java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 cardRepository,

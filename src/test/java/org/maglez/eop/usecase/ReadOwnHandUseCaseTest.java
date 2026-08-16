@@ -110,7 +110,8 @@ class ReadOwnHandUseCaseTest {
      */
     private ReadOwnHandUseCase useCaseFor(final GameSession session) {
         return new ReadOwnHandUseCase(
-                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session)), handRepository);
+                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session),
+                        java.time.Clock.systemUTC()), handRepository);
     }
 
     @Test
@@ -279,7 +280,7 @@ class ReadOwnHandUseCaseTest {
     @Test
     @DisplayName("refuses to be built without its collaborators")
     void shouldRequireItsCollaborators() {
-        final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()));
+        final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()), java.time.Clock.systemUTC());
 
         assertThatNullPointerException()
                 .isThrownBy(() -> new ReadOwnHandUseCase(null, handRepository))

@@ -28,7 +28,7 @@ class GetSessionStateUseCaseTest {
     void shouldReturnTheSessionForAValidCredential() {
         final var session = aSession().withPlayerCount(3).build();
         final var repository = new InMemorySessionRepository(session);
-        final var useCase = new GetSessionStateUseCase(new ResolvePlayerUseCase(repository));
+        final var useCase = new GetSessionStateUseCase(new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()));
 
         final var state = useCase.execute(session.sessionId(), FACILITATOR_TOKEN);
 
@@ -43,7 +43,7 @@ class GetSessionStateUseCaseTest {
     void shouldServeParticipantsTheSameState() {
         final var session = aSession().withPlayerCount(3).build();
         final var repository = new InMemorySessionRepository(session);
-        final var useCase = new GetSessionStateUseCase(new ResolvePlayerUseCase(repository));
+        final var useCase = new GetSessionStateUseCase(new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()));
 
         final var forFacilitator = useCase.execute(session.sessionId(), FACILITATOR_TOKEN);
         final var forParticipant = useCase.execute(session.sessionId(), FACILITATOR_TOKEN + "-1");
@@ -56,7 +56,7 @@ class GetSessionStateUseCaseTest {
     void shouldRefuseAnUnrecognisedCaller() {
         final var session = aSession().withPlayerCount(3).build();
         final var repository = new InMemorySessionRepository(session);
-        final var useCase = new GetSessionStateUseCase(new ResolvePlayerUseCase(repository));
+        final var useCase = new GetSessionStateUseCase(new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()));
 
         assertThatExceptionOfType(PlayerNotRecognisedException.class)
                 .isThrownBy(() -> useCase.execute(session.sessionId(), "not-a-credential"));

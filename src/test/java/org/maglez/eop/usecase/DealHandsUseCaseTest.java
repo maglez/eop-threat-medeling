@@ -220,7 +220,7 @@ class DealHandsUseCaseTest {
     private DealHandsUseCase useCaseFor(final GameSession session) {
         final var sessionRepository = new InMemorySessionRepository(order, session);
         return new DealHandsUseCase(
-                new ResolvePlayerUseCase(sessionRepository),
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 cardRepository,
                 shuffler,
                 handRepository,

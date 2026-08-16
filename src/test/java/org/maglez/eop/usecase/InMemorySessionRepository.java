@@ -118,7 +118,8 @@ final class InMemorySessionRepository implements SessionRepository {
                 SessionStatus.IN_PROGRESS,
                 current.players(),
                 current.createdAt(),
-                occurredAt));
+                occurredAt,
+                current.expiresAt()));
     }
 
     @Override
@@ -132,7 +133,8 @@ final class InMemorySessionRepository implements SessionRepository {
                 SessionStatus.COMPLETED,
                 current.players(),
                 current.createdAt(),
-                occurredAt));
+                occurredAt,
+                current.expiresAt()));
     }
 
     /**
@@ -185,7 +187,8 @@ final class InMemorySessionRepository implements SessionRepository {
                 SessionStatus.COMPLETED,
                 current.players(),
                 current.createdAt(),
-                occurredAt));
+                occurredAt,
+                current.expiresAt()));
     }
 
     /**
@@ -254,6 +257,20 @@ final class InMemorySessionRepository implements SessionRepository {
                 current.status(),
                 seated,
                 current.createdAt(),
-                occurredAt);
+                occurredAt,
+                current.expiresAt());
+    }
+
+    @Override
+    public List<UUID> findExpiredSessionIds(final Instant before) {
+        return sessions.values().stream()
+                .filter(s -> s.expiresAt().isBefore(before))
+                .map(GameSession::sessionId)
+                .toList();
+    }
+
+    @Override
+    public void abandonAndDelete(final UUID sessionId) {
+        sessions.remove(sessionId);
     }
 }
