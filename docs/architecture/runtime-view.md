@@ -162,14 +162,23 @@ behave exactly like the thousandth request before it.
 advertise a challenge that does not exist. A missing token and a wrong token produce the
 same 403, so the endpoint cannot be used to confirm which tokens are real.
 
-### The weakness in this path today
+### The custody and recovery path — both halves now work
 
-The token has to come from somewhere, and **on the client it currently comes from
-nowhere.** `ui/` holds only a health-check shell; `sessionStorage` appears nowhere in
-it. So the sequence above is fully implemented server-side and cannot yet be executed by
-the real front end — it is exercised by tests and by `curl -H`. EOP-11 delivers the
-custody half. Until then, "a player refreshes and resumes" is a property of the server,
-not an observable behaviour of the product (ADR-015).
+**EOP-11 delivered both halves.** The token is written to `sessionStorage` under
+`eop_session` on admission, and `App.tsx` rehydrates straight into the lobby on boot
+(after checking the feature flag), so "a player refreshes and resumes" is an observable
+behaviour of the product rather than a property of the server exercised only by tests
+and `curl -H` (ADR-015).
+
+The *failure* arm also works. The 403 that an expired session produces routinely under
+ADR-036's 24-hour TTL is detected by branching on the numeric `status` carried by
+`ApiError` — `err instanceof ApiError && (err.status === 403 || err.status === 404)` —
+in both the `refreshSession` callback and the SSE subscription error handler in
+`LobbyScreen.tsx` (the `onError` callback passed to `subscribeToSession` in `api.ts`;
+`api.ts` constructs the `ApiError` and invokes the caller's `onError`, while the status
+branching and the `onSessionEnd()` call live in `LobbyScreen`). Either path calls `onSessionEnd()`, which does
+`sessionStorage.removeItem(STORAGE_KEY)` and returns the player to the home screen.
+The re-read half of "a re-read, never a replay" works; the give-up half works too.
 
 ---
 

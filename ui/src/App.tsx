@@ -1,108 +1,151 @@
-import { useEffect, useState } from "react";
-import { type Card, SUIT_LABELS, fetchCards } from "./api";
+import React, { useState } from 'react';
+import { CreateSessionForm } from './components/CreateSessionForm';
+import { JoinSessionForm } from './components/JoinSessionForm';
+import { LobbyScreen } from './components/LobbyScreen';
+import { CardCatalogue } from './components/CardCatalogue';
+import type { SessionAdmissionDto } from './api';
 
-type CatalogueState =
-  | { readonly status: "loading" }
-  | { readonly status: "loaded"; readonly cards: readonly Card[] }
-  | { readonly status: "failed"; readonly message: string };
+// Storage key for session credentials
+const STORAGE_KEY = 'eop_session';
 
-/**
- * The card catalogue panel.
- *
- * This exists to prove the proxy end to end rather than to be a feature: a real
- * request over the same origin, through Caddy, into the application, out of
- * PostgreSQL and onto the page. Rendering static text would have proved only that
- * Vite works.
- */
-/**
- * The full deck is 78 cards - thirteen ranks in each of the six STRIDE suits.
- * The catalogue asks for all of them in one request rather than paginating,
- * because a reference list of the deck is only useful whole. 78 is inside the
- * server's maximum page size of 100, so this is a single round trip.
- */
-const DECK_SIZE = 78;
+// Stored session interface
+interface StoredSession {
+  readonly playerToken: string;
+  readonly playerId: string;
+  readonly sessionId: string;
+}
 
-function Catalogue(): React.JSX.Element {
-  const [state, setState] = useState<CatalogueState>({ status: "loading" });
-
-  useEffect(() => {
-    let abandoned = false;
-
-    fetchCards(DECK_SIZE)
-      .then((page) => {
-        if (!abandoned) {
-          setState({ status: "loaded", cards: page.content });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!abandoned) {
-          const message =
-            error instanceof Error ? error.message : "The request failed.";
-          setState({ status: "failed", message });
-        }
-      });
-
-    // React runs effects twice in development. Without this the second run's
-    // response could overwrite the first after unmount.
-    return () => {
-      abandoned = true;
-    };
-  }, []);
-
-  if (state.status === "loading") {
-    return <p className="govuk-body">Loading the deck...</p>;
-  }
-
-  if (state.status === "failed") {
-    return (
-      <div
-        className="govuk-error-summary"
-        data-module="govuk-error-summary"
-        role="alert"
-      >
-        <h2 className="govuk-error-summary__title">
-          The deck could not be loaded
-        </h2>
-        <div className="govuk-error-summary__body">
-          <p className="govuk-body">{state.message}</p>
-        </div>
-      </div>
-    );
-  }
-
+/** Runtime type guard — rejects any stored object missing required string fields. */
+function isStoredSession(value: unknown): value is StoredSession {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
   return (
-    <table className="govuk-table">
-      <caption className="govuk-table__caption govuk-table__caption--m">
-        Placeholder deck
-      </caption>
-      <thead className="govuk-table__head">
-        <tr className="govuk-table__row">
-          <th scope="col" className="govuk-table__header">
-            Suit
-          </th>
-          <th scope="col" className="govuk-table__header">
-            Rank
-          </th>
-          <th scope="col" className="govuk-table__header">
-            Threat
-          </th>
-        </tr>
-      </thead>
-      <tbody className="govuk-table__body">
-        {state.cards.map((card) => (
-          <tr className="govuk-table__row" key={card.cardId}>
-            <td className="govuk-table__cell">{SUIT_LABELS[card.suit]}</td>
-            <td className="govuk-table__cell">{card.rankSymbol}</td>
-            <td className="govuk-table__cell">{card.threatPrompt}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    typeof v['playerToken'] === 'string' &&
+    typeof v['playerId'] === 'string' &&
+    typeof v['sessionId'] === 'string'
   );
 }
 
-/** The application shell. No game behaviour lives here yet, deliberately. */
+// View types
+type View =
+  | { readonly screen: 'home' }
+  | { readonly screen: 'create' }
+  | { readonly screen: 'join' }
+  | { readonly screen: 'lobby'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string };
+
+/**
+ * The application shell with view switching logic.
+ */
 export default function App(): React.JSX.Element {
+  const [view, setView] = useState<View>(() => {
+    // The feature flag must be checked here too — not only on the home screen
+    // buttons — so that a stored session cannot bypass the flag entirely.
+    const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
+    if (!isLobbyUiEnabled) return { screen: 'home' };
+
+    // Check if we have stored session credentials
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed: unknown = JSON.parse(stored);
+        if (isStoredSession(parsed)) {
+          return {
+            screen: 'lobby',
+            sessionId: parsed.sessionId,
+            playerId: parsed.playerId,
+            playerToken: parsed.playerToken,
+          };
+        }
+        // Stored object is missing required fields — discard it
+        sessionStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // Invalid stored data, clear it
+        sessionStorage.removeItem(STORAGE_KEY);
+      }
+    }
+    return { screen: 'home' };
+  });
+
+  // Handle session admission (after create/join)
+  const handleSessionAdmission = (admission: SessionAdmissionDto) => {
+    const storedSession: StoredSession = {
+      playerToken: admission.playerToken,
+      playerId: admission.playerId,
+      sessionId: admission.session.sessionId
+    };
+    
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storedSession));
+    
+    setView({
+      screen: 'lobby',
+      sessionId: admission.session.sessionId,
+      playerId: admission.playerId,
+      playerToken: admission.playerToken
+    });
+  };
+
+  // Handle session end (logout/clear storage)
+  const handleSessionEnd = () => {
+    sessionStorage.removeItem(STORAGE_KEY);
+    setView({ screen: 'home' });
+  };
+
+  // Handle errors from forms
+  const handleError = (message: string) => {
+    // Errors are displayed in the forms themselves
+    console.error('Form error:', message);
+  };
+
+  // Render the appropriate view
+  const renderView = () => {
+    switch (view.screen) {
+      case 'home':
+        return <HomeView onViewChange={(screen) => setView({ screen })} />;
+      
+      case 'create':
+        return (
+          <div className="govuk-width-container">
+            <main className="govuk-main-wrapper" id="main-content">
+              <div className="govuk-grid-row">
+                <div className="govuk-grid-column-two-thirds">
+                  <CreateSessionForm 
+                    onSubmit={handleSessionAdmission} 
+                    onError={handleError} 
+                  />
+                </div>
+              </div>
+            </main>
+          </div>
+        );
+      
+      case 'join':
+        return (
+          <div className="govuk-width-container">
+            <main className="govuk-main-wrapper" id="main-content">
+              <div className="govuk-grid-row">
+                <div className="govuk-grid-column-two-thirds">
+                  <JoinSessionForm 
+                    onSubmit={handleSessionAdmission} 
+                    onError={handleError} 
+                  />
+                </div>
+              </div>
+            </main>
+          </div>
+        );
+      
+      case 'lobby':
+        return (
+          <LobbyScreen
+            sessionId={view.sessionId}
+            playerId={view.playerId}
+            playerToken={view.playerToken}
+            onSessionEnd={handleSessionEnd}
+          />
+        );
+    }
+  };
+
   return (
     <>
       <header className="govuk-header" data-module="govuk-header">
@@ -115,49 +158,7 @@ export default function App(): React.JSX.Element {
         </div>
       </header>
 
-      <div className="govuk-width-container">
-        <main className="govuk-main-wrapper" id="main-content">
-          <h1 className="govuk-heading-xl">Threat modelling card game</h1>
-
-          <p className="govuk-body-l">
-            A digital version of the Elevation of Privilege card game, for teams
-            who cannot share a table.
-          </p>
-
-          <div className="govuk-button-group">
-            {/*
-              Both buttons are deliberately inert. Creating and joining a session
-              is EOP-10 and EOP-11; wiring them now would mean shipping a button
-              that lies about what it does.
-            */}
-            <button
-              type="button"
-              className="govuk-button"
-              data-module="govuk-button"
-              disabled
-              aria-disabled="true"
-            >
-              Create a session
-            </button>
-            <button
-              type="button"
-              className="govuk-button govuk-button--secondary"
-              data-module="govuk-button"
-              disabled
-              aria-disabled="true"
-            >
-              Join a session
-            </button>
-          </div>
-
-          <p className="govuk-hint">
-            Creating and joining a session is not built yet.
-          </p>
-
-          <h2 className="govuk-heading-l">The deck</h2>
-          <Catalogue />
-        </main>
-      </div>
+      {renderView()}
 
       <footer className="govuk-footer">
         <div className="govuk-width-container">
@@ -185,5 +186,59 @@ export default function App(): React.JSX.Element {
         </div>
       </footer>
     </>
+  );
+}
+
+interface HomeViewProps {
+  readonly onViewChange: (screen: 'create' | 'join') => void;
+}
+
+function HomeView({ onViewChange }: HomeViewProps): React.JSX.Element {
+  // Check if lobby UI is enabled via environment variable
+  const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
+
+  return (
+    <div className="govuk-width-container">
+      <main className="govuk-main-wrapper" id="main-content">
+        <h1 className="govuk-heading-xl">Threat modelling card game</h1>
+
+        <p className="govuk-body-l">
+          A digital version of the Elevation of Privilege card game, for teams
+          who cannot share a table.
+        </p>
+
+        <div className="govuk-button-group">
+          <button
+            type="button"
+            className="govuk-button"
+            data-module="govuk-button"
+            disabled={!isLobbyUiEnabled}
+            aria-disabled={!isLobbyUiEnabled}
+            onClick={() => onViewChange('create')}
+          >
+            Create a session
+          </button>
+          <button
+            type="button"
+            className="govuk-button govuk-button--secondary"
+            data-module="govuk-button"
+            disabled={!isLobbyUiEnabled}
+            aria-disabled={!isLobbyUiEnabled}
+            onClick={() => onViewChange('join')}
+          >
+            Join a session
+          </button>
+        </div>
+
+        {!isLobbyUiEnabled && (
+          <p className="govuk-hint">
+            Creating and joining a session is not available yet.
+          </p>
+        )}
+
+        <h2 className="govuk-heading-l">The deck</h2>
+        <CardCatalogue />
+      </main>
+    </div>
   );
 }

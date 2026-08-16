@@ -4,9 +4,11 @@ Visual architecture for the EoP threat-modelling card game, in
 [Mermaid](https://mermaid.js.org) so that it version-controls and reviews as text.
 
 **Scope of this document.** It contains the **C4 Level 2 (Container) view**, a Level 2
-component detail for the session lifecycle, and — as of EOP-14 Slice B — one
+component detail for the session lifecycle, a **Level 3 view inside the single-page
+application** (added by EOP-11, because the bundle stopped being an opaque static-file node
+once it held a state machine and a credential), and — as of EOP-14 Slice B — one
 entity-relationship view of the database schema, which is not a C4 level and says so where it
-sits. No Level 1, and no Level 3 beyond the one component detail.
+sits. No Level 1.
 
 - **Level 1 (System Context) is deliberately deferred**, along with
   `building-blocks.md`, to a follow-up ticket (EOP-47). They are not missing by accident. A
@@ -18,7 +20,8 @@ sits. No Level 1, and no Level 3 beyond the one component detail.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-22** (session expiry, the sweep
+Everything below reflects the code as it stands after **EOP-11** (the lobby single-page
+application — the Level 3 view) and **EOP-22** (session expiry, the sweep
 scheduler and the `expires_at` column — changeset `006`), on top of EOP-14 Slice E (end of hand,
 the state-of-play read and the three broadcasts), Slice D's trick-play HTTP routes, Slice C2's
 use-case layer, Slice C1's persistence layer (Liquibase changeset `005`), the trick-play schema
@@ -732,6 +735,115 @@ answering 404 (`TrickPlayDisabledIntegrationTest.java:83-168`).
 
 ---
 
+## Level 3 — inside the single-page application (EOP-11)
+
+The container view models the front end as one opaque node: `STATIC`, a `file_server` over
+`/srv` with an SPA fallback. That was accurate while `ui/` held a health-check shell. EOP-11
+put a state machine, a credential and a stream reader in there, so the bundle now has an
+internal structure worth constraining — and one boundary in it is load-bearing for
+security.
+
+```mermaid
+flowchart TD
+    subgraph bundle["Built bundle — static assets served by Caddy (ADR-017)"]
+        APP["App.tsx<br/>view state machine: home | create | join | lobby<br/>owns the sessionStorage key eop_session"]
+        HOME["HomeView<br/>reads import.meta.env.VITE_LOBBY_UI_ENABLED<br/>the ONLY flag read (ADR-037)"]
+        FORMS["CreateSessionForm / JoinSessionForm<br/>GOV.UK error summary, client-side validation"]
+        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader"]
+        API["api.ts<br/>typed DTOs, ApiError(status, message)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
+    end
+
+    SS[("sessionStorage<br/>per-tab, per-origin<br/>key: eop_session (ADR-015)")]
+    CADDY["Caddy — single origin<br/>/api/* reverse_proxy app:8080"]
+
+    APP -->|"rehydrates lobby on boot<br/>checks flag first — returns home if off"| SS
+    APP --> HOME
+    APP --> FORMS
+    APP -->|"passes sessionId, playerId, playerToken"| LOBBY
+
+    FORMS -->|"createSession / joinSession"| API
+    LOBBY -->|"getSession / startGame<br/>credentialed via api.ts"| API
+    LOBBY -.->|"subscribeToSession() in api.ts<br/>fetch-based SSE, AbortController teardown"| CADDY
+
+    API -->|"fetch, relative paths"| CADDY
+```
+
+**One boundary, and it is now fully respected.** `api.ts` is the SPA's interface adapter: it owns
+every wire concern — the relative-URL rule from ADR-017, the DTO shapes, the
+`X-EoP-Player-Token` header name, and the translation of a `problem+json` body into an
+`ApiError` carrying a numeric `status`. Components hold view state and call it. All five
+server calls honour this boundary: `createSession`, `joinSession`, `getSession`,
+`startGame`, and `subscribeToSession` are all exported from `api.ts`. The dotted arrow
+to Caddy represents the SSE stream, which is opened by `subscribeToSession` in `api.ts`
+and handed back to `LobbyScreen` as an `AbortController` — the component holds only the
+teardown handle, not the transport.
+
+**The flag is read at every entry point.** `HomeView` consults
+`VITE_LOBBY_UI_ENABLED` and disables the two calls to action. The `App.tsx` rehydration
+path evaluates the flag *before* reading `sessionStorage`, returning `{ screen: 'home' }`
+immediately when the flag is off — so a stored session cannot bypass it. Both positions
+are tested in `App.test.tsx`.
+
+### Reconnect and live update — the runtime path
+
+```mermaid
+sequenceDiagram
+    participant B as Browser tab
+    participant A as App.tsx
+    participant S as sessionStorage
+    participant L as LobbyScreen
+    participant API as api.ts
+    participant SRV as app (via Caddy)
+
+    B->>A: load / refresh
+    A->>S: getItem('eop_session')
+    S-->>A: {sessionId, playerId, playerToken}
+    Note over A,S: malformed JSON is caught and the key cleared —<br/>a well-formed object passes the isStoredSession() type guard
+    A->>L: render lobby with the restored token
+
+    L->>API: getSession(sessionId, playerToken)
+    API->>SRV: GET /api/v1/sessions/{id} + X-EoP-Player-Token
+    SRV-->>API: 200 SessionStateDto
+    API-->>L: session
+
+    L->>API: subscribeToSession(sessionId, playerToken, onEvent, onError)
+    API->>SRV: fetch /api/v1/sessions/{id}/events + X-EoP-Player-Token
+    SRV-->>API: text/event-stream
+
+    loop until unmount or abort
+        SRV-->>API: frame
+        Note over API: chunk tested for the substring "data:"<br/>used as a doorbell, never parsed
+        API-->>L: onEvent() callback
+        L->>API: getSession(...) again
+        API->>SRV: GET /api/v1/sessions/{id}
+        SRV-->>API: 200 fresh state
+        API-->>L: re-render
+    end
+
+    rect rgb(220, 255, 220)
+    Note over L,SRV: Expired session (ADR-036 24h TTL) — handled correctly
+    SRV-->>API: 403 "The session has expired. Please start a new session."
+    API-->>L: onError(ApiError(status=403, message=detail))
+    Note over L: branches on err.status === 403 — calls onSessionEnd()<br/>which clears eop_session and returns to home screen
+    end
+```
+
+**The stream is a doorbell, not a data channel.** Every frame triggers a fresh
+credentialed `getSession`, so no state ever arrives over the stream and the SSE payload
+shape is not a contract the client depends on. This is a defensible trade — it keeps
+every read on the authorised path and removes any need to merge partial updates — but it
+costs one extra round-trip per event and re-fetches on *every* chunk that happens to
+contain `data:`, including heartbeats, which pushes against ADR-034's per-session
+subscriber cap of 12 rather than easing it.
+
+**The green block shows the reconnect path ADR-036 made routine.** Giving tokens a 24-hour
+lifetime means "your session is gone" is an ordinary response to a reconnect, not an
+edge case. The client handles it correctly: `subscribeToSession`'s `onError` callback
+receives an `ApiError` with `status === 403`, calls `onSessionEnd()`, which clears
+`eop_session` from `sessionStorage` and returns the player to the home screen.
+
+---
+
 ## Data model — the trick-play schema added by EOP-14 Slice B
 
 This is an **entity-relationship view, not a C4 level**, and it is here rather than in
@@ -960,4 +1072,7 @@ and costs a write on every insert. The three survivors are not prefixes of any k
 - [ADR-020](../adr/ADR-020-session-concurrency-control.md) — compare-and-set on `status`, and why `@Version` is not the gate
 - [ADR-021](../adr/ADR-021-trusted-proxy-forwarded-for.md) — the trusted-proxy allow-list, the pinned Compose subnet, and why the limiter's key is part of the control
 - [ADR-013](../adr/ADR-013-feature-flags.md) — the flag that decides whether `SessionController` exists
+- [ADR-037](../adr/ADR-037-frontend-build-time-feature-flags.md) — the front-end flag in the Level 3 view above: why it is a build-time Vite variable rather than a Spring property, why it is world-readable and therefore not a security control, and the "gate at every entry" rule the rehydration edge does not yet meet
+- [ADR-015](../adr/ADR-015-player-identity.md) — the `sessionStorage` custody and header replay drawn in the Level 3 view, and the `fetch`-over-`EventSource` question that EOP-11 closes
+- [ADR-036](../adr/ADR-036-session-expiry-and-sweep.md) — the 24-hour TTL that makes the red reconnect path above an ordinary response rather than an edge case
 - [PRD §5](../requirements/PRD-eop-card-game.md) — the domain concepts these containers persist

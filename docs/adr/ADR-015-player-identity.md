@@ -176,13 +176,41 @@ because they do not share storage. Per-tab `sessionStorage` scoping is what make
 that work, so the constraint this decision was shaped around is now the only way the
 game is played at all.
 
-*Only the server half exists.* EOP-10 implemented issuance, SHA-256 storage of the
-digest, and an indistinguishable refusal for a missing and a wrong credential. The
-client half — a token actually kept in `sessionStorage` and replayed on the next
-request — is **not built**: `ui/` currently holds a health-check shell and the string
-`sessionStorage` appears nowhere in it. Until EOP-11 delivers it, a refresh loses the
-token in practice even though the server is ready to accept it, and the ADR index
-records this ADR as *Partly* implemented for that reason.
+*Both halves now exist, and the open question above is closed.* EOP-10 implemented
+issuance, SHA-256 storage of the digest, and an indistinguishable refusal for a missing
+and a wrong credential. EOP-11 delivered the client half: the token is held in
+`sessionStorage` under the key `eop_session` (`ui/src/App.tsx`), replayed on the next
+request through the `X-EoP-Player-Token` header exported as `PLAYER_TOKEN_HEADER` from
+`ui/src/api.ts`, and a refresh now rehydrates the lobby instead of losing the session.
+
+*The `EventSource` question is answered with `fetch`, not a query parameter.* The "How it
+travels" section left open how a stream that cannot set custom headers would carry this
+credential, and constrained the answer: not a query parameter, because it would land in
+access logs. EOP-11 reads the stream with `fetch` plus a `ReadableStream` reader
+(`ui/src/components/LobbyScreen.tsx`) and an `AbortController` for teardown, which
+preserves the custom header and keeps the token out of the URL. The constraint this ADR
+imposed is therefore met, and ADR-019's "header only, no query-parameter fallback" holds
+on the client as well as the server.
+
+*One caveat on that implementation, recorded because it bears on this ADR's own
+reasoning.* The stream is used as a doorbell rather than a data channel: the reader
+tests each decoded chunk for the substring `data:` and, on a match, re-fetches session
+state through the ordinary credentialed endpoint. That keeps every read on the audited
+path, but it means the SSE frames themselves are never parsed, so the transport carries
+no state this ADR needs to reason about.
+
+*The client-side recovery path is implemented and correct.* This ADR's value depends on
+a stale token being *recoverable from*: a player whose session has expired under
+ADR-036's 24-hour TTL, or been deleted by its sweep, must be returned to a usable state.
+`LobbyScreen` catches errors from `getSession` and branches on the numeric `status`
+carried by `ApiError` — `err instanceof ApiError && (err.status === 403 || err.status
+=== 404)` — calling `onSessionEnd()`, which clears `eop_session` from `sessionStorage`
+and returns the player to the home screen. The same branch is present in the SSE
+subscription error handler in `LobbyScreen.tsx` (the `onError` callback passed to
+`subscribeToSession`). `api.ts` constructs the `ApiError` and invokes the caller's
+`onError`; the status branching and the `onSessionEnd()` call live in `LobbyScreen`.
+The custody decision recorded here is therefore fully usable: both the read path and
+the give-up path work correctly.
 
 ## Related
 
@@ -193,4 +221,6 @@ records this ADR as *Partly* implemented for that reason.
 - [ADR-035](ADR-035-tls-and-security-response-headers.md) — closes the plaintext-transport consequence; formalises the token-storage constraint
 - [PRD §8](../requirements/PRD-eop-card-game.md) — the security consequence of having no authentication
 - `.opencode/rules/security.md` — the defence-in-depth rule this decision knowingly does not meet
+- [ADR-036](ADR-036-session-expiry-and-sweep.md) — gives the token a lifetime, which makes client-side recovery from an expired session a required path
+- [ADR-037](ADR-037-frontend-build-time-feature-flags.md) — the front-end flag gating the lobby that implements this ADR's client half; does not re-decide token custody
 - EOP-8 (spike), EOP-10 (issues the first token), EOP-11 (the client half that keeps it)
