@@ -60,6 +60,20 @@ public class PersistGameResultUseCase {
     }
 
     /**
+     * Protected no-arg constructor for test subclasses that override {@link #execute(UUID)}.
+     *
+     * <p>All fields are left null; the real {@link #execute(UUID)} must not be called on
+     * instances created this way.
+     */
+    protected PersistGameResultUseCase() {
+        this.sessionRepository = null;
+        this.trickRepository = null;
+        this.gameResultRepository = null;
+        this.identifierGenerator = null;
+        this.clock = null;
+    }
+
+    /**
      * Derives and persists the final game result for a completed session.
      *
      * <p>Both {@code startedAt} and {@code finalisedAt} are set to the current clock instant.

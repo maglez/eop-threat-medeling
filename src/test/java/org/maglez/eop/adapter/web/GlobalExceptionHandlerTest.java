@@ -19,6 +19,7 @@ import org.maglez.eop.entity.AlreadyPlayedInTrickException;
 import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
+import org.maglez.eop.entity.GameNotCompletedException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
@@ -878,6 +879,36 @@ class GlobalExceptionHandlerTest {
             assertThat(notInProgress.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
             assertThat(notFound.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
             assertThat(notInProgress.getTitle()).isNotEqualTo(notFound.getTitle());
+        }
+    }
+
+    @Nested
+    @DisplayName("game-over failures")
+    class GameOverFailures {
+
+        @Test
+        @DisplayName("requesting the leaderboard or new-game for a non-completed session is a 409")
+        void shouldMapGameNotCompletedToConflict() {
+            final ProblemDetail problem =
+                    handler.handleGameNotCompleted(new GameNotCompletedException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(problem.getTitle()).isEqualTo("Game not completed");
+            assertThat(problem.getDetail())
+                    .as("the session identifier must appear so the caller can correlate the error")
+                    .contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("game-not-completed is a conflict, not the 404 a missing session would give")
+        void shouldNotCollapseGameNotCompletedIntoNotFound() {
+            final ProblemDetail notCompleted =
+                    handler.handleGameNotCompleted(new GameNotCompletedException(SESSION_ID));
+            final ProblemDetail notFound = handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID));
+
+            assertThat(notCompleted.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+            assertThat(notFound.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+            assertThat(notCompleted.getTitle()).isNotEqualTo(notFound.getTitle());
         }
     }
 }

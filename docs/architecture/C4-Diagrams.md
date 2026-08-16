@@ -20,13 +20,24 @@ sits. No Level 1.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-11** (the lobby single-page
-application — the Level 3 view) and **EOP-22** (session expiry, the sweep
-scheduler and the `expires_at` column — changeset `006`), on top of EOP-14 Slice E (end of hand,
-the state-of-play read and the three broadcasts), Slice D's trick-play HTTP routes, Slice C2's
-use-case layer, Slice C1's persistence layer (Liquibase changeset `005`), the trick-play schema
-from Slice B (changeset `004`), the client-address resolution introduced by EOP-26 (ADR-021) and
-the session lifecycle from EOP-10. Slice B was schema-only.
+Everything below reflects the code as it stands after **EOP-65** (game-over leaderboard,
+new-game reset, `game_result` and `game_result_player` tables — changesets `2026-08-16--game-result`
+001 and 002, ADR-039), on top of **EOP-11** (the lobby single-page application — the Level 3 view)
+and **EOP-22** (session expiry, the sweep scheduler and the `expires_at` column — changeset `006`),
+on top of EOP-14 Slice E (end of hand, the state-of-play read and the three broadcasts), Slice D's
+trick-play HTTP routes, Slice C2's use-case layer, Slice C1's persistence layer (Liquibase changeset
+`005`), the trick-play schema from Slice B (changeset `004`), the client-address resolution
+introduced by EOP-26 (ADR-021) and the session lifecycle from EOP-10.
+
+**EOP-65 adds the game-over feature (behind `eop.features.game-over`, default `false`).** When the
+last trick resolves, `ResolveTrickUseCase` calls `PersistGameResultUseCase` (best-effort, via
+`Optional` injection) to write a `game_result` header row and one `game_result_player` row per
+seated player. `GetLeaderboardUseCase` reads that record and re-derives scores from the live trick
+history (ADR-030: a persisted standing is never read back to answer the score). `NewGameUseCase`
+resets a COMPLETED session to IN_PROGRESS via a non-atomic four-step sequence (ADR-039): clear
+tricks → clear hands → compare-and-swap status → re-deal. The new `GameOverController` exposes
+`GET /{sessionId}/leaderboard` and `POST /{sessionId}/new-game`; both are absent when the flag is
+off. `GameResultRepository` is the twelfth port. Slice B was schema-only.
 Slice C1 added the persistence components — one adapter, two ports, five JPA entities and five
 Spring Data interfaces — but no caller. Slice C2 wrote the caller: three use cases
 (`DealHandsUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`), one new port — `DeckShuffler`, the

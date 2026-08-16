@@ -3,6 +3,7 @@ package org.maglez.eop.entity;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -201,6 +202,48 @@ public final class ScoreSheet {
                 .mapToInt(Standing::points)
                 .findFirst()
                 .orElseThrow(() -> ScoreNotDerivableException.playerNotSeated(playerId));
+    }
+
+    /**
+     * How many cards of each STRIDE category each player captured, keyed by player ID.
+     *
+     * <p>A player captures every card played in a trick they win. The scored-play rows are in
+     * play order within each trick; the winner is the play whose {@link ScoredPlay#trickPoint()}
+     * is {@code true}, and they may appear anywhere in the trick — first, middle or last.
+     *
+     * <p>The algorithm groups plays into trick windows by scanning for {@code trickPoint} rows.
+     * Each window starts after the previous winner and ends at (and includes) the next winner.
+     * All plays in a window are attributed to that window's winner. An unresolved trick (no
+     * winner yet) contributes no captures.
+     *
+     * @return an unmodifiable map from player ID to an unmodifiable map from STRIDE category to
+     *         capture count; players who captured nothing are absent from the outer map
+     */
+    public Map<UUID, Map<StrideCategory, Integer>> capturedBySuitByPlayer() {
+        final Map<UUID, Map<StrideCategory, Integer>> result = new HashMap<>();
+        final List<ScoredPlay> window = new ArrayList<>();
+
+        for (final ScoredPlay play : rows) {
+            window.add(play);
+            if (play.trickPoint()) {
+                // This play won the trick — attribute every card in the window to this player
+                final UUID winnerId = play.playerId();
+                final Map<StrideCategory, Integer> tally =
+                        result.computeIfAbsent(winnerId, id -> new EnumMap<>(StrideCategory.class));
+                for (final ScoredPlay captured : window) {
+                    tally.merge(captured.card().suit(), 1, Integer::sum);
+                }
+                window.clear();
+            }
+        }
+        // Any remaining plays are from an unresolved trick — no captures yet
+
+        // Wrap each inner map as unmodifiable
+        final Map<UUID, Map<StrideCategory, Integer>> unmodifiable = new HashMap<>();
+        for (final Map.Entry<UUID, Map<StrideCategory, Integer>> entry : result.entrySet()) {
+            unmodifiable.put(entry.getKey(), Collections.unmodifiableMap(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(unmodifiable);
     }
 
     @Override

@@ -14,6 +14,8 @@ import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Resolves the current trick: decides which play took it, records the winner and moves the lead to
@@ -93,6 +95,8 @@ import org.maglez.eop.entity.WinningPlayNotInTrickException;
  * obligation {@link SessionEventPublisher} places on its implementation.
  */
 public class ResolveTrickUseCase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ResolveTrickUseCase.class);
 
     private final ResolvePlayerUseCase resolvePlayerUseCase;
 
@@ -202,9 +206,11 @@ public class ResolveTrickUseCase {
                 try {
                     uc.execute(sessionId);
                 }
-                catch (RuntimeException ignored) {
+                catch (RuntimeException ex) {
                     // Best-effort: the session is completed and the trick is resolved.
                     // The leaderboard will return 404 until the result is recorded.
+                    LOG.warn("[EOP-65] Failed to persist game result for session {}; "
+                            + "leaderboard will return 404 until the result is recorded.", sessionId, ex);
                 }
             });
             sessionEventPublisher.publish(new SessionEvent(SessionEventType.GAME_COMPLETED, sessionId, now));

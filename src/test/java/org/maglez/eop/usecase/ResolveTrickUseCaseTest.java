@@ -572,4 +572,99 @@ class ResolveTrickUseCaseTest {
                 .as("GAME_COMPLETED is still published even when the CAS was lost")
                 .anySatisfy(event -> assertThat(event.type()).isEqualTo(SessionEventType.GAME_COMPLETED));
     }
+
+    @Test
+    @DisplayName("invokes the persist use case when the last trick resolves and the flag is on")
+    void shouldInvokePersistGameResultOnLastTrick() {
+        // Arrange: three cards over three seats — every hand is empty after one trick
+        final GameSession session = seatedTable();
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final var sessionRepository = new InMemorySessionRepository(order, session);
+
+        // A recording stub that tracks whether execute() was called
+        final var persistCalls = new ArrayList<UUID>();
+        final var persistStub = new RecordingPersistUseCase(persistCalls, false);
+
+        final var useCase = new ResolveTrickUseCase(
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
+                handRepository,
+                trickRepository,
+                sessionRepository,
+                publisher,
+                FIXED,
+                Optional.of(persistStub));
+
+        // Act
+        useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        // Assert: persist was called exactly once with the correct session ID
+        assertThat(persistCalls)
+                .as("PersistGameResultUseCase.execute() must be called once on last-trick resolution")
+                .containsExactly(session.sessionId());
+        assertThat(publisher.published())
+                .as("GAME_COMPLETED is published after the persist call")
+                .anySatisfy(event -> assertThat(event.type()).isEqualTo(SessionEventType.GAME_COMPLETED));
+    }
+
+    @Test
+    @DisplayName("swallows a persist failure and still publishes GAME_COMPLETED")
+    void shouldSwallowPersistFailureAndStillPublishGameCompleted() {
+        // Arrange: three cards over three seats — every hand is empty after one trick
+        final GameSession session = seatedTable();
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.THREE, Rank.FOUR);
+        final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
+        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+        trickRepository.seededWith(underWay.trick());
+        final var sessionRepository = new InMemorySessionRepository(order, session);
+
+        // A stub that always throws
+        final var throwingStub = new RecordingPersistUseCase(new ArrayList<>(), true);
+
+        final var useCase = new ResolveTrickUseCase(
+                new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
+                handRepository,
+                trickRepository,
+                sessionRepository,
+                publisher,
+                FIXED,
+                Optional.of(throwingStub));
+
+        // Act — must not throw even though the persist stub throws
+        useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
+
+        // Assert: GAME_COMPLETED is still published despite the persist failure
+        assertThat(publisher.published())
+                .as("GAME_COMPLETED must be published even when persist throws")
+                .anySatisfy(event -> assertThat(event.type()).isEqualTo(SessionEventType.GAME_COMPLETED));
+    }
+
+    /**
+     * A minimal stub for {@link PersistGameResultUseCase} that records calls and optionally throws.
+     *
+     * <p>Constructed with null collaborators because the real constructor requires them; the
+     * {@link #execute(UUID)} override never delegates to the real implementation.
+     */
+    private static final class RecordingPersistUseCase extends PersistGameResultUseCase {
+
+        private final List<UUID> calls;
+
+        private final boolean shouldThrow;
+
+        RecordingPersistUseCase(final List<UUID> calls, final boolean shouldThrow) {
+            super();
+            this.calls = calls;
+            this.shouldThrow = shouldThrow;
+        }
+
+        @Override
+        public void execute(final UUID sessionId) {
+            calls.add(sessionId);
+            if (shouldThrow) {
+                throw new RuntimeException("simulated persistence failure");
+            }
+        }
+    }
 }

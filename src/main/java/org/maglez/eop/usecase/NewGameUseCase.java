@@ -5,11 +5,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.maglez.eop.entity.GameNotCompletedException;
 import org.maglez.eop.entity.GameSession;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
 import org.maglez.eop.entity.Player;
+import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.TooFewPlayersException;
 
 /**
@@ -109,8 +111,8 @@ public class NewGameUseCase {
             throw new NotFacilitatorException(sessionId, actingPlayer.playerId());
         }
 
-        if (session.status() != org.maglez.eop.entity.SessionStatus.COMPLETED) {
-            throw new org.maglez.eop.entity.GameNotCompletedException(sessionId);
+        if (session.status() != SessionStatus.COMPLETED) {
+            throw new GameNotCompletedException(sessionId);
         }
 
         final var seated = session.players().size();
