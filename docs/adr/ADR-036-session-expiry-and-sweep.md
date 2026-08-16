@@ -85,8 +85,10 @@ check. This guard is **not** behind `eop.features.session-lifecycle`. The ration
   `trick-play` is on.
 - The guard is a read-only check. It does not write, does not delete, and does not change any state.
   It is safe to run even when the sweep is not running.
-- The 24-hour TTL is generous. In the default configuration (both flags off), no session is created
+- The 24-hour TTL is generous. When both flags are off, no session is created
   through the API, so no session can expire. The guard is a no-op in that state.
+  As of EOP-25 (2026-08-16), `eop.features.session-lifecycle` is on by default, so sessions are
+  created and the guard is active in the default configuration.
 
 `application.yml` documents this explicitly in the flag's comment block.
 
@@ -94,8 +96,10 @@ check. This guard is **not** behind `eop.features.session-lifecycle`. The ration
 
 `ExpiredSessionSweepScheduler` carries `@ConditionalOnProperty(name = "eop.features.session-lifecycle", havingValue = "true")`.
 The sweep is the destructive half of expiry: it deletes rows. Gating it on the same flag as the
-session-lifecycle endpoints means the sweep is absent in the default configuration and must be
-explicitly enabled.
+session-lifecycle endpoints means the sweep shares the flag's lifecycle: when the flag is off the
+sweep is absent; when the flag is on the sweep is active. As of EOP-25 (2026-08-16),
+`eop.features.session-lifecycle` is on by default, so the sweep is active in the default
+configuration (cadence: 1 h fixed delay, 5 min initial delay).
 
 The sweep runs on a fixed delay (default 1 hour, configurable via `eop.sweep.interval-ms`) with an
 initial delay (default 5 minutes, configurable via `eop.sweep.initial-delay-ms`). Both are bound
@@ -143,14 +147,14 @@ A 401 is not used because:
 
 ### 8. The flag covers the sweep, not the guard
 
-When `eop.features.session-lifecycle` is `false` (the default):
+When `eop.features.session-lifecycle` is `false`:
 - `SessionController` is absent (ADR-013, EOP-48).
 - `ExpiredSessionSweepScheduler` is absent.
 - `SweepExpiredSessionsUseCase` is absent.
 - `ResolvePlayerUseCase` is present and its expiry guard is active — but since no session can be
   created through the API, no session can expire, and the guard is a no-op.
 
-When `eop.features.session-lifecycle` is `true`:
+When `eop.features.session-lifecycle` is `true` (the default as of EOP-25, 2026-08-16):
 - All of the above are present.
 - Sessions are created with a 24-hour TTL.
 - The sweep runs hourly (by default) and deletes expired sessions.
@@ -190,8 +194,10 @@ so no row ever persists in the `ABANDONED` state. If an audit trail of abandoned
 in the future, a separate audit table or event log will be required.
 
 **Neutral — the expiry guard is ungated.** `ResolvePlayerUseCase` checks expiry regardless of the
-flag position. In the default configuration (flag off), no session is created through the API, so
-the guard is a no-op. This is documented in `application.yml`.
+flag position. As of EOP-25 (2026-08-16), `eop.features.session-lifecycle` is on by default, so
+sessions are created through the API in the default configuration and the guard is live. Before
+EOP-25, when the flag was off, no session could be created and the guard was a no-op. This is
+documented in `application.yml`.
 
 **Neutral — two clock authorities.** The domain sets `expires_at` using the application JVM clock;
 the database default expression uses the database clock. At the 24-hour TTL granularity, any

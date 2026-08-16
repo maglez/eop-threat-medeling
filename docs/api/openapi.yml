@@ -43,8 +43,8 @@ info:
     path and the first-load path are the same request.
 
     The session endpoints are gated by the `eop.features.session-lifecycle`
-    feature flag (ADR-013) and are **off by default**. While the flag is off the
-    handlers do not exist and every path below returns 404.
+    feature flag (ADR-013) and are **on by default** as of EOP-25 (2026-08-16).
+    While the flag is off the handlers do not exist and every path below returns 404.
   version: 1.0.0-SNAPSHOT
   license:
     name: Deck content — CC-BY-3.0 US (© 2009 Microsoft Corporation)

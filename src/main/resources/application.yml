@@ -83,11 +83,13 @@ eop:
     # access bypasses Caddy and is unprotected. See ADR-033 for the rationale.
     session-creation-limit: 5
 
-  # Feature flags (ADR-013). Every flag is off here so that forgetting to think
+  # Feature flags (ADR-013). New flags default to false so that forgetting to think
   # about one fails closed. A flag is bound at startup, so flipping it restarts the
   # application; in a container that means setting EOP_FEATURES_SESSION_LIFECYCLE
   # in the environment the container starts with, then
   # docker compose -f compose.app.yml up -d (ADR-016).
+  # As of EOP-25 (2026-08-16), eop.features.session-lifecycle is true (permanent
+  # rollout). eop.features.trick-play remains false.
   features:
     # Session create, join, state, event stream and start (EOP-10). While this is
     # false neither the controller bean nor the create-session, join-session,
@@ -100,7 +102,13 @@ eop:
     # Only the literal true turns this on. on, yes and 1 all read as off, because
     # the conditions carry havingValue = "true" -- flipping it with anything but
     # true is a silent no-op, which is the price of the flag failing closed.
-    session-lifecycle: false
+    #
+    # Enabled by EOP-25 (2026-08-16): all six gate stories (EOP-17 through EOP-22)
+    # and the additional gate EOP-26 are Done. This is the permanent rollout; the
+    # flag will be removed once the feature is confirmed stable (ADR-013).
+    # Note: this also activates ExpiredSessionSweepScheduler (hourly, 5-min initial
+    # delay). eop.features.trick-play remains false; the lobby-only surface shipped.
+    session-lifecycle: true
 
     # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this is
     # false the deal-hands, read-own-hand, play-card, trick-state, resolve-trick and
