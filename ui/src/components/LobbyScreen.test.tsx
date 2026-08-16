@@ -117,7 +117,7 @@ describe('LobbyScreen', () => {
     render(
       <LobbyScreen
         sessionId={sessionId}
-        playerId={playerId} // This is the facilitator
+        playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
       />
@@ -176,7 +176,7 @@ describe('LobbyScreen', () => {
     render(
       <LobbyScreen
         sessionId={sessionId}
-        playerId="player-2" // This is a regular player
+        playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
       />

@@ -1,0 +1,228 @@
+/* Game Screen Styles */
+
+.eop-virtual-table {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  margin: 20px 0;
+  position: relative;
+}
+
+.eop-table-row {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.eop-table-row-top {
+  align-items: flex-start;
+}
+
+.eop-table-row-bottom {
+  align-items: flex-end;
+}
+
+.eop-table-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+}
+
+.eop-table-column-left {
+  align-items: flex-start;
+}
+
+.eop-table-column-center {
+  align-items: center;
+  justify-content: center;
+}
+
+.eop-table-column-right {
+  align-items: flex-end;
+}
+
+.eop-player-position {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 10px;
+  min-width: 120px;
+}
+
+.eop-player-position-top {
+  align-self: center;
+}
+
+.eop-player-position-top-left {
+  align-self: flex-start;
+}
+
+.eop-player-position-top-right {
+  align-self: flex-end;
+}
+
+.eop-player-position-left {
+  align-self: flex-start;
+}
+
+.eop-player-position-right {
+  align-self: flex-end;
+}
+
+.eop-player-position-bottom {
+  align-self: center;
+  width: 100%;
+  max-width: 800px;
+}
+
+.eop-player-info {
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.eop-player-hand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  min-height: 120px;
+  width: 100%;
+}
+
+.eop-card {
+  width: 80px;
+  height: 120px;
+  border: 2px solid #0b0c0c;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
+  background-color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.eop-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.eop-card-selected {
+  border-color: #1d70b8;
+  box-shadow: 0 0 0 3px #1d70b8;
+  transform: translateY(-10px);
+}
+
+.eop-card-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.eop-card-disabled:hover {
+  transform: none !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.eop-card-back {
+  background-color: #1d70b8;
+  color: white;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-weight: bold;
+}
+
+.eop-card-placeholder {
+  width: 80px;
+  height: 120px;
+  border: 2px dashed #b1b4b6;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 12px;
+  color: #626a6e;
+}
+
+.eop-card-suit {
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.eop-card-rank {
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  align-self: center;
+}
+
+.eop-trick-area {
+  min-height: 200px;
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+  text-align: center;
+}
+
+.eop-trick-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.eop-trick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.eop-card-player {
+  margin-top: 5px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* Focus styles for accessibility */
+.eop-card:focus {
+  outline: 3px solid #ffdd00;
+  outline-offset: 0;
+  box-shadow: inset 0 0 0 2px #0b0c0c;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .eop-virtual-table {
+    height: auto;
+    min-height: 500px;
+  }
+  
+  .eop-card {
+    width: 60px;
+    height: 90px;
+  }
+  
+  .eop-card-placeholder {
+    width: 60px;
+    height: 90px;
+  }
+  
+  .eop-player-position {
+    min-width: 90px;
+  }
+  
+  .eop-trick-area {
+    min-height: 150px;
+    max-width: 300px;
+  }
+}

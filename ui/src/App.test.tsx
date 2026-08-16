@@ -205,6 +205,107 @@ describe("Feature flag — lobby UI enabled", () => {
   });
 });
 
+describe("Feature flag — game screen enabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+  });
+
+  it("does not navigate to game screen when VITE_GAME_SCREEN_ENABLED is off (default)", async () => {
+    // Flag is off by default — even if the session transitions to IN_PROGRESS,
+    // the lobby should stay on screen (showing the "game has started" warning).
+    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
+    // VITE_GAME_SCREEN_ENABLED is intentionally NOT stubbed — default is off.
+
+    const inProgressSession = {
+      sessionId: "session-1",
+      joinCode: "XYZ999",
+      status: "IN_PROGRESS",
+      players: [
+        { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" },
+        { playerId: "player-2", displayName: "Bob", seatOrder: 1, role: "PLAYER", connectionStatus: "CONNECTED" },
+        { playerId: "player-3", displayName: "Carol", seatOrder: 2, role: "PLAYER", connectionStatus: "CONNECTED" },
+      ],
+      createdAt: "2023-01-01T00:00:00Z",
+      updatedAt: "2023-01-01T00:00:00Z",
+    };
+
+    const storedSession = { playerToken: "tok-1", playerId: "player-1", sessionId: "session-1" };
+    sessionStorage.setItem("eop_session", JSON.stringify(storedSession));
+
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/events")) return new Promise(() => {});
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve(inProgressSession),
+      } as Response);
+    }));
+
+    render(<App />);
+
+    // Lobby should show the "game has started" warning, not the game screen
+    await waitFor(() => {
+      expect(screen.getByText("The game has started")).toBeInTheDocument();
+    });
+    // Game screen hand group should NOT be present
+    expect(screen.queryByRole("group", { name: "Your hand" })).not.toBeInTheDocument();
+  });
+
+  it("navigates to game screen when VITE_GAME_SCREEN_ENABLED is on and session is IN_PROGRESS", async () => {
+    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
+    vi.stubEnv("VITE_GAME_SCREEN_ENABLED", "true");
+
+    const inProgressSession = {
+      sessionId: "session-1",
+      joinCode: "XYZ999",
+      status: "IN_PROGRESS",
+      players: [
+        { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" },
+        { playerId: "player-2", displayName: "Bob", seatOrder: 1, role: "PLAYER", connectionStatus: "CONNECTED" },
+        { playerId: "player-3", displayName: "Carol", seatOrder: 2, role: "PLAYER", connectionStatus: "CONNECTED" },
+      ],
+      createdAt: "2023-01-01T00:00:00Z",
+      updatedAt: "2023-01-01T00:00:00Z",
+    };
+
+    const storedSession = { playerToken: "tok-1", playerId: "player-1", sessionId: "session-1" };
+    sessionStorage.setItem("eop_session", JSON.stringify(storedSession));
+
+    // GameScreen will call fetchHand, getTrickState, getSession, and subscribeToSession.
+    // Stub them all so the component can mount without errors.
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/events")) return new Promise(() => {});
+      if (url.includes("/hand")) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ handId: "h1", playerId: "player-1", cardCount: 0, cards: [] }),
+        } as Response);
+      }
+      if (url.includes("/tricks/current")) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ trick: null, seatToPlay: null, complete: false, nextLeaderSeat: null, handComplete: false }),
+        } as Response);
+      }
+      // Default: session fetch
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve(inProgressSession),
+      } as Response);
+    }));
+
+    render(<App />);
+
+    // The lobby fires onGameStarted when it sees IN_PROGRESS, which (with flag ON)
+    // switches to the game screen. The game screen renders the hand group.
+    await waitFor(() => {
+      expect(screen.getByRole("group", { name: "Your hand" })).toBeInTheDocument();
+    });
+  });
+});
+
 describe("sessionStorage reconnect", () => {
   afterEach(() => {
     vi.unstubAllEnvs();

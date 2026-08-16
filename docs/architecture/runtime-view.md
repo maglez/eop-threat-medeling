@@ -1021,6 +1021,74 @@ database, the DB default may produce a slightly different expiry than the domain
 domain path is authoritative for all production inserts. ADR-036 §2 records this as a known
 limitation.
 
+## Sequence 10 — Browser play-a-card round trip (EOP-60)
+
+The `GameScreen` component (behind `VITE_GAME_SCREEN_ENABLED`) uses the SSE doorbell
+pattern from ADR-014: the event carries no payload; the client re-fetches authoritative
+state on every notification. This sequence shows one complete card-play cycle from the
+player's gesture to the re-rendered table.
+
+**Precondition:** session is `IN_PROGRESS`, hands have been dealt, it is the player's
+turn (`seatToPlay` matches the player's seat).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Player (browser)
+    participant G as GameScreen
+    participant API as REST API (Caddy → Spring)
+    participant SSE as SseEmitter (all subscribers)
+    participant DB as PostgreSQL
+
+    Note over P,G: Drag-and-drop (pointer events) or<br/>click-to-select + "Play selected card" button<br/>(keyboard / screen-reader path — ADR-038)
+
+    P->>G: pointerup over drop zone, or Enter/Space + button click
+    G->>API: POST /api/v1/sessions/{sessionId}/plays<br/>X-EoP-Player-Token: {token}<br/>body: { cardId }
+    Note over API: ResolvePlayerUseCase derives acting seat<br/>from token — no seat in the request body.<br/>PlayCardUseCase checks turn order, removes<br/>card from hand, appends play.
+    API->>DB: DELETE hand_card, INSERT trick_play (one transaction)
+    DB-->>API: ok
+    API-->>G: 200 TrickDto (own response)
+    API->>SSE: broadcast CARD_PLAYED (no payload — ADR-014)
+
+    Note over G: Re-fetch on own response AND on doorbell.<br/>Both paths call refreshGameState().
+
+    SSE-->>G: doorbell event (other players' GameScreen instances)
+
+    G->>API: GET /api/v1/sessions/{sessionId}/hand<br/>GET /api/v1/sessions/{sessionId}/tricks/current<br/>GET /api/v1/sessions/{sessionId}<br/>(Promise.all — three parallel reads)
+    API->>DB: SELECT hand_card, trick, trick_play, game_session
+    DB-->>API: authoritative state
+    API-->>G: HandDto, TrickStateDto, SessionStateDto
+
+    alt trick is complete (all seats played)
+        G-->>P: winner banner (role="alert"), "Start next trick" button for winner
+        Note over G: Auto-dismiss after 5 s via setTimeout.<br/>Winner calls POST .../tricks/current/resolve<br/>to advance to the next trick.
+    else trick still open
+        G-->>P: re-render table — updated hand, played cards in trick zone,<br/>aria-live region announces whose turn it is
+    end
+```
+
+### What this sequence settles
+
+**The client never trusts its own play.** The `200 TrickDto` from the POST is used only
+to trigger a re-fetch; the re-fetch is what drives the render. This means the table
+always reflects the database, not an optimistic local state.
+
+**The doorbell is the same mechanism as the lobby.** `subscribeToSession` in `api.ts`
+uses `fetch` + `AbortController` (not `EventSource`) so the player token can travel as a
+header rather than a query parameter — the same reasoning as ADR-015 and ADR-019.
+
+**Turn enforcement is server-side.** The client disables cards and hides the play button
+when `seatToPlay` does not match the player's seat, but this is a UX convenience only.
+`PlayCardUseCase` derives the acting seat from the resolved token and throws
+`OutOfTurnException` (409) if it does not match the current leader seat. A caller cannot
+name a seat it does not hold — `PlayCardRequest` carries no seat field.
+
+**The winner banner fires on `trickState.complete`, not on a client-side count.** The
+`complete` flag on `TrickStateDto` is computed by `GetTrickStateUseCase` from
+`Hands.allEmpty()` and the trick's play count; the client reads it, never derives it.
+
+---
+
 ## Related
 
 - [`C4-Diagrams.md`](C4-Diagrams.md) — the containers and components these sequences move through

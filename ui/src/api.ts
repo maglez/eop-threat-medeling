@@ -261,3 +261,124 @@ export function subscribeToSession(
 
   return controller;
 }
+
+// ---- Game Screen API types ----
+
+export interface CardDto {
+  readonly cardId: string;
+  readonly suit: string;
+  readonly rank: string;
+  readonly rankSymbol: string;
+  readonly rankValue: number;
+  readonly threatPrompt: string;
+}
+
+export interface HandDto {
+  readonly handId: string;
+  readonly playerId: string;
+  readonly cardCount: number;
+  readonly cards: readonly CardDto[];
+}
+
+export interface TrickPlayDto {
+  readonly trickPlayId: string;
+  readonly playerId: string;
+  readonly seatOrder: number;
+  readonly card: CardDto;
+  readonly threatLinked: boolean;
+  readonly components: readonly string[];
+  readonly notes?: string;
+  readonly playedAt: string;
+}
+
+export interface TrickDto {
+  readonly trickId: string;
+  readonly sequence: number;
+  readonly leaderSeat: number;
+  readonly ledSuit?: string;
+  readonly plays: readonly TrickPlayDto[];
+  readonly winningSeat?: number;
+}
+
+export interface TrickStateDto {
+  readonly trick?: TrickDto;
+  readonly seatToPlay?: number;
+  readonly complete: boolean;
+  readonly nextLeaderSeat?: number;
+  readonly handComplete: boolean;
+}
+
+export interface PlayCardRequest {
+  readonly cardId: string;
+  readonly threatLinked?: boolean;
+  readonly components?: string[];
+  readonly notes?: string;
+}
+
+/** Fetch the current player's own hand */
+export async function fetchHand(sessionId: string, playerToken: string): Promise<HandDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/hand`, {
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as HandDto;
+}
+
+/** Get the current trick state */
+export async function getTrickState(sessionId: string, playerToken: string): Promise<TrickStateDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/tricks/current`, {
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as TrickStateDto;
+}
+
+/** Play a card into the current trick */
+export async function playCard(sessionId: string, playerToken: string, request: PlayCardRequest): Promise<TrickDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/plays`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as TrickDto;
+}
+
+/** Resolve the current trick */
+export async function resolveTrick(sessionId: string, playerToken: string): Promise<TrickDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/tricks/current/resolve`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as TrickDto;
+}
