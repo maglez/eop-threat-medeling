@@ -184,6 +184,8 @@ flowchart LR
         SCORE["ScoreController<br/>EOP-15 Slice B — one route, the sixth behind this flag<br/>GET /score<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>separate from TrickController because a score is not a move<br/>names only cards already face up, which is what separates it from GET /hand (ADR-027)"]
         ESC["EndSessionController<br/>EOP-15 Slice C — one route, the seventh behind this flag<br/>POST /{sessionId}/end<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>facilitator-only: authz in the domain entity before the status check"]
         SDTO["ScoreSheetDto · ScoredPlayDto · StandingDto<br/>EOP-15 Slice B<br/>ScoredPlayDto is one row of the printed Score Card — name, points, card, component(s), notes<br/>the display name travels as a plain string; no token digest crosses this boundary<br/>StandingDto publishes position and tied, so a shared first place reads as a tie<br/>no winner field — position 1 held by two seats is the answer"]
+        GOC["GameOverController<br/>EOP-65 — two routes<br/>GET /{sessionId}/leaderboard · POST /{sessionId}/new-game<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.game-over is off<br/>facilitator-only for new-game; any seated player may read the leaderboard"]
+        GODTO["LeaderboardDto · LeaderboardRowDto<br/>EOP-65<br/>LeaderboardRowDto carries capturedBySuit — STRIDE breakdown per player<br/>derived from ScoreSheet.capturedBySuitByPlayer(), never from stored scores (ADR-030)"]
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
         SSE["SseSessionEventPublisher<br/>in-process subscriber registry"]
@@ -215,6 +217,9 @@ flowchart LR
         GETSCORE["GetScoreUseCase<br/>EOP-15 Slice B — the thirteenth use case<br/>reaches two collaborators only: resolving the caller already yields the session and its players<br/>derives the score from the whole trick history — nothing is accumulated (ADR-030)<br/>no HandRepository and no status check: before the deal, everybody on nothing is a true answer<br/>bean exists only while eop.features.trick-play is true"]
         ENDSESSION["EndSessionUseCase<br/>EOP-15 Slice C — the fourteenth use case<br/>facilitator-only: authz in the domain entity before the status check<br/>auto-complete also fires from ResolveTrickUseCase when nextLeaderSeat is empty<br/>bean exists only while eop.features.trick-play is true"]
         SWEEP["SweepExpiredSessionsUseCase<br/>EOP-22 — the fifteenth use case<br/>finds sessions where expires_at &lt; now and deletes them<br/>bean exists only while eop.features.session-lifecycle is true"]
+        GETLEAD["GetLeaderboardUseCase<br/>EOP-65 — the sixteenth use case<br/>re-derives score from live trick history (ADR-030) — never reads stored scores<br/>bean exists only while eop.features.game-over is true"]
+        PERSIST["PersistGameResultUseCase<br/>EOP-65 — the seventeenth use case<br/>called best-effort by ResolveTrickUseCase via Optional injection after last trick<br/>no authorisation check — caller already authorised<br/>bean exists only while eop.features.game-over is true"]
+        NEWGAME["NewGameUseCase<br/>EOP-65 — the eighteenth use case<br/>facilitator-only; non-atomic 4-step reset (ADR-039)<br/>clears tricks then hands, resets session to IN_PROGRESS, re-deals<br/>bean exists only while eop.features.game-over is true"]
 
         P1(["SessionRepository"])
         P2(["SessionEventPublisher<br/>reached by six use cases since EOP-15 Slice C<br/>every trick-play write publishes after it returns"])
@@ -227,6 +232,7 @@ flowchart LR
         P8(["TrickRepository<br/>EOP-14 Slice C1<br/>called by two Slice C2 use cases, by GetTrickStateUseCase from Slice E and by GetScoreUseCase from EOP-15 Slice B<br/>findTricks returns the session's whole history and filters nothing — an unresolved trick comes back unresolved<br/>recordResolution's next-leader parameter is an OptionalInt since Slice E"])
         P9(["CardRepository<br/>EOP-13 — third method findWholeDeck added by Slice C2"])
         P10(["DeckShuffler<br/>EOP-14 Slice C2<br/>a port so the security choice is made once, in one class"])
+        P12(["GameResultRepository<br/>EOP-65 — the twelfth port<br/>save · findFirstByGameSessionIdOrderByFinalisedAtDesc<br/>returns the most recently finalised result for a session"])
     end
 
     subgraph persist["adapter/persistence"]
@@ -238,13 +244,15 @@ flowchart LR
         CJR["CardJpaRepository<br/>package-private"]
         TPRA["TrickPlayRepositoryAdapter<br/>EOP-14 Slice C1<br/>one class implementing both trick-play ports<br/>authorises nobody — no port method takes an acting player"]
         TPJR["trick-play JPA repositories ×5<br/>EOP-14 Slice C1<br/>hand, hand_card, trick, trick_play, trick_play_component<br/>all package-private"]
+        GRA["GameResultRepositoryAdapter<br/>EOP-65 — implements GameResultRepository<br/>write-once rows; placeholder standings on read (ADR-030)<br/>findFirst...OrderByFinalisedAtDesc returns latest result for multi-game sessions"]
+        GRJR["game_result JPA repositories ×2<br/>EOP-65<br/>GameResultJpaRepository · GameResultPlayerJpaRepository<br/>all package-private"]
     end
 
     subgraph sched["adapter/scheduling"]
         SCHEDCOMP["ExpiredSessionSweepScheduler<br/>EOP-22<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.session-lifecycle is off<br/>@Scheduled — fires every hour (configurable via eop.sweep.interval-ms)<br/>delegates entirely to SweepExpiredSessionsUseCase"]
     end
 
-    DB[("PostgreSQL<br/>4 unique constraints and 2 range CHECKs on game_session and player<br/>version BIGINT DEFAULT 0")]
+    DB[("PostgreSQL<br/>4 unique constraints and 2 range CHECKs on game_session and player<br/>version BIGINT DEFAULT 0<br/>game_result + game_result_player tables added by EOP-65")]
 
     SC --> CREATE
     SC --> JOIN
@@ -329,6 +337,28 @@ flowchart LR
     P8 -.->|implements| TPRA
     P9 -.->|implements| CRA
     P10 -.->|implements| SHUF
+    P12 -.->|implements| GRA
+
+    GOC --> GETLEAD
+    GOC --> NEWGAME
+    GOC -.->|"maps domain results through"| GODTO
+    GOC -.->|"throws domain exceptions"| GEH
+    GETLEAD -->|"first statement — authorise, then decide"| RESOLVE
+    GETLEAD --> P12
+    GETLEAD --> P8
+    PERSIST --> P1
+    PERSIST --> P8
+    PERSIST --> P12
+    PERSIST --> P3
+    NEWGAME -->|"first statement — authorise, then decide"| RESOLVE
+    NEWGAME --> P7
+    NEWGAME --> P8
+    NEWGAME --> P1
+    NEWGAME --> P9
+    NEWGAME --> P10
+    NEWGAME --> P3
+    NEWGAME -->|"EOP-65 — HAND_DEALT, after the write"| P2
+    RESTRICK -.->|"EOP-65 — best-effort via Optional, after COMPLETED"| PERSIST
 
     SRA --> GSR
     SRA --> PJR
@@ -339,6 +369,8 @@ flowchart LR
     TPRA --> TPJR
     TPRA -->|"every write begins with a compare-and-set on the session row"| GSR
     TPJR --> DB
+    GRA --> GRJR
+    GRJR --> DB
 ```
 
 The dotted `implements` edges are the important ones: **every arrow of dependency

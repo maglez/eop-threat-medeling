@@ -60,7 +60,7 @@ public class GameResultRepositoryAdapter implements GameResultRepository {
     @Transactional(readOnly = true)
     public Optional<GameResult> findBySessionId(final UUID sessionId) {
         Objects.requireNonNull(sessionId, "sessionId is required");
-        return resultRows.findByGameSessionId(sessionId).map(this::assemble);
+        return resultRows.findFirstByGameSessionIdOrderByFinalisedAtDesc(sessionId).map(this::assemble);
     }
 
     /**

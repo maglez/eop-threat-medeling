@@ -43,9 +43,25 @@ public final class ScoreSheet {
 
     private final List<Standing> standings;
 
-    private ScoreSheet(final List<ScoredPlay> rows, final List<Standing> standings) {
+    /**
+     * Captures per player: player ID → (STRIDE category → count of cards captured).
+     *
+     * <p>Computed once in {@link #of(List, List)} while the {@link Trick} objects are still in hand,
+     * so the trick boundary is exact rather than reconstructed from the flattened row list.</p>
+     */
+    private final Map<UUID, Map<StrideCategory, Integer>> capturedBySuitByPlayer;
+
+    private ScoreSheet(final List<ScoredPlay> rows, final List<Standing> standings,
+            final Map<UUID, Map<StrideCategory, Integer>> capturedBySuitByPlayer) {
         this.rows = List.copyOf(rows);
         this.standings = List.copyOf(standings);
+        // Defensive copy using Map.copyOf so SpotBugs EI_EXPOSE_REP is satisfied.
+        // Each inner map is also copied to prevent mutation of the original EnumMap.
+        final Map<UUID, Map<StrideCategory, Integer>> copy = new HashMap<>();
+        for (final Map.Entry<UUID, Map<StrideCategory, Integer>> entry : capturedBySuitByPlayer.entrySet()) {
+            copy.put(entry.getKey(), Map.copyOf(entry.getValue()));
+        }
+        this.capturedBySuitByPlayer = Map.copyOf(copy);
     }
 
     /**
@@ -76,6 +92,7 @@ public final class ScoreSheet {
         }
         final Map<UUID, Player> seated = index(players);
         final List<ScoredPlay> scored = new ArrayList<>();
+        final Map<UUID, Map<StrideCategory, Integer>> captures = new HashMap<>();
         for (final Trick trick : inSequenceOrder(tricks)) {
             final Optional<TrickPlay> winner = trick.winner();
             for (final TrickPlay play : trick.plays()) {
@@ -89,8 +106,22 @@ public final class ScoreSheet {
                 final boolean tookTrick = winner.isPresent() && winner.get().trickPlayId().equals(play.trickPlayId());
                 scored.add(ScoredPlay.of(player, play, tookTrick));
             }
+            // Attribute all cards in this trick to the winner, using the Trick's own winner() —
+            // exact, not reconstructed from the flattened row list.
+            winner.ifPresent(winningPlay -> {
+                final Map<StrideCategory, Integer> tally =
+                        captures.computeIfAbsent(winningPlay.playerId(), id -> new EnumMap<>(StrideCategory.class));
+                for (final TrickPlay play : trick.plays()) {
+                    tally.merge(play.card().suit(), 1, Integer::sum);
+                }
+            });
         }
-        return new ScoreSheet(scored, rank(players, scored));
+        // Wrap each inner map as unmodifiable
+        final Map<UUID, Map<StrideCategory, Integer>> unmodifiable = new HashMap<>();
+        for (final Map.Entry<UUID, Map<StrideCategory, Integer>> entry : captures.entrySet()) {
+            unmodifiable.put(entry.getKey(), Collections.unmodifiableMap(entry.getValue()));
+        }
+        return new ScoreSheet(scored, rank(players, scored), Collections.unmodifiableMap(unmodifiable));
     }
 
     private static Map<UUID, Player> index(final List<Player> players) {
@@ -207,43 +238,19 @@ public final class ScoreSheet {
     /**
      * How many cards of each STRIDE category each player captured, keyed by player ID.
      *
-     * <p>A player captures every card played in a trick they win. The scored-play rows are in
-     * play order within each trick; the winner is the play whose {@link ScoredPlay#trickPoint()}
-     * is {@code true}, and they may appear anywhere in the trick — first, middle or last.
+     * <p>A player captures every card played in a trick they win. This map is computed once
+     * during {@link #of(List, List)} while the {@link Trick} objects are still in hand, so the
+     * trick boundary is exact — the winner is identified by {@link Trick#winner()}, not
+     * reconstructed by scanning the flattened row list.
      *
-     * <p>The algorithm groups plays into trick windows by scanning for {@code trickPoint} rows.
-     * Each window starts after the previous winner and ends at (and includes) the next winner.
-     * All plays in a window are attributed to that window's winner. An unresolved trick (no
-     * winner yet) contributes no captures.
+     * <p>Players who captured no cards are absent from the outer map. An unresolved trick
+     * (no winner yet) contributes no captures.
      *
      * @return an unmodifiable map from player ID to an unmodifiable map from STRIDE category to
      *         capture count; players who captured nothing are absent from the outer map
      */
     public Map<UUID, Map<StrideCategory, Integer>> capturedBySuitByPlayer() {
-        final Map<UUID, Map<StrideCategory, Integer>> result = new HashMap<>();
-        final List<ScoredPlay> window = new ArrayList<>();
-
-        for (final ScoredPlay play : rows) {
-            window.add(play);
-            if (play.trickPoint()) {
-                // This play won the trick — attribute every card in the window to this player
-                final UUID winnerId = play.playerId();
-                final Map<StrideCategory, Integer> tally =
-                        result.computeIfAbsent(winnerId, id -> new EnumMap<>(StrideCategory.class));
-                for (final ScoredPlay captured : window) {
-                    tally.merge(captured.card().suit(), 1, Integer::sum);
-                }
-                window.clear();
-            }
-        }
-        // Any remaining plays are from an unresolved trick — no captures yet
-
-        // Wrap each inner map as unmodifiable
-        final Map<UUID, Map<StrideCategory, Integer>> unmodifiable = new HashMap<>();
-        for (final Map.Entry<UUID, Map<StrideCategory, Integer>> entry : result.entrySet()) {
-            unmodifiable.put(entry.getKey(), Collections.unmodifiableMap(entry.getValue()));
-        }
-        return Collections.unmodifiableMap(unmodifiable);
+        return capturedBySuitByPlayer;
     }
 
     @Override
