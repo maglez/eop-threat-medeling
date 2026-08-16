@@ -24,6 +24,7 @@ import org.maglez.eop.usecase.ResolveTrickUseCase;
 import org.maglez.eop.usecase.SessionEventPublisher;
 import org.maglez.eop.usecase.SessionRepository;
 import org.maglez.eop.usecase.StartSessionUseCase;
+import org.maglez.eop.usecase.SweepExpiredSessionsUseCase;
 import org.maglez.eop.usecase.TrickRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -152,11 +153,12 @@ public class UseCaseConfiguration {
      * across two flags belongs to neither.
      *
      * @param sessionRepository the port implementation supplied by the persistence adapter
+     * @param clock the clock used to evaluate session expiry
      * @return the resolve-player use case
      */
     @Bean
-    public ResolvePlayerUseCase resolvePlayerUseCase(final SessionRepository sessionRepository) {
-        return new ResolvePlayerUseCase(sessionRepository);
+    public ResolvePlayerUseCase resolvePlayerUseCase(final SessionRepository sessionRepository, final Clock clock) {
+        return new ResolvePlayerUseCase(sessionRepository, clock);
     }
 
     /**
@@ -374,5 +376,25 @@ public class UseCaseConfiguration {
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final TrickRepository trickRepository) {
         return new GetScoreUseCase(resolvePlayerUseCase, trickRepository);
+    }
+
+    /**
+     * Declares the sweep-expired-sessions use case, behind
+     * {@code eop.features.session-lifecycle}.
+     *
+     * <p>The sweep is gated on the same flag as the session lifecycle endpoints so
+     * that it is only active when sessions can be created. While the flag is
+     * {@code false} neither the use case nor the scheduler bean exist.
+     *
+     * @param sessionRepository the port used to find and delete expired sessions
+     * @param clock the clock used to determine the current instant
+     * @return the sweep use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.session-lifecycle", havingValue = "true")
+    public SweepExpiredSessionsUseCase sweepExpiredSessionsUseCase(
+            final SessionRepository sessionRepository,
+            final Clock clock) {
+        return new SweepExpiredSessionsUseCase(sessionRepository, clock);
     }
 }

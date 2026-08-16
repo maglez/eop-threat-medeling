@@ -1,9 +1,12 @@
 package org.maglez.eop.usecase;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import org.maglez.eop.entity.IdentityTokenHash;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
+import org.maglez.eop.entity.SessionExpiredException;
 import org.maglez.eop.entity.SessionNotFoundException;
 
 /**
@@ -21,14 +24,18 @@ import org.maglez.eop.entity.SessionNotFoundException;
 public class ResolvePlayerUseCase {
 
     private final SessionRepository sessionRepository;
+    private final Clock clock;
 
     /**
      * Creates the use case.
      *
      * @param sessionRepository the port used to read sessions
+     * @param clock the clock used to evaluate session expiry — injected so that
+     *     tests can fix the instant and avoid wall-clock races
      */
-    public ResolvePlayerUseCase(final SessionRepository sessionRepository) {
+    public ResolvePlayerUseCase(final SessionRepository sessionRepository, final Clock clock) {
         this.sessionRepository = Objects.requireNonNull(sessionRepository, "sessionRepository is required");
+        this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
     /**
@@ -52,6 +59,10 @@ public class ResolvePlayerUseCase {
 
         final var session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new SessionNotFoundException(sessionId));
+
+        if (session.expiresAt().isBefore(Instant.now(clock))) {
+            throw new SessionExpiredException(sessionId);
+        }
 
         if (playerToken == null || playerToken.isBlank()) {
             throw new PlayerNotRecognisedException(sessionId);

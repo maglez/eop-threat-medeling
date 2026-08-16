@@ -2,6 +2,7 @@ package org.maglez.eop.adapter.persistence;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -141,6 +142,23 @@ public class SessionRepositoryAdapter implements SessionRepository {
         if (advanced == 0) {
             throw noLongerInProgress(sessionId);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UUID> findExpiredSessionIds(final Instant before) {
+        Objects.requireNonNull(before, "before is required");
+        return sessionRows.findExpiredSessionIds(before.atOffset(ZoneOffset.UTC));
+    }
+
+    @Override
+    @Transactional
+    public void abandonAndDelete(final UUID sessionId) {
+        Objects.requireNonNull(sessionId, SESSION_ID_REQUIRED);
+        // Transition to ABANDONED (no-op if already there), then delete.
+        // The delete cascades to player rows via fk_player_game_session ON DELETE CASCADE.
+        sessionRows.markAbandoned(sessionId);
+        sessionRows.deleteById(sessionId);
     }
 
     /**

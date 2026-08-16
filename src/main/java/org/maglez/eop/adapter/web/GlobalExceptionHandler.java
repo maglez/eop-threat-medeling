@@ -18,6 +18,7 @@ import org.maglez.eop.entity.PlayerMismatchException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.ScoreNotDerivableException;
+import org.maglez.eop.entity.SessionExpiredException;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
@@ -282,6 +283,37 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
         problem.setTitle("Player not recognised");
         problem.setDetail(exception.getMessage());
+        return problem;
+    }
+
+    /**
+     * The session the credential belongs to has expired.
+     *
+     * <p>Returned as 403 Forbidden, consistent with the rest of the API's refusal
+     * responses (ADR-015, ADR-036). A 401 would require a {@code WWW-Authenticate}
+     * challenge, and emitting one would advertise a scheme this API never reads —
+     * the credential travels in a custom header, not {@code Authorization: Bearer}.
+     *
+     * <p>Distinct from {@link #handlePlayerNotRecognised}: that handler fires when
+     * the credential was never valid; this one fires when it was valid but the
+     * session it belonged to has since expired. The distinction matters to a client
+     * that wants to tell a user "your session timed out" rather than "you are not
+     * allowed here".
+     *
+     * <p>The session identifier is not echoed in the response body. The caller
+     * supplied it, so repeating it discloses nothing, but the message in the
+     * exception already names it and that message is deliberately not used here:
+     * the detail is a fixed string so that every expired-session response is
+     * indistinguishable, giving an attacker no signal about which identifiers
+     * correspond to sessions that once existed.
+     *
+     * @return a 403 problem detail
+     */
+    @ExceptionHandler(SessionExpiredException.class)
+    public ProblemDetail handleSessionExpired() {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Session expired");
+        problem.setDetail("The session has expired. Please start a new session.");
         return problem;
     }
 

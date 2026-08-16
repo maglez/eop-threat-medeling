@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EOP-22: Add expires_at to game_session so that sessions and credentials expire
+  automatically after 24 hours.
+
+  The column is NOT NULL with a database-side default so that existing rows
+  (created before this migration) receive a sensible value without a separate
+  data migration step.
+
+  H2 and PostgreSQL 17 use different interval syntax:
+    - PostgreSQL: NOW() + INTERVAL '24 hours'
+    - H2:         CURRENT_TIMESTAMP + INTERVAL '24' HOUR
+
+  Liquibase's <dbms> precondition inside a changeset is not available for
+  defaultValueComputed, so we use two changesets gated by <preConditions> on the
+  database type.  Both carry the same id prefix so the intent is clear in the
+  changelog history.
+
+  Changesets are immutable once merged.  Later stories add files.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <!-- ── PostgreSQL path ─────────────────────────────────────────────────── -->
+  <changeSet id="001-add-expires-at-postgresql" author="eop">
+    <preConditions onFail="MARK_RAN">
+      <dbms type="postgresql"/>
+    </preConditions>
+    <comment>
+      Add expires_at to game_session on PostgreSQL 17.  The default is
+      NOW() + INTERVAL '24 hours', which is valid PostgreSQL syntax.
+      Existing rows receive a value 24 hours after the migration runs,
+      which is the most conservative safe choice: they are not immediately
+      expired, but they will be swept within the next day.
+    </comment>
+
+    <addColumn tableName="game_session">
+      <column name="expires_at" type="TIMESTAMP WITH TIME ZONE"
+              defaultValueComputed="NOW() + INTERVAL '24 hours'">
+        <constraints nullable="false"/>
+      </column>
+    </addColumn>
+
+    <!-- Index so the sweep query (WHERE expires_at &lt; NOW()) is fast even
+         when the table has millions of rows. -->
+    <createIndex tableName="game_session" indexName="idx_game_session_expires_at">
+      <column name="expires_at"/>
+    </createIndex>
+
+    <rollback>
+      <sql>DROP INDEX IF EXISTS idx_game_session_expires_at</sql>
+      <sql>ALTER TABLE game_session DROP COLUMN IF EXISTS expires_at</sql>
+    </rollback>
+  </changeSet>
+
+  <!-- ── H2 path (test suite) ────────────────────────────────────────────── -->
+  <changeSet id="001-add-expires-at-h2" author="eop">
+    <preConditions onFail="MARK_RAN">
+      <dbms type="h2"/>
+    </preConditions>
+    <comment>
+      Add expires_at to game_session on H2.  H2 uses CURRENT_TIMESTAMP and
+      INTERVAL '24' HOUR rather than PostgreSQL's NOW() + INTERVAL '24 hours'.
+    </comment>
+
+    <addColumn tableName="game_session">
+      <column name="expires_at" type="TIMESTAMP WITH TIME ZONE"
+              defaultValueComputed="CURRENT_TIMESTAMP + INTERVAL '24' HOUR">
+        <constraints nullable="false"/>
+      </column>
+    </addColumn>
+
+    <createIndex tableName="game_session" indexName="idx_game_session_expires_at">
+      <column name="expires_at"/>
+    </createIndex>
+
+    <rollback>
+      <sql>DROP INDEX IF EXISTS idx_game_session_expires_at</sql>
+      <sql>ALTER TABLE game_session DROP COLUMN IF EXISTS expires_at</sql>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

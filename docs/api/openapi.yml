@@ -1636,14 +1636,17 @@ components:
       description: |
         The `X-EoP-Player-Token` header is missing, unrecognised, or belongs to a
         different session — or it is valid but the player it identifies is not
-        permitted to perform this operation.
+        permitted to perform this operation — or the session has expired.
 
         403 rather than 401, deliberately. There is no authentication scheme
         here: no realm, no challenge, nothing a client could retry differently
         after being told to authenticate. A 401 is required to carry a
         `WWW-Authenticate` header, and emitting one would advertise a challenge
         that does not exist. The request was understood and refused, which is
-        what 403 means.
+        what 403 means. Session expiry is also a 403: the credential was once
+        valid but the session it belonged to no longer exists. The `title` field
+        distinguishes the cases: `"Player not recognised"` for an invalid token,
+        `"Session expired"` for an expired session (ADR-036).
       content:
         application/problem+json:
           schema:

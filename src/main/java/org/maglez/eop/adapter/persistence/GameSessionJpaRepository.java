@@ -1,6 +1,7 @@
 package org.maglez.eop.adapter.persistence;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.maglez.eop.entity.SessionStatus;
@@ -181,4 +182,31 @@ interface GameSessionJpaRepository extends JpaRepository<GameSessionJpaEntity, U
             @Param("nextLeaderSeat") Integer nextLeaderSeat,
             @Param("required") SessionStatus required,
             @Param("now") OffsetDateTime now);
+
+    /**
+     * Returns the identifiers of all sessions whose {@code expires_at} is before
+     * the given instant and whose status is not yet {@code ABANDONED}.
+     *
+     * <p>Used by the sweep scheduler to discover which sessions to transition and
+     * delete. Returning only identifiers keeps the query lightweight.
+     *
+     * @param before the cutoff — sessions expiring before this are returned
+     * @return a list of session identifiers, possibly empty
+     */
+    @Query("SELECT s.id FROM GameSessionJpaEntity s WHERE s.expiresAt < :before AND s.status <> 'ABANDONED'")
+    List<UUID> findExpiredSessionIds(@Param("before") OffsetDateTime before);
+
+    /**
+     * Unconditionally sets the session's status to {@code ABANDONED}.
+     *
+     * <p>The sweep calls this before deleting the row. A concurrent sweep call
+     * that already set the status is a no-op here, and the delete that follows
+     * still runs safely.
+     *
+     * @param sessionId the session to mark abandoned
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE GameSessionJpaEntity s SET s.status = 'ABANDONED', s.version = s.version + 1 "
+            + "WHERE s.id = :sessionId")
+    void markAbandoned(@Param("sessionId") UUID sessionId);
 }

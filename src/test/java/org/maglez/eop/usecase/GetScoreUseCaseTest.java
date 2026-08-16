@@ -229,7 +229,7 @@ class GetScoreUseCaseTest {
         @Test
         @DisplayName("refuses to be built without the collaborators it reads through")
         void shouldRefuseToBeBuiltWithoutItsCollaborators() {
-            final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()));
+            final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()), java.time.Clock.systemUTC());
 
             assertThatNullPointerException().isThrownBy(() -> new GetScoreUseCase(null, trickRepository));
             assertThatNullPointerException().isThrownBy(() -> new GetScoreUseCase(resolver, null));
@@ -237,7 +237,7 @@ class GetScoreUseCaseTest {
     }
 
     private GetScoreUseCase useCase() {
-        final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()));
+        final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()), java.time.Clock.systemUTC());
         return new GetScoreUseCase(resolver, trickRepository);
     }
 

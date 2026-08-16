@@ -126,3 +126,13 @@ eop:
     # commit 34d30d7, and this flag's own conditions have carried havingValue since
     # 56c31b1, so the same caveat applies here: only the literal true turns it on.
     trick-play: false
+
+  # Expired-session sweep configuration (ADR-036). These are infrastructure
+  # toggles, not feature flags — they belong under eop.* directly rather than
+  # eop.features.*. The sweep bean is only active when eop.features.session-lifecycle
+  # is true; these values are ignored while the flag is off.
+  sweep:
+    # Interval between sweep runs in milliseconds. Default: 1 hour.
+    interval-ms: 3600000
+    # Initial delay before the first sweep run in milliseconds. Default: 5 minutes.
+    initial-delay-ms: 300000

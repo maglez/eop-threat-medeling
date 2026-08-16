@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -202,6 +203,16 @@ class SessionContentionIntegrationTest {
         @Override
         public void recordCompleted(final UUID sessionId, final Instant occurredAt) {
             delegate.recordCompleted(sessionId, occurredAt);
+        }
+
+        @Override
+        public List<UUID> findExpiredSessionIds(final Instant before) {
+            return delegate.findExpiredSessionIds(before);
+        }
+
+        @Override
+        public void abandonAndDelete(final UUID sessionId) {
+            delegate.abandonAndDelete(sessionId);
         }
     }
 }

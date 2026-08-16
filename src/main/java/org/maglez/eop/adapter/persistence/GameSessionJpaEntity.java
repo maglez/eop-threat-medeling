@@ -58,6 +58,9 @@ class GameSessionJpaEntity {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "expires_at", nullable = false, updatable = false)
+    private OffsetDateTime expiresAt;
+
     /**
      * The seat leading the current trick, or {@code null} before any cards are
      * dealt.
@@ -129,12 +132,14 @@ class GameSessionJpaEntity {
             final String joinCode,
             final SessionStatus status,
             final OffsetDateTime createdAt,
-            final OffsetDateTime updatedAt) {
+            final OffsetDateTime updatedAt,
+            final OffsetDateTime expiresAt) {
         this.id = id;
         this.joinCode = joinCode;
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.expiresAt = expiresAt;
     }
 
     /**
@@ -154,7 +159,8 @@ class GameSessionJpaEntity {
                 session.joinCode().value(),
                 session.status(),
                 session.createdAt().atOffset(ZoneOffset.UTC),
-                session.updatedAt().atOffset(ZoneOffset.UTC));
+                session.updatedAt().atOffset(ZoneOffset.UTC),
+                session.expiresAt().atOffset(ZoneOffset.UTC));
     }
 
     /**
@@ -173,7 +179,8 @@ class GameSessionJpaEntity {
                 status,
                 players,
                 createdAt.toInstant(),
-                updatedAt.toInstant());
+                updatedAt.toInstant(),
+                expiresAt.toInstant());
     }
 
     UUID getId() {

@@ -187,7 +187,7 @@ class GetTrickStateUseCaseTest {
      */
     private GetTrickStateUseCase useCaseFor(final GameSession session) {
         return new GetTrickStateUseCase(
-                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session)),
+                new ResolvePlayerUseCase(new InMemorySessionRepository(order, session), java.time.Clock.systemUTC()),
                 handRepository,
                 trickRepository);
     }
@@ -394,7 +394,7 @@ class GetTrickStateUseCaseTest {
     @Test
     @DisplayName("refuses to be built without its collaborators")
     void shouldRequireItsCollaborators() {
-        final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()));
+        final var resolver = new ResolvePlayerUseCase(new InMemorySessionRepository(order, seatedTable()), java.time.Clock.systemUTC());
 
         assertThatNullPointerException()
                 .isThrownBy(() -> new GetTrickStateUseCase(null, handRepository, trickRepository))

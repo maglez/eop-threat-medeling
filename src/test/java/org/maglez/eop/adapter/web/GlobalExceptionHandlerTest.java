@@ -34,6 +34,7 @@ import org.maglez.eop.entity.PlayerNotInSessionException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.ScoreNotDerivableException;
 import org.maglez.eop.entity.SeatAlreadyTakenException;
+import org.maglez.eop.entity.SessionExpiredException;
 import org.maglez.eop.entity.SessionFullException;
 import org.maglez.eop.entity.SessionNotFoundException;
 import org.maglez.eop.entity.SessionNotInProgressException;
@@ -184,6 +185,17 @@ class GlobalExceptionHandlerTest {
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
             assertThat(problem.getTitle()).isEqualTo("Player not recognised");
             assertThat(problem.getDetail()).contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("an expired session is a 403 Forbidden")
+        void shouldMapSessionExpiredTo403() {
+            final ProblemDetail problem = handler.handleSessionExpired();
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+            assertThat(problem.getTitle()).isEqualTo("Session expired");
+            assertThat(problem.getDetail())
+                    .isEqualTo("The session has expired. Please start a new session.");
         }
 
         @Test
@@ -453,6 +465,7 @@ class GlobalExceptionHandlerTest {
                 handler.handleHandAlreadyDealt(new HandAlreadyDealtException(SESSION_ID)).getDetail(),
                 handler.handleHandComplete(new HandCompleteException(SESSION_ID)).getDetail(),
                 handler.handleSeatAlreadyTaken(new SeatAlreadyTakenException(SESSION_ID, 4)).getDetail(),
+                handler.handleSessionExpired().getDetail(),
                 unavailable.getDetail());
 
         assertThat(details).noneMatch(detail -> detail.contains(plaintext))
