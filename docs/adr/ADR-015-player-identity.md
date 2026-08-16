@@ -206,8 +206,11 @@ ADR-036's 24-hour TTL, or been deleted by its sweep, must be returned to a usabl
 carried by `ApiError` — `err instanceof ApiError && (err.status === 403 || err.status
 === 404)` — calling `onSessionEnd()`, which clears `eop_session` from `sessionStorage`
 and returns the player to the home screen. The same branch is present in the SSE
-subscription error handler in `api.ts`. The custody decision recorded here is therefore
-fully usable: both the read path and the give-up path work correctly.
+subscription error handler in `LobbyScreen.tsx` (the `onError` callback passed to
+`subscribeToSession`). `api.ts` constructs the `ApiError` and invokes the caller's
+`onError`; the status branching and the `onSessionEnd()` call live in `LobbyScreen`.
+The custody decision recorded here is therefore fully usable: both the read path and
+the give-up path work correctly.
 
 ## Related
 

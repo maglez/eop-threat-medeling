@@ -334,6 +334,45 @@ describe('LobbyScreen', () => {
     });
   });
 
+  it('calls onSessionEnd when SSE endpoint returns 403 (expired token via subscribeToSession onError)', async () => {
+    // Initial getSession succeeds so the lobby renders, then the SSE endpoint
+    // returns 403 — subscribeToSession calls onError(ApiError(403, ...)) which
+    // LobbyScreen's onError handler forwards to onSessionEnd().
+    let eventsCallCount = 0;
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/events')) {
+        eventsCallCount++;
+        // SSE endpoint returns 403 problem-detail (not a stream)
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          statusText: 'Forbidden',
+          body: null,
+          json: () => Promise.resolve({ title: 'Forbidden', detail: 'The session has expired. Please start a new session.' })
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockSession)
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockOnSessionEnd).toHaveBeenCalled();
+    });
+    expect(eventsCallCount).toBeGreaterThanOrEqual(1);
+  });
+
   it('shows game in progress message when session status is IN_PROGRESS', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/events')) {

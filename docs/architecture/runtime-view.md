@@ -174,7 +174,9 @@ The *failure* arm also works. The 403 that an expired session produces routinely
 ADR-036's 24-hour TTL is detected by branching on the numeric `status` carried by
 `ApiError` — `err instanceof ApiError && (err.status === 403 || err.status === 404)` —
 in both the `refreshSession` callback and the SSE subscription error handler in
-`api.ts`. Either path calls `onSessionEnd()`, which does
+`LobbyScreen.tsx` (the `onError` callback passed to `subscribeToSession` in `api.ts`;
+`api.ts` constructs the `ApiError` and invokes the caller's `onError`, while the status
+branching and the `onSessionEnd()` call live in `LobbyScreen`). Either path calls `onSessionEnd()`, which does
 `sessionStorage.removeItem(STORAGE_KEY)` and returns the player to the home screen.
 The re-read half of "a re-read, never a replay" works; the give-up half works too.
 
