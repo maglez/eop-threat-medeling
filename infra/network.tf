@@ -63,7 +63,7 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_security_group" "instance" {
   name        = "${local.name_prefix}-instance"
-  description = "Public HTTP on the application port, SSH from a narrow CIDR"
+  description = "Public HTTPS on the application port (EOP-21), SSH from a narrow CIDR"
   vpc_id      = aws_vpc.main.id
 
   tags = {
@@ -79,7 +79,7 @@ resource "aws_vpc_security_group_ingress_rule" "app" {
   for_each = toset(var.app_ingress_cidrs)
 
   security_group_id = aws_security_group.instance.id
-  description       = "Reverse proxy HTTP (plain text — see ADR-012)"
+  description       = "Reverse proxy HTTPS (TLS at Caddy — see ADR-035)"
   cidr_ipv4         = each.value
   from_port         = var.http_port
   to_port           = var.http_port

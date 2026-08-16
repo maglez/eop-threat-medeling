@@ -8,9 +8,11 @@ export const options = {
   summaryTrendStats: ["avg", "min", "med", "max", "p(50)", "p(95)", "p(99)"],
 };
 
-// Port 80 through the reverse proxy, not the application port: since ADR-017
-// the application publishes no host port, and the proxy is the path users take.
-const BASE_URL = __ENV.BASE_URL || "http://localhost";
+// Port 443 through the reverse proxy (EOP-21; was port 80). The application
+// publishes no host port at all (ADR-017), so this is the path users take.
+// NOTE: the Caddy local CA certificate is self-signed (tls internal). Run k6
+// with --insecure-skip-tls-verify, or trust the Caddy CA in the system store.
+const BASE_URL = __ENV.BASE_URL || "https://localhost";
 
 export default function () {
   const res = http.get(`${BASE_URL}/health`);

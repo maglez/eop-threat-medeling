@@ -45,9 +45,12 @@ terraform plan
 terraform apply
 ```
 
-`terraform output demo_url` prints the address to share. Give the instance a
-couple of minutes after apply returns: Terraform finishes when the instance
-exists, not when the application has finished starting.
+`terraform output demo_url` prints the EC2 URL. **Note:** with `tls internal`
+the certificate is issued for `localhost` only (no IP SAN), so this URL is not
+reachable from a browser — it returns an empty 200 with no security headers (see
+ADR-035). The demo is localhost-only; a public deployment requires a real
+certificate. Give the instance a couple of minutes after apply returns: Terraform
+finishes when the instance exists, not when the application has finished starting.
 
 ## Deploying a new version
 

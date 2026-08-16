@@ -150,14 +150,21 @@ jobs:
 
           docker compose -f compose.app.yml up -d
 
-          # Port 80, through Caddy. The application container publishes no
-          # host port at all (ADR-017), so this is the only way in - which
-          # is exactly why the test goes this way: hitting the application
-          # directly would prove the application works and prove nothing
-          # about the proxy that every real request passes through.
+          # Port 443 through Caddy (EOP-21; was port 80). The application container
+          # publishes no host port at all (ADR-017), so this is the only way in —
+          # which is exactly why the test goes this way: hitting the application
+          # directly would prove the application works and prove nothing about the
+          # proxy that every real request passes through.
+          #
+          # The Caddy local CA certificate is self-signed (tls internal). curl's
+          # --insecure flag disables certificate verification, which is acceptable
+          # in CI where the goal is to prove the stack starts and serves traffic,
+          # not to validate the certificate chain. The hostname must be `localhost`
+          # (not 127.0.0.1) because the site address is `localhost:8080` and Caddy
+          # only presents the certificate for that SNI name.
           healthy=false
           for _ in $(seq 1 60); do
-            if [ "$(curl -fsS http://127.0.0.1/health 2>/dev/null || true)" = "OK" ]; then
+            if [ "$(curl -fsSk https://localhost/health 2>/dev/null || true)" = "OK" ]; then
               healthy=true
               break
             fi
@@ -176,7 +183,7 @@ jobs:
           # The site root must serve the front end, not fall through to the
           # API. A proxy that answers /health but 404s the site would pass
           # the check above and still be broken for every user.
-          root_status="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/)"
+          root_status="$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/)"
           if [ "$root_status" != 200 ]; then
             echo "::error::The site root returned $root_status, expected 200"
             docker compose -f compose.app.yml logs --no-color caddy
@@ -188,7 +195,7 @@ jobs:
           # And the API must be reachable on the same origin. This is the
           # single-origin property from ADR-017 asserted rather than
           # assumed - if it regressed, the browser would need CORS.
-          if ! curl -fsS 'http://127.0.0.1/api/v1/cards?size=1' | grep -q '"totalElements":78'; then
+          if ! curl -fsSk 'https://localhost/api/v1/cards?size=1' | grep -q '"totalElements":78'; then
             echo "::error::The card catalogue was not reachable through the proxy"
             docker compose -f compose.app.yml logs --no-color
             exit 1

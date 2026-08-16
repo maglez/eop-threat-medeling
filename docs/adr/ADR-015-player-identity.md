@@ -135,6 +135,21 @@ unrelated players. Consistent with the PRD's exclusion of cross-session history.
 
 ## Amendments
 
+**2026-08-15 — TLS is now live; the `localStorage` prohibition is formalised.**
+
+[ADR-035](ADR-035-tls-and-security-response-headers.md) enables `tls internal` at
+Caddy and adds a full set of security response headers. The plaintext-transport
+consequence recorded above is now closed: the bearer token travels over TLS.
+
+ADR-035 also formalises one constraint that was implicit in this ADR but not stated
+explicitly: **the token must never be stored in `localStorage`**. The rationale is
+that `localStorage` is readable by any script on the same origin, including injected
+scripts, so a non-expiring credential there is permanently accessible to any XSS
+payload. The decision to use `sessionStorage` (not `localStorage`, not a cookie) is
+unchanged — ADR-035 adds the explicit prohibition, it does not reverse the decision.
+The practical consequence for EOP-11: the token must be held in `sessionStorage` as
+this ADR decided, and must never be written to `localStorage`.
+
 **2026-08-10 — the open question is closed, the deployment premise is corrected, and
 half of this decision is still unbuilt.**
 
@@ -175,6 +190,7 @@ records this ADR as *Partly* implemented for that reason.
 - [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — closes this ADR's open question: header only, no query-parameter fallback
 - [ADR-012](ADR-012-deployment-target.md) — no TLS, and restart-on-deploy is why the token is persisted; its EC2 target is withdrawn, the restart premise is not
 - [ADR-016](ADR-016-local-container-runtime.md) — where the application runs, and therefore what the transport risk actually is today
+- [ADR-035](ADR-035-tls-and-security-response-headers.md) — closes the plaintext-transport consequence; formalises the token-storage constraint
 - [PRD §8](../requirements/PRD-eop-card-game.md) — the security consequence of having no authentication
 - `.opencode/rules/security.md` — the defence-in-depth rule this decision knowingly does not meet
 - EOP-8 (spike), EOP-10 (issues the first token), EOP-11 (the client half that keeps it)
