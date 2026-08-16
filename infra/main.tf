@@ -38,10 +38,11 @@ locals {
   # the wrong disk.
   data_volume_serial = replace(aws_ebs_volume.data.id, "-", "")
 
-  # Port 80 is implicit in an http:// URL, so printing it would produce an
+  # Port 443 is implicit in an https:// URL, so printing it would produce an
   # address nobody types. Any other port has to be spelled out or the output
-  # would be a lie the moment http_port changes.
-  url_port_suffix = var.http_port == 80 ? "" : ":${var.http_port}"
+  # would be a lie the moment http_port changes. Changed from 80/http to
+  # 443/https by EOP-21 (ADR-035): TLS is now live at Caddy.
+  url_port_suffix = var.http_port == 443 ? "" : ":${var.http_port}"
 
   user_data = templatefile("${path.module}/templates/user-data.sh.tftpl", {
     app_image              = var.app_image

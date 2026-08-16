@@ -3,11 +3,19 @@
 # This file is committed and copied into the image rather than generated at
 # boot. The running configuration is therefore the reviewed configuration.
 #
-# Caddy listens on 8080 INSIDE the container, not 80. A non-root process
+# Caddy listens on 8080 INSIDE the container, not 443. A non-root process
 # cannot bind a port below 1024, and running the web server as root to save
 # one line of port mapping is a poor trade. The container stack publishes
-# host port 80 to this one. The application container is a separate
+# host port 443 to this one. The application container is a separate
 # container, so its own use of 8080 is not a conflict.
+#
+# TLS (EOP-21): `tls internal` issues a self-signed certificate from Caddy's
+# local CA. This is the correct choice for a closed demo with no public domain.
+# The certificate is presented within the Compose network but not trusted by
+# default (nothing in the network trusts Caddy's local CA). Browsers will show a
+# warning on first visit, which is expected and acceptable for a local demo.
+# Switching to a real certificate later requires only replacing `tls internal`
+# with a hostname and letting Caddy's ACME client handle it.
 
 {
 	# The admin API (default :2019) is an unauthenticated control plane that
@@ -15,15 +23,103 @@
 	# switched off rather than left listening.
 	admin off
 
-	# There is no domain and no certificate (ADR-012). A bare ":8080" site
-	# address would not trigger automatic HTTPS anyway, but stating it makes
-	# the intent explicit: turning TLS on later is a deliberate edit here,
-	# not an accident of adding a hostname.
-	auto_https off
+	# auto_https disable_redirects suppresses the automatic HTTP→HTTPS redirect
+	# that Caddy would otherwise add. We do not want a redirect because nothing
+	# listens on port 80 after EOP-21 (the host mapping changed from 80:8080 to
+	# 443:8080). This directive does NOT disable certificate management — `tls
+	# internal` in the site block below still provisions a leaf certificate from
+	# Caddy's local CA. The distinction matters: `auto_https off` disables
+	# certificate management entirely and would leave the site with no cert;
+	# `auto_https disable_redirects` only suppresses the redirect.
+	auto_https disable_redirects
+
+	# default_sni handles connections that arrive with NO SNI at all (e.g. a CLI
+	# tool connecting to an IP literal without sending a server name). Without
+	# this, such connections abort the handshake because Caddy has no certificate
+	# to present. With it, Caddy presents the localhost certificate and the
+	# handshake completes (the client may still reject the cert, but the
+	# connection is not aborted at the TLS layer).
+	#
+	# NOTE: default_sni does NOT help when a client sends a non-empty SNI that
+	# does not match localhost (e.g. `openssl s_client -servername evil.example`)
+	# — that still aborts with tlsv1 alert internal error.
+	#
+	# For the EC2 case: RFC 6066 forbids IP literals in SNI, so a browser
+	# connecting to https://<public-ip>/ sends NO SNI at all. default_sni
+	# localhost then completes the TLS handshake, but the HTTP routing is gated
+	# on `host: localhost`, so the request returns an empty 200 with Server:
+	# Caddy and none of the security headers. The demo is localhost-only with
+	# tls internal; a public deployment requires a real certificate.
+	default_sni localhost
 }
 
-:8080 {
+localhost:8080 {
+	# TLS (EOP-21): self-signed certificate from Caddy's local CA.
+	# The site address must be a hostname (not a bare port) so that Caddy has a
+	# subject to issue the certificate for. `tls internal` instructs Caddy to
+	# use its built-in CA rather than ACME — correct for a closed demo with no
+	# public domain. Browsers will show a certificate warning on first visit;
+	# this is expected. To use a real certificate, replace `tls internal` with
+	# the public hostname and Caddy's ACME client handles the rest.
+	tls internal
+
 	encode gzip
+
+	# Security response headers (EOP-21, ADR-035).
+	# Applied to all responses before they leave Caddy. The header directive
+	# without a path matcher applies globally to this site block.
+	#
+	# Content-Security-Policy: restricts resource loading to same-origin only.
+	# object-src and base-uri are locked to 'none' to prevent plugin injection
+	# and base-tag hijacking. frame-ancestors 'none' prevents clickjacking.
+	# form-action 'none' prevents injected forms from exfiltrating data — this
+	# directive has no default-src fallback, so it must be stated explicitly.
+	#
+	# X-Content-Type-Options: prevents MIME-type sniffing. A browser that
+	# sniffs a response as a different type than declared can execute content
+	# the server never intended to be executable.
+	#
+	# Referrer-Policy: no-referrer prevents the token-bearing URL from leaking
+	# in the Referer header to any third-party resource (there are none today,
+	# but the policy is cheap and the protection is permanent).
+	#
+	# Strict-Transport-Security: tells browsers to use HTTPS for this origin
+	# for the next two years. Only safe to set once TLS is confirmed live —
+	# setting it on a plain-HTTP site would lock browsers out. max-age=63072000
+	# is two years; includeSubDomains covers any future subdomain.
+	# NOTE: HSTS on localhost is port-agnostic. Once a browser has seen this
+	# header it will refuse plain HTTP on ALL localhost ports (8080, 3000, 8086,
+	# etc.) for two years. Recovery requires clearing chrome://net-internals/#hsts
+	# or the equivalent. This is an accepted cost for a local demo; see ADR-035.
+	#
+	# Permissions-Policy: disables browser features this application does not
+	# use. Reduces the attack surface if a future dependency tries to use them.
+	header {
+		Content-Security-Policy "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		# Remove the Server header to avoid disclosing the web server product.
+		# Caddy sends "Server: Caddy" with no version, but the product name
+		# itself is useful to an attacker scanning for known vulnerabilities.
+		-Server
+	}
+
+	# Re-apply security headers to Caddy-generated error responses (502, 404,
+	# 413, etc.). Without this block the header directive above does not fire
+	# on error paths, and Caddy's own error responses leak "Server: Caddy".
+	handle_errors {
+		header {
+			Content-Security-Policy "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "no-referrer"
+			Strict-Transport-Security "max-age=63072000; includeSubDomains"
+			Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+			-Server
+		}
+		respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+	}
 
 	# The API and the health endpoint are proxied to the application over
 	# the container network. Same origin as the assets above, which is the

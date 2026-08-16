@@ -92,7 +92,7 @@ flowchart TD
 
     subgraph host["Developer machine — Colima / Docker Compose (ADR-016)"]
         subgraph caddyC["Container: caddy<br/>[Caddy 2]"]
-            CADDY["Single origin, host port 80<br/>listens on 8080 inside the container<br/>admin off, auto_https off<br/>fixed address 172.28.0.10 on the pinned 172.28.0.0/24 network"]
+            CADDY["Single origin, host port 443 (EOP-21)<br/>listens on 8080 inside the container<br/>admin off, auto_https disable_redirects, tls internal<br/>fixed address 172.28.0.10 on the pinned 172.28.0.0/24 network"]
             STATIC["file_server over /srv<br/>SPA fallback to index.html"]
         end
 
@@ -109,7 +109,7 @@ flowchart TD
         end
     end
 
-    B1 -->|"HTTP/1.1 — same origin, so no CORS anywhere"| CADDY
+    B1 -->|"HTTPS — same origin, so no CORS anywhere (EOP-21)"| CADDY
     B2 --> CADDY
     B3 --> CADDY
 

@@ -19,8 +19,8 @@
 # On the instance, APP_IMAGE and UI_IMAGE point at immutable GHCR tags and
 # nothing is built at all.
 #
-# The site is served at http://localhost/ (port 80), not :8080. Caddy is the only
-# published entry point.
+# The site is served at https://localhost/ (port 443), not :8080. Caddy is the only
+# published entry point. TLS is enabled via `tls internal` in the Caddyfile (EOP-21).
 
 # Project namespace, set explicitly. Without it Compose derives the project name
 # from the directory, both files collide, and each stack reports the other's
@@ -104,16 +104,26 @@ services:
       # the correct behaviour rather than a startup failure.
       - app
     ports:
-      # Host 80 -> container 8080. Caddy listens on 8080 because it runs as an
+      # Host 443 -> container 8080. Caddy listens on 8080 because it runs as an
       # unprivileged user and cannot bind below 1024; the privileged port is
-      # mapped by the container runtime instead. APP_BIND keeps the local
-      # default at 127.0.0.1, following the InfluxDB precedent in
+      # mapped by the container runtime instead. TLS is terminated at Caddy
+      # using `tls internal` (self-signed certificate, EOP-21). APP_BIND keeps
+      # the local default at 127.0.0.1, following the InfluxDB precedent in
       # docker-compose.yml; on the EC2 instance it is 0.0.0.0 because the demo
       # has to be reachable, and the security group is what limits access.
-      - "${APP_BIND:-127.0.0.1}:80:8080"
+      - "${APP_BIND:-127.0.0.1}:443:8080"
+    volumes:
+      # Persist Caddy's local CA and issued certificates across container
+      # recreates (EOP-21). Without this volume the CA is regenerated on every
+      # `docker compose up`, which invalidates any previously trusted root and
+      # — combined with HSTS — makes the host permanently unreachable in
+      # browsers that have already seen the HSTS header. A stable CA means
+      # trusting the root once is sufficient for the lifetime of the stack.
+      - eop_caddy_data:/data
     networks:
       default:
         ipv4_address: 172.28.0.10
 
 volumes:
   eop_postgres_data:
+  eop_caddy_data:

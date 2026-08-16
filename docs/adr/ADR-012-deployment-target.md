@@ -319,6 +319,9 @@ Consequences of the withdrawal that are worth stating plainly:
   traffic no longer crosses a network at all, so the remote-attacker framing there
   is obsolete, but the token still travels in plaintext HTTP and TLS is still the
   fix if this is ever exposed.
+  **Amendment (2026-08-15, EOP-21):** TLS is now live. [ADR-035](ADR-035-tls-and-security-response-headers.md)
+  enables `tls internal` at Caddy. The bearer token no longer travels in plaintext;
+  the "TLS is still the fix" sentence above is now discharged.
 - **Restart-survival and reconnect-without-replay remain hard requirements.** This
   is the important thing not to conclude from the withdrawal. Three browsers on one
   machine still refresh, and the local container is still restarted on every
@@ -332,6 +335,8 @@ Consequences of the withdrawal that are worth stating plainly:
 
 - [ADR-016: Colima as the local container runtime](ADR-016-local-container-runtime.md)
   — how the same artifacts run on a developer machine, and the arm64/amd64 caveat
+- [ADR-035: TLS at Caddy and Security Response Headers](ADR-035-tls-and-security-response-headers.md)
+  — closes the plaintext-transport consequence recorded in this ADR's withdrawal section
 - [ADR-002: Spring Boot Walking Skeleton](ADR-002-spring-boot-bootstrap.md) — the
   skeleton this completes
 - [ADR-008: Database migrations with Liquibase](ADR-008-database-migration-liquibase.md)

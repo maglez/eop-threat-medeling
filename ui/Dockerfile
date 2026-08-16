@@ -43,13 +43,13 @@ RUN addgroup -S -g 10001 web && adduser -S -u 10001 -G web -H -D web
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /build/dist /srv
 
-# Caddy binds 8080, not 80, because an unprivileged process cannot bind a
-# port below 1024. The container stack maps host 80 to this.
+# Caddy binds 8080, not 443, because an unprivileged process cannot bind a
+# port below 1024. The container stack maps host 443 to this (EOP-21).
 EXPOSE 8080
 
 USER web
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -q -O /dev/null http://127.0.0.1:8080/index.html || exit 1
+    CMD wget --no-check-certificate -q -O /dev/null https://localhost:8080/index.html || exit 1
 
 CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

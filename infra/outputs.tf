@@ -1,11 +1,11 @@
 output "demo_url" {
-  description = "Hand this to people. Plain HTTP — browsers will warn that it is not secure."
-  value       = "http://${aws_eip.app.public_ip}${local.url_port_suffix}"
+  description = "NOTE: with tls internal this URL is not reachable from a browser — the Caddy certificate is issued for 'localhost' only (no IP SAN), so connecting to the EC2 public IP returns an empty 200 with no security headers (see ADR-035). The demo is localhost-only; a public deployment requires a real certificate."
+  value       = "https://${aws_eip.app.public_ip}${local.url_port_suffix}"
 }
 
 output "health_url" {
-  description = "The endpoint the walking skeleton exposes. Should return OK."
-  value       = "http://${aws_eip.app.public_ip}${local.url_port_suffix}/health"
+  description = "The health endpoint. NOTE: with tls internal the EC2 URL returns an empty 200 (not 'OK') because the HTTP routing is gated on host: localhost — see ADR-035. Returns 'OK' only when accessed as https://localhost/health on the host running the stack."
+  value       = "https://${aws_eip.app.public_ip}${local.url_port_suffix}/health"
 }
 
 output "ssh_command" {

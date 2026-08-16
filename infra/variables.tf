@@ -188,9 +188,10 @@ variable "http_port" {
     internet. The proxy serves the front end and forwards /api and /health to
     the application on the same origin (ADR-017), so a browser never makes a
     cross-origin request and no CORS configuration exists anywhere.
+    Changed from 80 to 443 by EOP-21 (ADR-035): TLS is now live at Caddy.
   EOT
   type        = number
-  default     = 80
+  default     = 443
 }
 
 variable "postgres_image" {

@@ -26,11 +26,11 @@ colima start                                  # see ADR-016
 docker build -t eop-threat-medeling:local .
 docker build -t eop-ui:local ui
 docker compose -f compose.app.yml up -d
-open http://localhost/
+open https://localhost/
 ```
 
 Caddy is the only published port. The application container publishes nothing —
-`http://localhost/api/v1/cards` and `http://localhost/health` are proxied to it
+`https://localhost/api/v1/cards` and `https://localhost/health` are proxied to it
 on the same origin, which is why there is no CORS configuration anywhere
 ([ADR-017](docs/adr/ADR-017-frontend-delivery-topology.md)).
 

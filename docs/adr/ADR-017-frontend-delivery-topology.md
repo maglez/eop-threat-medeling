@@ -31,9 +31,10 @@ carry into this decision.
 
 ### Caddy, in its own container, serving the assets and proxying the API on one origin
 
-Caddy publishes port 80. It serves the built front-end assets at `/`, and reverse-proxies
-`/api/*` and `/health` to the application container on port 8080 over the Compose network. The
-application container publishes no host port at all.
+Caddy publishes port 443 (EOP-21; was port 80 at the time this ADR was written). It
+serves the built front-end assets at `/`, and reverse-proxies `/api/*` and `/health`
+to the application container on port 8080 over the Compose network. The application
+container publishes no host port at all.
 
 **The single origin is the point, not the TLS.** With the browser talking to exactly one origin,
 cross-origin request handling never enters the system: no `@CrossOrigin`, no CORS configuration
@@ -48,11 +49,13 @@ one and forever after.
   so the transport ADR-014 chose works through it with no configuration. nginx buffers by default
   and needs `proxy_buffering off` on the streaming route. A default that is correct beats a
   default that is wrong plus a comment explaining why.
-- **TLS becomes a one-line change rather than a project.** ADR-012 accepted plain HTTP on a bare
-  address, with browsers showing "Not secure". Caddy obtains and renews certificates
-  automatically once a real hostname exists. That converts an accepted limitation into a
-  single-line edit on the day a domain is bought, instead of a certbot installation, a renewal
-  timer and a reload hook.
+- **TLS is now live.** ADR-012 accepted plain HTTP on a bare address, with browsers
+  showing "Not secure". EOP-21 ([ADR-035](ADR-035-tls-and-security-response-headers.md))
+  enabled `tls internal` at Caddy: the application is now reached at `https://localhost/`
+  and the bearer token travels over TLS. The "one-line change" prediction was accurate in
+  direction but not in scope — it also required changing the site address from a bare port
+  to a hostname, updating the port mapping, and updating all documentation that referenced
+  `http://localhost/`.
 - **The configuration file is small enough to review.** This repository is maintained largely by
   AI agents. A five-line `Caddyfile` that a reviewer can hold in their head is worth more here
   than nginx's larger surface, most of which we would not use.
@@ -87,15 +90,16 @@ looks like a broken deployment and is in fact a missing fallback.
 The application container stops publishing a host port. Only Caddy is reachable. Three
 consequences follow, and all three are deliberate:
 
-- **The load test now measures the real path.** `k6` targets port 80 through Caddy rather than
-  the application directly, because that is the path a user takes. The previously measured
+- **The load test now measures the real path.** `k6` targets port 443 through Caddy rather than
+  the application directly (EOP-21; was port 80 at the time this ADR was written), because that
+  is the path a user takes. The previously measured
   95th-percentile figure of 5.77 ms described a request that bypassed the proxy and therefore
   described nothing a user will ever experience. The performance baseline is reset rather than
   compared, and the reset is recorded in `docs/performance/TRENDS.md`.
 - **The pipeline smoke test goes through Caddy.** Otherwise nothing in the build proves the proxy
   works, and the first evidence would arrive from a browser after a merge.
-- **The infrastructure network rules change.** The security group opens 80 and closes 8080. That
-  edit belongs to this decision, and lands in `infra/`. It cannot be proven: `terraform validate`
+- **The infrastructure network rules change.** The security group opens 443 (was 80) and closes
+  8080. That edit belongs to this decision, and lands in `infra/`. It cannot be proven: `terraform validate`
   confirms only that the configuration parses, and no `apply` has ever run against a real account
   (see the ADR-012 amendment).
 
@@ -123,8 +127,9 @@ sees one origin.
 **Positive:** the transport chosen in ADR-014 works through the proxy with no configuration,
 because Caddy does not buffer by default.
 
-**Positive:** TLS is a one-line change the day a hostname exists, so the limitation ADR-012
-accepted has a cheap exit rather than a project attached to it.
+**Positive:** TLS is now live (EOP-21, ADR-035). The limitation ADR-012 accepted has been
+discharged: the bearer token travels over TLS and the application is reached at
+`https://localhost/`.
 
 **Positive:** front end and back end ship independently, which was the reason for choosing a
 separate container.
@@ -180,5 +185,7 @@ access itself.
   code that read it as a guarantee that the peer *is* Caddy trusted `X-Forwarded-For`
   unconditionally. ADR-021 makes that trust an explicit, default-denied allow-list and pins the
   proxy to a fixed address so there is something to allow-list
+- [ADR-035: TLS at Caddy and Security Response Headers](ADR-035-tls-and-security-response-headers.md)
+  — adds TLS to this topology; changes the host port from 80 to 443
 - [Product requirements](../requirements/PRD-eop-card-game.md) — the assumption this decision
   replaces
