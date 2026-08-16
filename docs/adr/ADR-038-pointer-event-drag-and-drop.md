@@ -58,10 +58,14 @@ library.
 - WCAG 2.2 SC 2.4.7 (Focus Visible, Level A) and SC 1.4.11 (Non-text Contrast, AA) are
   satisfied: `CardFace` carries `className="eop-card"` and tracks focus state via
   `onFocus`/`onBlur`. When focused, the inline `boxShadow` is set to the GOV.UK pattern
-  (`0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c`) — yellow outline plus dark inset companion —
-  which meets the ≥3:1 contrast requirement of SC 1.4.11 against the white card background.
-  The `outline: none` suppressor was removed in EOP-60 and the CSS `.eop-card:focus` rule
-  provides a fallback outline for browsers that do not execute JavaScript.
+  (`0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c`) — yellow outer ring plus dark inset companion.
+  The ≥3:1 contrast requirement of SC 1.4.11 is met by the dark inset (`#0b0c0c` at 19.59:1
+  against the white card background `#ffffff`); the yellow alone is 1.35:1 and does not satisfy
+  the criterion on its own. The inline `boxShadow` always wins over the CSS `box-shadow`
+  declaration in `.eop-card:focus` (`GameScreen.css:200`), which is therefore inert; the CSS
+  `outline: 3px solid #ffdd00` in that same rule (`GameScreen.css:198`) is a separate property
+  and is always active, contributing an additional yellow ring alongside the inline shadow.
+  The `outline: none` suppressor that previously removed focus visibility was removed in EOP-60.
 - WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) is satisfied: every card is a
   `role="button"` with a click handler and a "Play selected card" button provides a
   complete single-pointer alternative to dragging.
