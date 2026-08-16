@@ -192,3 +192,72 @@ export async function startGame(sessionId: string, playerToken: string): Promise
 
   return (await response.json()) as SessionStateDto;
 }
+
+/**
+ * Subscribe to session events via SSE.
+ *
+ * Uses `fetch` rather than `EventSource` because `EventSource` cannot set
+ * custom request headers (ADR-015). The stream is used as a doorbell: each
+ * `data:` frame signals that session state has changed; the caller is
+ * responsible for re-fetching via `getSession`.
+ *
+ * @param sessionId  The session to subscribe to.
+ * @param playerToken  The caller's credential (sent as `PLAYER_TOKEN_HEADER`).
+ * @param onEvent  Called whenever a `data:` frame arrives.
+ * @param onError  Called when the stream ends with a non-ok response or an
+ *                 unexpected error. Receives the `ApiError` (for 4xx/5xx) or
+ *                 a plain `Error` (for network failures).
+ * @returns An `AbortController` whose `abort()` method tears down the stream.
+ */
+export function subscribeToSession(
+  sessionId: string,
+  playerToken: string,
+  onEvent: () => void,
+  onError: (err: ApiError | Error) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  const run = async (): Promise<void> => {
+    const res = await fetch(`/api/v1/sessions/${sessionId}/events`, {
+      headers: {
+        'Accept': 'text/event-stream',
+        [PLAYER_TOKEN_HEADER]: playerToken,
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      // A non-2xx response (e.g. 403 expired token, 404 session gone) returns a
+      // JSON problem-detail body, not an SSE stream.
+      const message = await problemMessage(res);
+      onError(new ApiError(res.status, message));
+      return;
+    }
+
+    if (!res.body) return;
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        if (text.includes('data:')) {
+          onEvent();
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+
+  run().catch((err: unknown) => {
+    // AbortError is expected on teardown — suppress it.
+    if (err instanceof Error && err.name === 'AbortError') return;
+    onError(err instanceof Error ? err : new Error(String(err)));
+  });
+
+  return controller;
+}

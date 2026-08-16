@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getSession, startGame, ApiError, PLAYER_TOKEN_HEADER, type SessionStateDto } from '../api';
+import { getSession, startGame, subscribeToSession, ApiError, type SessionStateDto } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 import type { PlayerDto } from '../api';
 
@@ -46,80 +46,52 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd }: 
   // Initial load and setup SSE stream
   useEffect(() => {
     let abandoned = false;
-    let eventSource: AbortController | null = null;
 
-    const setupStream = async () => {
+    const setup = async () => {
       // Initial load
       await refreshSession();
       if (abandoned) return;
 
-      // Set up SSE stream
-      eventSource = new AbortController();
-      
-      fetch(`/api/v1/sessions/${sessionId}/events`, {
-        headers: { 
-          'Accept': 'text/event-stream',
-          [PLAYER_TOKEN_HEADER]: playerToken,
+      // Subscribe to session events via api.ts (fetch-based SSE, not EventSource —
+      // EventSource cannot set custom headers; see ADR-015).
+      const subscription = subscribeToSession(
+        sessionId,
+        playerToken,
+        () => {
+          // doorbell: a data: frame arrived — re-fetch session state
+          if (!abandoned) {
+            void refreshSession();
+          }
         },
-        signal: eventSource.signal,
-      }).then(async (res) => {
-        // A non-2xx response (e.g. 403 expired token, 404 session gone) returns a
-        // JSON problem-detail body, not an SSE stream. Surface it as an error rather
-        // than silently discarding it.
-        if (!res.ok) {
-          if (!abandoned) {
-            const message = `SSE endpoint returned ${res.status}`;
-            setError(message);
-            if (res.status === 403 || res.status === 404) {
-              onSessionEnd();
-            }
+        (err) => {
+          if (abandoned) return;
+          const message = err instanceof Error ? err.message : 'Failed to connect to session';
+          setError(message);
+          if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+            onSessionEnd();
           }
-          return;
-        }
-        if (!res.body) return;
-        
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        
-        try {
-          while (!abandoned) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            const text = decoder.decode(value, { stream: true });
-            if (text.includes('data:')) {
-              // Session changed - re-fetch state
-              await refreshSession();
-            }
-          }
-        } catch (err) {
-          // Stream closed or aborted - this is expected on unmount
-          if (!abandoned) {
-            console.warn('SSE stream error:', err);
-          }
-        } finally {
-          reader.releaseLock();
-        }
-      }).catch((err) => {
-        // Connection failed - this is expected on unmount
-        if (!abandoned) {
-          console.warn('SSE connection failed:', err);
-        }
-      });
+        },
+      );
+
+      return () => {
+        subscription.abort();
+      };
     };
 
-    setupStream().catch(err => {
-      if (!abandoned) {
-        const message = err instanceof Error ? err.message : 'Failed to connect to session';
-        setError(message);
-      }
-    });
+    let teardown: (() => void) | undefined;
+
+    setup()
+      .then((fn) => { teardown = fn; })
+      .catch((err: unknown) => {
+        if (!abandoned) {
+          const message = err instanceof Error ? err.message : 'Failed to connect to session';
+          setError(message);
+        }
+      });
 
     return () => {
       abandoned = true;
-      if (eventSource) {
-        eventSource.abort();
-      }
+      teardown?.();
       // Clear any pending clipboard-feedback timer
       if (copyTimerRef.current !== null) {
         clearTimeout(copyTimerRef.current);

@@ -128,13 +128,13 @@ sharper here than on the backend, where the suite defaults flags on.
 
 **The gating rule above is a review obligation, not a compiler one.** Nothing in
 TypeScript can detect that a component reachable by state rehydration failed to consult
-the flag. As of EOP-11 this obligation is **not met**: `ui/src/App.tsx` reads
-`VITE_LOBBY_UI_ENABLED` only inside `HomeView`, to disable two buttons, while the
-`sessionStorage` rehydration branch in the same file restores the `lobby` view without
-consulting it. An off build therefore still presents the full lobby to any browser
-holding a prior `eop_session` key. This ADR records the rule that closes that hole; the
-fix belongs to EOP-11's follow-up and until it lands the flag's off position is an
-affordance, not a gate.
+the flag. EOP-11 meets this obligation at both entry points: `HomeView` disables the
+Create and Join buttons when the flag is off, and the `sessionStorage` rehydration
+branch in `App.tsx` evaluates `isLobbyUiEnabled` *before* reading `sessionStorage` —
+returning `{ screen: 'home' }` immediately if the flag is off, so a stored session
+cannot bypass it. Both positions are tested: `App.test.tsx` stubs
+`VITE_LOBBY_UI_ENABLED` to `'true'` for the enabled path and asserts that a valid
+stored session is ignored when the flag is off.
 
 ## Related
 

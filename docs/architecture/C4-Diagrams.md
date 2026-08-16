@@ -756,33 +756,33 @@ flowchart TD
     SS[("sessionStorage<br/>per-tab, per-origin<br/>key: eop_session (ADR-015)")]
     CADDY["Caddy — single origin<br/>/api/* reverse_proxy app:8080"]
 
-    APP -->|"rehydrates lobby on boot<br/>NO flag check — see finding"| SS
+    APP -->|"rehydrates lobby on boot<br/>checks flag first — returns home if off"| SS
     APP --> HOME
     APP --> FORMS
     APP -->|"passes sessionId, playerId, playerToken"| LOBBY
 
     FORMS -->|"createSession / joinSession"| API
     LOBBY -->|"getSession / startGame<br/>credentialed via api.ts"| API
-    LOBBY -.->|"raw fetch to /events<br/>BYPASSES api.ts, duplicates the header name"| CADDY
+    LOBBY -.->|"subscribeToSession() in api.ts<br/>fetch-based SSE, AbortController teardown"| CADDY
 
     API -->|"fetch, relative paths"| CADDY
 ```
 
-**One boundary, and one hole in it.** `api.ts` is the SPA's interface adapter: it owns
+**One boundary, and it is now fully respected.** `api.ts` is the SPA's interface adapter: it owns
 every wire concern — the relative-URL rule from ADR-017, the DTO shapes, the
 `X-EoP-Player-Token` header name, and the translation of a `problem+json` body into an
-`ApiError` carrying a numeric `status`. Components hold view state and call it. That is
-the correct shape, and four of the five server calls honour it. The dotted arrow is the
-fifth: `LobbyScreen` issues its own `fetch` for the event stream and re-declares the
-header name inline, so the credential header now has two definitions and only one of
-them is exported. The dotted line is drawn to mark a boundary violation, not a
-shortcut that was blessed.
+`ApiError` carrying a numeric `status`. Components hold view state and call it. All five
+server calls honour this boundary: `createSession`, `joinSession`, `getSession`,
+`startGame`, and `subscribeToSession` are all exported from `api.ts`. The dotted arrow
+to Caddy represents the SSE stream, which is opened by `subscribeToSession` in `api.ts`
+and handed back to `LobbyScreen` as an `AbortController` — the component holds only the
+teardown handle, not the transport.
 
-**The flag is read in one leaf, but entered from two places.** `HomeView` consults
+**The flag is read at every entry point.** `HomeView` consults
 `VITE_LOBBY_UI_ENABLED` and disables the two calls to action. The `App.tsx` rehydration
-edge into `sessionStorage` reaches the `lobby` view without passing through `HomeView`
-at all, which is why ADR-037 states the gating rule as *evaluate at every entry* and
-records this path as not yet meeting it.
+path evaluates the flag *before* reading `sessionStorage`, returning `{ screen: 'home' }`
+immediately when the flag is off — so a stored session cannot bypass it. Both positions
+are tested in `App.test.tsx`.
 
 ### Reconnect and live update — the runtime path
 
@@ -798,7 +798,7 @@ sequenceDiagram
     B->>A: load / refresh
     A->>S: getItem('eop_session')
     S-->>A: {sessionId, playerId, playerToken}
-    Note over A,S: malformed JSON is caught and the key cleared —<br/>a well-formed object is trusted unvalidated
+    Note over A,S: malformed JSON is caught and the key cleared —<br/>a well-formed object passes the isStoredSession() type guard
     A->>L: render lobby with the restored token
 
     L->>API: getSession(sessionId, playerToken)
@@ -806,23 +806,25 @@ sequenceDiagram
     SRV-->>API: 200 SessionStateDto
     API-->>L: session
 
-    L->>SRV: fetch /api/v1/sessions/{id}/events (raw, header inline)
-    SRV-->>L: text/event-stream
+    L->>API: subscribeToSession(sessionId, playerToken, onEvent, onError)
+    API->>SRV: fetch /api/v1/sessions/{id}/events + X-EoP-Player-Token
+    SRV-->>API: text/event-stream
 
     loop until unmount or abort
-        SRV-->>L: frame
-        Note over L: chunk tested for the substring "data:"<br/>used as a doorbell, never parsed
+        SRV-->>API: frame
+        Note over API: chunk tested for the substring "data:"<br/>used as a doorbell, never parsed
+        API-->>L: onEvent() callback
         L->>API: getSession(...) again
         API->>SRV: GET /api/v1/sessions/{id}
         SRV-->>API: 200 fresh state
         API-->>L: re-render
     end
 
-    rect rgb(255, 235, 235)
-    Note over L,SRV: Expired session (ADR-036 24h TTL)
+    rect rgb(220, 255, 220)
+    Note over L,SRV: Expired session (ADR-036 24h TTL) — handled correctly
     SRV-->>API: 403 "The session has expired. Please start a new session."
-    API-->>L: ApiError(status=403, message=detail)
-    Note over L: recovery matches on the strings "403"/"404"<br/>in message — the detail never contains them,<br/>so onSessionEnd() never fires and the tab wedges
+    API-->>L: onError(ApiError(status=403, message=detail))
+    Note over L: branches on err.status === 403 — calls onSessionEnd()<br/>which clears eop_session and returns to home screen
     end
 ```
 
@@ -834,12 +836,11 @@ costs one extra round-trip per event and re-fetches on *every* chunk that happen
 contain `data:`, including heartbeats, which pushes against ADR-034's per-session
 subscriber cap of 12 rather than easing it.
 
-**The red block is the reconnect path ADR-036 made routine.** Giving tokens a 24-hour
+**The green block shows the reconnect path ADR-036 made routine.** Giving tokens a 24-hour
 lifetime means "your session is gone" is an ordinary response to a reconnect, not an
-edge case. The client's handling of it is written against a message format the server
-does not produce, so the one path that ADR-015's custody decision most depends on being
-recoverable is the one path that does not work. `ApiError` already carries `status` as a
-number; the fix is to branch on it.
+edge case. The client handles it correctly: `subscribeToSession`'s `onError` callback
+receives an `ApiError` with `status === 403`, calls `onSessionEnd()`, which clears
+`eop_session` from `sessionStorage` and returns the player to the home screen.
 
 ---
 

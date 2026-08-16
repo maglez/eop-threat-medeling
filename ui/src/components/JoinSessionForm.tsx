@@ -18,17 +18,23 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
   const [errors, setErrors] = useState<readonly string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Error kinds are prefixed so field-highlighting can match on a stable token
+  // rather than a substring of human-readable prose (which is case-sensitive and
+  // can change without breaking the predicate).
+  const JOIN_CODE_ERROR_PREFIX = 'join-code:';
+  const DISPLAY_NAME_ERROR_PREFIX = 'display-name:';
+
   const validate = (): boolean => {
     const newErrors: string[] = [];
     
     if (!joinCode.trim()) {
-      newErrors.push('Enter a join code');
+      newErrors.push(`${JOIN_CODE_ERROR_PREFIX}Enter a join code`);
     }
     
     if (!displayName.trim()) {
-      newErrors.push('Enter your name');
+      newErrors.push(`${DISPLAY_NAME_ERROR_PREFIX}Enter your name`);
     } else if (displayName.trim().length > 50) {
-      newErrors.push('Name must be 50 characters or less');
+      newErrors.push(`${DISPLAY_NAME_ERROR_PREFIX}Name must be 50 characters or less`);
     }
     
     setErrors(newErrors);
@@ -49,6 +55,8 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
       onSubmit(admission);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to join session';
+      // Server errors are not field-specific; show them without a field prefix so
+      // they appear in the ErrorSummary but do not trigger field-level highlighting.
       setErrors([message]);
       onError(message);
     } finally {
@@ -56,15 +64,15 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
     }
   };
 
-  const hasJoinCodeError = errors.some(error => error.includes('join code'));
-  const hasDisplayNameError = errors.some(error => error.includes('name'));
+  const hasJoinCodeError = errors.some(error => error.startsWith(JOIN_CODE_ERROR_PREFIX));
+  const hasDisplayNameError = errors.some(error => error.startsWith(DISPLAY_NAME_ERROR_PREFIX));
 
   return (
     <>
       {errors.length > 0 && (
         <ErrorSummary 
           title="There is a problem" 
-          errors={errors} 
+          errors={errors.map(e => e.startsWith(JOIN_CODE_ERROR_PREFIX) ? e.slice(JOIN_CODE_ERROR_PREFIX.length) : e.startsWith(DISPLAY_NAME_ERROR_PREFIX) ? e.slice(DISPLAY_NAME_ERROR_PREFIX.length) : e)} 
           onDismiss={() => setErrors([])} 
         />
       )}
@@ -83,7 +91,7 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
           
           {hasJoinCodeError && (
             <p id="join-code-error" className="govuk-error-message">
-              <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.includes('join code'))}
+              <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.startsWith(JOIN_CODE_ERROR_PREFIX))?.replace(JOIN_CODE_ERROR_PREFIX, '')}
             </p>
           )}
           
@@ -111,7 +119,7 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
           
           {hasDisplayNameError && (
             <p id="display-name-error" className="govuk-error-message">
-              <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.includes('name'))}
+              <span className="govuk-visually-hidden">Error:</span> {errors.find(e => e.startsWith(DISPLAY_NAME_ERROR_PREFIX))?.replace(DISPLAY_NAME_ERROR_PREFIX, '')}
             </p>
           )}
           

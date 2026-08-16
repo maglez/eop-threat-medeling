@@ -62,7 +62,10 @@ describe('CreateSessionForm', () => {
     await user.type(screen.getByLabelText('Create a session'), longName);
     await user.click(screen.getByRole('button', { name: 'Create a session' }));
     
-    expect(screen.getByText('Name must be 50 characters or less')).toBeInTheDocument();
+    // The error appears in both the ErrorSummary list and the field-level error message
+    expect(screen.getAllByText('Name must be 50 characters or less').length).toBeGreaterThanOrEqual(1);
+    // Field-level error styling is applied
+    expect(document.querySelector('.govuk-form-group--error')).toBeInTheDocument();
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 

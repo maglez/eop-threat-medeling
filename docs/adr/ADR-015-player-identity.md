@@ -199,17 +199,15 @@ state through the ordinary credentialed endpoint. That keeps every read on the a
 path, but it means the SSE frames themselves are never parsed, so the transport carries
 no state this ADR needs to reason about.
 
-*A defect in the client half, open as of EOP-11.* This ADR's value depends on a stale
-token being *recoverable from*: a player whose session has expired under ADR-036's
-24-hour TTL, or been deleted by its sweep, must be returned to a usable state. The
-client attempts this by inspecting the error message for `403` or `404`
-(`ui/src/components/LobbyScreen.tsx`), but `GlobalExceptionHandler` sets a human-readable
-`detail` on every such response and the client surfaces that `detail`, which never
-contains those digits. The recovery branch is consequently unreachable, the
-`eop_session` key is never cleared, and an expired token wedges the tab. The stored
-credential is not *leaked* by this — the server still refuses it correctly — but the
-custody decision recorded here is only half-usable until the client keys its recovery off
-the numeric status that `ApiError` already carries.
+*The client-side recovery path is implemented and correct.* This ADR's value depends on
+a stale token being *recoverable from*: a player whose session has expired under
+ADR-036's 24-hour TTL, or been deleted by its sweep, must be returned to a usable state.
+`LobbyScreen` catches errors from `getSession` and branches on the numeric `status`
+carried by `ApiError` — `err instanceof ApiError && (err.status === 403 || err.status
+=== 404)` — calling `onSessionEnd()`, which clears `eop_session` from `sessionStorage`
+and returns the player to the home screen. The same branch is present in the SSE
+subscription error handler in `api.ts`. The custody decision recorded here is therefore
+fully usable: both the read path and the give-up path work correctly.
 
 ## Related
 
