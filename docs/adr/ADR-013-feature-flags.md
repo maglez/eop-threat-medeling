@@ -310,3 +310,34 @@ expiry guard is a read-only check). The sweep's deletion behaviour means that re
 makes the sweep unconditional and permanent — verify the sweep cadence and remove any environment
 overrides before removing the flag. See [ADR-036](ADR-036-session-expiry-and-sweep.md) for the
 full rationale.
+
+**2026-08-16 (EOP-25) — `eop.features.session-lifecycle` is now ON.** All six gate stories
+(EOP-17, EOP-18, EOP-19, EOP-20, EOP-21, EOP-22) and the additional gate EOP-26 are Done.
+`src/main/resources/application.yml` now sets `session-lifecycle: true` as the permanent default.
+This is a reviewed change, not an environment override — the default moves in the source file so
+the audit trail is the commit history rather than the shell history of whoever set an env var.
+The flag and its `@ConditionalOnProperty` guards remain in place until the feature is confirmed
+stable; removal is a separate story. No `EOP_FEATURES_SESSION_LIFECYCLE` entry is needed in
+`compose.app.yml` — the default is now `true` and the env var would only be needed to override
+it back to `false`.
+
+This flip also activates `ExpiredSessionSweepScheduler` (the destructive half of expiry), as
+the EOP-22 amendment above required to be verified before this flag's position changed. The sweep
+cadence is `eop.sweep.interval-ms` (default 1 hour) with `eop.sweep.initial-delay-ms` (default
+5 minutes). Both are appropriate for the current single-instance deployment (ADR-012, ADR-036).
+
+The released surface is **lobby-only**: `eop.features.trick-play` remains `false`, so deal, play
+and resolve-trick routes are still absent. "session-lifecycle is now ON" means the five lobby
+endpoints and the sweep are live; it does not mean the full game is playable.
+
+Note on the Decision bullets above: "Every flag is off by default" (line 44) describes the
+invariant for *new* flags and for the off position of existing ones — it is not violated by this
+rollout, which is the documented permanent-rollout path. "A flag is deleted once its feature is
+released" (line 46) is satisfied by the removal story that follows this one; the flag stays until
+confirmed stable, per `.opencode/rules/feature-flags.md` ("one release after full rollout").
+
+**Accepted gap — observability (ADR-026).** `SessionController` and `CreateSessionUseCase` emit
+no logging. `.opencode/rules/observability.md` requires INFO audit logging with actor context for
+game-affecting actions and INFO request/response summaries at controllers. ADR-026 (Use-Case
+Observability) is still Proposed; implementing structured logging on the session-lifecycle surface
+is deferred to the ADR-026 story. This gap is accepted for this rollout and is not a blocker.

@@ -235,7 +235,7 @@ starting with fewer than three players.
 
 ### Behind a feature flag, and the flag-off behaviour is the absence of code
 
-`eop.features.session-lifecycle`, false by default (ADR-013). The controller is
+`eop.features.session-lifecycle`, on by default as of EOP-25 (2026-08-16) — previously false by default (ADR-013). The controller is
 annotated `@ConditionalOnProperty`, so with the flag off the bean does not exist,
 no handler is mapped, and Spring's own no-handler response — already rendered as a
 problem detail — returns 404 for every path. Flag-off behaviour is not a branch
