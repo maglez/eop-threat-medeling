@@ -1,8 +1,10 @@
 # ADR-038: Pointer-Event Drag-and-Drop for Card Play
 
-## Status
+**Status:** Accepted (EOP-60, 2026-08-16)
 
-Accepted (EOP-60, 2026-08-16)
+**Date:** 2026-08-16
+
+**Deciders:** Miguel González
 
 ## Context
 
