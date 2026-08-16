@@ -907,6 +907,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * The session is not yet completed — the leaderboard or new-game action was requested
+     * before the last trick was resolved.
+     *
+     * @param exception the exception carrying the session identifier
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(org.maglez.eop.entity.GameNotCompletedException.class)
+    public ProblemDetail handleGameNotCompleted(
+            final org.maglez.eop.entity.GameNotCompletedException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Game not completed");
+        problem.setDetail("Session " + exception.sessionId() + " is not yet completed.");
+        return problem;
+    }
+
+    /**
      * Anything unanticipated.
      *
      * <p>The cause is logged and deliberately not returned. An unexpected failure

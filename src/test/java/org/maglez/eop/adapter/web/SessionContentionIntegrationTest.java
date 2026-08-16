@@ -214,5 +214,10 @@ class SessionContentionIntegrationTest {
         public void abandonAndDelete(final UUID sessionId) {
             delegate.abandonAndDelete(sessionId);
         }
+
+        @Override
+        public void resetToInProgress(final UUID sessionId, final Instant occurredAt) {
+            delegate.resetToInProgress(sessionId, occurredAt);
+        }
     }
 }

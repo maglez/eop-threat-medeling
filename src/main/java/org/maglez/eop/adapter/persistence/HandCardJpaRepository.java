@@ -46,4 +46,16 @@ interface HandCardJpaRepository extends JpaRepository<HandCardJpaEntity, HandCar
     @Modifying(clearAutomatically = true)
     @Query("DELETE FROM HandCardJpaEntity c WHERE c.handId = :handId AND c.cardId = :cardId")
     int removeCardFromHand(@Param("handId") UUID handId, @Param("cardId") UUID cardId);
+
+    /**
+     * Deletes all hand-card rows for a set of hands.
+     *
+     * <p>Called by {@link TrickPlayRepositoryAdapter#clearForNewGame} before deleting
+     * hands (FK order: hand-cards → hands).
+     *
+     * @param handIds the hands whose cards to delete
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM HandCardJpaEntity c WHERE c.handId IN :handIds")
+    void deleteByHandIdIn(@Param("handIds") Collection<UUID> handIds);
 }

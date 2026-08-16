@@ -3,6 +3,9 @@ package org.maglez.eop.adapter.persistence;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Spring Data access to the hand table.
@@ -49,4 +52,18 @@ interface HandJpaRepository extends JpaRepository<HandJpaEntity, UUID> {
      * @return true when at least one hand row exists for the session
      */
     boolean existsByGameSessionId(UUID gameSessionId);
+
+    /**
+     * Deletes all hand-card rows for a session's hands, then all hand rows.
+     *
+     * <p>Called by {@link TrickPlayRepositoryAdapter#clearForNewGame} as part of the
+     * new-game reset. Hand-cards must be deleted before hands (FK constraint).
+     * This method deletes only the hand rows; the caller is responsible for deleting
+     * hand-cards first via {@link HandCardJpaRepository}.
+     *
+     * @param gameSessionId the session whose hands to delete
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM HandJpaEntity h WHERE h.gameSessionId = :gameSessionId")
+    void deleteByGameSessionId(@Param("gameSessionId") UUID gameSessionId);
 }

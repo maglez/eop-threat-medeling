@@ -3,6 +3,9 @@ package org.maglez.eop.adapter.persistence;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Spring Data access to the plays made into a trick.
@@ -41,4 +44,27 @@ interface TrickPlayJpaRepository extends JpaRepository<TrickPlayJpaEntity, UUID>
      * @return every play belonging to any of those tricks, in no guaranteed order
      */
     List<TrickPlayJpaEntity> findByTrickIdIn(List<UUID> trickIds);
+
+    /**
+     * Reads the identifiers of all plays in a set of tricks.
+     *
+     * <p>Used by {@link TrickPlayRepositoryAdapter#clearForNewGame} to delete components
+     * before deleting plays (FK order).
+     *
+     * @param trickIds the tricks whose play IDs to read
+     * @return the play identifiers, in no guaranteed order
+     */
+    @Query("SELECT p.id FROM TrickPlayJpaEntity p WHERE p.trickId IN :trickIds")
+    List<UUID> findIdsByTrickIdIn(@Param("trickIds") List<UUID> trickIds);
+
+    /**
+     * Deletes all plays belonging to a set of tricks.
+     *
+     * <p>Called after all components for those plays have been deleted.
+     *
+     * @param trickIds the tricks whose plays to delete
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM TrickPlayJpaEntity p WHERE p.trickId IN :trickIds")
+    void deleteByTrickIdIn(@Param("trickIds") List<UUID> trickIds);
 }

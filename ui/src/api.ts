@@ -212,7 +212,7 @@ export async function startGame(sessionId: string, playerToken: string): Promise
 export function subscribeToSession(
   sessionId: string,
   playerToken: string,
-  onEvent: () => void,
+  onEvent: (eventType: string | null) => void,
   onError: (err: ApiError | Error) => void,
 ): AbortController {
   const controller = new AbortController();
@@ -238,14 +238,25 @@ export function subscribeToSession(
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        if (text.includes('data:')) {
-          onEvent();
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        // Keep the last (potentially incomplete) line in the buffer
+        buffer = lines.pop() ?? '';
+
+        let currentEventType: string | null = null;
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            currentEventType = line.slice('event:'.length).trim();
+          } else if (line.startsWith('data:')) {
+            onEvent(currentEventType);
+            currentEventType = null;
+          }
         }
       }
     } finally {
@@ -260,6 +271,52 @@ export function subscribeToSession(
   });
 
   return controller;
+}
+
+// ---- Game Over API types ----
+
+export interface LeaderboardRowDto {
+  readonly playerId: string;
+  readonly seatOrder: number;
+  readonly displayName: string;
+  readonly points: number;
+  readonly position: number;
+  readonly tied: boolean;
+  readonly capturedBySuit: Readonly<Record<string, number>>;
+}
+
+export interface LeaderboardDto {
+  readonly rows: readonly LeaderboardRowDto[];
+  readonly sessionStatus: string;
+}
+
+export async function getLeaderboard(sessionId: string, playerToken: string): Promise<LeaderboardDto> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/leaderboard`, {
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+
+  return (await response.json()) as LeaderboardDto;
+}
+
+export async function startNewGame(sessionId: string, playerToken: string): Promise<void> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/new-game`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
 }
 
 // ---- Game Screen API types ----

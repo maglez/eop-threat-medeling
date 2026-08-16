@@ -103,4 +103,15 @@ public interface HandRepository {
      * @throws NotYourSeatException if a hand names a seat its player does not occupy
      */
     void recordDeal(UUID sessionId, Hands hands, int openingLeaderSeat, Instant occurredAt);
+
+    /**
+     * Deletes all hands and hand-cards for a session, resetting it for a new deal.
+     *
+     * <p>Called by {@link NewGameUseCase} before re-dealing the same deck to the same
+     * seats. The leader seat is also cleared so that {@link #recordDeal} can write a
+     * fresh opening lead.
+     *
+     * @param sessionId the session whose hands to clear
+     */
+    void clearHandsForNewGame(UUID sessionId);
 }

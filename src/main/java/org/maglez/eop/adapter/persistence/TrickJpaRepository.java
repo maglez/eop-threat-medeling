@@ -61,4 +61,27 @@ interface TrickJpaRepository extends JpaRepository<TrickJpaEntity, UUID> {
     @Query("UPDATE TrickJpaEntity t SET t.winnerPlayId = :winnerPlayId "
             + "WHERE t.id = :trickId AND t.winnerPlayId IS NULL")
     int recordWinner(@Param("trickId") UUID trickId, @Param("winnerPlayId") UUID winnerPlayId);
+
+    /**
+     * Reads the identifiers of all tricks in a session.
+     *
+     * <p>Used by {@link TrickPlayRepositoryAdapter#clearForNewGame} to delete plays
+     * before deleting tricks (FK order).
+     *
+     * @param gameSessionId the session whose trick IDs to read
+     * @return the trick identifiers, in no guaranteed order
+     */
+    @Query("SELECT t.id FROM TrickJpaEntity t WHERE t.gameSessionId = :gameSessionId")
+    List<UUID> findIdsByGameSessionId(@Param("gameSessionId") UUID gameSessionId);
+
+    /**
+     * Deletes all trick rows for a session.
+     *
+     * <p>Called after all plays for those tricks have been deleted.
+     *
+     * @param gameSessionId the session whose tricks to delete
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM TrickJpaEntity t WHERE t.gameSessionId = :gameSessionId")
+    void deleteByGameSessionId(@Param("gameSessionId") UUID gameSessionId);
 }

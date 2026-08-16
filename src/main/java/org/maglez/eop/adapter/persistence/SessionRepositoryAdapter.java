@@ -145,6 +145,18 @@ public class SessionRepositoryAdapter implements SessionRepository {
     }
 
     @Override
+    @Transactional
+    public void resetToInProgress(final UUID sessionId, final Instant occurredAt) {
+        Objects.requireNonNull(sessionId, SESSION_ID_REQUIRED);
+        Objects.requireNonNull(occurredAt, OCCURRED_AT_REQUIRED);
+
+        final var reset = sessionRows.resetToInProgress(sessionId, occurredAt.atOffset(ZoneOffset.UTC));
+        if (reset == 0) {
+            throw noLongerInProgress(sessionId);
+        }
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<UUID> findExpiredSessionIds(final Instant before) {
         Objects.requireNonNull(before, "before is required");

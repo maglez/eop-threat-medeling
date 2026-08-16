@@ -3,6 +3,7 @@ import { CreateSessionForm } from './components/CreateSessionForm';
 import { JoinSessionForm } from './components/JoinSessionForm';
 import { LobbyScreen } from './components/LobbyScreen';
 import { GameScreen } from './components/GameScreen';
+import { GameOverScreen } from './components/GameOverScreen';
 import { CardCatalogue } from './components/CardCatalogue';
 import type { SessionAdmissionDto, SessionStateDto } from './api';
 
@@ -33,7 +34,8 @@ type View =
   | { readonly screen: 'create' }
   | { readonly screen: 'join' }
   | { readonly screen: 'lobby'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string }
-  | { readonly screen: 'game'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string; readonly session: SessionStateDto };
+  | { readonly screen: 'game'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string; readonly session: SessionStateDto }
+  | { readonly screen: 'game-over'; readonly sessionId: string; readonly playerId: string; readonly playerToken: string; readonly isFacilitator: boolean };
 
 /**
  * The application shell with view switching logic.
@@ -169,6 +171,40 @@ export default function App(): React.JSX.Element {
             playerId={view.playerId}
             playerToken={view.playerToken}
             session={view.session}
+            onSessionEnd={handleSessionEnd}
+            onGameOver={() => {
+              const isFacilitator = view.session.players.find(
+                p => p.playerId === view.playerId
+              )?.role === 'FACILITATOR';
+              const tok = view.playerToken;
+              setView({
+                screen: 'game-over',
+                sessionId: view.sessionId,
+                playerId: view.playerId,
+                isFacilitator: isFacilitator ?? false,
+                playerToken: tok
+              });
+            }}
+          />
+        );
+
+      case 'game-over':
+        return (
+          <GameOverScreen
+            sessionId={view.sessionId}
+            playerId={view.playerId}
+            playerToken={view.playerToken}
+            isFacilitator={view.isFacilitator}
+            onNewGame={() => {
+              // Return to lobby so the facilitator can start the re-dealt game
+              const tok = view.playerToken;
+              setView({
+                screen: 'lobby',
+                sessionId: view.sessionId,
+                playerId: view.playerId,
+                playerToken: tok
+              });
+            }}
             onSessionEnd={handleSessionEnd}
           />
         );

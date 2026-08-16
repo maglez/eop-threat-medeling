@@ -187,4 +187,15 @@ public interface TrickRepository {
      * @throws NullPointerException if {@code sessionId} is {@code null}
      */
     List<Trick> findTricks(UUID sessionId);
+
+    /**
+     * Deletes all tricks and plays for a session, resetting it for a new game.
+     *
+     * <p>Called by {@link NewGameUseCase} before re-dealing. Trick plays are deleted
+     * first (FK constraint), then tricks. The session's leader seat is reset separately
+     * via {@link SessionRepository#resetToInProgress}.
+     *
+     * @param sessionId the session whose tricks to clear
+     */
+    void clearTricksForNewGame(UUID sessionId);
 }

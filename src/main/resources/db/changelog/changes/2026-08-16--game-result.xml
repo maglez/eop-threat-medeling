@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EOP-65: Game Over — game_result persistence
+
+  Creates the game_result table that records a completed game's outcome:
+  session reference, timestamps, facilitator name, and per-player scores.
+
+  Design decisions:
+  - game_result is a separate table (not a column on game_session) because it
+    is a historical record: a session may host multiple games (new-game feature),
+    and each game produces its own row.
+  - player scores are stored in game_result_player (one row per player per game)
+    rather than as a JSON column, so they are queryable and indexable.
+  - started_at is the timestamp when the deck was first dealt (hand_dealt event).
+  - finalised_at is the timestamp when the last trick was resolved (game-completed).
+  - facilitator_display_name is denormalised for historical reporting: the player
+    row may be deleted when a session is swept, but the result must survive.
+
+  Both tables are immutable once written. No UPDATE path exists.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001" author="miguel">
+    <comment>
+      Create game_result: one row per completed game. A session may have multiple
+      rows if the facilitator starts a new game after the first completes.
+    </comment>
+
+    <createTable tableName="game_result">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_game_result" nullable="false"/>
+      </column>
+      <column name="game_session_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="facilitator_display_name" type="VARCHAR(40)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="started_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="finalised_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <addForeignKeyConstraint
+      baseTableName="game_result"
+      baseColumnNames="game_session_id"
+      constraintName="fk_game_result_session"
+      referencedTableName="game_session"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <rollback>
+      <dropTable tableName="game_result"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="002" author="miguel">
+    <comment>
+      Create game_result_player: one row per seated player per completed game.
+      display_name is denormalised so the record survives session sweep.
+    </comment>
+
+    <createTable tableName="game_result_player">
+      <column name="id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_game_result_player" nullable="false"/>
+      </column>
+      <column name="game_result_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="player_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="display_name" type="VARCHAR(40)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="seat_order" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="score" type="INT">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+
+    <addForeignKeyConstraint
+      baseTableName="game_result_player"
+      baseColumnNames="game_result_id"
+      constraintName="fk_game_result_player_result"
+      referencedTableName="game_result"
+      referencedColumnNames="id"
+      onDelete="CASCADE"/>
+
+    <createIndex tableName="game_result_player" indexName="idx_game_result_player_result_id">
+      <column name="game_result_id"/>
+    </createIndex>
+
+    <rollback>
+      <dropTable tableName="game_result_player"/>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

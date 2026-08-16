@@ -4,6 +4,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Spring Data access to the components named on a play.
@@ -31,4 +34,16 @@ interface TrickPlayComponentJpaRepository
      */
     List<TrickPlayComponentJpaEntity> findByTrickPlayIdInOrderByTrickPlayIdAscOrdinalAsc(
             Collection<UUID> trickPlayIds);
+
+    /**
+     * Deletes all components belonging to a set of plays.
+     *
+     * <p>Called by {@link TrickPlayRepositoryAdapter#clearForNewGame} before deleting
+     * plays (FK order: components → plays → tricks).
+     *
+     * @param trickPlayIds the plays whose components to delete
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM TrickPlayComponentJpaEntity c WHERE c.trickPlayId IN :trickPlayIds")
+    void deleteByTrickPlayIdIn(@Param("trickPlayIds") Collection<UUID> trickPlayIds);
 }
