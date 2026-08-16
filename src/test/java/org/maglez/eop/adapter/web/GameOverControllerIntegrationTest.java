@@ -12,13 +12,10 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.usecase.GetLeaderboardUseCase;
-import org.maglez.eop.usecase.NewGameUseCase;
 import org.maglez.eop.usecase.PersistGameResultUseCase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -47,6 +44,9 @@ class GameOverControllerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private PersistGameResultUseCase persistGameResultUseCase;
 
     @Nested
     @DisplayName("GET /leaderboard — reading the leaderboard")
@@ -150,9 +150,70 @@ class GameOverControllerIntegrationTest {
         }
     }
 
+    @Nested
+    @DisplayName("Happy path — completed session")
+    class HappyPath {
+
+        @Test
+        @DisplayName("returns the leaderboard for a completed session")
+        void shouldReturnLeaderboardForCompletedSession() throws Exception {
+            final var table = completedTable();
+
+            final var result = getLeaderboard(table.sessionId(), table.facilitator().playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus())
+                    .as("a completed session with a persisted result returns 200")
+                    .isEqualTo(200);
+            final var body = result.getResponse().getContentAsString();
+            final var document = JsonPath.parse(body);
+            final List<Map<String, Object>> rows = document.read("$.rows");
+            Assertions.assertThat(rows)
+                    .as("one leaderboard row per seated player")
+                    .hasSize(3);
+            Assertions.assertThat(document.read("$.sessionStatus", String.class))
+                    .as("session status is COMPLETED")
+                    .isEqualTo("COMPLETED");
+        }
+
+        @Test
+        @DisplayName("facilitator can start a new game after the session is completed")
+        void shouldAllowFacilitatorToStartNewGame() throws Exception {
+            final var table = completedTable();
+
+            final var result = postNewGame(table.sessionId(), table.facilitator().playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus())
+                    .as("facilitator starting a new game on a completed session returns 204")
+                    .isEqualTo(204);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Creates a session with three players, starts it, ends it via POST /end (forcing COMPLETED),
+     * then persists the game result so the leaderboard is readable.
+     */
+    private Table completedTable() throws Exception {
+        final var facilitator = createSession("Ada");
+        final var second = joinSession(facilitator.joinCode(), "Grace");
+        final var third = joinSession(facilitator.joinCode(), "Alan");
+        final var table = new Table(facilitator.sessionId(), List.of(facilitator, second, third));
+        // Start the game
+        mockMvc.perform(post(SESSIONS + "/" + table.sessionId() + "/start")
+                        .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
+                .andExpect(status().isOk());
+        // End the session (forces COMPLETED via EndSessionUseCase)
+        mockMvc.perform(post(SESSIONS + "/" + table.sessionId() + "/end")
+                        .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
+                .andExpect(status().isNoContent());
+        // Persist the game result (normally triggered by ResolveTrickUseCase; here we call directly
+        // because EndSessionUseCase does not go through the trick-resolution path)
+        persistGameResultUseCase.execute(UUID.fromString(table.sessionId()));
+        return table;
+    }
 
     private MvcResult getLeaderboard(final String sessionId, final String playerToken) throws Exception {
         var request = get(SESSIONS + "/" + sessionId + "/leaderboard");

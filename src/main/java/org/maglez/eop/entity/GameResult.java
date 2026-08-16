@@ -8,20 +8,20 @@ import java.util.UUID;
 /**
  * The final result of one completed game: who played, what they scored, and when it happened.
  *
- * <p>A {@code GameResult} is a snapshot taken at the moment the last trick resolves. It is
- * immutable and self-contained: it carries everything needed to render the leaderboard without
- * re-reading the session, the tricks or the hands. The session itself is referenced only by
- * identifier, so the result can outlive the session row if the session is later swept.
+ * <p>A {@code GameResult} is a snapshot taken at the moment the game ends. It is immutable and
+ * carries the metadata needed to identify the game (session, facilitator, timestamps) and the
+ * per-player standings derived from the score sheet at the time of completion.
+ *
+ * <p>The session itself is referenced only by identifier, so the result can outlive the session
+ * row if the session is later swept.
  *
  * <p>The {@link Standing} list is the leaderboard in presentation order — best first, with a
  * seat-order tiebreak for stability. Positions are competition-ranked: two players on the same
  * total share a position and the next player is pushed past them. {@link Standing#tied()} makes
  * that visible without requiring the client to compare totals.
  *
- * <p>The STRIDE breakdown per player is derived from the {@link ScoreSheet} rows: for each
- * player, count the cards they played whose suit matches each {@link StrideCategory}. This is
- * display information only — it does not affect the score — and it is computed here so that the
- * leaderboard endpoint never has to re-read the tricks.
+ * <p>The STRIDE breakdown per player is <em>not</em> stored here. It is derived on demand from
+ * the trick history by {@link org.maglez.eop.usecase.GetLeaderboardUseCase}, per ADR-030.
  *
  * <p>Pure domain type: no Spring, no Jakarta, no persistence annotations.
  *
@@ -53,7 +53,7 @@ public record GameResult(
         if (standings.isEmpty()) {
             throw new IllegalArgumentException("A game result must have at least one standing");
         }
-        if (!finalisedAt.isAfter(startedAt) && !finalisedAt.equals(startedAt)) {
+        if (finalisedAt.isBefore(startedAt)) {
             throw new IllegalArgumentException("finalisedAt must not be before startedAt");
         }
         standings = List.copyOf(standings);

@@ -1,6 +1,5 @@
 package org.maglez.eop.adapter.persistence;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -19,9 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>A result is write-once: once saved it is never updated. The {@link #save} method
  * inserts the header row and all player rows in a single transaction.
  *
- * <p>On read, {@code position} and {@code tied} are recomputed from the stored scores
- * rather than being stored in the database. This keeps the schema simple and avoids
- * stale ranking data if the computation logic ever changes.
+ * <p>On read, the {@link GameResult} is reconstructed with placeholder standings (score=0,
+ * position=1, tied=false). The leaderboard controller derives scores, positions and the
+ * {@code tied} flag from the live {@link org.maglez.eop.entity.ScoreSheet} (re-read from
+ * tricks at request time), satisfying ADR-030: a persisted standing must never be read
+ * back to answer the score. The player rows are read only to reconstruct player identity
+ * (playerId, seatOrder, displayName) for the {@code GameResult} record.
  */
 @Repository
 public class GameResultRepositoryAdapter implements GameResultRepository {
@@ -64,47 +66,40 @@ public class GameResultRepositoryAdapter implements GameResultRepository {
     /**
      * Rebuilds a {@link GameResult} from its header row and player rows.
      *
-     * <p>Position and tied are recomputed from the stored scores using competition
-     * ranking: equal scores share a position, and the next distinct score is placed
-     * at (number of players with strictly higher scores + 1).
+     * <p>Player rows are read only for identity (playerId, seatOrder, displayName).
+     * Scores, positions and the {@code tied} flag are set to placeholder values
+     * (score=0, position=1, tied=false) because the leaderboard controller derives
+     * them from the live {@link org.maglez.eop.entity.ScoreSheet}, not from stored data
+     * (ADR-030).
      *
      * @param header the result header row
-     * @return the reconstituted domain object
+     * @return the reconstituted domain object with placeholder standings
      */
     private GameResult assemble(final GameResultJpaEntity header) {
         final var rows = playerRows.findByGameResultIdOrderBySeatOrderAsc(header.getId());
-        final var standings = rankStandings(rows);
+        final var standings = placeholderStandings(rows);
         return header.toDomain(standings);
     }
 
     /**
-     * Converts player rows into ranked {@link Standing} objects.
+     * Converts player rows into placeholder {@link Standing} objects.
      *
-     * <p>Uses competition ranking (1224 ranking): equal scores share a position, and
-     * the next distinct score is placed at (number of players with strictly higher
-     * scores + 1). For example, scores 7, 5, 5, 2 yield positions 1, 2, 2, 4.
+     * <p>Only identity fields (playerId, seatOrder, displayName) are populated.
+     * Score, position and tied are set to neutral defaults because the leaderboard
+     * derives those values from the live score sheet (ADR-030).
      *
      * @param rows the player rows in seat order
-     * @return standings with correct position and tied values, in seat order
+     * @return standings with identity fields only
      */
-    private static List<Standing> rankStandings(final List<GameResultPlayerJpaEntity> rows) {
-        final var result = new ArrayList<Standing>(rows.size());
-        for (final var row : rows) {
-            final int score = row.getScore();
-            final int position = (int) rows.stream()
-                    .filter(r -> r.getScore() > score)
-                    .count() + 1;
-            final boolean tied = rows.stream()
-                    .filter(r -> !r.getId().equals(row.getId()))
-                    .anyMatch(r -> r.getScore() == score);
-            result.add(new Standing(
-                    row.getPlayerId(),
-                    row.getSeatOrder(),
-                    new DisplayName(row.getDisplayName()),
-                    score,
-                    position,
-                    tied));
-        }
-        return result;
+    private static List<Standing> placeholderStandings(final List<GameResultPlayerJpaEntity> rows) {
+        return rows.stream()
+                .map(row -> new Standing(
+                        row.getPlayerId(),
+                        row.getSeatOrder(),
+                        new DisplayName(row.getDisplayName()),
+                        0,
+                        1,
+                        false))
+                .toList();
     }
 }

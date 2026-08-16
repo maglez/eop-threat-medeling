@@ -1,6 +1,7 @@
 package org.maglez.eop.config;
 
 import java.time.Clock;
+import java.util.Optional;
 import org.maglez.eop.usecase.CardRepository;
 import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.DealHandsUseCase;
@@ -332,9 +333,11 @@ public class UseCaseConfiguration {
             final TrickRepository trickRepository,
             final SessionRepository sessionRepository,
             final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
+            final Clock clock,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
         return new ResolveTrickUseCase(
-                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository, sessionEventPublisher, clock);
+                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository,
+                sessionEventPublisher, clock, persistGameResultUseCase);
     }
 
     /**

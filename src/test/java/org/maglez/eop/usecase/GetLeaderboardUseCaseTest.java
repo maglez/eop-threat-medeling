@@ -94,11 +94,11 @@ class GetLeaderboardUseCaseTest {
         }
 
         @Test
-        @DisplayName("throws GameNotCompletedException when no result has been persisted yet")
+        @DisplayName("throws SessionNotFoundException when no result has been persisted yet")
         void shouldThrowWhenNoResultPersisted() {
             // resultRepository is empty — no result seeded
 
-            assertThatExceptionOfType(GameNotCompletedException.class)
+            assertThatExceptionOfType(SessionNotFoundException.class)
                     .isThrownBy(() -> useCase().execute(SESSION_ID, tokenFor(0)));
         }
     }

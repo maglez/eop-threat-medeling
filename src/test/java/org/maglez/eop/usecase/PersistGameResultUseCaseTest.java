@@ -42,7 +42,6 @@ class PersistGameResultUseCaseTest {
 
     private static final UUID SESSION_ID = UUID.fromString("00000000-0000-7000-8000-0000000000d0");
     private static final UUID RESULT_ID = UUID.fromString("00000000-0000-7000-8000-000000000001");
-    private static final Instant STARTED_AT = Instant.parse("2026-01-01T10:00:00Z");
     private static final Instant FIXED_NOW = Instant.parse("2026-01-01T11:00:00Z");
 
     private static final int SEATS = 3;
@@ -66,7 +65,7 @@ class PersistGameResultUseCaseTest {
         void shouldSaveResultWithCorrectSessionId() {
             trickRepository.seededWithHistory(resolvedTrick(1, Rank.FIVE, Rank.KING, Rank.SEVEN));
 
-            useCase().execute(SESSION_ID, STARTED_AT);
+            useCase().execute(SESSION_ID);
 
             assertThat(resultRepository.saved()).isNotNull();
             assertThat(resultRepository.saved().sessionId()).isEqualTo(SESSION_ID);
@@ -77,9 +76,11 @@ class PersistGameResultUseCaseTest {
         void shouldSaveResultWithCorrectTimestamps() {
             trickRepository.seededWithHistory(resolvedTrick(1, Rank.FIVE, Rank.KING, Rank.SEVEN));
 
-            useCase().execute(SESSION_ID, STARTED_AT);
+            useCase().execute(SESSION_ID);
 
-            assertThat(resultRepository.saved().startedAt()).isEqualTo(STARTED_AT);
+            // startedAt and finalisedAt are both set to clock.instant() since the session
+            // row does not carry a startedAt timestamp
+            assertThat(resultRepository.saved().startedAt()).isEqualTo(FIXED_NOW);
             assertThat(resultRepository.saved().finalisedAt()).isEqualTo(FIXED_NOW);
         }
 
@@ -89,7 +90,7 @@ class PersistGameResultUseCaseTest {
             // Seat 1 wins the trick (KING beats FIVE and SEVEN)
             trickRepository.seededWithHistory(resolvedTrick(1, Rank.FIVE, Rank.KING, Rank.SEVEN));
 
-            useCase().execute(SESSION_ID, STARTED_AT);
+            useCase().execute(SESSION_ID);
 
             final var standings = resultRepository.saved().standings();
             assertThat(standings).hasSize(SEATS);
@@ -103,7 +104,7 @@ class PersistGameResultUseCaseTest {
         void shouldSaveResultWithZeroPointsWhenNoTricks() {
             // No tricks seeded — empty history
 
-            useCase().execute(SESSION_ID, STARTED_AT);
+            useCase().execute(SESSION_ID);
 
             assertThat(resultRepository.saved()).isNotNull();
             assertThat(resultRepository.saved().standings()).hasSize(SEATS);
@@ -115,7 +116,7 @@ class PersistGameResultUseCaseTest {
         @Test
         @DisplayName("reads tricks for the correct session")
         void shouldReadTricksForTheCorrectSession() {
-            useCase().execute(SESSION_ID, STARTED_AT);
+            useCase().execute(SESSION_ID);
 
             assertThat(trickRepository.tricksAskedFor()).contains(SESSION_ID);
         }
@@ -131,19 +132,13 @@ class PersistGameResultUseCaseTest {
             final var unknownId = UUID.fromString("00000000-0000-7000-8000-000000000099");
 
             assertThatExceptionOfType(SessionNotFoundException.class)
-                    .isThrownBy(() -> useCase().execute(unknownId, STARTED_AT));
+                    .isThrownBy(() -> useCase().execute(unknownId));
         }
 
         @Test
         @DisplayName("refuses a null sessionId")
         void shouldRefuseNullSessionId() {
-            assertThatNullPointerException().isThrownBy(() -> useCase().execute(null, STARTED_AT));
-        }
-
-        @Test
-        @DisplayName("refuses a null startedAt")
-        void shouldRefuseNullStartedAt() {
-            assertThatNullPointerException().isThrownBy(() -> useCase().execute(SESSION_ID, null));
+            assertThatNullPointerException().isThrownBy(() -> useCase().execute(null));
         }
     }
 

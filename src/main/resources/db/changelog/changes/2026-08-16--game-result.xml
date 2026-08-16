@@ -105,4 +105,21 @@
     </rollback>
   </changeSet>
 
+  <changeSet id="003" author="miguel">
+    <comment>
+      Add unique constraint on game_result.game_session_id.
+      The port returns Optional (single result per session), so the schema must enforce
+      that at most one game_result row exists per session at any time.
+    </comment>
+
+    <addUniqueConstraint
+      tableName="game_result"
+      columnNames="game_session_id"
+      constraintName="uq_game_result_session"/>
+
+    <rollback>
+      <dropUniqueConstraint tableName="game_result" constraintName="uq_game_result_session"/>
+    </rollback>
+  </changeSet>
+
 </databaseChangeLog>

@@ -11,7 +11,7 @@ import org.maglez.eop.entity.SessionNotFoundException;
 /**
  * Persists the final game result when the last trick resolves.
  *
- * <p>This use case is called by {@link ResolveTrickUseCase} after the session transitions to
+ * <p>Called by {@link ResolveTrickUseCase} after the session transitions to
  * {@link org.maglez.eop.entity.SessionStatus#COMPLETED}. It derives the final score sheet from
  * the tricks, builds a {@link GameResult} and writes it to the repository.
  *
@@ -62,18 +62,16 @@ public class PersistGameResultUseCase {
     /**
      * Derives and persists the final game result for a completed session.
      *
-     * <p>The {@code startedAt} timestamp is passed in by the caller because the session row
-     * does not carry it — the session only records {@code updatedAt}, which is overwritten on
-     * every state transition. The caller (the trick resolution path) knows when the session
-     * started because it was the one that recorded the start.
+     * <p>Both {@code startedAt} and {@code finalisedAt} are set to the current clock instant.
+     * The session row does not carry a {@code startedAt} timestamp (only {@code updatedAt},
+     * which is overwritten on every transition), so the two timestamps are equal here. They
+     * are informational only and do not affect the score.
      *
      * @param sessionId  the session that just completed
-     * @param startedAt  when the session moved from LOBBY to IN_PROGRESS
      * @throws SessionNotFoundException if the session no longer exists
      */
-    public void execute(final UUID sessionId, final java.time.Instant startedAt) {
+    public void execute(final UUID sessionId) {
         Objects.requireNonNull(sessionId, "sessionId is required");
-        Objects.requireNonNull(startedAt, "startedAt is required");
 
         final GameSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new SessionNotFoundException(sessionId));
@@ -83,7 +81,7 @@ public class PersistGameResultUseCase {
         final var finalisedAt = clock.instant();
         final var gameResultId = identifierGenerator.nextIdentifier();
 
-        final var result = GameResult.of(gameResultId, session, scoreSheet, startedAt, finalisedAt);
+        final var result = GameResult.of(gameResultId, session, scoreSheet, finalisedAt, finalisedAt);
         gameResultRepository.save(result);
     }
 }

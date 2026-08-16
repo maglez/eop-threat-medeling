@@ -2,6 +2,7 @@ package org.maglez.eop.usecase;
 
 import java.time.Clock;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.NoTrickToResolveException;
@@ -105,6 +106,8 @@ public class ResolveTrickUseCase {
 
     private final Clock clock;
 
+    private final Optional<PersistGameResultUseCase> persistGameResultUseCase;
+
     /**
      * Creates the use case.
      *
@@ -114,6 +117,8 @@ public class ResolveTrickUseCase {
      * @param sessionRepository records the session completion when the last trick resolves
      * @param sessionEventPublisher announces that the trick was resolved, naming none of it
      * @param clock supplies the resolution timestamp
+     * @param persistGameResultUseCase persists the final game result; absent when the
+     *     {@code game-over} feature flag is off
      */
     public ResolveTrickUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
@@ -121,7 +126,8 @@ public class ResolveTrickUseCase {
             final TrickRepository trickRepository,
             final SessionRepository sessionRepository,
             final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
+            final Clock clock,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
         this.trickRepository = Objects.requireNonNull(trickRepository, "trickRepository is required");
@@ -129,6 +135,8 @@ public class ResolveTrickUseCase {
         this.sessionEventPublisher =
                 Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
+        this.persistGameResultUseCase =
+                Objects.requireNonNull(persistGameResultUseCase, "persistGameResultUseCase is required");
     }
 
     /**
@@ -190,6 +198,15 @@ public class ResolveTrickUseCase {
                 // A concurrent facilitator call already completed the session.
                 // The trick resolution was durably committed; treat this as success.
             }
+            persistGameResultUseCase.ifPresent(uc -> {
+                try {
+                    uc.execute(sessionId);
+                }
+                catch (RuntimeException ignored) {
+                    // Best-effort: the session is completed and the trick is resolved.
+                    // The leaderboard will return 404 until the result is recorded.
+                }
+            });
             sessionEventPublisher.publish(new SessionEvent(SessionEventType.GAME_COMPLETED, sessionId, now));
         }
 

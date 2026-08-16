@@ -27,4 +27,9 @@ public record LeaderboardRowDto(
         int position,
         boolean tied,
         Map<String, Integer> capturedBySuit) {
+
+    /** Defensive copy — prevents external mutation of the suit-capture map. */
+    public LeaderboardRowDto {
+        capturedBySuit = Map.copyOf(capturedBySuit);
+    }
 }

@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -202,7 +203,8 @@ class ResolveTrickUseCaseTest {
                 trickRepository,
                 sessionRepository,
                 publisher,
-                FIXED);
+                FIXED,
+                Optional.empty());
     }
 
     @Test
@@ -450,7 +452,8 @@ class ResolveTrickUseCaseTest {
                 trickRepository,
                 sessionRepository,
                 publisher,
-                FIXED);
+                FIXED,
+                Optional.empty());
 
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
@@ -477,7 +480,8 @@ class ResolveTrickUseCaseTest {
                 trickRepository,
                 sessionRepository,
                 publisher,
-                FIXED);
+                FIXED,
+                Optional.empty());
 
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
@@ -505,7 +509,8 @@ class ResolveTrickUseCaseTest {
                 trickRepository,
                 sessionRepository,
                 publisher,
-                FIXED);
+                FIXED,
+                Optional.empty());
 
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
@@ -551,7 +556,8 @@ class ResolveTrickUseCaseTest {
                 trickRepository,
                 sessionRepository,
                 publisher,
-                FIXED);
+                FIXED,
+                Optional.empty());
 
         // Must not throw — the session is already COMPLETED, which is the desired outcome
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));

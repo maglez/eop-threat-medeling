@@ -857,9 +857,9 @@ paths:
         already see. A stranger who guesses a session identifier is refused with
         `403` because they hold no credential for that session.
 
-        The leaderboard is available in any session state, not only `COMPLETED`.
-        Before the game ends it reflects the score so far; after it ends it is
-        the final result.
+        The leaderboard is only available once the session is in `COMPLETED` state.
+        Requesting it while the session is still in progress returns `409` — the
+        resource exists but is not yet in the right state.
 
         Players with equal scores share the same rank (competition ranking). The
         `tied` flag makes this visible to a client rendering an ordinal without
@@ -888,10 +888,11 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/SessionNotFound'
-        '500':
+        '409':
           description: |
-            The stored game contradicts itself and no leaderboard can be derived
-            from it. The body deliberately names nothing.
+            The session exists but is not yet completed. The leaderboard is only
+            available once the last trick has resolved and the session is in
+            `COMPLETED` state.
           content:
             application/problem+json:
               schema:
@@ -902,7 +903,7 @@ paths:
       tags: [game-over]
       summary: Start a new game with the same players
       description: |
-        Clears all tricks and hands, re-deals the 68-card deck, and transitions
+        Clears all tricks and hands, re-deals the 78-card deck, and transitions
         the session back to `IN_PROGRESS`. All players remain in their original
         seats with the same seat numbers. The opening leader is the seat holding
         the 3 of Tampering.

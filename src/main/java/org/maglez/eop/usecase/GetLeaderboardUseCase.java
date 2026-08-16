@@ -57,7 +57,8 @@ public class GetLeaderboardUseCase {
      * @param playerToken the caller's identity token, as presented
      * @return the leaderboard result containing the game result and score sheet
      * @throws NullPointerException              if sessionId is null
-     * @throws SessionNotFoundException          if no session has that identifier
+     * @throws SessionNotFoundException          if no session has that identifier, or the session
+     *                                           is completed but no result has been persisted yet
      * @throws PlayerNotRecognisedException      if the token names nobody at this table
      * @throws GameNotCompletedException         if the session is not yet completed
      */
@@ -68,7 +69,7 @@ public class GetLeaderboardUseCase {
             throw new GameNotCompletedException(sessionId);
         }
         final var gameResult = gameResultRepository.findBySessionId(sessionId)
-                .orElseThrow(() -> new GameNotCompletedException(sessionId));
+                .orElseThrow(() -> new SessionNotFoundException(sessionId));
         final var scoreSheet = ScoreSheet.of(resolved.session().players(),
                 trickRepository.findTricks(sessionId));
         return new LeaderboardResult(gameResult, scoreSheet);

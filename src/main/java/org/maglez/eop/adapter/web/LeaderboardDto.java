@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.maglez.eop.entity.GameResult;
 import org.maglez.eop.entity.ScoreSheet;
 import org.maglez.eop.entity.ScoredPlay;
 import org.maglez.eop.entity.Standing;
@@ -32,22 +31,25 @@ public record LeaderboardDto(List<LeaderboardRowDto> rows, String sessionStatus)
     /**
      * Builds the leaderboard from a persisted {@link GameResult} and the live {@link ScoreSheet}.
      *
-     * <p>The {@code ScoreSheet} is needed to compute the per-player STRIDE breakdown, because
-     * {@code GameResult} only stores total scores. The breakdown is derived by scanning the
-     * scored-play rows: for each trick won by a player, every card played in that trick
-     * contributes one count to that player's suit tally.
+     * <p>Scores, positions and the {@code tied} flag are always derived from the live
+     * {@link ScoreSheet} (re-read from tricks at request time), never from the stored
+     * {@code GameResult}. This satisfies ADR-030: a persisted standing must never be
+     * read back to answer the score. The {@code GameResult} is used only for metadata
+     * (facilitator name, timestamps) that the DTO does not currently expose.
      *
-     * @param result      the persisted game result
-     * @param scoreSheet  the score sheet derived from the same session's tricks
+     * <p>The per-player STRIDE breakdown is computed by scanning the scored-play rows:
+     * for each trick won by a player, every card played in that trick contributes one
+     * count to that player's suit tally.
+     *
+     * @param scoreSheet  the score sheet derived from the session's tricks
      * @param sessionStatus the session status string
      * @return the leaderboard response body
      */
-    public static LeaderboardDto from(
-            final GameResult result, final ScoreSheet scoreSheet, final String sessionStatus) {
+    public static LeaderboardDto from(final ScoreSheet scoreSheet, final String sessionStatus) {
 
         final Map<UUID, Map<StrideCategory, Integer>> capturedBySuit = computeCapturedBySuit(scoreSheet);
 
-        final List<LeaderboardRowDto> rows = result.standings().stream()
+        final List<LeaderboardRowDto> rows = scoreSheet.standings().stream()
                 .map(standing -> toRow(standing, capturedBySuit))
                 .toList();
 
