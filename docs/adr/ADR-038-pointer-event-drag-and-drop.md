@@ -55,6 +55,11 @@ library.
   approach does not scale to several drop zones and a library becomes the cheaper option.
 - WCAG 2.2 SC 2.5.3 (Pointer Cancellation) is satisfied: `pointercancel` resets state
   and no action is committed on `pointerdown` alone.
-- WCAG 2.2 SC 2.4.11 (Focus Appearance) is satisfied: `GameScreen.css` defines a GOV.UK
-  yellow focus ring on `.eop-card:focus`; the inline `outline: none` on the card element
-  is overridden by the imported stylesheet.
+- WCAG 2.2 SC 2.4.7 (Focus Visible, Level A) and SC 2.4.11 (Focus Appearance, AA) are
+  satisfied: `CardFace` carries `className="eop-card"`, and `GameScreen.css` defines a
+  GOV.UK yellow focus ring on `.eop-card:focus` (`outline: 3px solid #ffdd00`). The
+  inline style on the card element does **not** suppress focus — `outline: none` was
+  removed in EOP-60 fix commit `98884fb` and the CSS rule is the sole focus indicator.
+- WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) is satisfied: every card is a
+  `role="button"` with a click handler and a "Play selected card" button provides a
+  complete single-pointer alternative to dragging.

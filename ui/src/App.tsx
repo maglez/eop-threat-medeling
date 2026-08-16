@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { CreateSessionForm } from './components/CreateSessionForm';
 import { JoinSessionForm } from './components/JoinSessionForm';
 import { LobbyScreen } from './components/LobbyScreen';
@@ -92,10 +92,10 @@ export default function App(): React.JSX.Element {
   };
 
   // Handle session end (logout/clear storage)
-  const handleSessionEnd = () => {
+  const handleSessionEnd = useCallback(() => {
     sessionStorage.removeItem(STORAGE_KEY);
     setView({ screen: 'home' });
-  };
+  }, []);
 
   // Handle errors from forms
   const handleError = (message: string) => {

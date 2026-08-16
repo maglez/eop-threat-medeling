@@ -89,6 +89,7 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
       aria-disabled={disabled}
       aria-pressed={selected}
       aria-label={`${card.rankSymbol} of ${card.suit.toLowerCase().replace(/_/g, ' ')}: ${card.threatPrompt}`}
+      className="eop-card"
       onClick={disabled ? undefined : onSelect}
       onKeyDown={handleKeyDown}
       onPointerDown={disabled ? undefined : onPointerDown}
@@ -108,7 +109,6 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         userSelect: 'none',
         touchAction: 'none',
         transition: 'box-shadow 0.1s, opacity 0.1s',
-        outline: 'none',
         flexShrink: 0,
       }}
     >

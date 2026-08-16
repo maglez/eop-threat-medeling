@@ -447,4 +447,18 @@ describe('GameScreen', () => {
       expect(screen.getByText('No cards remaining')).toBeInTheDocument();
     });
   });
+
+  it('card buttons carry className eop-card so the CSS focus ring is reachable', async () => {
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    render(<GameScreen {...defaultProps} />);
+
+    await waitFor(() => {
+      const card = screen.getByRole('button', { name: /A of spoofing/i });
+      expect(card).toHaveClass('eop-card');
+    });
+  });
 });
