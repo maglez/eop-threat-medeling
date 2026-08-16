@@ -56,7 +56,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -83,7 +82,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -122,7 +120,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -154,7 +151,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -183,7 +179,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -213,7 +208,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -242,7 +236,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -279,7 +272,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -328,7 +320,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -373,7 +364,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 
@@ -401,7 +391,6 @@ describe('LobbyScreen', () => {
         playerId={playerId}
         playerToken={playerToken}
         onSessionEnd={mockOnSessionEnd}
-        onGameStarted={undefined}
       />
     );
 

@@ -22,6 +22,15 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
   const [isStarting, setIsStarting] = useState(false);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep a stable ref to onGameStarted so it never appears in useCallback deps,
+  // preventing the SSE subscription from tearing down and re-creating on every
+  // render (which would hit ADR-034's per-session subscriber cap).
+  const onGameStartedRef = useRef(onGameStarted);
+  onGameStartedRef.current = onGameStarted;
+  // Track whether we have already fired onGameStarted for this session so we
+  // fire on the transition (LOBBY → IN_PROGRESS) rather than on every refresh
+  // while the session is IN_PROGRESS.
+  const gameStartedFiredRef = useRef(false);
 
   const currentPlayer = session?.players.find(p => p.playerId === playerId);
   const isFacilitator = currentPlayer?.role === 'FACILITATOR';
@@ -33,9 +42,11 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
       setSession(sessionData);
       setError(null);
       
-      // Check if game has started and notify parent if needed
-      if (sessionData.status === 'IN_PROGRESS' && onGameStarted) {
-        onGameStarted(sessionData);
+      // Fire onGameStarted exactly once, on the first refresh that sees IN_PROGRESS.
+      // Reading through a ref keeps this callback stable (no dep on onGameStarted).
+      if (sessionData.status === 'IN_PROGRESS' && !gameStartedFiredRef.current) {
+        gameStartedFiredRef.current = true;
+        onGameStartedRef.current?.(sessionData);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load session';
@@ -47,7 +58,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
         onSessionEnd();
       }
     }
-  }, [sessionId, playerToken, onSessionEnd, onGameStarted]);
+  }, [sessionId, playerToken, onSessionEnd]);
 
   // Initial load and setup SSE stream
   useEffect(() => {

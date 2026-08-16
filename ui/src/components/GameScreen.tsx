@@ -14,6 +14,7 @@ import {
   type PlayerDto,
 } from '../api';
 import { ErrorSummary } from './ErrorSummary';
+import './GameScreen.css';
 
 interface GameScreenProps {
   readonly sessionId: string;
@@ -130,11 +131,7 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
   );
 }
 
-interface CardBackProps {
-  readonly cardCount: number;
-}
-
-function CardBack({ cardCount }: CardBackProps): React.JSX.Element {
+function CardBack(): React.JSX.Element {
   return (
     <div style={{
       display: 'inline-flex',
@@ -152,34 +149,28 @@ function CardBack({ cardCount }: CardBackProps): React.JSX.Element {
     }}
       aria-hidden="true"
     >
-      {cardCount}
+      EoP
     </div>
   );
 }
 
 interface OtherPlayerSeatProps {
   readonly player: PlayerDto;
-  readonly cardCount: number;
   readonly position: TablePosition;
-  readonly playedCard?: CardDto;
 }
 
-function OtherPlayerSeat({ player, cardCount, position }: OtherPlayerSeatProps): React.JSX.Element {
-  const isVertical = position === 'top' || position === 'top-left' || position === 'top-right';
+function OtherPlayerSeat({ player }: OtherPlayerSeatProps): React.JSX.Element {
   return (
     <div style={{
       display: 'flex',
-      flexDirection: isVertical ? 'column' : 'column',
+      flexDirection: 'column',
       alignItems: 'center',
       gap: '6px',
     }}>
       <span className="govuk-body-s" style={{ fontWeight: 'bold', textAlign: 'center', maxWidth: '100px', wordBreak: 'break-word' }}>
         {player.displayName}
       </span>
-      <CardBack cardCount={cardCount} />
-      <span className="govuk-body-s govuk-hint" style={{ fontSize: '11px' }}>
-        {cardCount} card{cardCount !== 1 ? 's' : ''}
-      </span>
+      <CardBack />
     </div>
   );
 }
@@ -400,10 +391,12 @@ export function GameScreen({
   const otherPlayers = [...session.players]
     .filter(p => p.playerId !== playerId)
     .sort((a, b) => {
-      // Sort clockwise from current player's seat
+      // Sort clockwise from current player's seat.
+      // Use ((x % n) + n) % n to correctly normalise negative values for any n.
+      const n = session.players.length;
       const base = mySeats ?? 0;
-      const aNorm = ((a.seatOrder - base) + 100) % session.players.length;
-      const bNorm = ((b.seatOrder - base) + 100) % session.players.length;
+      const aNorm = ((a.seatOrder - base) % n + n) % n;
+      const bNorm = ((b.seatOrder - base) % n + n) % n;
       return aNorm - bNorm;
     });
 
@@ -517,13 +510,10 @@ export function GameScreen({
           {/* Other players */}
           {otherPlayers.map((player, idx) => {
             const pos = positions[idx] ?? 'top';
-            // Estimate card count from hand data if available, else show 0
-            const cardCount = hand.cardCount > 0 ? Math.max(0, hand.cardCount - (trickState.trick?.plays.length ?? 0)) : 0;
             return (
               <div key={player.playerId} style={positionStyle[pos]}>
                 <OtherPlayerSeat
                   player={player}
-                  cardCount={cardCount}
                   position={pos}
                 />
               </div>
