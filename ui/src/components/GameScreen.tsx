@@ -3,7 +3,6 @@ import {
   fetchHand,
   getTrickState,
   playCard,
-  resolveTrick,
   getSession,
   subscribeToSession,
   ApiError,
@@ -416,15 +415,11 @@ export function GameScreen({
 
   // ---- Resolve trick / start next ----
 
-  const handleStartNextTrick = async () => {
-    try {
-      await resolveTrick(sessionId, playerToken);
-      setWinnerDismissed(true);
-      await refreshGameState();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to start next trick';
-      setError(message);
-    }
+  const handleStartNextTrick = () => {
+    // The trick is already resolved by the server when the last card is played.
+    // Dismissing the banner is all that is needed; the winner leads the next trick
+    // by playing a card normally.
+    setWinnerDismissed(true);
   };
 
   // ---- Layout helpers ----

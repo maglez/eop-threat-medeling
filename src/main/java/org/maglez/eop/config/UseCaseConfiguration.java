@@ -264,6 +264,10 @@ public class UseCaseConfiguration {
     /**
      * Declares the play-card use case, behind {@code eop.features.trick-play}.
      *
+     * <p>When the last card of a trick is played, this use case resolves the trick inline and
+     * publishes {@code trick-resolved} (and {@code game-completed} if no cards remain). The
+     * {@link ResolveTrickUseCase} endpoint remains available for reconnect and edge cases.
+     *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands and the current leader seat are read through
      * @param trickRepository the port a trick is opened and a play appended through
@@ -271,6 +275,9 @@ public class UseCaseConfiguration {
      * @param identifierGenerator the source of the trick and play identifiers
      * @param sessionEventPublisher the transport that announces the play to connected clients
      * @param clock the clock the played timestamp is read from
+     * @param sessionRepository the port the session status is advanced through on auto-complete
+     * @param persistGameResultUseCase persists the final game result; absent when the
+     *     {@code game-over} feature flag is off
      * @return the play-card use case
      */
     @Bean
@@ -282,7 +289,9 @@ public class UseCaseConfiguration {
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
             final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
+            final Clock clock,
+            final SessionRepository sessionRepository,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
         return new PlayCardUseCase(
                 resolvePlayerUseCase,
                 handRepository,
@@ -290,7 +299,9 @@ public class UseCaseConfiguration {
                 cardRepository,
                 identifierGenerator,
                 sessionEventPublisher,
-                clock);
+                clock,
+                sessionRepository,
+                persistGameResultUseCase);
     }
 
     /**
