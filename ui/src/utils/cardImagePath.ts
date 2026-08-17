@@ -7,8 +7,12 @@
  * Filename pattern: `{rankPrefix} - {SuitFolderName}.png`
  *
  * Not every rank exists in every suit (e.g. Tampering has no TWO,
- * Elevation of Privilege starts at FIVE). Callers should guard with
- * `cardImageExists(suit, rank)` before rendering an <img>.
+ * Elevation of Privilege starts at FIVE). Returns null for missing combinations.
+ *
+ * The 68 card PNGs (~6.7 MB) are always bundled into dist/ regardless of the
+ * VITE_CARD_IMAGES_ENABLED flag — Vite processes import.meta.glob at parse time
+ * and cannot dead-code-eliminate it. The flag controls rendering only: when off,
+ * cardImagePath() returns null and no <img> is rendered.
  */
 
 /** Maps suit enum value → folder name on disk */
@@ -38,22 +42,26 @@ const RANK_PREFIX: Record<string, string> = {
 };
 
 /**
- * Eagerly import all card PNGs so Vite can bundle them.
- * The key is `{rankPrefix} - {SuitFolderName}` (without extension).
+ * Eagerly import all card PNGs so Vite can bundle them with content-hashed URLs.
+ * These are always included in the bundle; the VITE_CARD_IMAGES_ENABLED flag
+ * controls whether they are rendered, not whether they are bundled.
  */
-const cardImages = import.meta.glob<{ default: string }>(
-  '../assets/cards/**/*.png',
-  { eager: true },
-);
+const cardImages: Record<string, { default: string }> =
+  import.meta.glob<{ default: string }>('../assets/cards/**/*.png', { eager: true });
 
 /**
- * Returns the bundled URL for a card image, or `null` if the combination
- * does not exist (e.g. TWO of Tampering, or any ACE).
+ * Returns the bundled URL for a card image, or `null` if:
+ * - the VITE_CARD_IMAGES_ENABLED flag is off, or
+ * - the combination does not exist (e.g. TWO of Tampering, or any ACE).
  *
  * @param suit  - Suit enum string, e.g. `"SPOOFING"`
  * @param rank  - Rank enum string, e.g. `"JACK"`
  */
 export function cardImagePath(suit: string, rank: string): string | null {
+  if (import.meta.env.VITE_CARD_IMAGES_ENABLED !== 'true') {
+    return null;
+  }
+
   const folder = SUIT_FOLDER[suit];
   const prefix = RANK_PREFIX[rank];
 
@@ -67,7 +75,8 @@ export function cardImagePath(suit: string, rank: string): string | null {
 }
 
 /**
- * Returns true when a real PNG asset exists for the given suit/rank pair.
+ * Returns true when a real PNG asset exists for the given suit/rank pair
+ * and the card-images flag is on.
  */
 export function cardImageExists(suit: string, rank: string): boolean {
   return cardImagePath(suit, rank) !== null;

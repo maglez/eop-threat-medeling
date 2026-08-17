@@ -3,14 +3,77 @@
  *
  * Vitest supports import.meta.glob natively and resolves the glob pattern
  * against the real filesystem. The 68 PNG assets are committed to the repo
- * under ui/src/assets/cards/, so these tests exercise the production module
- * directly — no mock is needed and none is used.
+ * under ui/src/assets/cards/.
+ *
+ * The 68 PNGs are always bundled (Vite processes import.meta.glob at parse
+ * time). The VITE_CARD_IMAGES_ENABLED flag is checked inside cardImagePath()
+ * at call time — when off, the function returns null regardless of the map.
+ *
+ * Flag-OFF tests use the static import (no stub needed — the flag is unset
+ * in the test environment so cardImagePath returns null for everything).
+ * Flag-ON tests stub the env var; because the flag is read at call time
+ * (not at module load time), vi.stubEnv alone is sufficient — no
+ * vi.resetModules() is needed.
  */
 
-import { describe, it, expect } from 'vitest';
-import { cardImagePath, cardImageExists } from '../utils/cardImagePath';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
-describe('cardImagePath', () => {
+// ─── Flag-OFF tests (no stub needed — flag is unset, cardImagePath returns null) ─
+
+import { cardImagePath as cardImagePathOff, cardImageExists as cardImageExistsOff } from '../utils/cardImagePath';
+
+describe('cardImagePath — flag OFF (VITE_CARD_IMAGES_ENABLED unset)', () => {
+  describe('invalid inputs always return null', () => {
+    it('returns null for unknown suit', () => {
+      expect(cardImagePathOff('UNKNOWN_SUIT', 'KING')).toBeNull();
+    });
+
+    it('returns null for unknown rank', () => {
+      expect(cardImagePathOff('SPOOFING', 'ACE')).toBeNull();
+    });
+
+    it('returns null for empty strings', () => {
+      expect(cardImagePathOff('', '')).toBeNull();
+    });
+
+    it('returns null for ACE in any suit (ACE is not a playable rank)', () => {
+      const suits = ['SPOOFING', 'TAMPERING', 'REPUDIATION', 'INFORMATION_DISCLOSURE', 'DENIAL_OF_SERVICE', 'ELEVATION_OF_PRIVILEGE'];
+      for (const suit of suits) {
+        expect(cardImagePathOff(suit, 'ACE')).toBeNull();
+      }
+    });
+  });
+
+  describe('valid combinations return null when flag is off', () => {
+    it('returns null for SPOOFING/KING when flag is off', () => {
+      expect(cardImagePathOff('SPOOFING', 'KING')).toBeNull();
+    });
+
+    it('cardImageExists returns false when flag is off', () => {
+      expect(cardImageExistsOff('SPOOFING', 'KING')).toBe(false);
+    });
+  });
+});
+
+// ─── Flag-ON tests (stub env var — flag is checked at call time, no resetModules needed) ──
+
+describe('cardImagePath — flag ON (VITE_CARD_IMAGES_ENABLED=true)', () => {
+  let cardImagePath: (suit: string, rank: string) => string | null;
+  let cardImageExists: (suit: string, rank: string) => boolean;
+
+  beforeAll(async () => {
+    vi.stubEnv('VITE_CARD_IMAGES_ENABLED', 'true');
+    vi.resetModules();
+    const mod = await import('../utils/cardImagePath');
+    cardImagePath = mod.cardImagePath;
+    cardImageExists = mod.cardImageExists;
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
   describe('Spoofing suit (12 cards: TWO–KING)', () => {
     it.each([
       ['TWO', '02'],
@@ -104,27 +167,6 @@ describe('cardImagePath', () => {
       const result = cardImagePath('ELEVATION_OF_PRIVILEGE', rank);
       expect(result).not.toBeNull();
       expect(decodeURIComponent(result!)).toContain(`${prefix} - Elevation of Privilege`);
-    });
-  });
-
-  describe('invalid inputs', () => {
-    it('returns null for unknown suit', () => {
-      expect(cardImagePath('UNKNOWN_SUIT', 'KING')).toBeNull();
-    });
-
-    it('returns null for unknown rank', () => {
-      expect(cardImagePath('SPOOFING', 'ACE')).toBeNull();
-    });
-
-    it('returns null for empty strings', () => {
-      expect(cardImagePath('', '')).toBeNull();
-    });
-
-    it('returns null for ACE in any suit (ACE is not a playable rank)', () => {
-      const suits = ['SPOOFING', 'TAMPERING', 'REPUDIATION', 'INFORMATION_DISCLOSURE', 'DENIAL_OF_SERVICE', 'ELEVATION_OF_PRIVILEGE'];
-      for (const suit of suits) {
-        expect(cardImagePath(suit, 'ACE')).toBeNull();
-      }
     });
   });
 

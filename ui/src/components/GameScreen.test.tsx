@@ -1,5 +1,5 @@
 import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameScreen } from './GameScreen';
 import * as api from '../api';
 
@@ -523,11 +523,32 @@ describe('GameScreen', () => {
 });
 
 // ---- Card images feature flag (EOP-66) ----
-// These tests exercise the flag-ON path. VITE_CARD_IMAGES_ENABLED is read at
-// component scope in CardFace and GameScreen, so vi.stubEnv takes effect on
-// the next render without needing vi.resetModules().
+// These tests exercise the flag-ON path. cardImagePath.ts guards the
+// import.meta.glob at module scope, so vi.resetModules() + dynamic import
+// is required to load the module with the flag already set.
+// After vi.resetModules(), GameScreen imports a fresh api module instance,
+// so we must also dynamically import api and spy on that fresh instance.
 
 describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let GameScreenFlagged: React.ComponentType<any>;
+  let freshApi: typeof api;
+
+  beforeAll(async () => {
+    vi.stubEnv('VITE_CARD_IMAGES_ENABLED', 'true');
+    vi.resetModules();
+    const [screenMod, apiMod] = await Promise.all([
+      import('./GameScreen'),
+      import('../api'),
+    ]);
+    GameScreenFlagged = screenMod.GameScreen;
+    freshApi = apiMod;
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
   const mockSession: api.SessionStateDto = {
     sessionId: 'test-session',
     joinCode: 'ABC123',
@@ -573,21 +594,20 @@ describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
   };
 
   beforeEach(() => {
-    vi.stubEnv('VITE_CARD_IMAGES_ENABLED', 'true');
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    // env stub and module reset are handled by beforeAll/afterAll
   });
 
   it('renders an <img> for a card with a real image when flag is ON', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
-    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
-    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
-    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+    vi.spyOn(freshApi, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(freshApi, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(freshApi, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(freshApi, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
 
-    render(<GameScreen {...defaultProps} />);
+    render(<GameScreenFlagged {...defaultProps} />);
 
     await waitFor(() => {
       // The card image should be rendered with a descriptive alt attribute
@@ -598,12 +618,12 @@ describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
   });
 
   it('img alt attribute is descriptive (rank + suit, lowercase)', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
-    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
-    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
-    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+    vi.spyOn(freshApi, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(freshApi, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(freshApi, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(freshApi, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
 
-    render(<GameScreen {...defaultProps} />);
+    render(<GameScreenFlagged {...defaultProps} />);
 
     await waitFor(() => {
       const img = screen.getByAltText('K of spoofing');
@@ -612,12 +632,12 @@ describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
   });
 
   it('does not render rank symbol spans when card image is shown', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
-    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
-    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
-    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+    vi.spyOn(freshApi, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(freshApi, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(freshApi, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(freshApi, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
 
-    render(<GameScreen {...defaultProps} />);
+    render(<GameScreenFlagged {...defaultProps} />);
 
     await waitFor(() => {
       // The <img> is present
@@ -627,8 +647,6 @@ describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
     // The plain-text rank symbol fallback should NOT be present when the image renders
     // (the ternary renders either <img> or the text spans, never both)
     const rankSymbolSpans = screen.queryAllByText('K');
-    // All 'K' text nodes should be absent from the card face (image replaced them)
-    // Note: there may be zero or the aria-label still contains 'K', but no visible span
     expect(rankSymbolSpans.length).toBe(0);
   });
 });
