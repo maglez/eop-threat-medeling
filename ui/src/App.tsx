@@ -181,7 +181,7 @@ export default function App(): React.JSX.Element {
                 screen: 'game-over',
                 sessionId: view.sessionId,
                 playerId: view.playerId,
-                isFacilitator: isFacilitator ?? false,
+                isFacilitator,
                 playerToken: tok
               });
             }}
