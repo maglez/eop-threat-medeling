@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 import java.util.Objects;
 import java.util.UUID;
 import org.maglez.eop.usecase.DealHandsUseCase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
 import org.maglez.eop.usecase.PlayCardCommand;
 import org.maglez.eop.usecase.PlayCardUseCase;
@@ -54,11 +56,10 @@ import org.springframework.web.bind.annotation.RestController;
  * would find no covered instruction in it, and the coverage gate admits no
  * per-class exclusions.
  *
- * <p>Nothing here logs. That is not an omission: ADR-026 is {@code Proposed} and has
- * not yet decided where use-case observability lives, and one of the four
- * arrangements it weighs is logging at the web boundary. Adding a logger to this one
- * controller would pick that option in a feature slice, and would break the
- * uniformity that ADR-026 records as the reason the gap is tolerable at all.
+ * <p>Audit logging for game-affecting writes lives here, at the HTTP boundary (ADR-026,
+ * option 4, Accepted 2026-08-17 by EOP-70). Each write endpoint emits one {@code INFO}
+ * line naming the session and the actor's token prefix; card identities are never logged
+ * because a hand is private (ADR-026 §CWE-117 and hidden-information constraints).
  *
  * <p>Descriptions here are deliberately brief: {@code docs/api/openapi.yml} is the
  * contract (ADR-004), springdoc is disabled in production, and prose duplicated in
@@ -69,6 +70,8 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(prefix = "eop.features", name = "trick-play", havingValue = "true")
 @Tag(name = "trick-play", description = "Dealing, playing and resolving tricks, and reading the score")
 public class TrickController {
+
+    private static final Logger LOG = LoggerFactory.getLogger(TrickController.class);
 
     private final DealHandsUseCase dealHandsUseCase;
 
@@ -119,6 +122,7 @@ public class TrickController {
             @PathVariable final UUID sessionId,
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
         dealHandsUseCase.execute(sessionId, playerToken);
+        LOG.info("audit: deal session={} actor={}", sessionId, tokenPrefix(playerToken));
     }
 
     /**
@@ -182,7 +186,10 @@ public class TrickController {
                 request.threatLinked(),
                 request.components(),
                 request.notes());
-        return TrickDto.from(playCardUseCase.execute(command));
+        final TrickDto result = TrickDto.from(playCardUseCase.execute(command));
+        LOG.info("audit: play-card session={} actor={} trick={} plays={}",
+                sessionId, tokenPrefix(playerToken), result.sequence(), result.plays().size());
+        return result;
     }
 
     /**
@@ -244,6 +251,21 @@ public class TrickController {
     public TrickDto resolveCurrentTrick(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
-        return TrickDto.from(resolveTrickUseCase.execute(sessionId, playerToken));
+        final TrickDto result = TrickDto.from(resolveTrickUseCase.execute(sessionId, playerToken));
+        LOG.info("audit: resolve-trick session={} actor={} trick={} winner={}",
+                sessionId, tokenPrefix(playerToken), result.sequence(), result.winningSeat());
+        return result;
+    }
+
+    /**
+     * Returns the first 8 characters of the player token for audit logging, followed by an
+     * ellipsis. Tokens shorter than 8 characters (unreachable in production — valid tokens are
+     * 43 base64url chars) are returned in full. A null or blank token returns {@code "(none)"}.
+     */
+    private static String tokenPrefix(final String playerToken) {
+        if (playerToken == null || playerToken.isBlank()) {
+            return "(none)";
+        }
+        return playerToken.length() > 8 ? playerToken.substring(0, 8) + "…" : playerToken;
     }
 }

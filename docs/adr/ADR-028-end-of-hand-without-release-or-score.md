@@ -4,6 +4,12 @@
 **Date:** 2026-08-14
 **Deciders:** @tech-lead, @architecture-guardian
 
+> **Amended 2026-08-17 (EOP-70, [ADR-040](ADR-040-trick-play-flag-on.md)).**
+> All three predecessors of the flag-on story are now discharged: EOP-48 (commit `34d30d7`),
+> EOP-15 (ADR-032), and ADR-026 (option 4 chosen — audit logging at the HTTP boundary in
+> `TrickController`; see ADR-026 and ADR-040 for the full record). `eop.features.trick-play`
+> is now `true` in `application.yml`. The flag and its guards remain until confirmed stable.
+
 > **Amended 2026-08-15 (EOP-15 Slice C, [ADR-032](ADR-032-end-of-game-transitions.md)).**
 > The second decision below — "EOP-14 does not transition a session to `COMPLETED`" — is
 > superseded for the **automatic path**: `ResolveTrickUseCase` now calls

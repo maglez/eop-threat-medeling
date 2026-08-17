@@ -90,10 +90,12 @@ describe("App shell", () => {
 
   it("offers both calls to action but leaves them disabled when the feature flag is off", async () => {
     respondWith(200, pageOf([]));
+    // Explicitly disable the flag — .env.local may set it to true on developer machines
+    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "false");
 
     await renderSettled();
 
-    // Disabled because VITE_LOBBY_UI_ENABLED is unset in the test environment,
+    // Disabled because VITE_LOBBY_UI_ENABLED is false,
     // so the flag evaluates to false and the buttons are intentionally disabled.
     expect(screen.getByRole("button", { name: /create a session/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /join a session/i })).toBeDisabled();
@@ -216,10 +218,11 @@ describe("Feature flag — game screen enabled", () => {
   });
 
   it("does not navigate to game screen when VITE_GAME_SCREEN_ENABLED is off (default)", async () => {
-    // Flag is off by default — even if the session transitions to IN_PROGRESS,
+    // Flag is off — even if the session transitions to IN_PROGRESS,
     // the lobby should stay on screen (showing the "game has started" warning).
     vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
-    // VITE_GAME_SCREEN_ENABLED is intentionally NOT stubbed — default is off.
+    // Explicitly disable the game screen flag — .env.local may set it to true on developer machines
+    vi.stubEnv("VITE_GAME_SCREEN_ENABLED", "false");
 
     const inProgressSession = {
       sessionId: "session-1",
@@ -379,7 +382,8 @@ describe("sessionStorage reconnect", () => {
   });
 
   it("does not restore lobby when flag is off, even with valid stored session", async () => {
-    // Flag is off (default in test env)
+    // Explicitly disable the flag — .env.local may set it to true on developer machines
+    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "false");
     const storedSession = {
       playerToken: "stored-token",
       playerId: "player-1",

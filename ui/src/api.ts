@@ -372,6 +372,26 @@ export interface PlayCardRequest {
   readonly notes?: string;
 }
 
+/**
+ * Deal cards to all players (facilitator only).
+ *
+ * Calls POST /api/v1/sessions/{id}/deal. The server returns 204 No Content on
+ * success; the caller should then fetch the hand via fetchHand().
+ */
+export async function dealCards(sessionId: string, playerToken: string): Promise<void> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/deal`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+}
+
 /** Fetch the current player's own hand */
 export async function fetchHand(sessionId: string, playerToken: string): Promise<HandDto> {
   const response = await fetch(`/api/v1/sessions/${sessionId}/hand`, {

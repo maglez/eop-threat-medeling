@@ -263,20 +263,45 @@ export function GameScreen({
   }, [showWinnerBanner]);
 
   const refreshGameState = useCallback(async () => {
+    // Fetch session state first. A 404 here means the session is genuinely gone
+    // (or the token is invalid) — navigate home. A 409 on /hand or /tricks/current
+    // means HandNotDealtException: the deck has not been dealt yet; show a waiting
+    // state rather than ending the session.
+    let newSession: SessionStateDto;
     try {
-      const [newHand, newTrickState, newSession] = await Promise.all([
+      newSession = await getSession(sessionId, playerToken);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load game state';
+      setError(message);
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+        onSessionEnd();
+      }
+      return;
+    }
+
+    try {
+      const [newHand, newTrickState] = await Promise.all([
         fetchHand(sessionId, playerToken),
         getTrickState(sessionId, playerToken),
-        getSession(sessionId, playerToken),
       ]);
       setHand(newHand);
       setTrickState(newTrickState);
       setSession(newSession);
       setError(null);
     } catch (err) {
+      // A 409 from /hand or /tricks/current means the deck has not been dealt yet
+      // (HandNotDealtException → 409 Conflict). Keep the session alive and show a
+      // waiting state (hand/trickState remain null).
+      if (err instanceof ApiError && err.status === 409) {
+        setSession(newSession);
+        setHand(null);
+        setTrickState(null);
+        setError(null);
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Failed to load game state';
       setError(message);
-      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+      if (err instanceof ApiError && err.status === 403) {
         onSessionEnd();
       }
     }
@@ -442,7 +467,7 @@ export function GameScreen({
           {error ? (
             <ErrorSummary title="Could not load game" errors={[error]} onDismiss={() => setError(null)} />
           ) : (
-            <p className="govuk-body">Loading game...</p>
+            <p className="govuk-body">Waiting for cards to be dealt...</p>
           )}
         </main>
       </div>

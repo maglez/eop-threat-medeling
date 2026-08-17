@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getSession, startGame, subscribeToSession, ApiError, type SessionStateDto } from '../api';
+import { getSession, startGame, dealCards, subscribeToSession, ApiError, type SessionStateDto } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 import type { PlayerDto } from '../api';
 
@@ -34,7 +34,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
 
   const currentPlayer = session?.players.find(p => p.playerId === playerId);
   const isFacilitator = currentPlayer?.role === 'FACILITATOR';
-  const canStartGame = isFacilitator && session !== null && session.players.length >= 2;
+  const canStartGame = isFacilitator && session !== null && session.players.length >= 3;
 
   const refreshSession = useCallback(async () => {
     try {
@@ -124,6 +124,9 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
     try {
       const updatedSession = await startGame(sessionId, playerToken);
       setSession(updatedSession);
+      // Deal cards immediately after the game starts so all players receive
+      // their hands before GameScreen mounts and calls fetchHand / getTrickState.
+      await dealCards(sessionId, playerToken);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start game';
       setError(message);
