@@ -1,79 +1,13 @@
 /**
  * Unit tests for cardImagePath helper.
  *
- * import.meta.glob is a Vite build-time feature; vitest supports it natively
- * but the glob pattern resolves against the real filesystem. We mock the module
- * so the tests are hermetic and do not depend on the asset files being present
- * in the test environment.
+ * Vitest supports import.meta.glob natively and resolves the glob pattern
+ * against the real filesystem. The 68 PNG assets are committed to the repo
+ * under ui/src/assets/cards/, so these tests exercise the production module
+ * directly — no mock is needed and none is used.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock the cardImagePath module so we can control what import.meta.glob returns.
-// We re-implement the module inline with a controlled cardImages map.
-vi.mock('../utils/cardImagePath', async () => {
-  // Simulate the glob result: every valid combination maps to a URL string.
-  const SUIT_FOLDER: Record<string, string> = {
-    SPOOFING: 'Spoofing',
-    TAMPERING: 'Tampering',
-    REPUDIATION: 'Repudiation',
-    INFORMATION_DISCLOSURE: 'Information Disclosure',
-    DENIAL_OF_SERVICE: 'Denial of Service',
-    ELEVATION_OF_PRIVILEGE: 'Elevation of Privilege',
-  };
-
-  const RANK_PREFIX: Record<string, string> = {
-    TWO: '02',
-    THREE: '03',
-    FOUR: '04',
-    FIVE: '05',
-    SIX: '06',
-    SEVEN: '07',
-    EIGHT: '08',
-    NINE: '09',
-    TEN: '10',
-    JACK: 'J',
-    QUEEN: 'Q',
-    KING: 'K',
-  };
-
-  // The 68 playable combinations (suit → ranks that actually exist)
-  const SUIT_RANKS: Record<string, string[]> = {
-    SPOOFING: ['TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING'],
-    TAMPERING: ['THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING'],
-    REPUDIATION: ['TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING'],
-    INFORMATION_DISCLOSURE: ['TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING'],
-    DENIAL_OF_SERVICE: ['TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING'],
-    ELEVATION_OF_PRIVILEGE: ['FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING'],
-  };
-
-  // Build the mock glob map
-  const cardImages: Record<string, { default: string }> = {};
-  for (const [suit, ranks] of Object.entries(SUIT_RANKS)) {
-    const folder = SUIT_FOLDER[suit];
-    for (const rank of ranks) {
-      const prefix = RANK_PREFIX[rank];
-      const key = `../assets/cards/${folder}/${prefix} - ${folder}.png`;
-      cardImages[key] = { default: `/mock-assets/${folder}/${prefix} - ${folder}.png` };
-    }
-  }
-
-  function cardImagePath(suit: string, rank: string): string | null {
-    const folder = SUIT_FOLDER[suit];
-    const prefix = RANK_PREFIX[rank];
-    if (!folder || !prefix) return null;
-    const key = `../assets/cards/${folder}/${prefix} - ${folder}.png`;
-    const module = cardImages[key];
-    return module ? module.default : null;
-  }
-
-  function cardImageExists(suit: string, rank: string): boolean {
-    return cardImagePath(suit, rank) !== null;
-  }
-
-  return { cardImagePath, cardImageExists };
-});
-
+import { describe, it, expect } from 'vitest';
 import { cardImagePath, cardImageExists } from '../utils/cardImagePath';
 
 describe('cardImagePath', () => {
@@ -94,7 +28,7 @@ describe('cardImagePath', () => {
     ])('returns a path for rank %s (prefix %s)', (rank, prefix) => {
       const result = cardImagePath('SPOOFING', rank);
       expect(result).not.toBeNull();
-      expect(result).toContain(`${prefix} - Spoofing.png`);
+      expect(decodeURIComponent(result!)).toContain(`${prefix} - Spoofing`);
     });
   });
 
@@ -118,7 +52,7 @@ describe('cardImagePath', () => {
     ])('returns a path for rank %s (prefix %s)', (rank, prefix) => {
       const result = cardImagePath('TAMPERING', rank);
       expect(result).not.toBeNull();
-      expect(result).toContain(`${prefix} - Tampering.png`);
+      expect(decodeURIComponent(result!)).toContain(`${prefix} - Tampering`);
     });
   });
 
@@ -130,7 +64,7 @@ describe('cardImagePath', () => {
     ])('returns a path for rank %s', (rank, prefix) => {
       const result = cardImagePath('REPUDIATION', rank);
       expect(result).not.toBeNull();
-      expect(result).toContain(`${prefix} - Repudiation.png`);
+      expect(decodeURIComponent(result!)).toContain(`${prefix} - Repudiation`);
     });
   });
 
@@ -142,7 +76,7 @@ describe('cardImagePath', () => {
     ])('returns a path for rank %s', (rank, prefix) => {
       const result = cardImagePath('INFORMATION_DISCLOSURE', rank);
       expect(result).not.toBeNull();
-      expect(result).toContain(`${prefix} - Information Disclosure.png`);
+      expect(decodeURIComponent(result!)).toContain(`${prefix} - Information Disclosure`);
     });
   });
 
@@ -154,7 +88,7 @@ describe('cardImagePath', () => {
     ])('returns a path for rank %s', (rank, prefix) => {
       const result = cardImagePath('DENIAL_OF_SERVICE', rank);
       expect(result).not.toBeNull();
-      expect(result).toContain(`${prefix} - Denial of Service.png`);
+      expect(decodeURIComponent(result!)).toContain(`${prefix} - Denial of Service`);
     });
   });
 
@@ -169,7 +103,7 @@ describe('cardImagePath', () => {
     ])('returns a path for rank %s', (rank, prefix) => {
       const result = cardImagePath('ELEVATION_OF_PRIVILEGE', rank);
       expect(result).not.toBeNull();
-      expect(result).toContain(`${prefix} - Elevation of Privilege.png`);
+      expect(decodeURIComponent(result!)).toContain(`${prefix} - Elevation of Privilege`);
     });
   });
 
@@ -199,7 +133,7 @@ describe('cardImagePath', () => {
       expect(cardImageExists('SPOOFING', 'KING')).toBe(true);
     });
 
-    it('returns false for a missing combination', () => {
+    it('returns false for a missing combination (Tampering has no TWO)', () => {
       expect(cardImageExists('TAMPERING', 'TWO')).toBe(false);
     });
 
