@@ -95,18 +95,17 @@ public final class Hands {
     }
 
     /**
-     * Deals the whole deck out to the given seats.
+     * Deals an equal number of cards to each seat, discarding any remainder.
      *
      * <p>The deal is round-robin: the card at index {@code i} goes to the seat at index
-     * {@code i % seats.size()}, with the seats taken in ascending order. Dealing the whole deck is what
-     * makes "there is no shared draw pile" true (PRD §3.3), and round-robin is what puts the remainder
-     * on the lowest seats, which is the rule ADR-023 settled on.
+     * {@code i % seats.size()}, with the seats taken in ascending order. Only
+     * {@code floor(deckSize / playerCount) * playerCount} cards are dealt, so every hand is the same
+     * size and no player holds an extra card (ADR-023 Decision 1, amended).
      *
-     * <p>The consequence is that hands are not always equal in size. At 74 cards, no supported table
-     * size divides evenly: three players hold 25/25/24, four hold 19/19/18/18, five hold
-     * 15/15/15/15/14, and six hold 13/13/12/12/12/12. So the final trick of every game is short.
-     * That is deliberate: the alternative, setting the remainder aside undealt, can orphan the
-     * lowest-ranked Tampering card and leave the opening-lead rule with no holder at all.
+     * <p>The remainder cards are discarded before dealing. To preserve the opening-lead rule, the
+     * lowest-ranked Tampering card in the deck is guaranteed to fall within the kept portion: if it
+     * would otherwise be discarded, it is swapped with the last card of the kept range before
+     * truncation. This ensures {@link #openingLeaderSeat()} always finds a holder.
      *
      * <p>Shuffling is deliberately not done here. This method deals the deck in exactly the order it is
      * given, so a test can hand it a known order and assert the exact distribution. Randomising the
@@ -154,11 +153,38 @@ public final class Hands {
             throw new IllegalArgumentException("Two seat assignments cannot share a seat order");
         }
 
+        // Truncate to an equal hand size, guaranteeing the lowest Tampering card is kept.
+        final int playerCount = ordered.size();
+        final int handSize = orderedDeck.size() / playerCount;
+        final int keptSize = handSize * playerCount;
+
+        final List<Card> workingDeck = new ArrayList<>(orderedDeck);
+
+        // Find the lowest-ranked Tampering card in the whole deck.
+        int lowestTamperingIndex = -1;
+        Card lowestTampering = null;
+        for (int i = 0; i < workingDeck.size(); i++) {
+            final Card c = workingDeck.get(i);
+            if (c.suit() == StrideCategory.TAMPERING) {
+                if (lowestTampering == null || lowestTampering.rank().beats(c.rank())) {
+                    lowestTampering = c;
+                    lowestTamperingIndex = i;
+                }
+            }
+        }
+
+        // If the lowest Tampering card would be discarded, swap it into the kept range.
+        if (lowestTamperingIndex >= keptSize) {
+            final Card displaced = workingDeck.get(keptSize - 1);
+            workingDeck.set(keptSize - 1, lowestTampering);
+            workingDeck.set(lowestTamperingIndex, displaced);
+        }
+
         final Map<Integer, List<Card>> dealt = new TreeMap<>();
         ordered.forEach(seat -> dealt.put(seat.seatOrder(), new ArrayList<>()));
-        for (int index = 0; index < orderedDeck.size(); index++) {
-            final Seat seat = ordered.get(index % ordered.size());
-            dealt.get(seat.seatOrder()).add(orderedDeck.get(index));
+        for (int index = 0; index < keptSize; index++) {
+            final Seat seat = ordered.get(index % playerCount);
+            dealt.get(seat.seatOrder()).add(workingDeck.get(index));
         }
 
         final Map<Integer, Hand> hands = new TreeMap<>();
