@@ -86,7 +86,7 @@ export function GameOverScreen({
         {error && (
           <ErrorSummary
             title="There is a problem"
-            errors={[{ field: 'leaderboard', message: error }]}
+            errors={[error]}
           />
         )}
 
