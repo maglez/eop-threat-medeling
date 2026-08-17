@@ -790,9 +790,10 @@ security.
 flowchart TD
     subgraph bundle["Built bundle — static assets served by Caddy (ADR-017)"]
         APP["App.tsx<br/>view state machine: home | create | join | lobby<br/>owns the sessionStorage key eop_session"]
-        HOME["HomeView<br/>reads import.meta.env.VITE_LOBBY_UI_ENABLED<br/>the ONLY flag read (ADR-037)"]
+        HOME["HomeView<br/>reads VITE_LOBBY_UI_ENABLED (ADR-037)"]
         FORMS["CreateSessionForm / JoinSessionForm<br/>GOV.UK error summary, client-side validation"]
-        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader"]
+        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader<br/>reads VITE_GAME_SCREEN_ENABLED (ADR-037)"]
+        GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop<br/>reads VITE_CARD_IMAGES_ENABLED (ADR-037, EOP-66)"]
         API["api.ts<br/>typed DTOs, ApiError(status, message)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
     end
 
@@ -803,10 +804,12 @@ flowchart TD
     APP --> HOME
     APP --> FORMS
     APP -->|"passes sessionId, playerId, playerToken"| LOBBY
+    LOBBY -->|"passes sessionId, playerId, playerToken"| GAME
 
     FORMS -->|"createSession / joinSession"| API
     LOBBY -->|"getSession / startGame<br/>credentialed via api.ts"| API
     LOBBY -.->|"subscribeToSession() in api.ts<br/>fetch-based SSE, AbortController teardown"| CADDY
+    GAME -->|"fetchHand / getTrickState / playCard<br/>credentialed via api.ts"| API
 
     API -->|"fetch, relative paths"| CADDY
 ```
@@ -821,11 +824,16 @@ to Caddy represents the SSE stream, which is opened by `subscribeToSession` in `
 and handed back to `LobbyScreen` as an `AbortController` — the component holds only the
 teardown handle, not the transport.
 
-**The flag is read at every entry point.** `HomeView` consults
+**Build-time flags are read at their respective entry points (ADR-037).** `HomeView` consults
 `VITE_LOBBY_UI_ENABLED` and disables the two calls to action. The `App.tsx` rehydration
 path evaluates the flag *before* reading `sessionStorage`, returning `{ screen: 'home' }`
 immediately when the flag is off — so a stored session cannot bypass it. Both positions
-are tested in `App.test.tsx`.
+are tested in `App.test.tsx`. `LobbyScreen` reads `VITE_GAME_SCREEN_ENABLED` to gate the
+game screen transition. `GameScreen` reads `VITE_CARD_IMAGES_ENABLED` (EOP-66) to gate
+real card artwork; when off, plain coloured rectangles render instead. Note: the 68 card
+PNGs (~6.7 MB) are always present in the bundle — Vite processes `import.meta.glob` at
+parse time and cannot dead-code-eliminate it; the flag controls rendering only. All three
+flags default to `false` (fail-closed) and are declared in `ui/src/vite-env.d.ts`.
 
 ### Reconnect and live update — the runtime path
 
