@@ -139,6 +139,12 @@ eop:
     # this flag; the flag only gates the application-level behaviour.
     game-over: false
 
+    # Real card images in the Game Screen (EOP-66). While this is false the UI renders
+    # plain coloured rectangles for each card. When true, CardFace and the trick zone
+    # display the actual PNG assets bundled under ui/src/assets/cards/{Suit}/.
+    # This flag is implemented as a Vite build-time env var VITE_CARD_IMAGES_ENABLED.
+    card-images: false
+
   # Expired-session sweep configuration (ADR-036). These are infrastructure
   # toggles, not feature flags — they belong under eop.* directly rather than
   # eop.features.*. The sweep bean is only active when eop.features.session-lifecycle

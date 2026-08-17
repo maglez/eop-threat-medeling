@@ -13,7 +13,11 @@ import {
   type PlayerDto,
 } from '../api';
 import { ErrorSummary } from './ErrorSummary';
+import { cardImagePath } from '../utils/cardImagePath';
 import './GameScreen.css';
+
+/** True when the card-images feature flag is enabled at build time (EOP-66). */
+const CARD_IMAGES_ENABLED = import.meta.env.VITE_CARD_IMAGES_ENABLED === 'true';
 
 interface GameScreenProps {
   readonly sessionId: string;
@@ -119,21 +123,37 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         flexShrink: 0,
       }}
     >
-      <div style={{ fontSize: '14px', fontWeight: 'bold', color: suitColour }}>
-        {card.rankSymbol}
-      </div>
-      <div style={{
-        fontSize: '11px',
-        color: suitColour,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        lineHeight: 1,
-      }}>
-        {suitLabel}
-      </div>
-      <div style={{ fontSize: '14px', fontWeight: 'bold', color: suitColour, textAlign: 'right' }}>
-        {card.rankSymbol}
-      </div>
+      {CARD_IMAGES_ENABLED && cardImagePath(card.suit, card.rank) ? (
+        <img
+          src={cardImagePath(card.suit, card.rank) as string}
+          alt={`${card.rankSymbol} of ${card.suit.toLowerCase().replace(/_/g, ' ')}`}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            borderRadius: '4px',
+            display: 'block',
+          }}
+        />
+      ) : (
+        <>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', color: suitColour }}>
+            {card.rankSymbol}
+          </div>
+          <div style={{
+            fontSize: '11px',
+            color: suitColour,
+            fontWeight: 'bold',
+            textAlign: 'center',
+            lineHeight: 1,
+          }}>
+            {suitLabel}
+          </div>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', color: suitColour, textAlign: 'right' }}>
+            {card.rankSymbol}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -595,15 +615,31 @@ export function GameScreen({
                       padding: '4px',
                       backgroundColor: '#ffffff',
                     }}>
-                      <div style={{ fontSize: '12px', fontWeight: 'bold', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c' }}>
-                        {play.card.rankSymbol}
-                      </div>
-                      <div style={{ fontSize: '10px', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c', textAlign: 'center', fontWeight: 'bold' }}>
-                        {SUIT_LABELS[play.card.suit] ?? play.card.suit[0]}
-                      </div>
-                      <div style={{ fontSize: '12px', fontWeight: 'bold', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c', textAlign: 'right' }}>
-                        {play.card.rankSymbol}
-                      </div>
+                      {CARD_IMAGES_ENABLED && cardImagePath(play.card.suit, play.card.rank) ? (
+                        <img
+                          src={cardImagePath(play.card.suit, play.card.rank) as string}
+                          alt={`${play.card.rankSymbol} of ${play.card.suit.toLowerCase().replace(/_/g, ' ')}`}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'contain',
+                            borderRadius: '3px',
+                            display: 'block',
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <div style={{ fontSize: '12px', fontWeight: 'bold', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c' }}>
+                            {play.card.rankSymbol}
+                          </div>
+                          <div style={{ fontSize: '10px', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c', textAlign: 'center', fontWeight: 'bold' }}>
+                            {SUIT_LABELS[play.card.suit] ?? play.card.suit[0]}
+                          </div>
+                          <div style={{ fontSize: '12px', fontWeight: 'bold', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c', textAlign: 'right' }}>
+                            {play.card.rankSymbol}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -694,15 +730,31 @@ export function GameScreen({
                 backgroundColor: '#ffffff',
                 boxShadow: '4px 4px 12px rgba(0,0,0,0.3)',
               }}>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c' }}>
-                  {draggedCard.rankSymbol}
-                </div>
-                <div style={{ fontSize: '11px', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c', fontWeight: 'bold', textAlign: 'center' }}>
-                  {SUIT_LABELS[draggedCard.suit] ?? draggedCard.suit[0]}
-                </div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c', textAlign: 'right' }}>
-                  {draggedCard.rankSymbol}
-                </div>
+                {CARD_IMAGES_ENABLED && cardImagePath(draggedCard.suit, draggedCard.rank) ? (
+                  <img
+                    src={cardImagePath(draggedCard.suit, draggedCard.rank) as string}
+                    alt={`${draggedCard.rankSymbol} of ${draggedCard.suit.toLowerCase().replace(/_/g, ' ')}`}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      borderRadius: '4px',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c' }}>
+                      {draggedCard.rankSymbol}
+                    </div>
+                    <div style={{ fontSize: '11px', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c', fontWeight: 'bold', textAlign: 'center' }}>
+                      {SUIT_LABELS[draggedCard.suit] ?? draggedCard.suit[0]}
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c', textAlign: 'right' }}>
+                      {draggedCard.rankSymbol}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           );
