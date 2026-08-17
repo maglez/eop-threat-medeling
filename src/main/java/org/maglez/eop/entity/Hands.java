@@ -102,12 +102,11 @@ public final class Hands {
      * makes "there is no shared draw pile" true (PRD §3.3), and round-robin is what puts the remainder
      * on the lowest seats, which is the rule ADR-023 settled on.
      *
-     * <p>The consequence is that hands are not always equal in size. Seventy-eight cards divide evenly
-     * between three players and between six, but at four players two seats hold twenty cards and two
-     * hold nineteen, and at five players three seats hold sixteen and two hold fifteen. So the final
-     * trick of those games is short. That is deliberate: the alternative, setting the remainder aside
-     * undealt, can orphan the lowest-ranked Tampering card and leave the opening-lead rule with no
-     * holder at all.
+     * <p>The consequence is that hands are not always equal in size. At 74 cards, no supported table
+     * size divides evenly: three players hold 25/25/24, four hold 19/19/18/18, five hold
+     * 15/15/15/15/14, and six hold 13/13/12/12/12/12. So the final trick of every game is short.
+     * That is deliberate: the alternative, setting the remainder aside undealt, can orphan the
+     * lowest-ranked Tampering card and leave the opening-lead rule with no holder at all.
      *
      * <p>Shuffling is deliberately not done here. This method deals the deck in exactly the order it is
      * given, so a test can hand it a known order and assert the exact distribution. Randomising the

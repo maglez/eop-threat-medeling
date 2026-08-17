@@ -12,7 +12,8 @@ import java.util.OptionalInt;
  * working out who leads the next trick when the seat that won this one has run out of cards. Both
  * used to carry their own copy of the same loop, which is how two implementations of one rule end up
  * disagreeing several stories later — and this is the rule ADR-023 exists to protect, because its
- * naive form is wrong only on the last trick and only at four and five players.
+  * naive form is wrong only on the last trick, at every player count (74 cards do not divide evenly
+  * at 3, 4, 5 or 6 players).
  *
  * <p>The starting seat is considered <em>last</em>, not skipped. Stepping a full lap arrives back
  * where it started, so a seat that is the only one left eligible is returned rather than reported

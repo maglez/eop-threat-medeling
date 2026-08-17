@@ -149,15 +149,16 @@ to the next seat clockwise from the winner that does.
 > **The winner does not always lead the next trick, and an earlier revision of
 > this ADR said it did.** It read "advanced to the winner's seat as each trick
 > resolves", full stop. Decision 1 makes hands unequal, so a seat can play its
-> final card into a trick and win that trick. At four players seats 2 and 3 hold
-> nineteen cards while seats 0 and 1 hold twenty: if seat 2 or seat 3 takes trick
+> final card into a trick and win that trick. At four players seats 0 and 1 hold
+> nineteen cards while seats 2 and 3 hold eighteen: if seat 0 or seat 1 takes trick
 > nineteen, the winner is out of cards while two other seats each still hold one.
 > Handing the lead to the winner regardless would open trick twenty on a seat that
 > can never play into it. `Trick.seatToPlay` would report that nobody may play,
 > `isComplete` would report the trick incomplete because it holds no plays, and the
 > game would simply stop — with no exception, no error and nothing to log. That is
-> precisely the failure profile this ADR exists to prevent: correct at three and
-> six players, correct for every trick but the last, wrong only at four and five.
+> precisely the failure profile this ADR exists to prevent: correct for every trick
+> but the last, wrong at every player count (74 cards do not divide evenly at 3, 4,
+> 5 or 6 players).
 > The rule is therefore stated as a rule and implemented as one, in
 > `Trick.nextLeaderSeat(Collection<Integer> seatsHoldingCards)`, which returns no
 > seat at all when nobody holds a card — one of PRD §3.3's three end conditions,
@@ -684,8 +685,8 @@ earlier revision of this section implied by calling it "one card in nineteen": a
 extra card is an extra chance to link a threat *and* an extra chance to take a
 trick. The shape of the effect also differs by player count, which that phrasing
 obscured. At four players seats 0 and 1 gain a card and seats 2 and 3 do not; at
-five players seats 0, 1 and 2 gain one, so it is the *minority* — seats 3 and 4 —
-who are disadvantaged rather than one person who is favoured. What is constant is
+five players seats 0, 1, 2 and 3 gain one, so it is the *minority* — seat 4 only —
+who is disadvantaged rather than the majority. What is constant is
 that the facilitator is never on the losing side of it, because the facilitator
 always holds seat 0. Accepted for now: the effect is small against a 60–90 minute
 collaborative exercise whose scoring exists to drive participation rather than to
