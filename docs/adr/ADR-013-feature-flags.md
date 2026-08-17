@@ -341,3 +341,14 @@ no logging. `.opencode/rules/observability.md` requires INFO audit logging with 
 game-affecting actions and INFO request/response summaries at controllers. ADR-026 (Use-Case
 Observability) is still Proposed; implementing structured logging on the session-lifecycle surface
 is deferred to the ADR-026 story. This gap is accepted for this rollout and is not a blocker.
+
+---
+
+*(Amended 2026-08-17, EOP-70 — `eop.features.trick-play` is now `true` as of this story.
+The three remaining predecessors named in the EOP-14 Slice E amendment (ADR-026, EOP-48, EOP-15)
+are all discharged: EOP-48 by commit `34d30d7`, EOP-15 by ADR-032, and ADR-026 by EOP-70 itself
+(option 4 chosen — audit logging at the HTTP boundary in `TrickController`; see ADR-026 for the
+full decision record). The full game is now playable: deal, play-card and resolve-trick routes are
+live. The flag and its `@ConditionalOnProperty` guards remain in place until confirmed stable;
+removal is a separate story. No `EOP_FEATURES_TRICK_PLAY` entry is needed in `compose.app.yml` —
+the default is now `true` and the env var would only be needed to override it back to `false`.)*

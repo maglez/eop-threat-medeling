@@ -1,8 +1,22 @@
 # ADR-026: Where Use Case Observability Lives
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-13
 **Deciders:** @architecture-guardian, @tech-lead
+
+*(Amended 2026-08-17, EOP-70 — this ADR is now Accepted. Option 4 was chosen: audit logging lives
+at the HTTP boundary in `TrickController`, not in the use cases. The three game-affecting write
+endpoints — `POST /{sessionId}/deal`, `POST /{sessionId}/plays`, and
+`POST /{sessionId}/tricks/current/resolve` — each emit one `INFO` line naming the session UUID and
+the first 8 characters of the actor's token. Card identities are never logged (CWE-117 and
+hidden-information constraints documented in the Decision section below). The `Logger` field is
+`private static final` in `TrickController`. Two use cases carry pre-existing SLF4J imports
+(`ResolveTrickUseCase`, added EOP-65; `SweepExpiredSessionsUseCase`) — this is accepted debt, not
+a constraint that was enforced before EOP-70. The three write endpoints audited here log at the
+HTTP boundary, not inside those use cases. This choice
+is adequate while every use case is reached through HTTP, which is currently true. If a use case
+is ever invoked from a non-HTTP path, the audit gap reopens and this ADR must be revisited.
+ADR-028 is amended to record this predecessor as discharged.)*
 
 ## Context
 
@@ -52,9 +66,9 @@ lost.** This ADR is that record.
 
 ## Decision
 
-Nothing is decided yet. This ADR is `Proposed` and exists to hold the obligation and to state the
-design question that has to be answered before any code is written, because the obvious
-implementation is the wrong one.
+*(Amended 2026-08-17, EOP-70 — **Option 4 was chosen.** The text below records the original
+decision space as written on 2026-08-13; the choice made and the three mandatory answers are
+documented in the amendment block at the top of this file and in ADR-040.)*
 
 The obvious implementation is an SLF4J logger in each use case. That would put
 `org.slf4j` into `org.maglez.eop.usecase`, and `AGENTS.md` and `.opencode/rules/clean-architecture.md`
@@ -62,7 +76,7 @@ require that layer to have no framework imports — which is why `config/UseCase
 all, so that not even a Spring annotation reaches it. Satisfying the observability rule the direct way
 would break a rule of longer standing.
 
-At least four arrangements survive that constraint and should be weighed:
+Four arrangements survive that constraint:
 
 1. **A logging port.** Declare an interface in `usecase` and implement it in an adapter. Honest about
    the dependency, but it puts an observability concern into the domain's vocabulary and every use case
@@ -74,44 +88,58 @@ At least four arrangements survive that constraint and should be weighed:
    and the easiest to make inconsistent, since what gets logged stops being visible at the call site.
 4. **Log at the boundary only** — in controllers and in `GlobalExceptionHandler`, where logging already
    lives — and accept that a use case invoked from anywhere else is unobserved. Simplest, and adequate
-   only while every use case is reached through HTTP.
+   only while every use case is reached through HTTP. **This is the option chosen (EOP-70).**
 
-Whichever is chosen must also answer three things the rule raises but does not settle for this domain:
+The chosen option (4) answers the three mandatory questions as follows:
 
 - **CWE-117 log forging.** `PlayCardCommand` carries player-supplied `notes` and `components`.
   `TrickPlay` already rejects control characters, CR/LF and bidirectional formatting characters on both,
-  so the domain type is the existing defence — but a decision to log request-derived text has to say so
-  explicitly rather than inherit it by luck.
-- **Hidden information.** A hand is private. An `INFO` line naming dealt cards would put every hand in
-  the log, which is the same leak `Hands.toString`, `Hand.toString` and `TrickPlay.toString` are all
-  written to avoid. Audit lines must name actors, seats and outcomes, never card identities.
-- **Correlation identifiers.** The rule wants an MDC value from `X-Correlation-Id`, and
-  `server.forward-headers-strategy` is pinned to `none` per ADR-021, so where that header is trusted from
-  is a decision with a security edge, not a plumbing detail.
+  so the domain type is the existing defence. The audit lines in `TrickController` log only
+  `sessionId` (a UUID path variable, Spring-parsed), a truncated token prefix (8 base64url chars,
+  no CR/LF possible), an integer trick sequence, an integer play count, and a winning-seat `Integer` — none of
+  which are free-text user input. The safety rests on prior authorisation and domain validation,
+  not on sanitisation at the log site; this is recorded explicitly rather than inherited by luck.
+- **Hidden information.** A hand is private. The audit lines name actors, seats and outcomes only;
+  card identities are never logged. `Hands.toString`, `Hand.toString` and `TrickPlay.toString` are
+  all written to avoid this leak, and the log arguments were chosen to match that constraint.
+- **Correlation identifiers.** The rule requires an MDC value from `X-Correlation-Id` on every log
+  line, and `server.forward-headers-strategy` is pinned to `none` per ADR-021. This third question
+  is **deferred**: no `logback-spring.xml` exists and no MDC plumbing is in place. The audit lines
+  introduced by EOP-70 emit on Spring Boot's default console pattern without correlation IDs or
+  structured JSON. This is a known gap, accepted for EOP-70 and recorded here rather than silently
+  omitted. A follow-up story must add `logback-spring.xml` (production JSON appender) and an MDC
+  filter that reads `X-Correlation-Id` from the request, with the trust boundary for that header
+  settled against ADR-021. Until that story ships, the audit trail is present but not
+  machine-parseable and not correlated across requests.
 
 ## Consequences
 
-- The obligation is now recorded somewhere that outlives a review conversation, and it names all eleven
-  use cases so a future reader does not have to rediscover the scope. *(2026-08-14, EOP-14 Slice E:
-  **twelve**. The load-bearing claim is that the scope is enumerated rather than left to be
-  rediscovered, and it still holds — the Context amendment above names the twelfth,
-  `GetTrickStateUseCase`, which this consequence's original arity predates.)*
-- It stays outstanding, and it stays outstanding **uniformly**: no use case logs, so no use case is the
-  odd one out. Adding logging to only the three from Slice C2 would have made the codebase less
-  consistent, which is the reason all three gates declined to require it there.
-- Nothing enforces this. The build is green without it, and there is no test that fails while a use case
-  is silent. If it matters, the work needs its own story; a test that asserts logging exists would be
-  the only thing that stops this ADR going stale in place.
-- Until it is resolved, an operator has no record of who dealt, who played what, or who resolved a
-  trick — which is the actual cost, and the reason this is `Proposed` rather than closed.
-- **Resolving this ADR is a predecessor of the story that turns `eop.features.trick-play` on, not a
-  parallel backlog item.** EOP-14 Slice D added the four routes through which dealing, playing and
-  resolving can be invoked, so those three writes are now reachable *and* unobserved; while the flag is
-  `false` the controller bean does not exist and there is nothing to audit, but the moment it is `true`
-  the product's first competitively meaningful writes go live with no evidence of who made them. A
-  dispute over who played what would have nothing to appeal to. `@security-auditor` made that ordering
-  a condition of approving Slice D, and it is recorded here rather than left in a review transcript
-  because, as this ADR says above, a record that lives outside the repository will be lost.
+*(Amended 2026-08-17, EOP-70 — the bullets below are rewritten to reflect the Accepted state.
+The original text is preserved in git history.)*
+
+- **Option 4 is in place.** `TrickController` emits one `INFO` audit line per successful
+  game-affecting write (deal, play-card, resolve-trick). The three write endpoints log at the HTTP
+  boundary; two use cases (`ResolveTrickUseCase`, `SweepExpiredSessionsUseCase`) carry pre-existing
+  SLF4J imports from earlier stories — that is accepted debt, not a constraint enforced before
+  EOP-70.
+  The obligation recorded when this ADR was `Proposed` is discharged for the three write endpoints
+  that are now live.
+- **Successful writes only.** The audit lines fire after the use case returns. A rejected write —
+  a forged token, an out-of-turn play, a card the player does not hold — produces no audit line.
+  `GlobalExceptionHandler` records server faults at `ERROR`; refused writes are silent in the
+  audit trail. This is a known limitation of option 4 and is accepted.
+- **Correlation identifiers and structured JSON are deferred.** See the Decision section above.
+  The audit trail is present but not correlated and not machine-parseable until the follow-up
+  story ships.
+- **`SessionController` and `CreateSessionUseCase` are out of scope.** The session-lifecycle
+  surface (`/sessions`, `/sessions/{id}/join`, `/sessions/{id}/start`) still emits no audit
+  logging. That gap is accepted and recorded in ADR-013.
+- **The predecessor obligation is discharged.** This ADR is no longer a predecessor of any open
+  story. The flag-on story (EOP-70, ADR-040) is the story that discharged it.
+- **Nothing enforces the option-4 choice.** The build is green without audit logging, and there is
+  no test that fails if a new controller omits it. A future controller author must consult this ADR
+  to know the convention. A test that asserts logging exists on write endpoints would be the only
+  thing that stops this going stale again.
 
 ## Alternatives considered
 

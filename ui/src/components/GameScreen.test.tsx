@@ -95,7 +95,7 @@ describe('GameScreen', () => {
 
     render(<GameScreen {...defaultProps} />);
 
-    expect(screen.getByText('Loading game...')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for cards to be dealt...')).toBeInTheDocument();
   });
 
   it("renders the player's hand with rank symbols after data loads", async () => {
@@ -405,6 +405,43 @@ describe('GameScreen', () => {
     });
 
     expect(screen.getByText('Failed to fetch hand')).toBeInTheDocument();
+  });
+
+  it('shows waiting state (not session end) when /hand returns 409 (cards not yet dealt)', async () => {
+    const notDealtError = new api.ApiError(409, 'Hands not dealt');
+    vi.spyOn(api, 'fetchHand').mockRejectedValue(notDealtError);
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    const onSessionEnd = vi.fn();
+
+    render(<GameScreen {...defaultProps} onSessionEnd={onSessionEnd} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Waiting for cards to be dealt...')).toBeInTheDocument();
+    });
+
+    // Session must NOT have ended — the player is still in the game
+    expect(onSessionEnd).not.toHaveBeenCalled();
+    // No error summary shown — this is a normal waiting state
+    expect(screen.queryByTestId('error-summary')).not.toBeInTheDocument();
+  });
+
+  it('calls onSessionEnd when getSession returns 404 (session genuinely gone)', async () => {
+    const sessionGoneError = new api.ApiError(404, 'Session not found');
+    vi.spyOn(api, 'getSession').mockRejectedValue(sessionGoneError);
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    const onSessionEnd = vi.fn();
+
+    render(<GameScreen {...defaultProps} onSessionEnd={onSessionEnd} />);
+
+    await waitFor(() => {
+      expect(onSessionEnd).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('shows other players around the table', async () => {

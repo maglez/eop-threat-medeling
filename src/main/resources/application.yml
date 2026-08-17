@@ -89,7 +89,7 @@ eop:
   # in the environment the container starts with, then
   # docker compose -f compose.app.yml up -d (ADR-016).
   # As of EOP-25 (2026-08-16), eop.features.session-lifecycle is true (permanent
-  # rollout). eop.features.trick-play remains false.
+  # rollout). As of EOP-70 (2026-08-17), eop.features.trick-play is true.
   features:
     # Session create, join, state, event stream and start (EOP-10). While this is
     # false neither the controller bean nor the create-session, join-session,
@@ -107,7 +107,7 @@ eop:
     # and the additional gate EOP-26 are Done. This is the permanent rollout; the
     # flag will be removed once the feature is confirmed stable (ADR-013).
     # Note: this also activates ExpiredSessionSweepScheduler (hourly, 5-min initial
-    # delay). eop.features.trick-play remains false; the lobby-only surface shipped.
+    # delay). eop.features.trick-play is now true (EOP-70, 2026-08-17).
     session-lifecycle: true
     
     # Game lobby UI: create or join a session from the browser (EOP-11).
@@ -123,22 +123,14 @@ eop:
     # /deal, /hand, /plays, /tricks/current, /tricks/current/resolve and /score return
     # the framework's own 404 while it is off.
     #
-    # It stays false on merge, and the feature is complete: EOP-14 Slice E finished the
-    # rules, added the state-of-play read that tells a client whose turn it is, and
-    # published hand-dealt, card-played and trick-resolved. What is missing is not
-    # gameplay. Two things must land before this becomes true, both recorded as
-    # predecessors in ADR-028: ADR-026, which is still Proposed and would give the
-    # game-affecting writes the audit logging observability.md requires; and
-    # EOP-15, which scores a hand. Its first two slices have landed -- the scoring
-    # rule in the domain, and the read that serves it at GET /score -- so a score
-    # can now be derived and shown. Its third has not, so a player could still play
-    # every card and the session would report IN_PROGRESS for ever, which is the
-    # clause that keeps EOP-15 a predecessor (ADR-030, ADR-031). Do
-    # not flip this without them. The third predecessor, EOP-48 -- which fixed the
-    # sibling flag above failing open for want of a havingValue -- is discharged by
-    # commit 34d30d7, and this flag's own conditions have carried havingValue since
-    # 56c31b1, so the same caveat applies here: only the literal true turns it on.
-    trick-play: false
+    # Enabled by EOP-70 (2026-08-17): all predecessor stories and ADRs are discharged —
+    # EOP-14 (trick-play domain), EOP-15 (Slice C, ADR-032), EOP-48 (commit 34d30d7),
+    # and ADR-026 (use-case observability, now Accepted: option 4 chosen, audit logging
+    # at the HTTP boundary in TrickController). The UI now calls POST /deal immediately
+    # after POST /start, and GameScreen distinguishes a session-not-found 404 from a
+    # HandNotDealtException 409.
+    # Only the literal true turns this on (havingValue = "true" on all conditions).
+    trick-play: true
 
     # Final leaderboard and "Start new game" action (EOP-65). While this is false the
     # leaderboard and new-game routes return the framework's own 404, and the

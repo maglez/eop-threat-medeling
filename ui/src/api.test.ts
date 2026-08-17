@@ -1,16 +1,20 @@
 /**
- * Unit tests for subscribeToSession in api.ts.
+ * Unit tests for subscribeToSession and dealCards in api.ts.
  *
- * Covers all six branches of the function:
+ * subscribeToSession covers all six branches of the function:
  *  1. Non-ok response → onError(ApiError) with numeric status
  *  2. res.body is null → silent return (no callbacks)
  *  3. Stream ends cleanly (done === true) → no callbacks
  *  4. data: frame present → onEvent() called
  *  5. AbortError suppressed on teardown (abort() called)
  *  6. Non-AbortError network error → onError(Error)
+ *
+ * dealCards covers:
+ *  1. 204 No Content → resolves void
+ *  2. Non-ok response → throws ApiError with correct status
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { subscribeToSession, ApiError } from './api';
+import { subscribeToSession, dealCards, ApiError } from './api';
 
 // Helper: build a minimal Response-like object
 function makeResponse(
@@ -211,5 +215,57 @@ describe('subscribeToSession', () => {
     expect(onEvent).not.toHaveBeenCalled();
 
     controller.abort();
+  });
+});
+
+describe('dealCards', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('resolves void when server returns 204 No Content', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 204,
+        statusText: 'No Content',
+        json: () => Promise.resolve({}),
+        headers: new Headers(),
+      } as unknown as Response)
+    ));
+
+    await expect(dealCards('session-1', 'token-abc')).resolves.toBeUndefined();
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/api/v1/sessions/session-1/deal');
+    expect(options.method).toBe('POST');
+  });
+
+  it('throws ApiError with correct status when server returns non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 409,
+        statusText: 'Conflict',
+        json: () => Promise.resolve({ title: 'Cards already dealt', detail: 'Cards have already been dealt for this session.' }),
+        headers: new Headers(),
+      } as unknown as Response)
+    ));
+
+    await expect(dealCards('session-1', 'token-abc')).rejects.toThrow(ApiError);
+
+    try {
+      await dealCards('session-1', 'token-abc');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const apiErr = e as ApiError;
+      expect(apiErr.status).toBe(409);
+    }
   });
 });

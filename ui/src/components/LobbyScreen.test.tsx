@@ -22,6 +22,13 @@ const mockSession: SessionStateDto = {
       seatOrder: 1,
       role: 'PLAYER',
       connectionStatus: 'CONNECTED'
+    },
+    {
+      playerId: 'player-3',
+      displayName: 'Player 3',
+      seatOrder: 2,
+      role: 'PLAYER',
+      connectionStatus: 'CONNECTED'
     }
   ],
   createdAt: '2023-01-01T00:00:00Z',
@@ -93,13 +100,13 @@ describe('LobbyScreen', () => {
     expect(screen.getByText('ABC123')).toBeInTheDocument();
     expect(screen.getByText('Facilitator', { selector: 'dt' })).toBeInTheDocument();
     expect(screen.getByText('Player 2', { selector: 'dt' })).toBeInTheDocument();
-    expect(screen.getByText('Players (2)')).toBeInTheDocument();
+    expect(screen.getByText('Players (3)')).toBeInTheDocument();
 
     // Check facilitator tag (using specific selector to avoid ambiguity)
     expect(screen.getByText('Facilitator', { selector: 'strong' })).toBeInTheDocument();
 
     // Check connection status tags
-    expect(screen.getAllByText('Connected')).toHaveLength(2);
+    expect(screen.getAllByText('Connected')).toHaveLength(3);
   });
 
   it('shows start game button for facilitator when there are enough players', async () => {
@@ -128,10 +135,10 @@ describe('LobbyScreen', () => {
     });
   });
 
-  it('disables start game button when there are fewer than 2 players', async () => {
-    const sessionWithOnePlayer = {
+  it('disables start game button when there are fewer than 3 players', async () => {
+    const sessionWithTwoPlayers = {
       ...mockSession,
-      players: [mockSession.players[0]] // Only facilitator
+      players: [mockSession.players[0], mockSession.players[1]] // Only facilitator + 1 player
     };
 
     vi.stubGlobal('fetch', vi.fn((url: string) => {
@@ -141,7 +148,7 @@ describe('LobbyScreen', () => {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve(sessionWithOnePlayer)
+        json: () => Promise.resolve(sessionWithTwoPlayers)
       } as Response);
     }));
 
@@ -259,6 +266,13 @@ describe('LobbyScreen', () => {
           json: () => Promise.resolve(startedSession)
         } as Response);
       }
+      if (url.includes('/deal') && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 204,
+          json: () => Promise.resolve({})
+        } as Response);
+      }
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -275,13 +289,109 @@ describe('LobbyScreen', () => {
       />
     );
 
-    // Wait for the Start game button to appear (facilitator + 2 players)
+    // Wait for the Start game button to appear (facilitator + 3 players)
     const startButton = await screen.findByRole('button', { name: 'Start game' });
     await user.click(startButton);
 
     // After start, the IN_PROGRESS warning should appear
     await waitFor(() => {
       expect(screen.getByText('The game has started')).toBeInTheDocument();
+    });
+  });
+
+  it('calls dealCards after startGame succeeds', async () => {
+    const startedSession: SessionStateDto = { ...mockSession, status: 'IN_PROGRESS' };
+    const user = userEvent.setup();
+    let dealCallCount = 0;
+
+    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
+      if (url.includes('/events')) {
+        return new Promise(() => {});
+      }
+      if (url.includes('/start') && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(startedSession)
+        } as Response);
+      }
+      if (url.includes('/deal') && options?.method === 'POST') {
+        dealCallCount++;
+        return Promise.resolve({
+          ok: true,
+          status: 204,
+          json: () => Promise.resolve({})
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockSession)
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+      />
+    );
+
+    const startButton = await screen.findByRole('button', { name: 'Start game' });
+    await user.click(startButton);
+
+    await waitFor(() => {
+      expect(dealCallCount).toBe(1);
+    });
+  });
+
+  it('shows error message when dealCards fails after startGame succeeds', async () => {
+    const startedSession: SessionStateDto = { ...mockSession, status: 'IN_PROGRESS' };
+    const user = userEvent.setup();
+
+    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
+      if (url.includes('/events')) {
+        return new Promise(() => {});
+      }
+      if (url.includes('/start') && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(startedSession)
+        } as Response);
+      }
+      if (url.includes('/deal') && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          json: () => Promise.resolve({ title: 'Internal Server Error', detail: 'Failed to deal cards.' })
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockSession)
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+      />
+    );
+
+    const startButton = await screen.findByRole('button', { name: 'Start game' });
+    await user.click(startButton);
+
+    // An error message should appear after dealCards fails
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
   });
 
