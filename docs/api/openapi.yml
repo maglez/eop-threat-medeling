@@ -1310,15 +1310,16 @@ components:
           type: integer
           format: int32
           minimum: 0
-          maximum: 20
+          maximum: 25
           description: |
             How many cards remain. Redundant with the length of `cards`, and
-            present because hands are not equal: the whole deck is dealt, so the
-            counts differ by one across the table and shrink at different rates
-            once the short final trick is reached.
+            present because hands are not equal: the whole 74-card deck is dealt,
+            so the counts differ by one across the table (seat 0 receives the
+            remainder) and shrink at different rates once the short final trick
+            is reached.
         cards:
           type: array
-          maxItems: 20
+          maxItems: 25
           description: |
             The remaining cards, in no guaranteed order. A client that wants them
             sorted sorts them; the server does not promise a presentation order.

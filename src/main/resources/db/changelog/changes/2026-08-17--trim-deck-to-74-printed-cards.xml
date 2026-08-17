@@ -31,9 +31,46 @@
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
   <changeSet id="001" author="miguel">
+    <!--
+      Guard: refuse to run if any of the four cards are still referenced.
+      fk_hand_card_card and fk_trick_play_card are both RESTRICT (no onDelete),
+      so an unguarded DELETE would produce SQLSTATE 23503 on both H2 and PostgreSQL.
+      HALT here gives the operator a clear, diagnosable message instead of a startup crash.
+    -->
+    <preConditions onFail="HALT"
+                   onFailMessage="Cannot trim deck: removed cards still referenced by hand_card or trick_play. Delete all game sessions first.">
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM hand_card
+        WHERE card_id IN (
+          '0145d70f-544b-5cd0-9c0a-164d09a969b7',
+          '24b333fb-38c4-581e-b86c-670cdc7b4c62',
+          'e030b625-b4e3-51d4-9d91-1b50ae0bf0e1',
+          '7229e28b-c578-5ab8-bbc5-fdc8d5b00521'
+        )
+      </sqlCheck>
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM trick_play
+        WHERE card_id IN (
+          '0145d70f-544b-5cd0-9c0a-164d09a969b7',
+          '24b333fb-38c4-581e-b86c-670cdc7b4c62',
+          'e030b625-b4e3-51d4-9d91-1b50ae0bf0e1',
+          '7229e28b-c578-5ab8-bbc5-fdc8d5b00521'
+        )
+      </sqlCheck>
+    </preConditions>
+
     <comment>
       Remove the four cards absent from the physical printed deck.
       Tampering starts at rank 3; Elevation of Privilege starts at rank 5.
+
+      OPERATOR NOTE: This changeset deletes reference-data rows that are protected
+      by RESTRICT foreign keys from hand_card and trick_play (see 004-trick-play-schema.xml).
+      It will HALT if any active or historical game session still references these cards.
+      Before running this migration on a database that has ever hosted a dealt game,
+      either:
+        (a) delete all game sessions (and their cascading hand_card / trick_play rows), or
+        (b) run the rollback of any in-flight sessions first.
+      On a fresh database (e.g. CI, a new deployment) this precondition is always satisfied.
     </comment>
 
     <delete tableName="card">

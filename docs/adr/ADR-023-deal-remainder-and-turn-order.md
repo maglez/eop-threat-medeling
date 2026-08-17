@@ -1438,3 +1438,47 @@ Binding consequence: C2 may not merge without `eop.features.trick-play` present 
 and covered by an off-position test asserting the controller bean is absent as well as the routes
 404-ing.
 
+## Amendment, 2026-08-17 — deck trimmed to 74 printed cards (EOP-69)
+
+**Story:** EOP-69  
+**Amends:** Context paragraph "The deck does not divide evenly" (line 17), Decision §1 table and
+formula (lines 58–69), Consequences paragraph "All 78 threat prompts" (line 658), and the
+cross-reference at line 1391.
+
+The seeded deck was trimmed from 78 to 74 cards by migration
+`2026-08-17--trim-deck-to-74-printed-cards.xml`, which removes the four cards absent from the
+physical printed Elevation of Privilege deck:
+
+- TAMPERING rank 2
+- ELEVATION_OF_PRIVILEGE ranks 2, 3, and 4
+
+The original 78-card deck was a deliberate simplification in EOP-13 (uniform suits simplified the
+trick-taking rules). EOP-69 reverses that simplification to match the printed deck exactly.
+
+**Corrected deck arithmetic.** The deck is now 74 cards — TAMPERING holds 12 ranks (3–A),
+ELEVATION_OF_PRIVILEGE holds 10 ranks (5–A), and the remaining four suits hold 13 ranks (2–A) each.
+Against the PRD's supported range of three to six players:
+
+| Players | Hands |
+|---|---|
+| 3 | **25, 25**, 24 |
+| 4 | **19, 19**, 18, 18 |
+| 5 | **15, 15, 15, 15**, 14 |
+| 6 | **13, 13**, 12, 12, 12, 12 |
+
+The formula in Decision §1 — "after each player has received `D / n` cards, the remaining `D mod n`
+cards are dealt one each to seats `0, 1, 2, …`" — is unchanged; only `D` changes from 78 to 74.
+
+**Opening-lead rule is unaffected.** The rule "lowest Tampering card actually dealt" is derived and
+never hardcoded, so removing rank 2 from TAMPERING resolves naturally to rank 3 with no code change.
+This is the property the derivation was designed to preserve, and it is the reason the original ADR
+chose derivation over a constant.
+
+**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 658) now
+reads: all 74 threat prompts are held by someone. The four removed cards carry threat prompts that
+are absent from the physical deck and are therefore not part of the game's threat coverage.
+
+**Cross-reference correction.** The reference "EOP-13 (the 78-card deck this arithmetic depends on)"
+(line 1391) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
+above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
+

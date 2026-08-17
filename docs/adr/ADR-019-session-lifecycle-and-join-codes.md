@@ -163,7 +163,7 @@ data rather than presentation ordering.
 
 > **Amended 2026-08-12 — see [ADR-023](ADR-023-deal-remainder-and-turn-order.md).**
 > The formula in the paragraph above holds only while every seat still holds a card.
-> EOP-14 deals the whole 78-card deck with the extra cards going to the lowest seats,
+> EOP-14 deals the whole 74-card deck with the extra cards going to the lowest seats,
 > so at four and five players hands are unequal and the **final trick of a session is
 > short** — fewer cards than there are players. The general form is **the next seat
 > clockwise that still holds a card**. Copying the simpler formula into play-order code

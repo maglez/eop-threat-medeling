@@ -9,7 +9,7 @@
 
 ## Context
 
-EOP-65 adds a facilitator "Start new game" button that re-deals the same 78-card deck to
+EOP-65 adds a facilitator "Start new game" button that re-deals the same 74-card deck to
 the same seated players without creating a new session. This requires a new session-status
 transition: `COMPLETED → IN_PROGRESS`.
 
