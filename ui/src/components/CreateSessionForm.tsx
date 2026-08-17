@@ -96,6 +96,7 @@ export function CreateSessionForm({ onSubmit, onError }: CreateSessionFormProps)
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={isSubmitting}
+            autoFocus
             autoComplete="name"
             aria-describedby={`display-name-hint${hasDisplayNameError ? ' display-name-error' : ''}`}
           />
