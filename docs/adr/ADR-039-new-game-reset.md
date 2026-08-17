@@ -79,11 +79,12 @@ not used to answer the leaderboard (see §5). Retaining them avoids a destructiv
 that could not be undone if the reset fails partway through.
 
 A unique constraint on `game_result.game_session_id` is intentionally absent: a session
-that completes, resets, and completes again will accumulate multiple result rows. The
-`GameResultRepository.findBySessionId` port returns `Optional<GameResult>` and resolves to
-the most-recently-inserted row via the natural insertion order of the Spring Data query.
-If a future story needs to distinguish results across resets, a `reset_count` or
-`finalised_at` ordering can be added then.
+that completes, resets, and completes again will accumulate multiple result rows.
+`GameResultJpaRepository` uses a derived query
+`findFirstByGameSessionIdOrderByFinalisedAtDesc` so that the most recently finalised row
+is always returned. This ordering was added in EOP-65 after a multi-game 500 confirmed
+that relying on natural insertion order is not safe — SQL guarantees no row order absent
+an explicit `ORDER BY`.
 
 ### 5. Leaderboard scores are always derived from tricks, never from stored data (ADR-030)
 
@@ -107,9 +108,11 @@ Spring: when `eop.features.game-over` is off the bean does not exist and the opt
 empty; when the flag is on the bean is present and the result is persisted.
 
 Persistence is best-effort: a `RuntimeException` from `PersistGameResultUseCase` is caught
-and swallowed so that a persistence failure does not roll back the trick resolution that
-has already been committed. The leaderboard will return 404 until the result is persisted,
-which is the correct behaviour for a transient failure.
+and logged at `WARN` level (with the `sessionId` and the full stack trace) so that a
+persistence failure does not roll back the trick resolution that has already been
+committed. The leaderboard will return 404 until the result is persisted, which is the
+correct behaviour for a transient failure. The failure is visible in the application log
+so that operations can investigate and replay if needed.
 
 ---
 
