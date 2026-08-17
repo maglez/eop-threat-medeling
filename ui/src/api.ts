@@ -194,6 +194,29 @@ export async function startGame(sessionId: string, playerToken: string): Promise
 }
 
 /**
+ * Deal the deck to all seated players.
+ *
+ * Must be called by the facilitator after `startGame` transitions the session
+ * to IN_PROGRESS. Returns 204 on success (no body).
+ *
+ * @param sessionId   The session to deal.
+ * @param playerToken The facilitator's credential.
+ */
+export async function dealHands(sessionId: string, playerToken: string): Promise<void> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/deal`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+}
+
+/**
  * Subscribe to session events via SSE.
  *
  * Uses `fetch` rather than `EventSource` because `EventSource` cannot set

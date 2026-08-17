@@ -22,6 +22,13 @@ COPY tsconfig.json vite.config.ts index.html ./
 COPY scripts ./scripts
 COPY src ./src
 
+# Feature-flag build args — Vite bakes these into the bundle at build time.
+# Defaults match the production-off position; override per environment.
+ARG VITE_LOBBY_UI_ENABLED=false
+ARG VITE_GAME_SCREEN_ENABLED=false
+ENV VITE_LOBBY_UI_ENABLED=${VITE_LOBBY_UI_ENABLED}
+ENV VITE_GAME_SCREEN_ENABLED=${VITE_GAME_SCREEN_ENABLED}
+
 # The prebuild hook copies the GOV.UK Design System fonts and images into
 # public/ before Vite runs. Without it the stylesheet's absolute asset paths
 # 404 at runtime and the page renders in fallback system fonts, which looks
