@@ -521,3 +521,114 @@ describe('GameScreen', () => {
     expect(card).not.toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });
   });
 });
+
+// ---- Card images feature flag (EOP-66) ----
+// These tests exercise the flag-ON path. VITE_CARD_IMAGES_ENABLED is read at
+// component scope in CardFace and GameScreen, so vi.stubEnv takes effect on
+// the next render without needing vi.resetModules().
+
+describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
+  const mockSession: api.SessionStateDto = {
+    sessionId: 'test-session',
+    joinCode: 'ABC123',
+    status: 'IN_PROGRESS',
+    players: [
+      { playerId: 'player1', displayName: 'Alice', seatOrder: 0, role: 'PLAYER', connectionStatus: 'CONNECTED' },
+      { playerId: 'player2', displayName: 'Bob', seatOrder: 1, role: 'PLAYER', connectionStatus: 'CONNECTED' },
+      { playerId: 'player3', displayName: 'Charlie', seatOrder: 2, role: 'PLAYER', connectionStatus: 'CONNECTED' },
+    ],
+    createdAt: '2023-01-01T00:00:00Z',
+    updatedAt: '2023-01-01T00:00:00Z',
+  };
+
+  // A card with a real playable rank so cardImagePath returns a non-null URL.
+  const spoofingKing: api.CardDto = {
+    cardId: 'card-sk',
+    suit: 'SPOOFING',
+    rank: 'KING',
+    rankSymbol: 'K',
+    rankValue: 13,
+    threatPrompt: 'Spoofing king threat',
+  };
+
+  const makeHand = (cards: api.CardDto[]): api.HandDto => ({
+    handId: 'hand1',
+    playerId: 'player1',
+    cardCount: cards.length,
+    cards,
+  });
+
+  const idleTrickState: api.TrickStateDto = {
+    complete: false,
+    handComplete: false,
+    seatToPlay: 0,
+  };
+
+  const defaultProps = {
+    sessionId: 'test-session',
+    playerId: 'player1',
+    playerToken: 'test-token',
+    session: mockSession,
+    onSessionEnd: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_CARD_IMAGES_ENABLED', 'true');
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('renders an <img> for a card with a real image when flag is ON', async () => {
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    render(<GameScreen {...defaultProps} />);
+
+    await waitFor(() => {
+      // The card image should be rendered with a descriptive alt attribute
+      const img = screen.getByAltText('K of spoofing');
+      expect(img).toBeInTheDocument();
+      expect(img.tagName).toBe('IMG');
+    });
+  });
+
+  it('img alt attribute is descriptive (rank + suit, lowercase)', async () => {
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    render(<GameScreen {...defaultProps} />);
+
+    await waitFor(() => {
+      const img = screen.getByAltText('K of spoofing');
+      expect(img).toHaveAttribute('alt', 'K of spoofing');
+    });
+  });
+
+  it('does not render rank symbol spans when card image is shown', async () => {
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+    vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+    render(<GameScreen {...defaultProps} />);
+
+    await waitFor(() => {
+      // The <img> is present
+      expect(screen.getByAltText('K of spoofing')).toBeInTheDocument();
+    });
+
+    // The plain-text rank symbol fallback should NOT be present when the image renders
+    // (the ternary renders either <img> or the text spans, never both)
+    const rankSymbolSpans = screen.queryAllByText('K');
+    // All 'K' text nodes should be absent from the card face (image replaced them)
+    // Note: there may be zero or the aria-label still contains 'K', but no visible span
+    expect(rankSymbolSpans.length).toBe(0);
+  });
+});

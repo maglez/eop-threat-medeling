@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_LOBBY_UI_ENABLED: string;
   readonly VITE_GAME_SCREEN_ENABLED: string;
+  readonly VITE_CARD_IMAGES_ENABLED: string;
 }
 
 interface ImportMeta {

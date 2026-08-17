@@ -16,8 +16,7 @@ import { ErrorSummary } from './ErrorSummary';
 import { cardImagePath } from '../utils/cardImagePath';
 import './GameScreen.css';
 
-/** True when the card-images feature flag is enabled at build time (EOP-66). */
-const CARD_IMAGES_ENABLED = import.meta.env.VITE_CARD_IMAGES_ENABLED === 'true';
+
 
 interface GameScreenProps {
   readonly sessionId: string;
@@ -76,6 +75,9 @@ interface CardFaceProps {
 }
 
 function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
+  /** True when the card-images feature flag is enabled at build time (EOP-66).
+   *  Read at component scope (not module scope) so vi.stubEnv works in tests. */
+  const cardImagesEnabled = import.meta.env.VITE_CARD_IMAGES_ENABLED === 'true';
   const suitColour = SUIT_COLOURS[card.suit] ?? '#0b0c0c';
   const suitLabel = SUIT_LABELS[card.suit] ?? card.suit[0];
   const [focused, setFocused] = React.useState(false);
@@ -123,7 +125,7 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         flexShrink: 0,
       }}
     >
-      {CARD_IMAGES_ENABLED && cardImagePath(card.suit, card.rank) ? (
+      {cardImagesEnabled && cardImagePath(card.suit, card.rank) ? (
         <img
           src={cardImagePath(card.suit, card.rank) as string}
           alt={`${card.rankSymbol} of ${card.suit.toLowerCase().replace(/_/g, ' ')}`}
@@ -230,6 +232,9 @@ export function GameScreen({
   onSessionEnd,
   onGameOver,
 }: GameScreenProps): React.JSX.Element {
+  /** True when the card-images feature flag is enabled at build time (EOP-66).
+   *  Read at component scope (not module scope) so vi.stubEnv works in tests. */
+  const cardImagesEnabled = import.meta.env.VITE_CARD_IMAGES_ENABLED === 'true';
   const [session, setSession] = useState<SessionStateDto>(initialSession);
   const [hand, setHand] = useState<HandDto | null>(null);
   const [trickState, setTrickState] = useState<TrickStateDto | null>(null);
@@ -615,7 +620,7 @@ export function GameScreen({
                       padding: '4px',
                       backgroundColor: '#ffffff',
                     }}>
-                      {CARD_IMAGES_ENABLED && cardImagePath(play.card.suit, play.card.rank) ? (
+                      {cardImagesEnabled && cardImagePath(play.card.suit, play.card.rank) ? (
                         <img
                           src={cardImagePath(play.card.suit, play.card.rank) as string}
                           alt={`${play.card.rankSymbol} of ${play.card.suit.toLowerCase().replace(/_/g, ' ')}`}
@@ -730,7 +735,7 @@ export function GameScreen({
                 backgroundColor: '#ffffff',
                 boxShadow: '4px 4px 12px rgba(0,0,0,0.3)',
               }}>
-                {CARD_IMAGES_ENABLED && cardImagePath(draggedCard.suit, draggedCard.rank) ? (
+                {cardImagesEnabled && cardImagePath(draggedCard.suit, draggedCard.rank) ? (
                   <img
                     src={cardImagePath(draggedCard.suit, draggedCard.rank) as string}
                     alt={`${draggedCard.rankSymbol} of ${draggedCard.suit.toLowerCase().replace(/_/g, ' ')}`}
