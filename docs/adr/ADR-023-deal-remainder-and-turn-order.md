@@ -1485,3 +1485,40 @@ are absent from the physical deck and are therefore not part of the game's threa
 (line 1394) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
 above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
 
+---
+
+## Amendment — EOP-72 (2026-08-17): Decision 1 Superseded — Equal Hands, Remainder Discarded
+
+*(Accepted — supersedes Decision §1 above)*
+
+**Context.** EOP-72 surfaced a usability problem: with an uneven deal, some players hold more cards
+than others, which is confusing and unfair. The original rationale for dealing every card was that
+discarding the remainder could leave the opening-lead rule with no holder — the lowest Tampering card
+might be among the discarded cards. That concern is real but solvable without dealing unevenly.
+
+**New rule.** The deck is truncated to `floor(D / n) × n` cards before dealing, so every seat
+receives exactly `floor(D / n)` cards. The remainder is discarded. To preserve the opening-lead
+rule, the algorithm **guarantees the lowest-ranked Tampering card is in the kept portion**: if it
+would fall in the discarded tail, it is swapped with the last card of the kept portion before
+dealing begins.
+
+**Corrected deck arithmetic (74-card deck).**
+
+| Players | Cards each | Dealt | Discarded |
+|---|---|---|---|
+| 3 | 24 | 72 | 2 |
+| 4 | 18 | 72 | 2 |
+| 5 | 14 | 70 | 4 |
+| 6 | 12 | 72 | 2 |
+
+**Opening-lead rule is preserved.** The swap guarantee means the lowest Tampering card is always
+dealt, so `Hands.openingLeaderSeat()` always resolves. No fallback branch is needed.
+
+**Consequence on trick completion.** With equal hands, all seats run out of cards at the same trick.
+The final trick is no longer short — it has exactly one card per seat. The "trick is complete when
+no seat that still holds a card is yet to play" rule is unchanged and still correct; it simply
+resolves to "all seats have played" for every trick, including the last.
+
+**Implementation.** `Hands.deal()` was updated in EOP-72. The swap is performed on a mutable copy
+of the deck before the round-robin loop; the original deck order is otherwise preserved.
+

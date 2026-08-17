@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.maglez.eop.entity.Card;
 import org.maglez.eop.entity.DeckFixture;
 import org.maglez.eop.entity.GameSession;
+import org.maglez.eop.entity.Hand;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NoTrickToResolveException;
@@ -270,11 +272,11 @@ class ResolveTrickUseCaseTest {
     /**
      * The other half of the next-leader rule, and the half that cannot be read off the winner.
      *
-     * <p>Four cards over three seats is the unequal deal ADR-023 describes: the round robin
-     * gives seat zero {@code TWO} and {@code FOUR} while seats one and two get one card each.
-     * Seat one takes the trick with the ace and is immediately out of cards, so the lead cannot
-     * pass to the winner and goes to the next seat clockwise that still holds one, which is seat
-     * zero.
+     * <p>Three cards are dealt (one per seat) and all three are played into the trick. After the
+     * trick, seat zero is given one extra card via {@link Hands#reconstitute} to simulate a
+     * scenario where the winner (seat one, who played the ace) is out of cards while another seat
+     * still holds one. The lead cannot pass to the winner and goes to the next seat clockwise that
+     * still holds a card, which is seat zero.
      *
      * <p>This is the only shape in which {@code nextLeaderSeat} and {@code winningSeat} disagree
      * while play continues, which makes it the only test that can tell the two apart. Without it
@@ -286,9 +288,23 @@ class ResolveTrickUseCaseTest {
     @DisplayName("passes the lead on when the winner is out of cards but another seat is not")
     void shouldPassTheLeadOnWhenTheWinnerIsOutOfCards() {
         final GameSession session = seatedTable();
-        final Hands dealt = dealTo(session, Rank.TWO, Rank.ACE, Rank.THREE, Rank.FOUR);
+        // Deal one card per seat and play all three into the trick.
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.ACE, Rank.THREE);
         final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
-        handRepository.seededWith(underWay.remaining(), LEADER_SEAT);
+
+        // After the trick every seat is empty. Reconstitute remaining hands so that seat zero
+        // holds one extra card — simulating the winner (seat one) being out of cards while
+        // another seat is not.
+        final Card extraCard = DeckFixture.card(StrideCategory.SPOOFING, Rank.FOUR);
+        final Player seat0 = playerAt(session, 0);
+        final Player seat1 = playerAt(session, 1);
+        final Player seat2 = playerAt(session, 2);
+        final Hands remaining = Hands.reconstitute(Map.of(
+                0, Hand.of(new UUID(HAND_PREFIX, 0), seat0.playerId(), List.of(extraCard)),
+                1, Hand.of(new UUID(HAND_PREFIX, 1), seat1.playerId(), List.of()),
+                2, Hand.of(new UUID(HAND_PREFIX, 2), seat2.playerId(), List.of())));
+
+        handRepository.seededWith(remaining, LEADER_SEAT);
         trickRepository.seededWith(underWay.trick());
 
         final var resolved = useCaseFor(session)
@@ -297,8 +313,8 @@ class ResolveTrickUseCaseTest {
         assertThat(resolved.winningSeat())
                 .as("the ace takes the trick, and it was dealt to seat one")
                 .isEqualTo(1);
-        assertThat(underWay.remaining().seatsHoldingCards())
-                .as("only seat zero was dealt a second card")
+        assertThat(remaining.seatsHoldingCards())
+                .as("only seat zero was given a remaining card")
                 .containsExactly(LEADER_SEAT);
         assertThat(trickRepository.resolutions().get(0).nextLeaderSeat())
                 .as("the winner holds nothing, so the lead passes clockwise to seat zero")

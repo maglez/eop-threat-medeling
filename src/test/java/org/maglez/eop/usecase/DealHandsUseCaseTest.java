@@ -56,10 +56,10 @@ class DealHandsUseCaseTest {
     private static final int SEATS = 3;
 
     /**
-     * With 74 cards and 3 seats, the deal is 25, 25, 24 (74 mod 3 = 2 remainder).
-     * Seat 0 receives the extra card, so it holds 25 cards.
+     * With 74 cards and 3 seats, the deal is 24, 24, 24 (74 / 3 = 24, 2 discarded).
+     * All seats receive the same number of cards.
      */
-    private static final int CARDS_PER_SEAT = 25;
+    private static final int CARDS_PER_SEAT = 24;
 
     private static final int TWO_PLAYERS = 2;
 
@@ -86,7 +86,7 @@ class DealHandsUseCaseTest {
 
         assertThat(handRepository.recordDealCalls()).isOne();
         assertThat(handRepository.recordedAt()).isEqualTo(NOW);
-        assertThat(handRepository.recordedHands().totalCards()).isEqualTo(DeckFixture.fullDeck().size());
+        assertThat(handRepository.recordedHands().totalCards()).isEqualTo(SEATS * CARDS_PER_SEAT);
         assertThat(handRepository.recordedHands().seats()).containsExactly(0, 1, 2);
         assertThat(handRepository.recordedHands().handOf(0).size()).isEqualTo(CARDS_PER_SEAT);
         assertThat(handRepository.recordedLeaderSeat())
@@ -103,14 +103,19 @@ class DealHandsUseCaseTest {
      * every index two above a multiple of three. The two sets are disjoint, and asserting the
      * whole set rather than a card from each end also refuses a shuffle that moved only some of
      * the deck.
+     *
+     * <p>With equal hands, only the first {@code SEATS * CARDS_PER_SEAT} cards of the reversed deck
+     * are dealt. The loop therefore stops at canonical index {@code canonical.size() - SEATS * CARDS_PER_SEAT},
+     * which is the first canonical index that maps to a discarded reversed-deck position.
      */
     @Test
     @DisplayName("deals the shuffled order, not the order the deck was read in")
     void shouldDealTheShuffledOrder() {
         final var session = seatedTable(SEATS);
         final var canonical = DeckFixture.fullDeck();
+        final int keptSize = SEATS * CARDS_PER_SEAT;
         final var expectedAtSeatZero = new ArrayList<Card>();
-        for (int index = canonical.size() - 1; index >= 0; index -= SEATS) {
+        for (int index = canonical.size() - 1; index >= canonical.size() - keptSize; index -= SEATS) {
             expectedAtSeatZero.add(canonical.get(index));
         }
 
@@ -119,7 +124,7 @@ class DealHandsUseCaseTest {
         assertThat(shuffler.calls()).isOne();
         assertThat(shuffler.received()).isEqualTo(canonical);
         assertThat(expectedAtSeatZero)
-                .as("the reversed deal gives the first seat its share of the deck (25 of 74 cards)")
+                .as("the reversed deal gives the first seat its share of the deck (%d of %d cards)", CARDS_PER_SEAT, keptSize)
                 .hasSize(CARDS_PER_SEAT);
         assertThat(handRepository.recordedHands().handOf(0).cards())
                 .as("every card at the first seat is one the reversed order would have put there")

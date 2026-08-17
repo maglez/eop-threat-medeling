@@ -161,7 +161,7 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             final Hands stored = adapter.findBySessionId(table.sessionId()).orElseThrow();
 
             assertThat(stored.handsBySeat()).containsOnlyKeys(0, 1, 2);
-            assertThat(stored.totalCards()).isEqualTo(table.deck().size());
+            assertThat(stored.totalCards()).isEqualTo(table.hands().totalCards());
             for (int seat = 0; seat < SEATED_PLAYERS; seat++) {
                 final Hand expected = table.hands().handOf(seat);
                 final Hand actual = stored.handOf(seat);
@@ -177,7 +177,8 @@ class TrickPlayRepositoryAdapterIntegrationTest {
             final Table table = dealtTable();
 
             final List<Card> expected = new ArrayList<>();
-            for (int index = 0; index < table.deck().size(); index += SEATED_PLAYERS) {
+            final int keptSize = table.hands().totalCards();
+            for (int index = 0; index < keptSize; index += SEATED_PLAYERS) {
                 expected.add(table.deck().get(index));
             }
 
@@ -223,7 +224,7 @@ class TrickPlayRepositoryAdapterIntegrationTest {
                                             DEALT_AT));
 
             assertThat(adapter.findBySessionId(table.sessionId()).orElseThrow().totalCards())
-                    .isEqualTo(table.deck().size());
+                    .isEqualTo(table.hands().totalCards());
         }
 
         @Test

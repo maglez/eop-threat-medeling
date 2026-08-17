@@ -39,21 +39,21 @@ class HandsTest {
     }
 
     @Nested
-    @DisplayName("deals the whole deck out, putting the remainder on the lowest seats")
+    @DisplayName("deals an equal number of cards to each seat, discarding the remainder")
     class Dealing {
 
         @Test
-        @DisplayName("three players hold twenty-five, twenty-five and twenty-four cards (74 mod 3 = 2 remainder)")
+        @DisplayName("three players each hold twenty-four cards (74 / 3 = 24, 2 discarded)")
         void shouldDealEvenlyToThree() {
             final Hands hands = Hands.deal(fullDeck(), seats(3));
 
-            assertThat(hands.handOf(0).size()).isEqualTo(25);
-            assertThat(hands.handOf(1).size()).isEqualTo(25);
+            assertThat(hands.handOf(0).size()).isEqualTo(24);
+            assertThat(hands.handOf(1).size()).isEqualTo(24);
             assertThat(hands.handOf(2).size()).isEqualTo(24);
         }
 
         @Test
-        @DisplayName("six players hold thirteen, thirteen, twelve, twelve, twelve and twelve cards (74 mod 6 = 2 remainder)")
+        @DisplayName("six players each hold twelve cards (74 / 6 = 12, 2 discarded)")
         void shouldDealEvenlyToSix() {
             final Hands hands = Hands.deal(fullDeck(), seats(6));
 
@@ -65,12 +65,12 @@ class HandsTest {
                             hands.handOf(3).size(),
                             hands.handOf(4).size(),
                             hands.handOf(5).size()))
-                    .containsExactly(13, 13, 12, 12, 12, 12);
+                    .containsExactly(12, 12, 12, 12, 12, 12);
         }
 
         @Test
-        @DisplayName("four players hold nineteen, nineteen, eighteen and eighteen (74 mod 4 = 2 remainder)")
-        void shouldPutTheRemainderOnTheLowestSeatsAtFour() {
+        @DisplayName("four players each hold eighteen cards (74 / 4 = 18, 2 discarded)")
+        void shouldDealEqualHandsAtFour() {
             final Hands hands = Hands.deal(fullDeck(), seats(4));
 
             assertThat(List.of(
@@ -78,12 +78,12 @@ class HandsTest {
                             hands.handOf(1).size(),
                             hands.handOf(2).size(),
                             hands.handOf(3).size()))
-                    .containsExactly(19, 19, 18, 18);
+                    .containsExactly(18, 18, 18, 18);
         }
 
         @Test
-        @DisplayName("five players hold fifteen, fifteen, fifteen, fifteen and fourteen (74 mod 5 = 4 remainder)")
-        void shouldPutTheRemainderOnTheLowestSeatsAtFive() {
+        @DisplayName("five players each hold fourteen cards (74 / 5 = 14, 4 discarded)")
+        void shouldDealEqualHandsAtFive() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
             assertThat(List.of(
@@ -92,11 +92,11 @@ class HandsTest {
                             hands.handOf(2).size(),
                             hands.handOf(3).size(),
                             hands.handOf(4).size()))
-                    .containsExactly(15, 15, 15, 15, 14);
+                    .containsExactly(14, 14, 14, 14, 14);
         }
 
         @Test
-        @DisplayName("every card is dealt and none is dealt twice, because there is no draw pile")
+        @DisplayName("every dealt card is unique, and the remainder is discarded (5 players: 70 of 74 cards dealt)")
         void shouldDealEveryCardExactlyOnce() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
@@ -105,8 +105,35 @@ class HandsTest {
                     .values()
                     .forEach(hand -> hand.cards().forEach(dealtCard -> dealt.add(dealtCard.cardId())));
 
-            assertThat(hands.totalCards()).isEqualTo(74);
-            assertThat(dealt).hasSize(74).doesNotHaveDuplicates();
+            assertThat(hands.totalCards()).isEqualTo(70);
+            assertThat(dealt).hasSize(70).doesNotHaveDuplicates();
+        }
+
+        @Test
+        @DisplayName("the lowest Tampering card is always dealt even when it falls in the discarded portion")
+        void shouldAlwaysDealTheLowestTamperingCard() {
+            // Build a deck where the lowest Tampering card (THREE) is at the very end (index 73),
+            // which would normally be discarded for 5 players (only 70 cards kept).
+            final List<Card> deck = new ArrayList<>(fullDeck());
+            // Find the THREE of TAMPERING and move it to the last position.
+            final Card tamperingThree = deck.stream()
+                    .filter(c -> c.suit() == StrideCategory.TAMPERING && c.rank() == Rank.THREE)
+                    .findFirst()
+                    .orElseThrow();
+            deck.remove(tamperingThree);
+            deck.add(tamperingThree); // now at index 73
+
+            final Hands hands = Hands.deal(deck, seats(5));
+
+            // The opening leader must be findable — this throws if no Tampering card was dealt.
+            final int leaderSeat = hands.openingLeaderSeat();
+            assertThat(leaderSeat).isBetween(0, 4);
+
+            // The THREE of TAMPERING must be in one of the hands.
+            final boolean tamperingThreeDealt = hands.handsBySeat().values().stream()
+                    .flatMap(hand -> hand.cards().stream())
+                    .anyMatch(c -> c.suit() == StrideCategory.TAMPERING && c.rank() == Rank.THREE);
+            assertThat(tamperingThreeDealt).isTrue();
         }
 
         @Test
@@ -382,7 +409,7 @@ class HandsTest {
 
             assertThat(hands.toString())
                     .contains("seats=3")
-                    .contains("cardsRemaining=74")
+                    .contains("cardsRemaining=72")
                     .doesNotContain("TAMPERING")
                     .doesNotContain("There's a way");
         }

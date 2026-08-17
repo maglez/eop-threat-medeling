@@ -43,7 +43,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * runs concurrent requests would couple the tests to each other's timing.</p>
  *
  * <p>The tables here hold three players, the fewest that can start play. The deck is 74 cards, so three players
- * receive 25, 25, and 24 cards respectively. An uneven deal is exercised where the arithmetic lives,
+ * receive 24 cards each (72 dealt, 2 discarded). An uneven deal is exercised where the arithmetic lives,
  * in the domain tests for {@code Hands}, and repeating it here would test the same code through a slower path.</p>
  *
  * <p>Several tests need to know which seat leads. They work it out by reading every player's hand, which they can do
@@ -73,7 +73,7 @@ class TrickControllerIntegrationTest {
 
     private static final int PLAYERS = 3;
 
-    private static final int CARDS_EACH = 25;
+    private static final int CARDS_EACH = 24;
 
     @Autowired
     private MockMvc mockMvc;
@@ -194,8 +194,8 @@ class TrickControllerIntegrationTest {
             Assertions.assertThat(seen)
                     .as("no card is in two hands at once, so no player can see another player's cards")
                     .doesNotHaveDuplicates()
-                    .as("the whole 74-card deck is dealt out across all seats")
-                    .hasSize(74);
+                    .as("72 of the 74-card deck are dealt (2 discarded to equalise hands across 3 seats)")
+                    .hasSize(PLAYERS * CARDS_EACH);
         }
 
         @Test
@@ -957,9 +957,9 @@ class TrickControllerIntegrationTest {
             final var table = dealtTable();
             final var facilitator = table.facilitator().playerToken();
 
-            // Seventy-four cards over three seats gives 25, 25, 24 — the last seat runs out one trick
-            // earlier. The loop drives from the server's state rather than a fixed count so it handles
-            // the uneven deal correctly. Whose turn it is is taken from the route under test rather than
+            // Seventy-two cards over three seats gives 24 each — all seats run out at the same trick.
+            // The loop drives from the server's state rather than a fixed count so it handles
+            // the equal deal correctly. Whose turn it is is taken from the route under test rather than
             // derived from the cards, so playing the hand out is also a long exercise of it.
             boolean handComplete = false;
             int trick = 0;

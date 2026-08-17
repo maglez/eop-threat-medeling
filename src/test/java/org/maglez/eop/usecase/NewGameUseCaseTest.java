@@ -97,7 +97,7 @@ class NewGameUseCaseTest {
 
             assertThat(handRepository.recordDealCalls()).isOne();
             assertThat(handRepository.recordedHands().totalCards())
-                    .isEqualTo(DeckFixture.fullDeck().size());
+                    .isEqualTo((DeckFixture.fullDeck().size() / SEATS) * SEATS);
             assertThat(handRepository.recordedHands().seats())
                     .containsExactly(0, 1, 2);
         }
