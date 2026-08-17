@@ -88,8 +88,8 @@ deck — every card withheld is a threat prompt the group never discusses, and t
 deck is a threat library before it is a game component.
 
 **The accepted cost, stated plainly: hands are unequal, so the final trick is
-short.** At four players two people hold 20 cards and two hold 19; at five, three
-hold 16 and two hold 15. The last trick of the game therefore has fewer cards in
+short.** At four players two seats hold 19 cards and two hold 18; at five, four
+seats hold 15 and one holds 14. The last trick of the game therefore has fewer cards in
 it than there are players at the table. This is not a defect to be corrected
 later: it is already sanctioned by the PRD §3.3 end condition, where play
 continues "until players run out of time, cards, or ways to connect their threats
@@ -150,9 +150,9 @@ to the next seat clockwise from the winner that does.
 > this ADR said it did.** It read "advanced to the winner's seat as each trick
 > resolves", full stop. Decision 1 makes hands unequal, so a seat can play its
 > final card into a trick and win that trick. At four players seats 0 and 1 hold
-> nineteen cards while seats 2 and 3 hold eighteen: if seat 0 or seat 1 takes trick
-> nineteen, the winner is out of cards while two other seats each still hold one.
-> Handing the lead to the winner regardless would open trick twenty on a seat that
+> nineteen cards while seats 2 and 3 hold eighteen: if seat 2 or seat 3 takes trick
+> eighteen, the winner is out of cards while seats 0 and 1 each still hold one.
+> Handing the lead to the winner regardless would open trick nineteen on a seat that
 > can never play into it. `Trick.seatToPlay` would report that nobody may play,
 > `isComplete` would report the trick incomplete because it holds no plays, and the
 > game would simply stop — with no exception, no error and nothing to log. That is
@@ -1444,8 +1444,8 @@ and covered by an off-position test asserting the controller bean is absent as w
 
 **Story:** EOP-69  
 **Amends:** Context paragraph "The deck does not divide evenly" (line 17), Decision §1 table and
-formula (lines 58–69), Consequences paragraph "All 78 threat prompts" (line 658), and the
-cross-reference at line 1391.
+formula (lines 58–69), Consequences paragraph "All 78 threat prompts" (line 659), and the
+cross-reference at line 1393.
 
 The seeded deck was trimmed from 78 to 74 cards by migration
 `2026-08-17--trim-deck-to-74-printed-cards.xml`, which removes the four cards absent from the
@@ -1476,11 +1476,11 @@ never hardcoded, so removing rank 2 from TAMPERING resolves naturally to rank 3 
 This is the property the derivation was designed to preserve, and it is the reason the original ADR
 chose derivation over a constant.
 
-**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 658) now
+**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 659) now
 reads: all 74 threat prompts are held by someone. The four removed cards carry threat prompts that
 are absent from the physical deck and are therefore not part of the game's threat coverage.
 
 **Cross-reference correction.** The reference "EOP-13 (the 78-card deck this arithmetic depends on)"
-(line 1391) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
+(line 1393) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
 above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
 

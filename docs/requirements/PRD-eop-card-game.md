@@ -115,13 +115,14 @@ Privilege cards were played, in which case the highest EoP card wins. EoP is the
 Only EoP or the led suit can take a trick. The winner of a trick leads the next trick.
 
 > **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** The
-> winner leads the next trick *only if the winner still holds a card*. Unequal hands at four and
-> five players mean a player can play their last card and win the trick they played it into: at four
-> players seats 2 and 3 hold nineteen cards and seats 0 and 1 hold twenty, so a win by seat 2 or 3 on
-> trick nineteen leaves the winner with nothing to lead. The rule the application implements is
-> therefore **the winner if the winner still holds a card, otherwise the next seat clockwise from the
-> winner that does**; when no seat holds a card the game has ended. Taking the sentence above
-> literally opens a trick on a seat that can never play into it, and the game stops with no error.
+> winner leads the next trick *only if the winner still holds a card*. At 74 cards no supported
+> table size divides evenly, so a player can play their last card and win the trick they played it
+> into: at four players seats 0 and 1 hold nineteen cards and seats 2 and 3 hold eighteen, so a win
+> by seat 2 or 3 on trick eighteen leaves the winner with nothing to lead. The rule the application
+> implements is therefore **the winner if the winner still holds a card, otherwise the next seat
+> clockwise from the winner that does**; when no seat holds a card the game has ended. Taking the
+> sentence above literally opens a trick on a seat that can never play into it, and the game stops
+> with no error.
 
 **Aces — Open Threat cards:** each Ace reads "You've invented a new [Suit] attack." The player
 must identify a threat not printed on any other card, usually prompting a discussion about whether

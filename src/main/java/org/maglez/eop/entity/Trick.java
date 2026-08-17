@@ -16,12 +16,12 @@ import java.util.UUID;
  * mutating this one, so a rejected play leaves no trace and a resolved trick cannot be quietly
  * re-resolved.
  *
-     * <p>Deliberately <em>not</em> a fixed number of plays. Because EOP-14 deals the whole deck and hands
-     * off the remainder to the lowest seats (ADR-023), at 74 cards no supported table size divides
-     * evenly, so the final trick of every game is short: some seats have already run out of cards.
-     * A trick is therefore one card from each seat that still held a card when it opened, which is
-     * why {@link #seatToPlay(Collection)} and {@link #isComplete(Collection)} both need to be told
-     * which seats still hold cards rather than counting to the table size.
+ * <p>Deliberately <em>not</em> a fixed number of plays. Because EOP-14 deals the whole deck and hands
+ * off the remainder to the lowest seats (ADR-023), at 74 cards no supported table size divides
+ * evenly, so the final trick of every game is short: some seats have already run out of cards.
+ * A trick is therefore one card from each seat that still held a card when it opened, which is
+ * why {@link #seatToPlay(Collection)} and {@link #isComplete(Collection)} both need to be told
+ * which seats still hold cards rather than counting to the table size.
  *
  * <p>Pure domain type: no Spring, no Jakarta, no persistence annotations. The persistence adapter
  * holds its own separate mapped type.
@@ -249,8 +249,8 @@ public final class Trick {
      *
      * <p>Play is clockwise, which is ascending seat order wrapping back to zero (ADR-019). The naive
      * form of this rule — leader's seat plus the number of cards already played — is correct only
-     * while every seat still holds a card, and ADR-023 makes that false for the last trick at four and
-     * five players. The general form implemented here is <em>the next seat clockwise from the last
+     * while every seat still holds a card, and ADR-023 makes that false for the last trick at every
+     * player count. The general form implemented here is <em>the next seat clockwise from the last
      * play that has not yet played in this trick and still holds a card</em>.
      *
      * <p>Seats that do not exist at this table are simply absent from {@code seatsHoldingCards} and so
@@ -488,8 +488,8 @@ public final class Trick {
      * <p>The winner leads next — but only if the winner still holds a card, and under ADR-023 that is
      * not always true. At 74 cards, no supported table size divides evenly, so a seat can play its
      * last card and win the trick it played it into. At four players seats 0 and 1 hold nineteen
-     * cards and seats 2 and 3 hold eighteen: if seat 0 or 1 takes trick nineteen, the winner is out
-     * of cards while two other seats each still hold one.
+     * cards and seats 2 and 3 hold eighteen: if seat 2 or 3 takes trick eighteen, the winner is out
+     * of cards while seats 0 and 1 each still hold one.
      *
      * <p>Handing back the winner's seat regardless would open the next trick on a seat that can never
      * play into it: {@link #seatToPlay(Collection)} would report no seat to play while

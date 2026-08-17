@@ -10,7 +10,7 @@ import org.maglez.eop.entity.ScoreSheet;
  * <p>Nothing is accumulated anywhere. The score is derived, on every read, from the plays and from
  * which play won each trick, so there is no total to drift from the game that produced it and no
  * number a client could assert in place of one (ADR-030). The cost of recomputing is bounded by the
- * deck: seventy-eight cards, whatever the game.
+ * deck: seventy-four cards, whatever the game.
  *
  * <p>Two collaborators, and the first of them supplies two things. Resolving the credential yields
  * both the player and the session it belongs to, and the session already carries its players — so
