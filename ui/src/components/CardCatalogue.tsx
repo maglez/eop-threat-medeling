@@ -15,12 +15,13 @@ type CatalogueState =
  * Vite works.
  */
 /**
- * The full deck is 78 cards - thirteen ranks in each of the six STRIDE suits.
- * The catalogue asks for all of them in one request rather than paginating,
- * because a reference list of the deck is only useful whole. 78 is inside the
- * server's maximum page size of 100, so this is a single round trip.
+ * The full deck is 74 cards - Tampering starts at rank 3 and Elevation of Privilege
+ * starts at rank 5, giving twelve and ten ranks respectively; the other four suits
+ * hold thirteen ranks (2–A) each. The catalogue asks for all of them in one request
+ * rather than paginating, because a reference list of the deck is only useful whole.
+ * 74 is inside the server's maximum page size of 100, so this is a single round trip.
  */
-const DECK_SIZE = 78;
+const DECK_SIZE = 74;
 
 export function CardCatalogue(): React.JSX.Element {
   const [state, setState] = useState<CatalogueState>({ status: "loading" });

@@ -176,7 +176,7 @@ slice.
   result is not carrying them and the 70% branch
   minimum ADR-006 holds in reserve would not trouble them either.
 - The score is recomputed on every read, and that cost is accepted rather than mitigated.
-  A six-player game plays 78 cards in 13 tricks and a three-player game 78 in 26, so the
+  A six-player game plays 74 cards in 13 tricks and a three-player game 74 in 25, so the
   input is bounded by the deck and is small enough that measuring it would be theatre.
   Nothing here forecloses caching later if measurement ever contradicts that — but the
   honest position today is that this design trades a fixed, small, repeated cost for the

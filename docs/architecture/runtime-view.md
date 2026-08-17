@@ -855,7 +855,7 @@ sequenceDiagram
 and each trick's winner, recomputed on every read. There is no counter to increment on the
 play path, so there is no second transaction to fail independently and no total that can be
 wrong with no read able to detect it. The cost is bounded by the rules of the game rather than
-by a limit in code — a 78-card deck is at most 78 rows and at most six standings — which is
+by a limit in code — a 74-card deck is at most 74 rows and at most six standings — which is
 why ADR-030 accepts the recomputation and declines to cache it.
 
 **There is no 409 on this path, and its absence is the interesting part.** Every other read

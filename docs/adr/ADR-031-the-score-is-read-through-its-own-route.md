@@ -254,7 +254,7 @@ will check before approving slice C):
   none. The reason the asymmetry is safe is that a read claims nothing and so has no state to protect. Slice three's `COMPLETED` transition is a write and will be
   bound by it in full.
 - [ADR-023](ADR-023-deal-remainder-and-turn-order.md) supplies the arithmetic section six rests on: the whole
-  78-card deck is dealt, so three players hold 26 cards each and a hand runs to 26 tricks. That is where the
+  74-card deck is dealt, so three players hold 25 or 24 cards each and a hand runs to 25 tricks. That is where the
   seventy-nine reads a per-trick assembler would have cost comes from, and it is also why the sheet counts the
   plays it finds rather than assuming a trick holds one card per seat.
 - [ADR-024](ADR-024-trick-play-persistence-boundary.md) — `findTricks` takes no acting player, so authorising

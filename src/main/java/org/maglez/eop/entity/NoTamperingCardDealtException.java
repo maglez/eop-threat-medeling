@@ -5,9 +5,9 @@ package org.maglez.eop.entity;
  *
  * <p>The player holding the lowest-ranked tampering card in the deck leads the
  * first trick. That rank is deliberately never written down in code: the printed
- * 74-card deck starts on the three of tampering and the seeded 78-card deck
- * starts on the two, and both are correct for their own deck. The rule is
- * "lowest tampering card actually dealt", so it holds for either.
+ * 74-card deck starts on the three of tampering. The rule is "lowest tampering
+ * card actually dealt", so it holds for any future deck variant that starts
+ * differently.
  *
  * <p>Which leaves one case the rule cannot answer: a deck with no tampering suit
  * at all. That cannot happen with the seeded deck, so this exception exists to

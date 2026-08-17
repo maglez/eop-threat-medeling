@@ -195,7 +195,7 @@ jobs:
           # And the API must be reachable on the same origin. This is the
           # single-origin property from ADR-017 asserted rather than
           # assumed - if it regressed, the browser would need CORS.
-          if ! curl -fsSk 'https://localhost/api/v1/cards?size=1' | grep -q '"totalElements":78'; then
+          if ! curl -fsSk 'https://localhost/api/v1/cards?size=1' | grep -q '"totalElements":74'; then
             echo "::error::The card catalogue was not reachable through the proxy"
             docker compose -f compose.app.yml logs --no-color
             exit 1

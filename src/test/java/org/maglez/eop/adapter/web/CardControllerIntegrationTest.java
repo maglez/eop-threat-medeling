@@ -27,7 +27,7 @@ class CardControllerIntegrationTest {
     private static final String CARDS = "/api/v1/cards";
     /** Elevation of Privilege, Ace: the trump suit and an open threat card. */
     private static final String TRUMP_ACE_ID = "2a497b0e-e59d-50c9-a24b-f03f347dd4ed";
-    private static final int DECK_SIZE = 78;
+    private static final int DECK_SIZE = 74;
     private static final String PROBLEM_JSON = "application/problem+json";
 
     @Autowired
@@ -49,11 +49,12 @@ class CardControllerIntegrationTest {
                 .andExpect(jsonPath("$.content[0].rankSymbol").value("2"))
                 .andExpect(jsonPath("$.content[0].rankValue").value(2))
                 .andExpect(jsonPath("$.content[0].threatPrompt").isNotEmpty())
-                // Thirteen cards per suit, so the first page of twenty crosses one
-                // suit boundary exactly: Spoofing 2..A, then Tampering 2..8.
+                // Thirteen cards per suit for Spoofing, so the first page of twenty crosses one
+                // suit boundary exactly: Spoofing 2..A (13 cards), then Tampering 3..9.
+                // (Tampering starts at 3 in the printed deck — rank 2 was omitted.)
                 .andExpect(jsonPath("$.content[12].rank").value("ACE"))
                 .andExpect(jsonPath("$.content[13].suit").value("TAMPERING"))
-                .andExpect(jsonPath("$.content[19].rankValue").value(8));
+                .andExpect(jsonPath("$.content[19].rankValue").value(9));
     }
 
     @Test
@@ -84,8 +85,8 @@ class CardControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(DECK_SIZE))
                 .andExpect(jsonPath("$.totalPages").value(1))
-                .andExpect(jsonPath("$.content[77].suit").value("ELEVATION_OF_PRIVILEGE"))
-                .andExpect(jsonPath("$.content[77].rank").value("ACE"));
+                .andExpect(jsonPath("$.content[73].suit").value("ELEVATION_OF_PRIVILEGE"))
+                .andExpect(jsonPath("$.content[73].rank").value("ACE"));
     }
 
     @Test

@@ -60,5 +60,12 @@ The whitepaper's Future Work section names filling those gaps as the authors' ow
 file is the completed version of that intent rather than a corrupted copy of the 74-card deck.
 Seeding from it also removes any need for suit-specific minimum-rank special cases in the code.
 
+> **Amendment, 2026-08-17 (EOP-69):** The seeded deck was subsequently trimmed back to the
+> 74-card printed deck by migration `2026-08-17--trim-deck-to-74-printed-cards.xml`. The
+> simplification above was reversed: the application now seeds exactly the printed deck, and
+> suit-specific minimum ranks (Tampering starts at 3, EoP starts at 5) are an explicit property
+> of the seeded data rather than an artefact to be avoided. See
+> [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) for the full rationale.
+
 See `docs/requirements/PRD-eop-card-game.md` §11 for how each rule in the product requirements is
 attributed to these sources.

@@ -88,8 +88,8 @@ deck — every card withheld is a threat prompt the group never discusses, and t
 deck is a threat library before it is a game component.
 
 **The accepted cost, stated plainly: hands are unequal, so the final trick is
-short.** At four players two people hold 20 cards and two hold 19; at five, three
-hold 16 and two hold 15. The last trick of the game therefore has fewer cards in
+short.** At four players two seats hold 19 cards and two hold 18; at five, four
+seats hold 15 and one holds 14. The last trick of the game therefore has fewer cards in
 it than there are players at the table. This is not a defect to be corrected
 later: it is already sanctioned by the PRD §3.3 end condition, where play
 continues "until players run out of time, cards, or ways to connect their threats
@@ -101,7 +101,7 @@ The direct domain consequence must be built in from the first line of Slice A:
 > count of cards, and not one card per seat.**
 
 A reader who assumes trick size equals player count will write a defect that
-appears only in the last trick of a four- or five-player game. Trick completion is
+appears only in the last trick of any game. Trick completion is
 therefore "no seat that still holds a card is yet to play into this trick", and the
 same qualifier applies to turn advancement — see the note on ADR-019's formula
 below.
@@ -128,7 +128,8 @@ This is worth stating as a decision rather than an instruction, because the rule
 has two contradictory sources and both of them are right. The shipped instruction
 card says the 3 of Tampering; the whitepaper says the 2. The printed 74-card deck
 has no 2 of Tampering, so 3 is its lowest; the 78-card `cards.yaml` deck does have
-one, so 2 is ours. Neither document is in error and neither can be preferred.
+one, so 2 would be its lowest. *(EOP-69 trimmed the seeded deck to 74 cards, so 3
+is now ours too — see the amendment at the end of this ADR.)*
 
 Derivation is the only treatment that is correct for *both* decks, and that is the
 point: a constant would encode which deck the author happened to be reading, and
@@ -149,15 +150,16 @@ to the next seat clockwise from the winner that does.
 > **The winner does not always lead the next trick, and an earlier revision of
 > this ADR said it did.** It read "advanced to the winner's seat as each trick
 > resolves", full stop. Decision 1 makes hands unequal, so a seat can play its
-> final card into a trick and win that trick. At four players seats 2 and 3 hold
-> nineteen cards while seats 0 and 1 hold twenty: if seat 2 or seat 3 takes trick
-> nineteen, the winner is out of cards while two other seats each still hold one.
-> Handing the lead to the winner regardless would open trick twenty on a seat that
+> final card into a trick and win that trick. At four players seats 0 and 1 hold
+> nineteen cards while seats 2 and 3 hold eighteen: if seat 2 or seat 3 takes trick
+> eighteen, the winner is out of cards while seats 0 and 1 each still hold one.
+> Handing the lead to the winner regardless would open trick nineteen on a seat that
 > can never play into it. `Trick.seatToPlay` would report that nobody may play,
 > `isComplete` would report the trick incomplete because it holds no plays, and the
 > game would simply stop — with no exception, no error and nothing to log. That is
-> precisely the failure profile this ADR exists to prevent: correct at three and
-> six players, correct for every trick but the last, wrong only at four and five.
+> precisely the failure profile this ADR exists to prevent: correct for every trick
+> but the last, wrong at every player count (74 cards do not divide evenly at 3, 4,
+> 5 or 6 players).
 > The rule is therefore stated as a rule and implemented as one, in
 > `Trick.nextLeaderSeat(Collection<Integer> seatsHoldingCards)`, which returns no
 > seat at all when nobody holds a card — one of PRD §3.3's three end conditions,
@@ -668,23 +670,24 @@ database rather than by application logic that could be refactored away.
 before child, decided in this ADR rather than discovered as an intermittent
 failure in Slice D.
 
-**Negative — hands are unequal, and the final trick is short.** At four and five
-players some players hold one more card than others. Any code, test, DTO or UI
-that assumes `trick.plays.size() == players.size()` is wrong. This is the single
-most likely defect to come out of this decision, which is why the domain defines a
-trick as one card from each player who *still holds cards*.
+**Negative — hands are unequal, and the final trick is short.** At 74 cards,
+**all four supported table sizes** (3, 4, 5 and 6 players) produce unequal hands
+and a short final trick. Any code, test, DTO or UI that assumes
+`trick.plays.size() == players.size()` is wrong. This is the single most likely
+defect to come out of this decision, which is why the domain defines a trick as
+one card from each player who *still holds cards*.
 
 **Negative — the extra cards go to the lowest seats, and seat 0 is the
 facilitator.** Ascending seat order was chosen for determinism and testability,
 but it means the facilitator systematically receives one of the extra cards at
-four and five players. Under EOP-15's scoring (1 point per linked threat, +1 for
+every table size. Under EOP-15's scoring (1 point per linked threat, +1 for
 taking the trick) the extra card is worth up to **2** points, not the 1 point an
 earlier revision of this section implied by calling it "one card in nineteen": an
 extra card is an extra chance to link a threat *and* an extra chance to take a
 trick. The shape of the effect also differs by player count, which that phrasing
 obscured. At four players seats 0 and 1 gain a card and seats 2 and 3 do not; at
-five players seats 0, 1 and 2 gain one, so it is the *minority* — seats 3 and 4 —
-who are disadvantaged rather than one person who is favoured. What is constant is
+five players seats 0, 1, 2 and 3 gain one, so it is the *minority* — seat 4 only —
+who is disadvantaged rather than the majority. What is constant is
 that the facilitator is never on the losing side of it, because the facilitator
 always holds seat 0. Accepted for now: the effect is small against a 60–90 minute
 collaborative exercise whose scoring exists to drive participation rather than to
@@ -1437,4 +1440,48 @@ Binding consequence: C2 may not merge without `eop.features.trick-play` present 
 `application.yml` defaulted to `false`, recorded in ADR-013 per `.opencode/rules/feature-flags.md:16`,
 and covered by an off-position test asserting the controller bean is absent as well as the routes
 404-ing.
+
+## Amendment, 2026-08-17 — deck trimmed to 74 printed cards (EOP-69)
+
+**Story:** EOP-69  
+**Amends:** Context paragraph "The deck does not divide evenly" (line 17), Decision §1 table and
+formula (lines 58–69), the opening-lead paragraph "so 2 is ours" (lines 129–131), Consequences
+paragraph "All 78 threat prompts" (line 660), and the cross-reference at line 1394.
+
+The seeded deck was trimmed from 78 to 74 cards by migration
+`2026-08-17--trim-deck-to-74-printed-cards.xml`, which removes the four cards absent from the
+physical printed Elevation of Privilege deck:
+
+- TAMPERING rank 2
+- ELEVATION_OF_PRIVILEGE ranks 2, 3, and 4
+
+The original 78-card deck was a deliberate simplification in EOP-13 (uniform suits simplified the
+trick-taking rules). EOP-69 reverses that simplification to match the printed deck exactly.
+
+**Corrected deck arithmetic.** The deck is now 74 cards — TAMPERING holds 12 ranks (3–A),
+ELEVATION_OF_PRIVILEGE holds 10 ranks (5–A), and the remaining four suits hold 13 ranks (2–A) each.
+Against the PRD's supported range of three to six players:
+
+| Players | Hands |
+|---|---|
+| 3 | **25, 25**, 24 |
+| 4 | **19, 19**, 18, 18 |
+| 5 | **15, 15, 15, 15**, 14 |
+| 6 | **13, 13**, 12, 12, 12, 12 |
+
+The formula in Decision §1 — "after each player has received `D / n` cards, the remaining `D mod n`
+cards are dealt one each to seats `0, 1, 2, …`" — is unchanged; only `D` changes from 78 to 74.
+
+**Opening-lead rule is unaffected.** The rule "lowest Tampering card actually dealt" is derived and
+never hardcoded, so removing rank 2 from TAMPERING resolves naturally to rank 3 with no code change.
+This is the property the derivation was designed to preserve, and it is the reason the original ADR
+chose derivation over a constant.
+
+**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 660) now
+reads: all 74 threat prompts are held by someone. The four removed cards carry threat prompts that
+are absent from the physical deck and are therefore not part of the game's threat coverage.
+
+**Cross-reference correction.** The reference "EOP-13 (the 78-card deck this arithmetic depends on)"
+(line 1394) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
+above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
 

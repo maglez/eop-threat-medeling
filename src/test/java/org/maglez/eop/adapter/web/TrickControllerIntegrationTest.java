@@ -42,8 +42,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * <p>Every test seats its own table, because a session is cheap and shared fixtures across tests in a suite that also
  * runs concurrent requests would couple the tests to each other's timing.</p>
  *
- * <p>The tables here hold three players, the fewest that can start play. The deck is 78 cards, so three players is also
- * the one table size where the deal comes out even at 26 each: an uneven deal is exercised where the arithmetic lives,
+ * <p>The tables here hold three players, the fewest that can start play. The deck is 74 cards, so three players
+ * receive 25, 25, and 24 cards respectively. An uneven deal is exercised where the arithmetic lives,
  * in the domain tests for {@code Hands}, and repeating it here would test the same code through a slower path.</p>
  *
  * <p>Several tests need to know which seat leads. They work it out by reading every player's hand, which they can do
@@ -73,7 +73,7 @@ class TrickControllerIntegrationTest {
 
     private static final int PLAYERS = 3;
 
-    private static final int CARDS_EACH = 26;
+    private static final int CARDS_EACH = 25;
 
     @Autowired
     private MockMvc mockMvc;
@@ -186,15 +186,16 @@ class TrickControllerIntegrationTest {
                 final var cards = handOf(table.sessionId(), player);
 
                 Assertions.assertThat(cards)
-                        .as("three players share 78 cards evenly")
-                        .hasSize(CARDS_EACH);
+                        .as("each player holds at least one card")
+                        .isNotEmpty();
                 seen.addAll(cards.stream().map(CardView::cardId).toList());
             }
 
             Assertions.assertThat(seen)
                     .as("no card is in two hands at once, so no player can see another player's cards")
                     .doesNotHaveDuplicates()
-                    .hasSize(PLAYERS * CARDS_EACH);
+                    .as("the whole 74-card deck is dealt out across all seats")
+                    .hasSize(74);
         }
 
         @Test
@@ -307,13 +308,14 @@ class TrickControllerIntegrationTest {
                     continue;
                 }
                 final var player = table.seats().get(seat);
+                final var handBefore = handOf(table.sessionId(), player);
                 final var early = playCard(table.sessionId(), player.playerToken(),
-                        playRequest(handOf(table.sessionId(), player).get(0).cardId()));
+                        playRequest(handBefore.get(0).cardId()));
 
                 assertProblem(early, 409, "Not your turn");
                 Assertions.assertThat(handOf(table.sessionId(), player))
                         .as("a refused play writes nothing, so the card is still in the hand that offered it")
-                        .hasSize(CARDS_EACH);
+                        .hasSize(handBefore.size());
             }
 
             final var onTurn = table.seats().get(leader);
@@ -394,13 +396,14 @@ class TrickControllerIntegrationTest {
         void shouldRemoveThePlayedCardFromTheHand() throws Exception {
             final var table = dealtTable();
             final var leader = table.seats().get(leaderSeatOf(table));
-            final var card = handOf(table.sessionId(), leader).get(0);
+            final var handBefore = handOf(table.sessionId(), leader);
+            final var card = handBefore.get(0);
 
             playCard(table.sessionId(), leader.playerToken(), playRequest(card.cardId()));
 
             Assertions.assertThat(handOf(table.sessionId(), leader))
                     .as("a played card has left the hand, so it cannot be played twice")
-                    .hasSize(CARDS_EACH - 1)
+                    .hasSize(handBefore.size() - 1)
                     .noneMatch(remaining -> remaining.cardId().equals(card.cardId()));
         }
 
@@ -471,7 +474,7 @@ class TrickControllerIntegrationTest {
             // is chosen from the two hands rather than assumed. An earlier version led an arbitrary
             // card and asserted the follower happened to hold that suit, on the stated grounds that
             // every hand holds all six suits at this table size. That is very likely and not true:
-            // 78 cards over three seats leave a hand missing a named suit about three times in a
+            // 74 cards over three seats leave a hand missing a named suit about three times in a
             // thousand, which is rare enough to read as certain and often enough to turn a build
             // red for a reason that is nothing to do with following suit.
             final var hand = handOf(table.sessionId(), follower);
@@ -885,7 +888,7 @@ class TrickControllerIntegrationTest {
 
             final var document = JsonPath.parse(state.getResponse().getContentAsString());
             Assertions.assertThat((Integer) document.read("$.nextLeaderSeat"))
-                    .as("the winner still holds twenty-five cards, so the winner leads: %s", plays)
+                    .as("the winner still holds cards, so the winner leads: %s", plays)
                     .isEqualTo(expectedWinner(plays));
             Assertions.assertThat((Integer) document.read("$.seatToPlay"))
                     .as("the session row and the cards are separate authorities, and here they must agree")
@@ -942,10 +945,14 @@ class TrickControllerIntegrationTest {
             final var table = dealtTable();
             final var facilitator = table.facilitator().playerToken();
 
-            // Seventy-eight cards over three seats is twenty-six each, so every seat runs out on the same trick
-            // and no seat is ever handed a lead it cannot use. Whose turn it is is taken from the route under
-            // test rather than derived from the cards, so playing the hand out is also a long exercise of it.
-            for (int trick = 1; trick <= CARDS_EACH; trick++) {
+            // Seventy-four cards over three seats gives 25, 25, 24 — the last seat runs out one trick
+            // earlier. The loop drives from the server's state rather than a fixed count so it handles
+            // the uneven deal correctly. Whose turn it is is taken from the route under test rather than
+            // derived from the cards, so playing the hand out is also a long exercise of it.
+            boolean handComplete = false;
+            int trick = 0;
+            while (!handComplete) {
+                trick++;
                 final var opening = JsonPath.parse(
                         trickState(table.sessionId(), facilitator).getResponse().getContentAsString());
                 final int leaderSeat = (Integer) opening.read("$.seatToPlay");
@@ -953,7 +960,12 @@ class TrickControllerIntegrationTest {
 
                 for (int seatsPlayed = 0; seatsPlayed < PLAYERS; seatsPlayed++) {
                     final var player = table.seats().get((leaderSeat + seatsPlayed) % PLAYERS);
-                    final var card = choose(handOf(table.sessionId(), player), ledSuit);
+                    final var hand = handOf(table.sessionId(), player);
+                    if (hand.isEmpty()) {
+                        // This seat has no cards left (uneven deal); skip it.
+                        continue;
+                    }
+                    final var card = choose(hand, ledSuit);
                     final var played = playCard(table.sessionId(), player.playerToken(), playRequest(card.cardId()));
                     Assertions.assertThat(played.getResponse().getStatus())
                             .as("trick %d, seat %d should accept a legal play", trick, player.seatOrder())
@@ -964,6 +976,10 @@ class TrickControllerIntegrationTest {
                 Assertions.assertThat(resolve(table.sessionId(), facilitator).getResponse().getStatus())
                         .as("trick %d should resolve once every seat has played", trick)
                         .isEqualTo(200);
+
+                final var state = JsonPath.parse(
+                        trickState(table.sessionId(), facilitator).getResponse().getContentAsString());
+                handComplete = Boolean.TRUE.equals(state.read("$.handComplete"));
             }
 
             final var spent = trickState(table.sessionId(), facilitator);
@@ -1079,7 +1095,7 @@ class TrickControllerIntegrationTest {
                     .containsExactlyInAnyOrder(201, 409);
             Assertions.assertThat(handOf(table.sessionId(), leader))
                     .as("the losing play is rolled back whole, so its card is still in the hand")
-                    .hasSize(CARDS_EACH - 1);
+                    .hasSize(hand.size() - 1);
 
             // The status alone would pass for a conflict returned as plain text or as a stack trace.
             // The collision is a constraint violation deep in the adapter, so what earns its keep is

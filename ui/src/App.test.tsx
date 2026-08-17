@@ -5,9 +5,11 @@ import App from "./App";
 import type { Card, PagedResponse } from "./api";
 
 /**
- * The full deck is 78 cards, thirteen in each of the six suits.
+ * The full deck is 74 cards: Tampering starts at rank 3 (twelve ranks) and
+ * Elevation of Privilege starts at rank 5 (ten ranks); the other four suits
+ * hold thirteen ranks (2–A) each.
  */
-const DECK_SIZE = 78;
+const DECK_SIZE = 74;
 
 /** The first card in deck order: Spoofing, rank two. */
 const SPOOFING_TWO: Card = {
@@ -117,7 +119,7 @@ describe("Card catalogue", () => {
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/v1/cards?size=78",
+        `/api/v1/cards?size=${DECK_SIZE}`,
         expect.objectContaining({ headers: { Accept: "application/json" } }),
       );
     });
