@@ -28,6 +28,19 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # Cache the local Maven repository so dependency downloads do not
+      # dominate build time. The key includes the pom.xml hash so the cache
+      # is invalidated automatically when dependencies change. The restore-key
+      # falls back to any prior Maven cache for the same OS, which still saves
+      # most of the download time even after a pom.xml change.
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
       # The Maven Wrapper, not a system `mvn`. The wrapper pins the Maven
       # version; `mvn` is whatever the runner image happens to ship.
       - name: Build and test
