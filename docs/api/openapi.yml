@@ -1314,7 +1314,7 @@ components:
           description: |
             How many cards remain. Redundant with the length of `cards`, and
             present because hands are not equal: the whole 74-card deck is dealt,
-            so the counts differ by one across the table (seat 0 receives the
+            so the counts differ across the table (the lowest seats receive the
             remainder) and shrink at different rates once the short final trick
             is reached.
         cards:

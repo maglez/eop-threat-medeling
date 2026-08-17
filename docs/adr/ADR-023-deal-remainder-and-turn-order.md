@@ -1446,7 +1446,7 @@ and covered by an off-position test asserting the controller bean is absent as w
 **Story:** EOP-69  
 **Amends:** Context paragraph "The deck does not divide evenly" (line 17), Decision §1 table and
 formula (lines 58–69), the opening-lead paragraph "so 2 is ours" (lines 129–131), Consequences
-paragraph "All 78 threat prompts" (line 659), and the cross-reference at line 1393.
+paragraph "All 78 threat prompts" (line 660), and the cross-reference at line 1394.
 
 The seeded deck was trimmed from 78 to 74 cards by migration
 `2026-08-17--trim-deck-to-74-printed-cards.xml`, which removes the four cards absent from the
@@ -1477,11 +1477,11 @@ never hardcoded, so removing rank 2 from TAMPERING resolves naturally to rank 3 
 This is the property the derivation was designed to preserve, and it is the reason the original ADR
 chose derivation over a constant.
 
-**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 659) now
+**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 660) now
 reads: all 74 threat prompts are held by someone. The four removed cards carry threat prompts that
 are absent from the physical deck and are therefore not part of the game's threat coverage.
 
 **Cross-reference correction.** The reference "EOP-13 (the 78-card deck this arithmetic depends on)"
-(line 1393) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
+(line 1394) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
 above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
 
