@@ -103,6 +103,7 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             disabled={isSubmitting}
+            autoFocus
             autoComplete="off"
             aria-describedby={`join-code-hint${hasJoinCodeError ? ' join-code-error' : ''}`}
           />
