@@ -101,8 +101,8 @@ suit** if they hold a card in the led suit. If they hold none, they may play any
  > time around the table" holds for every trick but the last. Because the whole deck is dealt and 74
 > cards do not divide equally at any supported table size (3, 4, 5 or 6 players), hands are unequal, so a trick is **one card
 > from each player who still holds cards** — not a fixed count, and not one card per seat. Turn
-> order is therefore *the next seat clockwise that still holds a card*, and the final trick at four
-> and five players is short. The sentence above is the shipped instruction card's wording and is
+> order is therefore *the next seat clockwise that still holds a card*, and the final trick of
+> every game is short. The sentence above is the shipped instruction card's wording and is
 > right for a game where every hand empties together; it is not the rule the application implements.
 
 **Linking a threat:** playing a card where a compensating control already exists is still valid —

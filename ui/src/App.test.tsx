@@ -119,7 +119,7 @@ describe("Card catalogue", () => {
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/v1/cards?size=78",
+        `/api/v1/cards?size=${DECK_SIZE}`,
         expect.objectContaining({ headers: { Accept: "application/json" } }),
       );
     });

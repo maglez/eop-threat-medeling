@@ -101,7 +101,7 @@ The direct domain consequence must be built in from the first line of Slice A:
 > count of cards, and not one card per seat.**
 
 A reader who assumes trick size equals player count will write a defect that
-appears only in the last trick of a four- or five-player game. Trick completion is
+appears only in the last trick of any game. Trick completion is
 therefore "no seat that still holds a card is yet to play into this trick", and the
 same qualifier applies to turn advancement — see the note on ADR-019's formula
 below.
@@ -128,7 +128,8 @@ This is worth stating as a decision rather than an instruction, because the rule
 has two contradictory sources and both of them are right. The shipped instruction
 card says the 3 of Tampering; the whitepaper says the 2. The printed 74-card deck
 has no 2 of Tampering, so 3 is its lowest; the 78-card `cards.yaml` deck does have
-one, so 2 is ours. Neither document is in error and neither can be preferred.
+one, so 2 would be its lowest. *(EOP-69 trimmed the seeded deck to 74 cards, so 3
+is now ours too — see the amendment at the end of this ADR.)*
 
 Derivation is the only treatment that is correct for *both* decks, and that is the
 point: a constant would encode which deck the author happened to be reading, and
@@ -1444,8 +1445,8 @@ and covered by an off-position test asserting the controller bean is absent as w
 
 **Story:** EOP-69  
 **Amends:** Context paragraph "The deck does not divide evenly" (line 17), Decision §1 table and
-formula (lines 58–69), Consequences paragraph "All 78 threat prompts" (line 659), and the
-cross-reference at line 1393.
+formula (lines 58–69), the opening-lead paragraph "so 2 is ours" (lines 129–131), Consequences
+paragraph "All 78 threat prompts" (line 659), and the cross-reference at line 1393.
 
 The seeded deck was trimmed from 78 to 74 cards by migration
 `2026-08-17--trim-deck-to-74-printed-cards.xml`, which removes the four cards absent from the
