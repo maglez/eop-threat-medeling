@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-SNAPSHOT] — Unreleased
 
+### Changed
+
+- **Deck trimmed to 74 printed cards (EOP-69).** Tampering now starts at rank 3 and Elevation of Privilege starts at rank 5, matching the physical card game. A Liquibase migration deletes the four absent cards (TAMPERING rank 2, EoP ranks 2/3/4) with full rollback. Deal distributions updated: 3 players → 25/25/24, 4 → 19/19/18/18, 5 → 15/15/15/15/14, 6 → 13/13/12/12/12/12. The opening-lead rule ("lowest Tampering card dealt") is unchanged and naturally resolves to rank 3 with this deck.
+
 ### Added
 
 - **Game-over leaderboard and new-game reset (EOP-65, ADR-039).** When the last trick resolves, `ResolveTrickUseCase` calls `PersistGameResultUseCase` (best-effort, behind `Optional`) to write a `game_result` row and per-player `game_result_player` rows. `GET /api/v1/sessions/{sessionId}/leaderboard` returns the final standings (competition-ranked, STRIDE breakdown per player derived from trick history per ADR-030) for any seated player once the session is COMPLETED. `POST /api/v1/sessions/{sessionId}/new-game` (facilitator only) clears all tricks and hands, resets the session to IN_PROGRESS, and re-deals the 78-card deck to the same seats. Both routes are gated on `eop.features.game-over` (default `false`). The `GameOverScreen` React component (GOV.UK table, WCAG 2.2 AA) is wired to the `game-completed` SSE event in `GameScreen`. ADR-039 documents the non-atomic reset sequence and the accepted trade-off. ADR-032 is amended to reference ADR-039.

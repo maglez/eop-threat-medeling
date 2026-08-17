@@ -19,8 +19,9 @@ info:
     never mutated through this API. There is deliberately no POST, PUT, PATCH or
     DELETE on `/api/v1/cards`.
 
-    The deck is the real Elevation of Privilege deck: 78 cards, thirteen ranks
-    in each of the six STRIDE suits. © 2009 Microsoft Corporation, licensed
+    The deck is the real Elevation of Privilege deck: 74 cards — Tampering
+    starts at rank 3 and Elevation of Privilege starts at rank 5; all other
+    suits run from rank 2 to Ace. © 2009 Microsoft Corporation, licensed
     Creative Commons Attribution 3.0 United States — see
     `docs/EoP_Microsoft_Docs/LICENCE-eop-deck.md`. Attribution is the only
     obligation the licence imposes, and it is discharged in the running
@@ -453,9 +454,10 @@ paths:
         Facilitator only, and only once per session: a second call is a `409`.
         Requires the session to be joinable and to hold at least three players.
 
-        **The deck is not dealt evenly.** All 78 cards are dealt, and the
+        **The deck is not dealt evenly.** All 74 cards are dealt, and the
         remainder goes to the lowest seats, so hands differ in size by at most
-        one — four players receive 20/20/19/19, five receive 16/16/16/15/15. A
+        one — three players receive 25/25/24, four receive 19/19/18/18, five
+        receive 15/15/15/15/14, six receive 13/13/12/12/12/12. A
         trick is therefore one card from each seat that *still holds cards*, and
         the last trick of a hand is short.
 
@@ -903,7 +905,7 @@ paths:
       tags: [game-over]
       summary: Start a new game with the same players
       description: |
-        Clears all tricks and hands, re-deals the 78-card deck, and transitions
+        Clears all tricks and hands, re-deals the 74-card deck, and transitions
         the session back to `IN_PROGRESS`. All players remain in their original
         seats with the same seat numbers. The opening leader is the seat holding
         the 3 of Tampering.
@@ -1669,7 +1671,7 @@ components:
       properties:
         rows:
           type: array
-          maxItems: 78
+          maxItems: 74
           items:
             $ref: '#/components/schemas/ScoredPlay'
           description: |

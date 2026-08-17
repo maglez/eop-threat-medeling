@@ -474,7 +474,7 @@ class TrickControllerIntegrationTest {
             // is chosen from the two hands rather than assumed. An earlier version led an arbitrary
             // card and asserted the follower happened to hold that suit, on the stated grounds that
             // every hand holds all six suits at this table size. That is very likely and not true:
-            // 78 cards over three seats leave a hand missing a named suit about three times in a
+            // 74 cards over three seats leave a hand missing a named suit about three times in a
             // thousand, which is rare enough to read as certain and often enough to turn a build
             // red for a reason that is nothing to do with following suit.
             final var hand = handOf(table.sessionId(), follower);
@@ -888,7 +888,7 @@ class TrickControllerIntegrationTest {
 
             final var document = JsonPath.parse(state.getResponse().getContentAsString());
             Assertions.assertThat((Integer) document.read("$.nextLeaderSeat"))
-                    .as("the winner still holds twenty-five cards, so the winner leads: %s", plays)
+                    .as("the winner still holds cards, so the winner leads: %s", plays)
                     .isEqualTo(expectedWinner(plays));
             Assertions.assertThat((Integer) document.read("$.seatToPlay"))
                     .as("the session row and the cards are separate authorities, and here they must agree")

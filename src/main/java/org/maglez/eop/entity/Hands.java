@@ -187,10 +187,9 @@ public final class Hands {
      * that was actually dealt.
      *
      * <p>The rank is derived and never written down, because there is no single right answer to write.
-     * The printed deck that ships with the game starts on the three of Tampering; the whitepaper says
-     * the two. Both are correct for their own deck — the printed 74-card deck has no two, and the
-     * 78-card deck this application seeds does. A literal two or three in this method would be a defect
-     * against one of them.
+      * The printed deck that ships with the game starts on the three of Tampering (rank 2 is absent),
+      * and the 74-card deck this application seeds matches that. A literal three in this method would
+      * be a defect against any future deck variant that starts differently.
      *
      * <p>Tampering is where the game starts on purpose rather than by accident: tampering threats are
      * common and easy to see, so the first player gets a decision they can actually make.
