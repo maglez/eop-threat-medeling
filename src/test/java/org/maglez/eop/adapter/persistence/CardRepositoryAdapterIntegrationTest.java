@@ -2,6 +2,7 @@ package org.maglez.eop.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,8 +31,27 @@ import org.springframework.boot.test.context.SpringBootTest;
 @DisplayName("Card persistence")
 class CardRepositoryAdapterIntegrationTest {
 
-    private static final int DECK_SIZE = 78;
-    private static final int CARDS_PER_SUIT = 13;
+    /**
+     * The physical printed deck has 74 cards. Tampering starts at rank 3 (12 cards),
+     * Elevation of Privilege starts at rank 5 (10 cards), all other suits run 2–A (13 cards each).
+     * 4 × 13 + 12 + 10 = 74.
+     */
+    private static final int DECK_SIZE = 74;
+
+    /**
+     * Expected card count per suit in the printed deck.
+     * Suits not listed here hold the standard 13 cards.
+     */
+    private static final Map<StrideCategory, Integer> CARDS_PER_SUIT;
+
+    static {
+        CARDS_PER_SUIT = new EnumMap<>(StrideCategory.class);
+        for (final StrideCategory suit : StrideCategory.values()) {
+            CARDS_PER_SUIT.put(suit, 13);
+        }
+        CARDS_PER_SUIT.put(StrideCategory.TAMPERING, 12);
+        CARDS_PER_SUIT.put(StrideCategory.ELEVATION_OF_PRIVILEGE, 10);
+    }
 
     /** The largest page the contract allows, so one request returns the whole deck. */
     private static final PageQuery WHOLE_DECK = new PageQuery(0, PageQuery.MAX_SIZE);
@@ -43,14 +63,14 @@ class CardRepositoryAdapterIntegrationTest {
     private CardJpaRepository jpaRepository;
 
     /**
-     * Counts per suit rather than only the total, because a total of 78 is also
-     * reachable with an uneven distribution — twelve of one suit and fourteen of
-     * another would pass a total-only assertion and produce a deck nobody can
-     * play a fair trick with.
+     * Counts per suit rather than only the total, because a total of 74 is also
+     * reachable with an uneven distribution. The printed deck is intentionally
+     * uneven: Tampering has 12 cards (starts at 3) and Elevation of Privilege has
+     * 10 cards (starts at 5).
      */
     @Test
-    @DisplayName("the deck holds thirteen cards in every suit, not merely seventy-eight in total")
-    void shouldSeedThirteenCardsPerSuit() {
+    @DisplayName("the deck holds seventy-four cards matching the printed deck's suit distribution")
+    void shouldSeedCorrectCardsPerSuit() {
         final PageResult<Card> page = adapter.findAll(WHOLE_DECK);
 
         assertThat(page.totalElements()).isEqualTo(DECK_SIZE);
@@ -59,17 +79,32 @@ class CardRepositoryAdapterIntegrationTest {
                 .collect(Collectors.groupingBy(Card::suit, Collectors.counting()));
 
         assertThat(bySuit).hasSize(StrideCategory.values().length);
-        assertThat(bySuit).allSatisfy((suit, count) -> assertThat(count).isEqualTo(CARDS_PER_SUIT));
+        CARDS_PER_SUIT.forEach((suit, expected) ->
+                assertThat(bySuit.get(suit))
+                        .as("card count for suit %s", suit)
+                        .isEqualTo(expected.longValue()));
     }
 
     @Test
-    @DisplayName("every suit holds each rank exactly once, so there are no gaps or duplicates")
-    void shouldSeedEveryRankOnceInEverySuit() {
-        final Map<StrideCategory, List<Rank>> ranksBySuit = adapter.findAll(WHOLE_DECK).content().stream()
-                .collect(Collectors.groupingBy(Card::suit, Collectors.mapping(Card::rank, Collectors.toList())));
+    @DisplayName("Tampering starts at rank 3 — rank 2 was omitted from the printed deck")
+    void shouldNotContainTamperingTwo() {
+        final List<Card> tampering = adapter.findAll(WHOLE_DECK).content().stream()
+                .filter(card -> card.suit() == StrideCategory.TAMPERING)
+                .toList();
 
-        assertThat(ranksBySuit).allSatisfy(
-                (suit, ranks) -> assertThat(ranks).containsExactlyInAnyOrder(Rank.values()));
+        assertThat(tampering).extracting(Card::rank).doesNotContain(Rank.TWO);
+        assertThat(tampering).extracting(Card::rank).contains(Rank.THREE);
+    }
+
+    @Test
+    @DisplayName("Elevation of Privilege starts at rank 5 — ranks 2, 3, 4 were omitted from the printed deck")
+    void shouldNotContainElevationOfPrivilegeTwoThreeFour() {
+        final List<Card> eop = adapter.findAll(WHOLE_DECK).content().stream()
+                .filter(card -> card.suit() == StrideCategory.ELEVATION_OF_PRIVILEGE)
+                .toList();
+
+        assertThat(eop).extracting(Card::rank).doesNotContain(Rank.TWO, Rank.THREE, Rank.FOUR);
+        assertThat(eop).extracting(Card::rank).contains(Rank.FIVE);
     }
 
     @Test
@@ -90,6 +125,7 @@ class CardRepositoryAdapterIntegrationTest {
                 .filter(card -> card.suit() == StrideCategory.SPOOFING)
                 .toList();
 
+        // Spoofing is a full suit (2–A), so all ranks must be present in order.
         assertThat(spoofing).extracting(Card::rank).containsExactly(Rank.values());
     }
 
@@ -103,12 +139,13 @@ class CardRepositoryAdapterIntegrationTest {
     }
 
     @Test
-    @DisplayName("pages are real: a page size of two yields thirty-nine pages over the deck")
+    @DisplayName("pages are real: a page size of two yields thirty-seven pages over the deck")
     void shouldPaginateAtTheDatabase() {
         final PageResult<Card> firstPage = adapter.findAll(new PageQuery(0, 2));
 
         assertThat(firstPage.content()).hasSize(2);
         assertThat(firstPage.totalPages()).isEqualTo(DECK_SIZE / 2);
+        // First two cards are Spoofing 2 and Spoofing 3 (Spoofing is a full suit).
         assertThat(firstPage.content())
                 .extracting(Card::rank)
                 .containsExactly(Rank.TWO, Rank.THREE);

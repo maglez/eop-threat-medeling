@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Trim the deck to the 74 cards of the physical printed Elevation of Privilege deck.
+
+  The original whitepaper states: "the Elevation of Privilege suit starts at 5,
+  and Tampering starts at 3 because we didn't have sufficient hints to fill out
+  the suit and wanted to avoid repetition."
+
+  002-real-deck.xml seeded all 78 cards (2–A in every suit) because the uniform
+  deck simplified the trick-taking rules in EOP-14. This migration removes the
+  four cards that do not appear in the printed deck:
+
+    - TAMPERING rank 2  (id: 0145d70f-544b-5cd0-9c0a-164d09a969b7)
+    - ELEVATION_OF_PRIVILEGE rank 2  (id: 24b333fb-38c4-581e-b86c-670cdc7b4c62)
+    - ELEVATION_OF_PRIVILEGE rank 3  (id: e030b625-b4e3-51d4-9d91-1b50ae0bf0e1)
+    - ELEVATION_OF_PRIVILEGE rank 4  (id: 7229e28b-c578-5ab8-bbc5-fdc8d5b00521)
+
+  After this migration:
+    - TAMPERING holds 12 cards (ranks 3–A)
+    - ELEVATION_OF_PRIVILEGE holds 10 cards (ranks 5–A)
+    - All other suits hold 13 cards (ranks 2–A)
+    - Total: 74 cards
+
+  Identifiers are taken directly from 002-real-deck.xml so this changeset cannot
+  accidentally delete a card it did not create.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001" author="miguel">
+    <comment>
+      Remove the four cards absent from the physical printed deck.
+      Tampering starts at rank 3; Elevation of Privilege starts at rank 5.
+    </comment>
+
+    <delete tableName="card">
+      <where>id = '0145d70f-544b-5cd0-9c0a-164d09a969b7'</where>
+    </delete>
+
+    <delete tableName="card">
+      <where>id = '24b333fb-38c4-581e-b86c-670cdc7b4c62'</where>
+    </delete>
+
+    <delete tableName="card">
+      <where>id = 'e030b625-b4e3-51d4-9d91-1b50ae0bf0e1'</where>
+    </delete>
+
+    <delete tableName="card">
+      <where>id = '7229e28b-c578-5ab8-bbc5-fdc8d5b00521'</where>
+    </delete>
+
+    <rollback>
+      <!-- Re-insert the four deleted cards in their original order. -->
+
+      <insert tableName="card">
+        <column name="id" value="0145d70f-544b-5cd0-9c0a-164d09a969b7"/>
+        <column name="suit" value="TAMPERING"/>
+        <column name="suit_order" valueNumeric="2"/>
+        <column name="card_rank" valueNumeric="2"/>
+        <column name="threat_prompt" value="An attacker can modify your build system and produce signed builds of your software"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="24b333fb-38c4-581e-b86c-670cdc7b4c62"/>
+        <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+        <column name="suit_order" valueNumeric="6"/>
+        <column name="card_rank" valueNumeric="2"/>
+        <column name="threat_prompt" value="An attacker has compromised a key technology supplier"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="e030b625-b4e3-51d4-9d91-1b50ae0bf0e1"/>
+        <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+        <column name="suit_order" valueNumeric="6"/>
+        <column name="card_rank" valueNumeric="3"/>
+        <column name="threat_prompt" value="An attacker can access the cloud service which manages your devices"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="7229e28b-c578-5ab8-bbc5-fdc8d5b00521"/>
+        <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+        <column name="suit_order" valueNumeric="6"/>
+        <column name="card_rank" valueNumeric="4"/>
+        <column name="threat_prompt" value="An attacker can escape from a container or other sandbox"/>
+      </insert>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

@@ -9,7 +9,7 @@ import java.util.UUID;
  *
  * <p>Not a builder in the {@link CardBuilder} sense: it does not vary one field of one card, it produces
  * the specific cards a trick-taking rule needs to be tested against. A follow-suit test needs a hand
- * that holds the led suit and one that does not; a deal test needs all seventy-eight cards.
+ * that holds the led suit and one that does not; a deal test needs all seventy-four cards.
  *
  * <p>Card identifiers are derived from the suit and rank rather than random, so the same card is always
  * the same identifier across a test. That matters because {@link Hand#holds(Card)} compares by
@@ -56,17 +56,28 @@ public final class DeckFixture {
     }
 
     /**
-     * The whole seeded deck: every rank of every STRIDE category, seventy-eight cards.
+     * The whole printed deck: seventy-four cards matching the physical Elevation of Privilege deck.
+     *
+     * <p>The printed deck omits four cards that were absent from the original whitepaper deck:
+     * Tampering starts at rank 3 (no rank 2), and Elevation of Privilege starts at rank 5
+     * (no ranks 2, 3, or 4). All other suits run 2–A (thirteen cards each).
      *
      * <p>Ordered by suit and then by rank, which is a deck fresh out of the box rather than a shuffled
      * one. Dealing an unshuffled deck is exactly what makes the distribution assertable.
      *
-     * @return all seventy-eight cards
+     * @return all seventy-four cards
      */
     public static List<Card> fullDeck() {
         final List<Card> deck = new ArrayList<>();
         for (final StrideCategory suit : StrideCategory.values()) {
             for (final Rank rank : Rank.values()) {
+                if (suit == StrideCategory.TAMPERING && rank == Rank.TWO) {
+                    continue; // Tampering starts at 3 in the printed deck
+                }
+                if (suit == StrideCategory.ELEVATION_OF_PRIVILEGE
+                        && (rank == Rank.TWO || rank == Rank.THREE || rank == Rank.FOUR)) {
+                    continue; // Elevation of Privilege starts at 5 in the printed deck
+                }
                 deck.add(card(suit, rank));
             }
         }

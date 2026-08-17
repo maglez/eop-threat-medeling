@@ -43,26 +43,33 @@ class HandsTest {
     class Dealing {
 
         @Test
-        @DisplayName("three players hold twenty-six cards each, because seventy-eight divides evenly")
+        @DisplayName("three players hold twenty-five, twenty-five and twenty-four cards (74 mod 3 = 2 remainder)")
         void shouldDealEvenlyToThree() {
             final Hands hands = Hands.deal(fullDeck(), seats(3));
 
-            assertThat(hands.handOf(0).size()).isEqualTo(26);
-            assertThat(hands.handOf(1).size()).isEqualTo(26);
-            assertThat(hands.handOf(2).size()).isEqualTo(26);
+            assertThat(hands.handOf(0).size()).isEqualTo(25);
+            assertThat(hands.handOf(1).size()).isEqualTo(25);
+            assertThat(hands.handOf(2).size()).isEqualTo(24);
         }
 
         @Test
-        @DisplayName("six players hold thirteen cards each")
+        @DisplayName("six players hold thirteen, thirteen, twelve, twelve, twelve and twelve cards (74 mod 6 = 2 remainder)")
         void shouldDealEvenlyToSix() {
             final Hands hands = Hands.deal(fullDeck(), seats(6));
 
             assertThat(hands.seats()).containsExactly(0, 1, 2, 3, 4, 5);
-            hands.seats().forEach(seat -> assertThat(hands.handOf(seat).size()).isEqualTo(13));
+            assertThat(List.of(
+                            hands.handOf(0).size(),
+                            hands.handOf(1).size(),
+                            hands.handOf(2).size(),
+                            hands.handOf(3).size(),
+                            hands.handOf(4).size(),
+                            hands.handOf(5).size()))
+                    .containsExactly(13, 13, 12, 12, 12, 12);
         }
 
         @Test
-        @DisplayName("four players hold twenty, twenty, nineteen and nineteen, so the last trick is short")
+        @DisplayName("four players hold nineteen, nineteen, eighteen and eighteen (74 mod 4 = 2 remainder)")
         void shouldPutTheRemainderOnTheLowestSeatsAtFour() {
             final Hands hands = Hands.deal(fullDeck(), seats(4));
 
@@ -71,11 +78,11 @@ class HandsTest {
                             hands.handOf(1).size(),
                             hands.handOf(2).size(),
                             hands.handOf(3).size()))
-                    .containsExactly(20, 20, 19, 19);
+                    .containsExactly(19, 19, 18, 18);
         }
 
         @Test
-        @DisplayName("five players hold sixteen, sixteen, sixteen, fifteen and fifteen")
+        @DisplayName("five players hold fifteen, fifteen, fifteen, fifteen and fourteen (74 mod 5 = 4 remainder)")
         void shouldPutTheRemainderOnTheLowestSeatsAtFive() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
@@ -85,7 +92,7 @@ class HandsTest {
                             hands.handOf(2).size(),
                             hands.handOf(3).size(),
                             hands.handOf(4).size()))
-                    .containsExactly(16, 16, 16, 15, 15);
+                    .containsExactly(15, 15, 15, 15, 14);
         }
 
         @Test
@@ -98,8 +105,8 @@ class HandsTest {
                     .values()
                     .forEach(hand -> hand.cards().forEach(dealtCard -> dealt.add(dealtCard.cardId())));
 
-            assertThat(hands.totalCards()).isEqualTo(78);
-            assertThat(dealt).hasSize(78).doesNotHaveDuplicates();
+            assertThat(hands.totalCards()).isEqualTo(74);
+            assertThat(dealt).hasSize(74).doesNotHaveDuplicates();
         }
 
         @Test
@@ -375,7 +382,7 @@ class HandsTest {
 
             assertThat(hands.toString())
                     .contains("seats=3")
-                    .contains("cardsRemaining=78")
+                    .contains("cardsRemaining=74")
                     .doesNotContain("TAMPERING")
                     .doesNotContain("There's a way");
         }

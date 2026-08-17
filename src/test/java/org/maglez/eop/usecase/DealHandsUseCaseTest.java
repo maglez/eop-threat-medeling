@@ -55,7 +55,11 @@ class DealHandsUseCaseTest {
 
     private static final int SEATS = 3;
 
-    private static final int CARDS_PER_SEAT = 26;
+    /**
+     * With 74 cards and 3 seats, the deal is 25, 25, 24 (74 mod 3 = 2 remainder).
+     * Seat 0 receives the extra card, so it holds 25 cards.
+     */
+    private static final int CARDS_PER_SEAT = 25;
 
     private static final int TWO_PLAYERS = 2;
 
@@ -115,7 +119,7 @@ class DealHandsUseCaseTest {
         assertThat(shuffler.calls()).isOne();
         assertThat(shuffler.received()).isEqualTo(canonical);
         assertThat(expectedAtSeatZero)
-                .as("the reversed deal gives the first seat a third of the deck")
+                .as("the reversed deal gives the first seat its share of the deck (25 of 74 cards)")
                 .hasSize(CARDS_PER_SEAT);
         assertThat(handRepository.recordedHands().handOf(0).cards())
                 .as("every card at the first seat is one the reversed order would have put there")
