@@ -2,13 +2,17 @@ package org.maglez.eop.usecase;
 
 import java.time.Clock;
 import java.util.Objects;
+import java.util.Optional;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
+import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickPlay;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Plays one card from the acting player's hand into the current trick, opening a trick first if none
@@ -86,10 +90,19 @@ import org.maglez.eop.entity.TrickPlay;
  * {@link SessionEventPublisher} places on its implementation &mdash; and delivery is unordered with
  * respect to this response, so a caller may be notified of its own play.
  *
- * <p>A complete trick is not resolved here. Resolution is {@link ResolveTrickUseCase}'s, and a play
- * that silently resolved would make one caller's refusal depend on another caller's timing.
+ * <p>When the play just appended completes the trick &mdash; every seat that holds cards has now
+ * played &mdash; the trick is resolved inline before this method returns. The winner is determined,
+ * the resolution is recorded, and {@code trick-resolved} is published immediately after
+ * {@code card-played}. If no seat holds cards after the resolution the session is marked completed
+ * and {@code game-completed} follows. This keeps the UI simple: it reacts to {@code trick-resolved}
+ * without needing to call a separate resolve endpoint, and there is no window in which the trick is
+ * complete but unresolved. {@link ResolveTrickUseCase} remains available for reconnect and edge
+ * cases; it will return {@link org.maglez.eop.entity.TrickAlreadyResolvedException} if called on a
+ * trick this path already resolved.
  */
 public class PlayCardUseCase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PlayCardUseCase.class);
 
     private final ResolvePlayerUseCase resolvePlayerUseCase;
     private final HandRepository handRepository;
@@ -98,6 +111,8 @@ public class PlayCardUseCase {
     private final IdentifierGenerator identifierGenerator;
     private final SessionEventPublisher sessionEventPublisher;
     private final Clock clock;
+    private final SessionRepository sessionRepository;
+    private final Optional<PersistGameResultUseCase> persistGameResultUseCase;
 
     /**
      * Creates the use case.
@@ -109,6 +124,9 @@ public class PlayCardUseCase {
      * @param identifierGenerator mints trick and play identifiers
      * @param sessionEventPublisher announces that a card was played, naming none of it
      * @param clock supplies the instant the play was made at
+     * @param sessionRepository records the session completion when the last trick resolves
+     * @param persistGameResultUseCase persists the final game result; absent when the
+     *     {@code game-over} feature flag is off
      */
     public PlayCardUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
@@ -117,7 +135,9 @@ public class PlayCardUseCase {
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
             final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
+            final Clock clock,
+            final SessionRepository sessionRepository,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
         this.resolvePlayerUseCase =
                 Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
@@ -129,6 +149,10 @@ public class PlayCardUseCase {
         this.sessionEventPublisher =
                 Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
+        this.sessionRepository =
+                Objects.requireNonNull(sessionRepository, "sessionRepository is required");
+        this.persistGameResultUseCase =
+                Objects.requireNonNull(persistGameResultUseCase, "persistGameResultUseCase is required");
     }
 
     /**
@@ -227,6 +251,40 @@ public class PlayCardUseCase {
 
         trickRepository.appendPlay(sessionId, trick.trickId(), leaderSeat, accepted);
         sessionEventPublisher.publish(new SessionEvent(SessionEventType.CARD_PLAYED, sessionId, now));
+
+        // Auto-resolve: if the play just appended completes the trick, resolve it inline.
+        // This ensures all connected clients receive TRICK_RESOLVED immediately after CARD_PLAYED
+        // without requiring any player to call the resolve endpoint separately.
+        final var postPlayHands = hands.withCardPlayed(actingSeat, card);
+        final var seatsHoldingCards = postPlayHands.seatsHoldingCards();
+        if (updated.isComplete(seatsHoldingCards)) {
+            final var resolvedTrick = updated.resolved();
+            final var nextLeaderSeat = resolvedTrick.nextLeaderSeat(seatsHoldingCards);
+            trickRepository.recordResolution(sessionId, resolvedTrick, leaderSeat, nextLeaderSeat, now);
+            sessionEventPublisher.publish(new SessionEvent(SessionEventType.TRICK_RESOLVED, sessionId, now));
+
+            if (nextLeaderSeat.isEmpty()) {
+                try {
+                    sessionRepository.recordCompleted(sessionId, now);
+                }
+                catch (SessionNotInProgressException ignored) {
+                    // A concurrent facilitator call already completed the session.
+                    // The trick resolution was durably committed; treat this as success.
+                }
+                persistGameResultUseCase.ifPresent(uc -> {
+                    try {
+                        uc.execute(sessionId);
+                    }
+                    catch (RuntimeException ex) {
+                        LOG.warn("[EOP-64] Failed to persist game result for session {}; "
+                                + "leaderboard will return 404 until the result is recorded.", sessionId, ex);
+                    }
+                });
+                sessionEventPublisher.publish(new SessionEvent(SessionEventType.GAME_COMPLETED, sessionId, now));
+            }
+            return resolvedTrick;
+        }
+
         return updated;
     }
 }

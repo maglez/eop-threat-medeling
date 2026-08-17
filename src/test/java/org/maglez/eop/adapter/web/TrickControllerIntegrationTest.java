@@ -741,29 +741,34 @@ class TrickControllerIntegrationTest {
             final var table = dealtTable();
             final var plays = playWholeTrick(table);
 
-            final var resolved = resolve(table.sessionId(), table.facilitator().playerToken());
+            // The trick is auto-resolved by PlayCardUseCase when the last card is played.
+            // Read the trick state directly — no explicit resolve call needed.
+            final var state = trickState(table.sessionId(), table.facilitator().playerToken());
 
-            Assertions.assertThat(resolved.getResponse().getStatus()).isEqualTo(200);
-            final var document = JsonPath.parse(resolved.getResponse().getContentAsString());
-            Assertions.assertThat(document.read("$.plays", List.class))
+            Assertions.assertThat(state.getResponse().getStatus()).isEqualTo(200);
+            final var document = JsonPath.parse(state.getResponse().getContentAsString());
+            Assertions.assertThat(document.read("$.trick.plays", List.class))
                     .as("a trick holds one card from each seat still holding cards")
                     .hasSize(PLAYERS);
-            Assertions.assertThat((Integer) document.read("$.winningSeat"))
+            Assertions.assertThat((Integer) document.read("$.trick.winningSeat"))
                     .as("the highest card of the led suit takes the trick unless a trump was played: %s", plays)
                     .isEqualTo(expectedWinner(plays));
         }
 
         @Test
-        @DisplayName("lets a participant resolve, because there is nothing to decide")
+        @DisplayName("refuses to resolve a trick that was already auto-resolved when the last card was played")
         void shouldLetAParticipantResolve() throws Exception {
             final var table = dealtTable();
             playWholeTrick(table);
 
+            // PlayCardUseCase auto-resolves the trick when the last card is played.
+            // A subsequent explicit resolve call must be refused to prevent a double-resolution.
             final var resolved = resolve(table.sessionId(), table.seats().get(1).playerToken());
 
             Assertions.assertThat(resolved.getResponse().getStatus())
-                    .as("the cards already played settle the outcome, so the table need not wait on one person")
-                    .isEqualTo(200);
+                    .as("the trick was already resolved automatically; a second resolution is rejected")
+                    .isEqualTo(409);
+            assertProblemJson(resolved);
         }
 
         @Test
@@ -862,19 +867,26 @@ class TrickControllerIntegrationTest {
         }
 
         @Test
-        @DisplayName("names no seat while a complete trick waits to be resolved")
+        @DisplayName("names the next leader seat immediately after the last card is played (auto-resolved)")
         void shouldNameNoSeatWhileTheTrickAwaitsResolution() throws Exception {
             final var table = dealtTable();
-            playWholeTrick(table);
+            final var plays = playWholeTrick(table);
 
+            // PlayCardUseCase auto-resolves the trick when the last card is played.
+            // The state immediately after the last play already names the next leader.
             final var state = trickState(table.sessionId(), table.facilitator().playerToken());
 
             Assertions.assertThat(state.getResponse().getContentAsString())
-                    .as("every seat has played, so nothing may be played and no seat leads yet")
+                    .as("trick is auto-resolved: complete, winner known, next leader named")
                     .contains("\"complete\":true")
-                    .doesNotContain("seatToPlay")
-                    .doesNotContain("nextLeaderSeat")
                     .contains("\"handComplete\":false");
+            final var document = JsonPath.parse(state.getResponse().getContentAsString());
+            Assertions.assertThat((Integer) document.read("$.nextLeaderSeat"))
+                    .as("the winner leads the next trick: %s", plays)
+                    .isEqualTo(expectedWinner(plays));
+            Assertions.assertThat((Integer) document.read("$.seatToPlay"))
+                    .as("seatToPlay agrees with nextLeaderSeat once auto-resolved")
+                    .isEqualTo(expectedWinner(plays));
         }
 
         @Test
@@ -974,8 +986,8 @@ class TrickControllerIntegrationTest {
                 }
 
                 Assertions.assertThat(resolve(table.sessionId(), facilitator).getResponse().getStatus())
-                        .as("trick %d should resolve once every seat has played", trick)
-                        .isEqualTo(200);
+                        .as("trick %d is already auto-resolved; a second resolve call is rejected", trick)
+                        .isEqualTo(409);
 
                 final var state = JsonPath.parse(
                         trickState(table.sessionId(), facilitator).getResponse().getContentAsString());
@@ -1219,7 +1231,10 @@ class TrickControllerIntegrationTest {
          * A trick still on the table scores its threats but no trick point.
          *
          * <p>Which is what makes a running score monotone: the trick point arrives when the trick is
-         * resolved, and nothing already counted is taken away.
+         * auto-resolved (when the last card is played), and nothing already counted is taken away.
+         * This test checks the mid-trick state — after the leader has played but before every seat
+         * has played — which is the only "trick on the table" state that now exists. Once the last
+         * card is played the trick is immediately resolved and the winner's trick point is awarded.
          *
          * @throws Exception if a request cannot be performed
          */
@@ -1227,14 +1242,21 @@ class TrickControllerIntegrationTest {
         @DisplayName("counts threat points only while the trick is still on the table")
         void shouldCountThreatPointsOnlyWhileTheTrickIsStillOnTheTable() throws Exception {
             final Table table = dealtTable();
-            playWholeTrick(table);
+            // Play only the leader's card — the trick is open but not yet complete.
+            // All three seats have played one card each in the deal, so each has 1 threat point.
+            // No trick point is awarded until the last card is played and the trick auto-resolves.
+            final int leaderSeat = leaderSeatOf(table);
+            final var leader = table.seats().get(leaderSeat);
+            final var led = handOf(table.sessionId(), leader).get(0);
+            playCard(table.sessionId(), leader.playerToken(), playRequest(led.cardId()));
 
             final String body = score(table.sessionId(), table.seats().get(0).playerToken())
                     .getResponse().getContentAsString();
 
-            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.rows[*].trickPoint")).containsOnly(false);
-            Assertions.assertThat(JsonPath.<List<Integer>>read(body, "$.standings[*].points")).containsOnly(1);
-            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.standings[*].tied")).containsOnly(true);
+            // Only one card has been played; only the leader's row appears.
+            Assertions.assertThat(JsonPath.<List<Boolean>>read(body, "$.rows[*].trickPoint"))
+                    .as("trick is not yet complete, so no trick point is awarded")
+                    .containsOnly(false);
         }
 
         /**

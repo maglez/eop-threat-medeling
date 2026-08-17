@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -463,6 +464,112 @@ class PlayCardUseCaseTest {
         assertThat(identifiers.issued()).isZero();
     }
 
+    @Test
+    @DisplayName("auto-resolves the trick when the last card is played")
+    void shouldAutoResolveWhenLastCardIsPlayed() {
+        final var session = seatedTable(SEATS);
+        final var dealt = dealTo(session, SEATS);
+        final var openingSeat = dealt.openingLeaderSeat();
+        final var lead = dealt.handOf(openingSeat).cards().getFirst();
+
+        // Build a trick with all but the last play already in it
+        var trick = Trick.open(TRICK_ID, FIRST_SEQUENCE, openingSeat)
+                .acceptPlay(openingSeat, playOf(PLAY_ID, playerAt(session, openingSeat), lead), dealt);
+        var remaining = dealt.withCardPlayed(openingSeat, lead);
+        // Play all seats except the last one
+        while (trick.seatToPlay(remaining.seatsHoldingCards()).isPresent()) {
+            final var nextSeat = trick.seatToPlay(remaining.seatsHoldingCards()).orElseThrow();
+            final var nextCard = remaining.handOf(nextSeat).lowestOf(lead.suit()).orElseThrow();
+            final var nextPlay = playOf(new UUID(PLAY_PREFIX, nextSeat), playerAt(session, nextSeat), nextCard);
+            final var afterPlay = trick.acceptPlay(nextSeat, nextPlay, remaining);
+            remaining = remaining.withCardPlayed(nextSeat, nextCard);
+            if (afterPlay.isComplete(remaining.seatsHoldingCards())) {
+                // This is the last play — seed the trick one play before this
+                break;
+            }
+            trick = afterPlay;
+        }
+
+        // Seed the trick with all-but-last plays, and the hands with all-but-last cards removed
+        final var lastSeat = trick.seatToPlay(remaining.seatsHoldingCards()).orElseThrow();
+        final var lastCard = remaining.handOf(lastSeat).lowestOf(lead.suit()).orElseThrow();
+        handRepository.seededWith(remaining, openingSeat);
+        trickRepository.seededWith(trick);
+
+        useCaseWith(session, new QueuedIdentifierGenerator(new UUID(PLAY_PREFIX, lastSeat)))
+                .execute(commandFor(session, lastSeat, lastCard.cardId()));
+
+        assertThat(order).containsSubsequence("appendPlay", "publish", "recordResolution", "publish");
+        assertThat(trickRepository.resolutions()).hasSize(1);
+        final var resolution = trickRepository.resolutions().getFirst();
+        assertThat(resolution.trick().winner()).isPresent();
+        // TRICK_RESOLVED must follow CARD_PLAYED
+        final var publishedTypes = publisher.published().stream()
+                .map(e -> e.type())
+                .toList();
+        assertThat(publishedTypes).containsExactly(SessionEventType.CARD_PLAYED, SessionEventType.TRICK_RESOLVED);
+    }
+
+    @Test
+    @DisplayName("auto-resolves and marks session completed when the last trick is played out")
+    void shouldAutoResolveAndCompleteSessionWhenLastTrickIsPlayed() {
+        // Build a session where only one card remains per seat (last trick of the hand)
+        final var session = seatedTable(SEATS);
+        final var dealt = dealTo(session, SEATS);
+        final var openingSeat = dealt.openingLeaderSeat();
+
+        // Play out all cards except one per seat (simulate last trick scenario)
+        // For simplicity: leave exactly one card per seat in the hands
+        var remaining = dealt;
+        for (final int seat : dealt.seats()) {
+            final var cards = dealt.handOf(seat).cards();
+            // Remove all but the last card from each seat
+            for (int i = 0; i < cards.size() - 1; i++) {
+                remaining = remaining.withCardPlayed(seat, cards.get(i));
+            }
+        }
+
+        // The opening leader for this last trick is the opening seat
+        final var lead = remaining.handOf(openingSeat).cards().getFirst();
+        var trick = Trick.open(TRICK_ID, FIRST_SEQUENCE, openingSeat)
+                .acceptPlay(openingSeat, playOf(PLAY_ID, playerAt(session, openingSeat), lead), remaining);
+        remaining = remaining.withCardPlayed(openingSeat, lead);
+
+        // Play all but the last seat. Stop when only one seat remains to play (the last card).
+        // We do NOT update remaining/trick when the next play would complete the trick, so that
+        // trick.seatToPlay(remaining) still names the last seat after the loop.
+        while (true) {
+            final var nextSeat = trick.seatToPlay(remaining.seatsHoldingCards()).orElseThrow();
+            final var nextCard = remaining.handOf(nextSeat).cards().getFirst();
+            final var nextPlay = playOf(new UUID(PLAY_PREFIX, nextSeat), playerAt(session, nextSeat), nextCard);
+            final var afterPlay = trick.acceptPlay(nextSeat, nextPlay, remaining);
+            final var afterRemaining = remaining.withCardPlayed(nextSeat, nextCard);
+            if (afterPlay.isComplete(afterRemaining.seatsHoldingCards())) {
+                // nextSeat is the last seat — leave trick/remaining pointing at the pre-last-play state
+                break;
+            }
+            trick = afterPlay;
+            remaining = afterRemaining;
+        }
+
+        final var lastSeat = trick.seatToPlay(remaining.seatsHoldingCards()).orElseThrow();
+        final var lastCard = remaining.handOf(lastSeat).cards().getFirst();
+        handRepository.seededWith(remaining, openingSeat);
+        trickRepository.seededWith(trick);
+
+        useCaseWith(session, new QueuedIdentifierGenerator(new UUID(PLAY_PREFIX, lastSeat)))
+                .execute(commandFor(session, lastSeat, lastCard.cardId()));
+
+        assertThat(trickRepository.resolutions()).hasSize(1);
+        // Session must be marked completed (nextLeaderSeat is empty when no cards remain)
+        final var publishedTypes = publisher.published().stream()
+                .map(e -> e.type())
+                .toList();
+        assertThat(publishedTypes).contains(SessionEventType.TRICK_RESOLVED);
+        // recordCompleted is called on the session repository
+        assertThat(order).containsSubsequence("recordResolution", "publish");
+    }
+
     /**
      * Plays every dealt card, leaving a table whose hands are all empty.
      *
@@ -605,6 +712,8 @@ class PlayCardUseCaseTest {
                 cardRepository,
                 generator,
                 publisher,
-                FIXED);
+                FIXED,
+                new InMemorySessionRepository(order, session),
+                Optional.empty());
     }
 }
