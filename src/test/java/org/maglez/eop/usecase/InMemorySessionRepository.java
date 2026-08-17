@@ -137,6 +137,26 @@ final class InMemorySessionRepository implements SessionRepository {
                 current.expiresAt()));
     }
 
+    @Override
+    public void resetToInProgress(final UUID sessionId, final Instant occurredAt) {
+        interactions.add("resetToInProgress");
+        final var current = sessions.get(sessionId);
+        if (current == null) {
+            throw new SessionNotFoundException(sessionId);
+        }
+        if (current.status() != SessionStatus.COMPLETED) {
+            throw new SessionNotInProgressException(sessionId, current.status());
+        }
+        sessions.put(sessionId, GameSession.reconstitute(
+                current.sessionId(),
+                current.joinCode(),
+                SessionStatus.IN_PROGRESS,
+                current.players(),
+                current.createdAt(),
+                occurredAt,
+                current.expiresAt()));
+    }
+
     /**
      * Arms the next writes to be rejected as duplicate join codes.
      *

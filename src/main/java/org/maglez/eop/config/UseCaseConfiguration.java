@@ -1,12 +1,15 @@
 package org.maglez.eop.config;
 
 import java.time.Clock;
+import java.util.Optional;
 import org.maglez.eop.usecase.CardRepository;
 import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.DealHandsUseCase;
 import org.maglez.eop.usecase.DeckShuffler;
 import org.maglez.eop.usecase.EndSessionUseCase;
+import org.maglez.eop.usecase.GameResultRepository;
 import org.maglez.eop.usecase.GetCardUseCase;
+import org.maglez.eop.usecase.GetLeaderboardUseCase;
 import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
@@ -17,6 +20,8 @@ import org.maglez.eop.usecase.JoinAttemptLimiter;
 import org.maglez.eop.usecase.JoinCodeGenerator;
 import org.maglez.eop.usecase.JoinSessionUseCase;
 import org.maglez.eop.usecase.ListCardsUseCase;
+import org.maglez.eop.usecase.NewGameUseCase;
+import org.maglez.eop.usecase.PersistGameResultUseCase;
 import org.maglez.eop.usecase.PlayCardUseCase;
 import org.maglez.eop.usecase.ReadOwnHandUseCase;
 import org.maglez.eop.usecase.ResolvePlayerUseCase;
@@ -328,9 +333,11 @@ public class UseCaseConfiguration {
             final TrickRepository trickRepository,
             final SessionRepository sessionRepository,
             final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
+            final Clock clock,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
         return new ResolveTrickUseCase(
-                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository, sessionEventPublisher, clock);
+                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository,
+                sessionEventPublisher, clock, persistGameResultUseCase);
     }
 
     /**
@@ -360,7 +367,12 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the score use case, behind {@code eop.features.trick-play}.
+     * Declares the score use case.
+     *
+     * <p>Ungated: the score is a pure read derived from tricks and players, and it is needed
+     * by the trick-play score endpoint. The {@link org.maglez.eop.adapter.web.ScoreController}
+     * that exposes the score endpoint is gated on {@code trick-play}, so the route is not
+     * published while that flag is off.
      *
      * <p>Two collaborators, not three. Resolving the credential already yields the session, and a
      * session carries its own players, so the seated players arrive without a second read and the
@@ -396,5 +408,75 @@ public class UseCaseConfiguration {
             final SessionRepository sessionRepository,
             final Clock clock) {
         return new SweepExpiredSessionsUseCase(sessionRepository, clock);
+    }
+
+    /**
+     * Declares the get-leaderboard use case, behind {@code eop.features.game-over}.
+     *
+     * @param resolvePlayerUseCase  resolves the acting player from the identity token
+     * @param gameResultRepository  reads the persisted game result
+     * @param trickRepository       reads the tricks for the STRIDE breakdown
+     * @return the get-leaderboard use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.game-over", havingValue = "true")
+    public GetLeaderboardUseCase getLeaderboardUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final GameResultRepository gameResultRepository,
+            final TrickRepository trickRepository) {
+        return new GetLeaderboardUseCase(resolvePlayerUseCase, gameResultRepository, trickRepository);
+    }
+
+    /**
+     * Declares the persist-game-result use case, behind {@code eop.features.game-over}.
+     *
+     * @param sessionRepository    reads the session and its players
+     * @param trickRepository      reads the tricks for scoring
+     * @param gameResultRepository persists the game result
+     * @param identifierGenerator  mints the game result identifier
+     * @param clock                supplies the finalised-at timestamp
+     * @return the persist-game-result use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.game-over", havingValue = "true")
+    public PersistGameResultUseCase persistGameResultUseCase(
+            final SessionRepository sessionRepository,
+            final TrickRepository trickRepository,
+            final GameResultRepository gameResultRepository,
+            final IdentifierGenerator identifierGenerator,
+            final Clock clock) {
+        return new PersistGameResultUseCase(
+                sessionRepository, trickRepository, gameResultRepository, identifierGenerator, clock);
+    }
+
+    /**
+     * Declares the new-game use case, behind {@code eop.features.game-over}.
+     *
+     * @param resolvePlayerUseCase  resolves the acting player from the identity token
+     * @param handRepository        clears and re-records hands
+     * @param trickRepository       clears tricks
+     * @param sessionRepository     resets session status
+     * @param cardRepository        reads the whole deck for re-dealing
+     * @param deckShuffler          randomises the deck before it is dealt
+     * @param identifierGenerator   mints one hand identifier per seat
+     * @param sessionEventPublisher announces that the deal happened
+     * @param clock                 supplies timestamps
+     * @return the new-game use case
+     */
+    @Bean
+    @ConditionalOnProperty(name = "eop.features.game-over", havingValue = "true")
+    public NewGameUseCase newGameUseCase(
+            final ResolvePlayerUseCase resolvePlayerUseCase,
+            final HandRepository handRepository,
+            final TrickRepository trickRepository,
+            final SessionRepository sessionRepository,
+            final CardRepository cardRepository,
+            final DeckShuffler deckShuffler,
+            final IdentifierGenerator identifierGenerator,
+            final SessionEventPublisher sessionEventPublisher,
+            final Clock clock) {
+        return new NewGameUseCase(
+                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository,
+                cardRepository, deckShuffler, identifierGenerator, sessionEventPublisher, clock);
     }
 }

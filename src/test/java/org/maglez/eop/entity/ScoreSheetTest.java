@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.maglez.eop.entity.TrickPlayBuilder.aPlayBy;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -429,5 +430,152 @@ class ScoreSheetTest {
                         aPlayBy(2, card(StrideCategory.TAMPERING, Rank.TWO)).build())
                 .build()
                 .resolved();
+    }
+
+    @Nested
+    @DisplayName("STRIDE capture breakdown")
+    class StrideCaptureBreakdown {
+
+        @Test
+        @DisplayName("attributes all cards in a trick to the winner when the winner plays last")
+        void shouldAttributeAllCardsToWinnerWhenWinnerPlaysLast() {
+            // Trick: seat 0 leads SPOOFING FIVE, seat 1 plays SPOOFING SIX, seat 2 wins with SPOOFING KING
+            final TrickPlay lead = aPlayBy(0, card(StrideCategory.SPOOFING, Rank.FIVE)).build();
+            final TrickPlay second = aPlayBy(1, card(StrideCategory.SPOOFING, Rank.SIX)).build();
+            final TrickPlay winner = aPlayBy(2, card(StrideCategory.SPOOFING, Rank.KING)).build();
+            final Trick trick = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(lead, second, winner).build().resolved();
+
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick));
+
+            final Map<UUID, Map<StrideCategory, Integer>> captures = sheet.capturedBySuitByPlayer();
+            assertThat(captures).containsOnlyKeys(SEAT_TWO);
+            assertThat(captures.get(SEAT_TWO)).containsEntry(StrideCategory.SPOOFING, 3);
+        }
+
+        @Test
+        @DisplayName("attributes all cards in a trick to the winner when the winner plays first (leader wins)")
+        void shouldAttributeAllCardsToWinnerWhenWinnerPlaysFirst() {
+            // Trick: seat 0 leads SPOOFING KING (wins), seat 1 plays SPOOFING FIVE, seat 2 plays SPOOFING SIX
+            final TrickPlay winner = aPlayBy(0, card(StrideCategory.SPOOFING, Rank.KING)).build();
+            final TrickPlay second = aPlayBy(1, card(StrideCategory.SPOOFING, Rank.FIVE)).build();
+            final TrickPlay third = aPlayBy(2, card(StrideCategory.SPOOFING, Rank.SIX)).build();
+            final Trick trick = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(winner, second, third).build().resolved();
+
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick));
+
+            final Map<UUID, Map<StrideCategory, Integer>> captures = sheet.capturedBySuitByPlayer();
+            assertThat(captures).containsOnlyKeys(SEAT_ZERO);
+            assertThat(captures.get(SEAT_ZERO)).containsEntry(StrideCategory.SPOOFING, 3);
+        }
+
+        @Test
+        @DisplayName("attributes all cards in a trick to the winner when the winner plays in the middle")
+        void shouldAttributeAllCardsToWinnerWhenWinnerPlaysInMiddle() {
+            // Trick: seat 0 leads SPOOFING FIVE, seat 1 wins with SPOOFING KING, seat 2 plays SPOOFING SIX
+            final TrickPlay lead = aPlayBy(0, card(StrideCategory.SPOOFING, Rank.FIVE)).build();
+            final TrickPlay winner = aPlayBy(1, card(StrideCategory.SPOOFING, Rank.KING)).build();
+            final TrickPlay third = aPlayBy(2, card(StrideCategory.SPOOFING, Rank.SIX)).build();
+            final Trick trick = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(lead, winner, third).build().resolved();
+
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick));
+
+            final Map<UUID, Map<StrideCategory, Integer>> captures = sheet.capturedBySuitByPlayer();
+            assertThat(captures).containsOnlyKeys(SEAT_ONE);
+            assertThat(captures.get(SEAT_ONE)).containsEntry(StrideCategory.SPOOFING, 3);
+        }
+
+        @Test
+        @DisplayName("accumulates captures across multiple tricks for the same player")
+        void shouldAccumulateCapturesAcrossMultipleTricks() {
+            // Trick 1: seat 0 wins with SPOOFING KING (3 SPOOFING cards)
+            final Trick trick1 = TrickBuilder.aTrick()
+                    .withTrickId(new UUID(1000, 10))
+                    .withSequence(1)
+                    .withLeaderSeat(0)
+                    .withPlays(
+                            aPlayBy(0, card(StrideCategory.SPOOFING, Rank.KING)).build(),
+                            aPlayBy(1, card(StrideCategory.SPOOFING, Rank.FIVE)).build(),
+                            aPlayBy(2, card(StrideCategory.SPOOFING, Rank.SIX)).build())
+                    .build().resolved();
+            // Trick 2: seat 0 wins with TAMPERING KING (2 TAMPERING + 1 SPOOFING)
+            final Trick trick2 = TrickBuilder.aTrick()
+                    .withTrickId(new UUID(1000, 11))
+                    .withSequence(2)
+                    .withLeaderSeat(0)
+                    .withPlays(
+                            aPlayBy(0, card(StrideCategory.TAMPERING, Rank.KING)).build(),
+                            aPlayBy(1, card(StrideCategory.TAMPERING, Rank.FIVE)).build(),
+                            aPlayBy(2, card(StrideCategory.SPOOFING, Rank.SEVEN)).build())
+                    .build().resolved();
+
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick1, trick2));
+
+            final Map<UUID, Map<StrideCategory, Integer>> captures = sheet.capturedBySuitByPlayer();
+            assertThat(captures).containsOnlyKeys(SEAT_ZERO);
+            assertThat(captures.get(SEAT_ZERO)).containsEntry(StrideCategory.SPOOFING, 4);
+            assertThat(captures.get(SEAT_ZERO)).containsEntry(StrideCategory.TAMPERING, 2);
+        }
+
+        @Test
+        @DisplayName("attributes tricks to different winners correctly")
+        void shouldAttributeTricksToDifferentWinners() {
+            // Trick 1: seat 0 wins (SPOOFING KING)
+            final Trick trick1 = TrickBuilder.aTrick()
+                    .withTrickId(new UUID(1000, 20))
+                    .withSequence(1)
+                    .withLeaderSeat(0)
+                    .withPlays(
+                            aPlayBy(0, card(StrideCategory.SPOOFING, Rank.KING)).build(),
+                            aPlayBy(1, card(StrideCategory.SPOOFING, Rank.FIVE)).build())
+                    .build().resolved();
+            // Trick 2: seat 1 wins (TAMPERING KING)
+            final Trick trick2 = TrickBuilder.aTrick()
+                    .withTrickId(new UUID(1000, 21))
+                    .withSequence(2)
+                    .withLeaderSeat(0)
+                    .withPlays(
+                            aPlayBy(0, card(StrideCategory.TAMPERING, Rank.FIVE)).build(),
+                            aPlayBy(1, card(StrideCategory.TAMPERING, Rank.KING)).build())
+                    .build().resolved();
+
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick1, trick2));
+
+            final Map<UUID, Map<StrideCategory, Integer>> captures = sheet.capturedBySuitByPlayer();
+            assertThat(captures.get(SEAT_ZERO)).containsEntry(StrideCategory.SPOOFING, 2);
+            assertThat(captures.get(SEAT_ONE)).containsEntry(StrideCategory.TAMPERING, 2);
+        }
+
+        @Test
+        @DisplayName("returns empty map when no tricks have been played")
+        void shouldReturnEmptyMapWhenNoTricks() {
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of());
+
+            assertThat(sheet.capturedBySuitByPlayer()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("excludes unresolved tricks from captures")
+        void shouldExcludeUnresolvedTricksFromCaptures() {
+            // Unresolved trick: only one play, no winner yet
+            final TrickPlay lead = aPlayBy(0, card(StrideCategory.SPOOFING, Rank.KING)).build();
+            final Trick unresolved = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(lead).build();
+            // Not calling .resolved() — trick has no winner
+
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(unresolved));
+
+            assertThat(sheet.capturedBySuitByPlayer()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("returns unmodifiable maps")
+        void shouldReturnUnmodifiableMaps() {
+            final TrickPlay winner = aPlayBy(0, card(StrideCategory.SPOOFING, Rank.KING)).build();
+            final Trick trick = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(winner).build().resolved();
+            final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick));
+
+            final Map<UUID, Map<StrideCategory, Integer>> outer = sheet.capturedBySuitByPlayer();
+            assertThat(outer).isUnmodifiable();
+            assertThat(outer.get(SEAT_ZERO)).isUnmodifiable();
+        }
     }
 }

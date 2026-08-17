@@ -209,4 +209,24 @@ interface GameSessionJpaRepository extends JpaRepository<GameSessionJpaEntity, U
     @Query("UPDATE GameSessionJpaEntity s SET s.status = 'ABANDONED', s.version = s.version + 1 "
             + "WHERE s.id = :sessionId")
     void markAbandoned(@Param("sessionId") UUID sessionId);
+
+    /**
+     * Moves a completed session back to {@code IN_PROGRESS} and clears the leader seat.
+     *
+     * <p>Called by {@link SessionRepositoryAdapter#resetToInProgress} as part of the
+     * new-game reset. The compare-and-swap on {@code COMPLETED} means only one concurrent
+     * new-game request succeeds; the others find zero rows changed.
+     *
+     * <p>The leader seat is set to {@code null} so that the next deal can write a fresh
+     * opening lead via {@link #claimDeal}.
+     *
+     * @param sessionId the session to reset
+     * @param now       the new modification timestamp
+     * @return the number of rows changed: one on success, zero if the session was not completed
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE GameSessionJpaEntity s SET s.status = 'IN_PROGRESS', s.currentLeaderSeat = NULL, "
+            + "s.updatedAt = :now, s.version = s.version + 1 "
+            + "WHERE s.id = :sessionId AND s.status = 'COMPLETED'")
+    int resetToInProgress(@Param("sessionId") UUID sessionId, @Param("now") OffsetDateTime now);
 }

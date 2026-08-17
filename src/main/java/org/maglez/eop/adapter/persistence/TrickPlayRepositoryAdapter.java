@@ -821,16 +821,53 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
     }
 
     /**
+     * Removes all hands and hand-cards for a session so a new game can be dealt.
+     *
+     * <p>Deletes in FK order: hand-cards first, then hands.
+     *
+     * @param sessionId the session whose hands are to be cleared
+     */
+    @Override
+    @Transactional
+    public void clearHandsForNewGame(final UUID sessionId) {
+        Objects.requireNonNull(sessionId, "sessionId is required");
+        final List<UUID> handIds = handRows.findByGameSessionIdOrderBySeatOrderAsc(sessionId)
+                .stream()
+                .map(HandJpaEntity::getId)
+                .toList();
+        if (!handIds.isEmpty()) {
+            handCardRows.deleteByHandIdIn(handIds);
+            handRows.deleteByGameSessionId(sessionId);
+        }
+    }
+
+    /**
+     * Removes all tricks and their plays for a session so a new game can be dealt.
+     *
+     * <p>Deletes in FK order: components first, then plays, then tricks.
+     *
+     * @param sessionId the session whose tricks are to be cleared
+     */
+    @Override
+    @Transactional
+    public void clearTricksForNewGame(final UUID sessionId) {
+        Objects.requireNonNull(sessionId, "sessionId is required");
+        final List<UUID> trickIds = trickRows.findIdsByGameSessionId(sessionId);
+        if (!trickIds.isEmpty()) {
+            final List<UUID> playIds = playRows.findIdsByTrickIdIn(trickIds);
+            if (!playIds.isEmpty()) {
+                componentRows.deleteByTrickPlayIdIn(playIds);
+                playRows.deleteByTrickIdIn(trickIds);
+            }
+            trickRows.deleteByGameSessionId(sessionId);
+        }
+    }
+
+    /**
      * Looks up a card that storage guarantees is present.
      *
-     * <p>A missing card is a server fault rather than a missing resource. {@code
-     * fk_hand_card_card} and {@code fk_trick_play_card} make a card referred to by a
-     * hand or a play impossible to delete, so its absence means the catalogue has been
-     * edited past those constraints. Answering it as a 404 would tell a player their
-     * own hand does not exist.
-     *
-     * @param catalogue the cards read for this operation
-     * @param cardId    the card a row referred to
+     * @param catalogue the pre-fetched card map
+     * @param cardId    the identifier to look up
      * @return the card
      */
     private static Card resolve(final Map<UUID, Card> catalogue, final UUID cardId) {

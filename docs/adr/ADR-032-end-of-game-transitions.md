@@ -163,3 +163,5 @@ avoids a situation where one player ends the game before others are ready.
   plays; it remains readable after an early end, returning the score of the plays made.
 - [ADR-031](ADR-031-the-score-is-read-through-its-own-route.md) — the score route is
   status-agnostic; it answers for both `IN_PROGRESS` and `COMPLETED` sessions.
+- [ADR-039](ADR-039-new-game-reset.md) — adds the `COMPLETED → IN_PROGRESS` reset path
+  introduced by EOP-65, which this ADR does not cover.

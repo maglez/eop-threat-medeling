@@ -144,6 +144,13 @@ final class InMemoryTrickRepository implements TrickRepository {
         current = resolved;
     }
 
+    @Override
+    public void clearTricksForNewGame(final UUID sessionId) {
+        order.add("clearTricksForNewGame");
+        current = null;
+        history.clear();
+    }
+
     /**
      * Answers every trick this repository was asked to open.
      *

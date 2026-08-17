@@ -140,6 +140,13 @@ eop:
     # 56c31b1, so the same caveat applies here: only the literal true turns it on.
     trick-play: false
 
+    # Final leaderboard and "Start new game" action (EOP-65). While this is false the
+    # leaderboard and new-game routes return the framework's own 404, and the
+    # GetLeaderboardUseCase, PersistGameResultUseCase and NewGameUseCase beans do not exist.
+    # The game_result and game_result_player tables are created by Liquibase regardless of
+    # this flag; the flag only gates the application-level behaviour.
+    game-over: false
+
   # Expired-session sweep configuration (ADR-036). These are infrastructure
   # toggles, not feature flags — they belong under eop.* directly rather than
   # eop.features.*. The sweep bean is only active when eop.features.session-lifecycle

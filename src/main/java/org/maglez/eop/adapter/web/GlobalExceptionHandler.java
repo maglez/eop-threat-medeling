@@ -4,6 +4,7 @@ import org.maglez.eop.entity.AlreadyPlayedInTrickException;
 import org.maglez.eop.entity.CardAlreadyPlayedException;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.CardNotInHandException;
+import org.maglez.eop.entity.GameNotCompletedException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
@@ -903,6 +904,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
         problem.setTitle("Internal server error");
         problem.setDetail("The request could not be completed.");
+        return problem;
+    }
+
+    /**
+     * The session is not yet completed — the leaderboard or new-game action was requested
+     * before the last trick was resolved.
+     *
+     * @param exception the exception carrying the session identifier
+     * @return a 409 problem detail
+     */
+    @ExceptionHandler(GameNotCompletedException.class)
+    public ProblemDetail handleGameNotCompleted(
+            final GameNotCompletedException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Game not completed");
+        problem.setDetail("Session " + exception.sessionId() + " is not yet completed.");
         return problem;
     }
 

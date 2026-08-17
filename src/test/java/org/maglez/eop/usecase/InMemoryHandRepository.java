@@ -117,6 +117,13 @@ final class InMemoryHandRepository implements HandRepository {
         leaderSeat = openingLeaderSeat;
     }
 
+    @Override
+    public void clearHandsForNewGame(final UUID sessionId) {
+        order.add("clearHandsForNewGame");
+        dealt = null;
+        leaderSeat = NO_LEADER;
+    }
+
     /**
      * Answers how many deals were recorded.
      *

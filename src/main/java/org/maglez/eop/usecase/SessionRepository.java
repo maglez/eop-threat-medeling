@@ -133,4 +133,20 @@ public interface SessionRepository {
      * @param sessionId the session to abandon and delete
      */
     void abandonAndDelete(UUID sessionId);
+
+    /**
+     * Moves a completed session back to in-progress for a new game.
+     *
+     * <p>Called by {@link NewGameUseCase} after clearing hands and tricks. The
+     * compare-and-swap on {@code COMPLETED} means only one concurrent new-game
+     * request succeeds; the others find zero rows changed.
+     *
+     * <p>The current leader seat is cleared to {@code null} so that the next deal
+     * can write a fresh opening lead.
+     *
+     * @param sessionId  the session to reset
+     * @param occurredAt the instant recorded as the session's last update
+     * @throws SessionNotInProgressException if the session was not completed
+     */
+    void resetToInProgress(UUID sessionId, Instant occurredAt);
 }

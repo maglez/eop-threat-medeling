@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclusion filter.
+
+  EI_EXPOSE_REP on ScoreSheet.capturedBySuitByPlayer(): the field is stored as Map.copyOf()
+  (an unmodifiable map whose values are also Map.copyOf()), so the internal representation
+  cannot be mutated by callers. SpotBugs cannot infer this from the Map interface type alone.
+-->
+<FindBugsFilter>
+    <Match>
+        <Class name="org.maglez.eop.entity.ScoreSheet"/>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+</FindBugsFilter>

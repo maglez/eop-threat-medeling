@@ -4,7 +4,8 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-15 Slice C** (end-of-game
+Everything here reflects the code as it stands after **EOP-65** (game-over leaderboard,
+new-game reset — ADR-039), on top of **EOP-15 Slice C** (end-of-game
 transitions), on top of Slice B's score route, Slice A's pure-domain scoring, EOP-14 Slice E
 (end of hand, the state-of-play read and the three broadcasts), Slice D's trick-play HTTP
 routes, Slice C2's use-case layer, Slice C1's persistence layer (Liquibase changeset `005`),
@@ -1089,6 +1090,80 @@ name a seat it does not hold — `PlayCardRequest` carries no seat field.
 
 ---
 
+## Sequence 11 — Game-over leaderboard (EOP-65)
+
+`GET /api/v1/sessions/{sessionId}/leaderboard` — available only when `eop.features.game-over=true`.
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant GameOverController
+    participant GetLeaderboardUseCase
+    participant ResolvePlayerUseCase
+    participant SessionRepository
+    participant GameResultRepository
+    participant TrickRepository
+
+    Browser->>GameOverController: GET /leaderboard (X-Player-Token)
+    GameOverController->>GetLeaderboardUseCase: execute(sessionId, playerToken)
+    GetLeaderboardUseCase->>ResolvePlayerUseCase: execute(sessionId, playerToken)
+    ResolvePlayerUseCase->>SessionRepository: findById(sessionId)
+    SessionRepository-->>ResolvePlayerUseCase: session
+    ResolvePlayerUseCase-->>GetLeaderboardUseCase: ResolvedPlayer
+    GetLeaderboardUseCase->>GetLeaderboardUseCase: check status == COMPLETED (else 409)
+    GetLeaderboardUseCase->>GameResultRepository: findBySessionId(sessionId)
+    GameResultRepository-->>GetLeaderboardUseCase: GameResult (else 404)
+    GetLeaderboardUseCase->>TrickRepository: findTricks(sessionId)
+    TrickRepository-->>GetLeaderboardUseCase: List<Trick>
+    GetLeaderboardUseCase-->>GameOverController: LeaderboardResult(gameResult, scoreSheet)
+    GameOverController-->>Browser: 200 LeaderboardDto (scores derived from live tricks, ADR-030)
+```
+
+**Scores are always derived from the live trick history** (ADR-030). The `GameResult` row is used
+only to confirm a result was recorded; `ScoreSheet.standings()` and
+`ScoreSheet.capturedBySuitByPlayer()` compute the actual numbers.
+
+---
+
+## Sequence 12 — New-game reset (EOP-65)
+
+`POST /api/v1/sessions/{sessionId}/new-game` — facilitator only, COMPLETED sessions only.
+Non-atomic four-step sequence (ADR-039).
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant GameOverController
+    participant NewGameUseCase
+    participant ResolvePlayerUseCase
+    participant TrickRepository
+    participant HandRepository
+    participant SessionRepository
+    participant SessionEventPublisher
+
+    Browser->>GameOverController: POST /new-game (X-Player-Token)
+    GameOverController->>NewGameUseCase: execute(sessionId, playerToken)
+    NewGameUseCase->>ResolvePlayerUseCase: execute(sessionId, playerToken)
+    ResolvePlayerUseCase-->>NewGameUseCase: ResolvedPlayer
+    NewGameUseCase->>NewGameUseCase: check facilitator role (else 403)
+    NewGameUseCase->>NewGameUseCase: check status == COMPLETED (else 409)
+    Note over NewGameUseCase: Non-atomic steps begin (ADR-039)
+    NewGameUseCase->>TrickRepository: clearTricksForNewGame(sessionId)
+    NewGameUseCase->>HandRepository: clearHandsForNewGame(sessionId)
+    NewGameUseCase->>SessionRepository: resetToInProgress(sessionId, now)
+    Note over SessionRepository: CAS: WHERE status='COMPLETED'
+    NewGameUseCase->>HandRepository: recordDeal(sessionId, hands, leaderSeat, now)
+    NewGameUseCase->>SessionEventPublisher: publish(HAND_DEALT)
+    GameOverController-->>Browser: 204 No Content
+```
+
+**Non-atomicity:** the four steps (clear tricks, clear hands, reset status, re-deal) are separate
+port calls. A partial failure leaves the session in an inconsistent state, but the facilitator can
+retry — the CAS on `resetToInProgress` prevents a double-reset. See ADR-039 for the accepted
+trade-off.
+
+---
+
 ## Related
 
 - [`C4-Diagrams.md`](C4-Diagrams.md) — the containers and components these sequences move through
@@ -1103,6 +1178,8 @@ name a seat it does not hold — `PlayCardRequest` carries no seat field.
 - [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) — why dealing is its own use case, and the started-but-undealt window
 - [ADR-027](../adr/ADR-027-singleton-subresource-naming.md) — why a hand is read per player, which is why no broadcast above carries one
 - [ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md) — why the end of a hand is reported but neither released nor scored, and why the flag stays off
+- [ADR-030](../adr/ADR-030-scoring-is-derived-not-accumulated.md) — scores are always derived from tricks, never read from stored standings
 - [ADR-032](../adr/ADR-032-end-of-game-transitions.md) — end-of-game design choices: auto-complete placement, no new DB column, two-transaction race, facilitator-only early end
 - [ADR-036](../adr/ADR-036-session-expiry-and-sweep.md) — session expiry TTL, the sweep scheduler, and the single-instance deployment assumption
+- [ADR-039](../adr/ADR-039-new-game-reset.md) — new-game reset: COMPLETED→IN_PROGRESS via non-atomic multi-step sequence
 - [`docs/api/openapi.yml`](../api/openapi.yml) — the authored contract for all seven trick-play routes

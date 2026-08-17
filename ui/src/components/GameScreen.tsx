@@ -22,6 +22,7 @@ interface GameScreenProps {
   readonly playerToken: string;
   readonly session: SessionStateDto;
   readonly onSessionEnd: () => void;
+  readonly onGameOver?: () => void;
 }
 
 /** Positions for other players around the table relative to the current player. */
@@ -208,6 +209,7 @@ export function GameScreen({
   playerToken,
   session: initialSession,
   onSessionEnd,
+  onGameOver,
 }: GameScreenProps): React.JSX.Element {
   const [session, setSession] = useState<SessionStateDto>(initialSession);
   const [hand, setHand] = useState<HandDto | null>(null);
@@ -291,7 +293,14 @@ export function GameScreen({
       const subscription = subscribeToSession(
         sessionId,
         playerToken,
-        () => { if (!abandoned) void refreshGameState(); },
+        (eventType) => {
+          if (abandoned) return;
+          if (eventType === 'game-completed' && onGameOver) {
+            onGameOver();
+          } else {
+            void refreshGameState();
+          }
+        },
         (err) => {
           if (abandoned) return;
           const message = err instanceof Error ? err.message : 'Connection lost';
@@ -319,7 +328,7 @@ export function GameScreen({
       teardown?.();
       if (winnerTimerRef.current !== null) clearTimeout(winnerTimerRef.current);
     };
-  }, [sessionId, playerToken, refreshGameState, onSessionEnd]);
+  }, [sessionId, playerToken, refreshGameState, onSessionEnd, onGameOver]);
 
   // ---- Card play ----
 

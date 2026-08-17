@@ -68,6 +68,10 @@ tags:
       `eop.features.trick-play`, a separate flag from
       `eop.features.session-lifecycle` (ADR-013), so trick play can be held back
       while the lobby is live.
+  - name: game-over
+    description: |
+      Game Over screen: final leaderboard with STRIDE breakdown, and starting a
+      new game with the same players. Gated by `eop.features.game-over` (ADR-013).
 
 paths:
   /api/v1/cards:
@@ -836,6 +840,118 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
 
+  /api/v1/sessions/{sessionId}/leaderboard:
+    get:
+      tags: [game-over]
+      summary: Read the final leaderboard
+      description: |
+        The final leaderboard for a completed session: one row per seated player,
+        sorted by total score descending, with a per-STRIDE breakdown of captured
+        cards.
+
+        This endpoint is gated by `eop.features.game-over` (ADR-013). While that
+        flag is off the handler does not exist and the path returns 404.
+
+        Any seated player may read it. The leaderboard names only cards that have
+        already been played face up, so it discloses nothing the table cannot
+        already see. A stranger who guesses a session identifier is refused with
+        `403` because they hold no credential for that session.
+
+        The leaderboard is only available once the session is in `COMPLETED` state.
+        Requesting it while the session is still in progress returns `409` — the
+        resource exists but is not yet in the right state.
+
+        Players with equal scores share the same rank (competition ranking). The
+        `tied` flag makes this visible to a client rendering an ordinal without
+        having to compare totals itself.
+      operationId: getLeaderboard
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The leaderboard of the session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Leaderboard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: |
+            The session exists but is not yet completed. The leaderboard is only
+            available once the last trick has resolved and the session is in
+            `COMPLETED` state.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/sessions/{sessionId}/new-game:
+    post:
+      tags: [game-over]
+      summary: Start a new game with the same players
+      description: |
+        Clears all tricks and hands, re-deals the 78-card deck, and transitions
+        the session back to `IN_PROGRESS`. All players remain in their original
+        seats with the same seat numbers. The opening leader is the seat holding
+        the 3 of Tampering.
+
+        This endpoint is gated by `eop.features.game-over` (ADR-013). While that
+        flag is off the handler does not exist and the path returns 404.
+
+        Only the facilitator may call this. Any other seated player receives
+        `403`. A stranger receives `403` for the same reason as every other
+        operation.
+
+        The session must be in `COMPLETED` status. Calling this while the session
+        is `IN_PROGRESS` or `LOBBY` returns `409`.
+
+        On success a `hand-dealt` event is published to the session's event
+        stream, so all connected clients learn that the new hand is ready without
+        polling.
+      operationId: startNewGame
+      security:
+        - playerToken: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Identifier of the session.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: |
+            The new game was started. Clients should re-read the session state
+            and their own hand.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: |
+            The session is not in a state where a new game can be started. The
+            `detail` field names the current status.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
 components:
   schemas:
     StrideCategory:
@@ -1567,6 +1683,109 @@ components:
           description: |
             One standing per seated player, ordered by position and, among
             players level on points, by seat.
+
+    LeaderboardRow:
+      type: object
+      description: |
+        One player's row in the final leaderboard: their rank, name, total score,
+        and a breakdown of captured cards by STRIDE category.
+
+        `capturedBySuit` counts the cards the player captured (i.e. won the trick
+        with) in each STRIDE category. A card the player played but did not win
+        the trick with does not appear here. The map always contains all six
+        STRIDE categories, with zero for any category where the player captured
+        nothing.
+      required: [playerId, seatOrder, displayName, points, position, tied, capturedBySuit]
+      properties:
+        playerId:
+          type: string
+          format: uuid
+          description: The player this row belongs to.
+        seatOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 5
+          description: The seat they hold.
+        displayName:
+          allOf:
+            - $ref: '#/components/schemas/DisplayName'
+          description: The name they chose, for display only.
+        points:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Their total score across the whole game.
+        position:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |
+            Their place, competition ranked. Players level on points share a
+            position, and the position after a shared one skips accordingly.
+        tied:
+          type: boolean
+          description: Whether another player holds the same total.
+        capturedBySuit:
+          type: object
+          description: |
+            Count of cards captured (trick wins) per STRIDE category. All six
+            categories are always present; zero means none captured.
+          required:
+            - SPOOFING
+            - TAMPERING
+            - REPUDIATION
+            - INFORMATION_DISCLOSURE
+            - DENIAL_OF_SERVICE
+            - ELEVATION_OF_PRIVILEGE
+          properties:
+            SPOOFING:
+              type: integer
+              format: int32
+              minimum: 0
+            TAMPERING:
+              type: integer
+              format: int32
+              minimum: 0
+            REPUDIATION:
+              type: integer
+              format: int32
+              minimum: 0
+            INFORMATION_DISCLOSURE:
+              type: integer
+              format: int32
+              minimum: 0
+            DENIAL_OF_SERVICE:
+              type: integer
+              format: int32
+              minimum: 0
+            ELEVATION_OF_PRIVILEGE:
+              type: integer
+              format: int32
+              minimum: 0
+
+    Leaderboard:
+      type: object
+      description: |
+        The leaderboard for a session: one row per seated player, sorted by total
+        score descending (highest first). Players with equal scores share the same
+        rank.
+
+        This is the Game Over screen's primary data. It is available in any
+        session state, not only `COMPLETED`.
+      required: [rows, sessionStatus]
+      properties:
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/LeaderboardRow'
+          description: |
+            One row per seated player, ordered by position and, among players
+            level on points, by seat.
+        sessionStatus:
+          $ref: '#/components/schemas/SessionStatus'
 
     PlayCardRequest:
       type: object
