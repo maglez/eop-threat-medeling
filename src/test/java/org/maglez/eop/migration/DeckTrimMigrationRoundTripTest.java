@@ -6,6 +6,7 @@ import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
+import liquibase.exception.LiquibaseException;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +21,7 @@ import java.sql.SQLException;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Proves that the 2026-08-17--trim-deck-to-74-printed-cards.xml migration round-trips correctly:
@@ -160,6 +162,43 @@ class DeckTrimMigrationRoundTripTest {
                     .as("card %s must be absent after re-applying the trim migration", id)
                     .isFalse();
         }
+    }
+
+    @Test
+    @DisplayName("precondition HALT fires when hand_card references a trimmed card — migration refuses and cards survive")
+    void preconditionHaltsWhenHandCardReferencesATrimmedCard() throws Exception {
+        // Arrange — apply the full migration (74 cards), then roll back the trim (78 cards).
+        liquibase.update(new Contexts(), new LabelExpression());
+        connection.setAutoCommit(true);
+        liquibase.rollback(1, new Contexts(), new LabelExpression());
+
+        // Insert a hand_card row referencing one of the trimmed cards.
+        // Disable FK checks so we can insert without satisfying the hand → game_session → player chain.
+        final String trimmedCardId = TRIMMED_CARD_IDS.iterator().next();
+        final String handId = "aaaaaaaa-0000-0000-0000-000000000001";
+        try (var stmt = connection.createStatement()) {
+            stmt.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO hand_card (hand_id, card_id) VALUES (?, ?)")) {
+            ps.setObject(1, java.util.UUID.fromString(handId));
+            ps.setObject(2, java.util.UUID.fromString(trimmedCardId));
+            ps.executeUpdate();
+        }
+        connection.commit();
+
+        // Act + Assert — re-applying the trim must throw because the precondition detects the reference.
+        assertThatThrownBy(() -> liquibase.update(new Contexts(), new LabelExpression()))
+                .isInstanceOf(LiquibaseException.class)
+                .hasMessageContaining("Cannot trim deck: removed cards still referenced by hand_card or trick_play");
+
+        // Assert — the trimmed card still exists (migration was refused, not partially applied).
+        assertThat(cardExists(connection, trimmedCardId))
+                .as("trimmed card must still exist after the precondition HALT")
+                .isTrue();
+        assertThat(countCards(connection))
+                .as("deck must still hold 78 cards after the precondition HALT")
+                .isEqualTo(DECK_SIZE_BEFORE_TRIM);
     }
 
     // -------------------------------------------------------------------------

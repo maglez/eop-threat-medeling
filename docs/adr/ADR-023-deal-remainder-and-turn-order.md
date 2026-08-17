@@ -668,16 +668,17 @@ database rather than by application logic that could be refactored away.
 before child, decided in this ADR rather than discovered as an intermittent
 failure in Slice D.
 
-**Negative — hands are unequal, and the final trick is short.** At four and five
-players some players hold one more card than others. Any code, test, DTO or UI
-that assumes `trick.plays.size() == players.size()` is wrong. This is the single
-most likely defect to come out of this decision, which is why the domain defines a
-trick as one card from each player who *still holds cards*.
+**Negative — hands are unequal, and the final trick is short.** At 74 cards,
+**all four supported table sizes** (3, 4, 5 and 6 players) produce unequal hands
+and a short final trick. Any code, test, DTO or UI that assumes
+`trick.plays.size() == players.size()` is wrong. This is the single most likely
+defect to come out of this decision, which is why the domain defines a trick as
+one card from each player who *still holds cards*.
 
 **Negative — the extra cards go to the lowest seats, and seat 0 is the
 facilitator.** Ascending seat order was chosen for determinism and testability,
 but it means the facilitator systematically receives one of the extra cards at
-four and five players. Under EOP-15's scoring (1 point per linked threat, +1 for
+every table size. Under EOP-15's scoring (1 point per linked threat, +1 for
 taking the trick) the extra card is worth up to **2** points, not the 1 point an
 earlier revision of this section implied by calling it "one card in nineteen": an
 extra card is an extra chance to link a threat *and* an extra chance to take a
