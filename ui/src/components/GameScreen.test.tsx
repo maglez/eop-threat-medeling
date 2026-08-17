@@ -1,5 +1,5 @@
 import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameScreen } from './GameScreen';
 import * as api from '../api';
 
@@ -98,7 +98,7 @@ describe('GameScreen', () => {
     expect(screen.getByText('Waiting for cards to be dealt...')).toBeInTheDocument();
   });
 
-  it("renders the player's hand with rank symbols after data loads", async () => {
+  it("renders the player's hand with card images and rank symbols after data loads", async () => {
     vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce, tamperingKing, repudiationQueen]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
@@ -106,14 +106,14 @@ describe('GameScreen', () => {
 
     render(<GameScreen {...defaultProps} />);
 
-    // Wait for hand to load — rank symbols are rendered
     await waitFor(() => {
-      // Each card renders its rankSymbol twice (top-left and bottom-right corners)
+      // spoofingAce has rank ACE — no image exists, so rank symbol text is rendered
       expect(screen.getAllByText('A').length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(screen.getAllByText('K').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Q').length).toBeGreaterThanOrEqual(1);
+    // tamperingKing and repudiationQueen have real images — they render <img> with alt text
+    expect(screen.getByAltText('K of tampering')).toBeInTheDocument();
+    expect(screen.getByAltText('Q of repudiation')).toBeInTheDocument();
   });
 
   it("renders the player's display name above their hand", async () => {
@@ -519,134 +519,5 @@ describe('GameScreen', () => {
     // Trigger blur — focus shadow removed
     fireEvent.blur(card);
     expect(card).not.toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });
-  });
-});
-
-// ---- Card images feature flag (EOP-66) ----
-// These tests exercise the flag-ON path. cardImagePath.ts guards the
-// import.meta.glob at module scope, so vi.resetModules() + dynamic import
-// is required to load the module with the flag already set.
-// After vi.resetModules(), GameScreen imports a fresh api module instance,
-// so we must also dynamically import api and spy on that fresh instance.
-
-describe('GameScreen — card images (VITE_CARD_IMAGES_ENABLED=true)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let GameScreenFlagged: React.ComponentType<any>;
-  let freshApi: typeof api;
-
-  beforeAll(async () => {
-    vi.stubEnv('VITE_CARD_IMAGES_ENABLED', 'true');
-    vi.resetModules();
-    const [screenMod, apiMod] = await Promise.all([
-      import('./GameScreen'),
-      import('../api'),
-    ]);
-    GameScreenFlagged = screenMod.GameScreen;
-    freshApi = apiMod;
-  });
-
-  afterAll(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-  const mockSession: api.SessionStateDto = {
-    sessionId: 'test-session',
-    joinCode: 'ABC123',
-    status: 'IN_PROGRESS',
-    players: [
-      { playerId: 'player1', displayName: 'Alice', seatOrder: 0, role: 'PLAYER', connectionStatus: 'CONNECTED' },
-      { playerId: 'player2', displayName: 'Bob', seatOrder: 1, role: 'PLAYER', connectionStatus: 'CONNECTED' },
-      { playerId: 'player3', displayName: 'Charlie', seatOrder: 2, role: 'PLAYER', connectionStatus: 'CONNECTED' },
-    ],
-    createdAt: '2023-01-01T00:00:00Z',
-    updatedAt: '2023-01-01T00:00:00Z',
-  };
-
-  // A card with a real playable rank so cardImagePath returns a non-null URL.
-  const spoofingKing: api.CardDto = {
-    cardId: 'card-sk',
-    suit: 'SPOOFING',
-    rank: 'KING',
-    rankSymbol: 'K',
-    rankValue: 13,
-    threatPrompt: 'Spoofing king threat',
-  };
-
-  const makeHand = (cards: api.CardDto[]): api.HandDto => ({
-    handId: 'hand1',
-    playerId: 'player1',
-    cardCount: cards.length,
-    cards,
-  });
-
-  const idleTrickState: api.TrickStateDto = {
-    complete: false,
-    handComplete: false,
-    seatToPlay: 0,
-  };
-
-  const defaultProps = {
-    sessionId: 'test-session',
-    playerId: 'player1',
-    playerToken: 'test-token',
-    session: mockSession,
-    onSessionEnd: vi.fn(),
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    // env stub and module reset are handled by beforeAll/afterAll
-  });
-
-  it('renders an <img> for a card with a real image when flag is ON', async () => {
-    vi.spyOn(freshApi, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
-    vi.spyOn(freshApi, 'getTrickState').mockResolvedValue(idleTrickState);
-    vi.spyOn(freshApi, 'getSession').mockResolvedValue(mockSession);
-    vi.spyOn(freshApi, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
-
-    render(<GameScreenFlagged {...defaultProps} />);
-
-    await waitFor(() => {
-      // The card image should be rendered with a descriptive alt attribute
-      const img = screen.getByAltText('K of spoofing');
-      expect(img).toBeInTheDocument();
-      expect(img.tagName).toBe('IMG');
-    });
-  });
-
-  it('img alt attribute is descriptive (rank + suit, lowercase)', async () => {
-    vi.spyOn(freshApi, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
-    vi.spyOn(freshApi, 'getTrickState').mockResolvedValue(idleTrickState);
-    vi.spyOn(freshApi, 'getSession').mockResolvedValue(mockSession);
-    vi.spyOn(freshApi, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
-
-    render(<GameScreenFlagged {...defaultProps} />);
-
-    await waitFor(() => {
-      const img = screen.getByAltText('K of spoofing');
-      expect(img).toHaveAttribute('alt', 'K of spoofing');
-    });
-  });
-
-  it('does not render rank symbol spans when card image is shown', async () => {
-    vi.spyOn(freshApi, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
-    vi.spyOn(freshApi, 'getTrickState').mockResolvedValue(idleTrickState);
-    vi.spyOn(freshApi, 'getSession').mockResolvedValue(mockSession);
-    vi.spyOn(freshApi, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
-
-    render(<GameScreenFlagged {...defaultProps} />);
-
-    await waitFor(() => {
-      // The <img> is present
-      expect(screen.getByAltText('K of spoofing')).toBeInTheDocument();
-    });
-
-    // The plain-text rank symbol fallback should NOT be present when the image renders
-    // (the ternary renders either <img> or the text spans, never both)
-    const rankSymbolSpans = screen.queryAllByText('K');
-    expect(rankSymbolSpans.length).toBe(0);
   });
 });

@@ -793,7 +793,7 @@ flowchart TD
         HOME["HomeView<br/>reads VITE_LOBBY_UI_ENABLED (ADR-037)"]
         FORMS["CreateSessionForm / JoinSessionForm<br/>GOV.UK error summary, client-side validation"]
         LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader<br/>reads VITE_GAME_SCREEN_ENABLED (ADR-037)"]
-        GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop<br/>reads VITE_CARD_IMAGES_ENABLED (ADR-037, EOP-66)"]
+        GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop"]
         API["api.ts<br/>typed DTOs, ApiError(status, message)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
     end
 
@@ -829,11 +829,8 @@ teardown handle, not the transport.
 path evaluates the flag *before* reading `sessionStorage`, returning `{ screen: 'home' }`
 immediately when the flag is off — so a stored session cannot bypass it. Both positions
 are tested in `App.test.tsx`. `LobbyScreen` reads `VITE_GAME_SCREEN_ENABLED` to gate the
-game screen transition. `GameScreen` reads `VITE_CARD_IMAGES_ENABLED` (EOP-66) to gate
-real card artwork; when off, plain coloured rectangles render instead. Note: the 68 card
-PNGs (~6.7 MB) are always present in the bundle — Vite processes `import.meta.glob` at
-parse time and cannot dead-code-eliminate it; the flag controls rendering only. All three
-flags default to `false` (fail-closed) and are declared in `ui/src/vite-env.d.ts`.
+game screen transition. Both flags default to `false` (fail-closed) and are declared in
+`ui/src/vite-env.d.ts`.
 
 ### Reconnect and live update — the runtime path
 

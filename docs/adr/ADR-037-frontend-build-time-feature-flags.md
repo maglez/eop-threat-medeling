@@ -136,6 +136,21 @@ cannot bypass it. Both positions are tested: `App.test.tsx` stubs
 `VITE_LOBBY_UI_ENABLED` to `'true'` for the enabled path and asserts that a valid
 stored session is ignored when the flag is off.
 
+**`import.meta.glob` cannot be dead-code-eliminated by a flag (EOP-66/EOP-74 amendment).**
+Vite resolves `import.meta.glob` at parse time (module graph construction), before any
+tree-shaking or flag substitution occurs. A ternary guard such as
+`import.meta.env.VITE_MY_FLAG === 'true' ? import.meta.glob(...) : {}` does **not**
+prevent the matched assets from being emitted to `dist/` — Vite processes the glob
+pattern unconditionally and includes all matched files in the bundle regardless of the
+runtime value of the flag. The flag controls whether the application *renders* those
+assets, not whether they are *present* in the bundle. Consequence: a feature that gates
+heavy static assets (images, fonts, large JSON) behind a `VITE_` flag will ship those
+assets in every build, including flag-off builds. This is acceptable for public CC-BY
+artwork (EOP-66: 68 card PNGs, ~6.7 MB) but would be inappropriate for unreleased
+artwork, confidential data, or any asset whose presence in the bundle is itself a
+disclosure. When asset emission must be conditional, the assets must be served from a
+separate origin or fetched lazily at runtime rather than bundled via `import.meta.glob`.
+
 ## Related
 
 - [ADR-013](ADR-013-feature-flags.md) — the backend flag mechanism this one is deliberately *not* an extension of; `@ConditionalOnProperty` removes a bean, which has no browser equivalent
