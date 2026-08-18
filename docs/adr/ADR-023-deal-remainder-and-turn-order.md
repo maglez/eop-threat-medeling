@@ -1452,9 +1452,15 @@ and covered by an off-position test asserting the controller bean is absent as w
 ## Amendment, 2026-08-17 — deck trimmed to 74 printed cards (EOP-69)
 
 **Story:** EOP-69  
-**Amends:** Context paragraph "The deck does not divide evenly" (line 17), Decision §1 table and
-formula (lines 58–69), the opening-lead paragraph "so 2 is ours" (lines 129–131), Consequences
-paragraph "All 78 threat prompts" (line 660), and the cross-reference at line 1394.
+**Amends:** the Context paragraph beginning "The deck does not divide evenly"; the Decision §1 table
+and its `D / n` … `D mod n` formula; the opening-lead paragraph containing "the shipped instruction
+card says the 3 of Tampering"; the Consequences paragraph beginning "All 78 threat prompts are held
+by someone"; and the Related cross-reference "EOP-13 (the 78-card deck this arithmetic depends on)".
+
+*(Cited by quoted phrase rather than by line number. This header originally gave line numbers, and
+EOP-93 — a story whose whole purpose was to remove stale documentation — shifted this file by three
+lines and left every one of those numbers pointing at unrelated text. A quoted phrase survives any
+insertion above it and `grep` finds it; a line number is stale the moment anyone edits the file.)*
 
 The seeded deck was trimmed from 78 to 74 cards by migration
 `2026-08-17--trim-deck-to-74-printed-cards.xml`, which removes the four cards absent from the
@@ -1485,7 +1491,7 @@ never hardcoded, so removing rank 2 from TAMPERING resolves naturally to rank 3 
 This is the property the derivation was designed to preserve, and it is the reason the original ADR
 chose derivation over a constant.
 
-**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" (line 660) now
+**Corrected consequence.** The sentence "All 78 threat prompts are held by someone" now
 reads: all 74 threat prompts are held by someone. The four removed cards carry threat prompts that
 are absent from the physical deck and are therefore not part of the game's threat coverage.
 
@@ -1495,8 +1501,8 @@ are absent from the physical deck and are therefore not part of the game's threa
 > See the EOP-75 amendment at the end of this ADR and [ADR-041](ADR-041-printed-deck-has-no-aces.md).
 
 **Cross-reference correction.** The reference "EOP-13 (the 78-card deck this arithmetic depends on)"
-(line 1394) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
-above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
+in the Related section is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the
+arithmetic above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
 
 ---
 

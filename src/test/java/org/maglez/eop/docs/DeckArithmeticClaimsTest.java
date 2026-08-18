@@ -34,6 +34,14 @@ import org.junit.jupiter.api.Test;
  * number changed rather than a re-reading of every document. The second invariant is the cheap one the first cannot
  * express: no superseded deck size stated in Java prose, where javadoc went stale five times in a row.
  *
+ * <p>Be precise about what "a universal claim" means here, because the phrase flatters the implementation. {@link
+ * #EVERY_TABLE_SIZE} is a list of the phrasings that have actually gone stale in this repository, not a semantic
+ * analysis of quantification. "At all four table sizes", "at each player count" and "the final trick is always
+ * short" all escape it. That is a deliberate trade — a matcher general enough to catch every phrasing of a universal
+ * claim would also catch the many true ones — but it has a consequence worth stating plainly: <em>a green build is
+ * not proof that no stale universal claim exists.</em> It proves only that the specific shapes which have burned us
+ * before are absent. Extend the pattern when a new shape appears; do not read the pass as a clean bill of health.
+ *
  * <p>The scope is deliberately narrow, because an over-strict version of this test would be worked around instead of
  * obeyed. It matches per sentence rather than per paragraph, so an unrelated later sentence cannot supply the second
  * half of a contradiction; it says nothing about the many correct historical references in {@code docs/} — the
@@ -70,13 +78,18 @@ class DeckArithmeticClaimsTest {
      *
      * <p>{@code DeckTrimMigrationRoundTripTest} rolls the ace-removal migration back and asserts the deck passes
      * through 74 cards and then 78, so those numbers are its assertions rather than a stale comment. This test is on
-     * the list for an unavoidable reason: a guard has to quote what it forbids. Its javadoc names the two claims that
+     * the list for an unavoidable reason: a guard has to quote what it forbids. Its javadoc names the claims that
      * were live on {@code main}, and {@link #shouldRecogniseTheHistoricalDefectItGuardsAgainst()} feeds them back in
      * to prove the matcher still fires. Without the exemption this test would fail on its own evidence, and the
      * tempting fix — deleting the examples — would leave a regex nobody could check.
+     *
+     * <p>The entries are repository-relative paths rather than bare filenames. A basename match would exempt any
+     * future file anywhere in the tree that happened to share a name with one of these two, which is the weakest
+     * discriminator available and costs nothing to improve.
      */
-    private static final List<String> EXEMPT_FILES =
-            List.of("DeckTrimMigrationRoundTripTest.java", "DeckArithmeticClaimsTest.java");
+    private static final List<String> EXEMPT_FILES = List.of(
+            "src/test/java/org/maglez/eop/migration/DeckTrimMigrationRoundTripTest.java",
+            "src/test/java/org/maglez/eop/docs/DeckArithmeticClaimsTest.java");
 
     /**
      * A claim that ranges over every supported table size. The enumeration is included because prose reaches for
@@ -196,15 +209,19 @@ class DeckArithmeticClaimsTest {
     /**
      * Reports whether a file is one of the two that may state what this test otherwise forbids.
      *
+     * <p>Compares a repository-relative path, not a bare filename, so the exemption cannot be inherited by an
+     * unrelated future file that happens to share a name.
+     *
      * @param file the file being scanned
      * @return true when the file is exempt
      */
     private static boolean isExempt(final Path file) {
-        return EXEMPT_FILES.contains(file.getFileName().toString());
+        final String relative = file.normalize().toString().replace('\\', '/');
+        return EXEMPT_FILES.stream().anyMatch(relative::endsWith);
     }
 
     @Test
-    @DisplayName("still recognises the two claims that were live on main before EOP-93")
+    @DisplayName("still recognises the three claims that were live on main before EOP-93")
     void shouldRecogniseTheHistoricalDefectItGuardsAgainst() {
         final String fromAdr023 =
                 "At 74 cards, all four supported table sizes (3, 4, 5 and 6 players) produce unequal hands.";
@@ -268,14 +285,16 @@ class DeckArithmeticClaimsTest {
      * Reports whether a line states a number as a standalone token, in digits or in words.
      *
      * <p>The word-boundary match is what keeps UUID fixtures out of the results: the {@code 74} inside
-     * {@code b9f389069b74} has a word character before it and so is not a standalone token.
+     * {@code b9f389069b74} has a word character before it and so is not a standalone token. The lookarounds extend
+     * that to decimals, which a word boundary does not exclude on its own — {@code 0.74} and {@code 74.5} are one
+     * number each, not a mention of the old deck size.
      *
      * @param line a line of source, with Jira keys already removed
      * @param number the number to look for
      * @return true when the line states that number
      */
     private static boolean statesTheNumber(final String line, final int number) {
-        final String digits = "\\b" + number + "\\b";
+        final String digits = "(?<![\\d.])\\b" + number + "\\b(?!\\.\\d)";
         if (Pattern.compile(digits).matcher(line).find()) {
             return true;
         }
