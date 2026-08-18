@@ -8,9 +8,8 @@ package org.maglez.eop.entity;
  * encountered, how much impact it has and how easy it is to exploit — higher
  * cards carry the threats the deck's authors considered more significant.
  *
- * <p>The ace is high. That matters because aces are Open Threat cards: a player
- * must name a threat that appears on no other card, and the ace beating
- * everything else in its suit is what makes that worth attempting.
+ * <p>The physical printed deck runs from Two to King (twelve ranks). Aces do
+ * not appear in the game; King is the highest rank.
  *
  * <p>Pure domain type: no Spring, no Jakarta, no persistence annotations.
  */
@@ -38,10 +37,8 @@ public enum Rank {
     JACK(11, "J"),
     /** Queen. */
     QUEEN(12, "Q"),
-    /** King. */
-    KING(13, "K"),
-    /** Ace — the highest rank, and an Open Threat card. */
-    ACE(14, "A");
+    /** King — the highest rank. */
+    KING(13, "K");
 
     private final int value;
     private final String symbol;
@@ -54,7 +51,7 @@ public enum Rank {
     /**
      * Resolves a rank from its numeric value.
      *
-     * @param value the numeric value, 2 through 14
+     * @param value the numeric value, 2 through 13
      * @return the matching rank
      * @throws IllegalArgumentException if no rank has that value
      */
@@ -68,7 +65,7 @@ public enum Rank {
     }
 
     /**
-     * The numeric value used to compare ranks. The ace is high, so 14.
+     * The numeric value used to compare ranks. King is the highest, so 13.
      *
      * @return the numeric value
      */

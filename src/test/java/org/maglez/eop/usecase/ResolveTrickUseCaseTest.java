@@ -289,7 +289,7 @@ class ResolveTrickUseCaseTest {
     void shouldPassTheLeadOnWhenTheWinnerIsOutOfCards() {
         final GameSession session = seatedTable();
         // Deal one card per seat and play all three into the trick.
-        final Hands dealt = dealTo(session, Rank.TWO, Rank.ACE, Rank.THREE);
+        final Hands dealt = dealTo(session, Rank.TWO, Rank.KING, Rank.THREE);
         final TrickUnderWay underWay = playInto(session, dealt, 0, 1, 2);
 
         // After the trick every seat is empty. Reconstitute remaining hands so that seat zero
@@ -311,7 +311,7 @@ class ResolveTrickUseCaseTest {
                 .execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
         assertThat(resolved.winningSeat())
-                .as("the ace takes the trick, and it was dealt to seat one")
+                .as("the king takes the trick, and it was dealt to seat one")
                 .isEqualTo(1);
         assertThat(remaining.seatsHoldingCards())
                 .as("only seat zero was given a remaining card")

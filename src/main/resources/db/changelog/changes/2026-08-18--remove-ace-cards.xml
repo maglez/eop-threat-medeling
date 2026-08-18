@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Remove the six Ace cards (rank 14) from the deck.
+
+  The physical Elevation of Privilege card game does not include Ace cards.
+  002-real-deck.xml seeded all 78 cards (ranks 2–A for every suit), and
+  the trim-deck migration (2026-08-17) removed four cards that were
+  absent from the printed deck. This migration removes the remaining six Ace
+  cards — one per STRIDE suit — that also do not appear in the physical game.
+
+  After this migration:
+    - SPOOFING:               12 cards (ranks 2–K)
+    - TAMPERING:              11 cards (ranks 3–K)
+    - REPUDIATION:            12 cards (ranks 2–K)
+    - INFORMATION_DISCLOSURE: 12 cards (ranks 2–K)
+    - DENIAL_OF_SERVICE:      12 cards (ranks 2–K)
+    - ELEVATION_OF_PRIVILEGE:  9 cards (ranks 5–K)
+    - Total: 68 cards
+
+  Identifiers are taken directly from 002-real-deck.xml so this changeset
+  cannot accidentally delete a card it did not create.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001" author="miguel">
+    <!--
+      Guard: refuse to run if any of the six Ace cards are still referenced.
+      fk_hand_card_card and fk_trick_play_card are both RESTRICT (no onDelete),
+      so an unguarded DELETE would produce SQLSTATE 23503 on both H2 and PostgreSQL.
+      HALT here gives the operator a clear, diagnosable message instead of a startup crash.
+    -->
+    <preConditions onFail="HALT"
+                   onFailMessage="Cannot remove Ace cards: they are still referenced by hand_card or trick_play. Delete all game sessions first.">
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM hand_card
+        WHERE card_id IN (
+          '048c87ce-e1e0-519b-be26-05f7b8ae9e5e',
+          '56c1a22f-b191-5a09-8231-faca8224ff2c',
+          '089d68f1-0588-5840-a25f-5f6157731327',
+          '4d22c229-2edb-56eb-8983-28d885d1b9a8',
+          '59f51c4e-1887-5614-a9c9-c3916f2cfd86',
+          '2a497b0e-e59d-50c9-a24b-f03f347dd4ed'
+        )
+      </sqlCheck>
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM trick_play
+        WHERE card_id IN (
+          '048c87ce-e1e0-519b-be26-05f7b8ae9e5e',
+          '56c1a22f-b191-5a09-8231-faca8224ff2c',
+          '089d68f1-0588-5840-a25f-5f6157731327',
+          '4d22c229-2edb-56eb-8983-28d885d1b9a8',
+          '59f51c4e-1887-5614-a9c9-c3916f2cfd86',
+          '2a497b0e-e59d-50c9-a24b-f03f347dd4ed'
+        )
+      </sqlCheck>
+    </preConditions>
+
+    <comment>
+      Remove the six Ace cards (rank 14) that do not appear in the physical
+      Elevation of Privilege printed deck.
+
+      OPERATOR NOTE: This changeset deletes reference-data rows that are
+      protected by RESTRICT foreign keys from hand_card and trick_play
+      (see 004-trick-play-schema.xml). It will HALT if any active or historical
+      game session still references these cards. Before running this migration
+      on a database that has ever hosted a dealt game, either:
+        (a) delete all game sessions (and their cascading hand_card / trick_play rows), or
+        (b) run the rollback of any in-flight sessions first.
+      On a fresh database (e.g. CI, a new deployment) this precondition is always satisfied.
+    </comment>
+
+    <!-- SPOOFING Ace -->
+    <delete tableName="card">
+      <where>id = '048c87ce-e1e0-519b-be26-05f7b8ae9e5e'</where>
+    </delete>
+
+    <!-- TAMPERING Ace -->
+    <delete tableName="card">
+      <where>id = '56c1a22f-b191-5a09-8231-faca8224ff2c'</where>
+    </delete>
+
+    <!-- REPUDIATION Ace -->
+    <delete tableName="card">
+      <where>id = '089d68f1-0588-5840-a25f-5f6157731327'</where>
+    </delete>
+
+    <!-- INFORMATION_DISCLOSURE Ace -->
+    <delete tableName="card">
+      <where>id = '4d22c229-2edb-56eb-8983-28d885d1b9a8'</where>
+    </delete>
+
+    <!-- DENIAL_OF_SERVICE Ace -->
+    <delete tableName="card">
+      <where>id = '59f51c4e-1887-5614-a9c9-c3916f2cfd86'</where>
+    </delete>
+
+    <!-- ELEVATION_OF_PRIVILEGE Ace -->
+    <delete tableName="card">
+      <where>id = '2a497b0e-e59d-50c9-a24b-f03f347dd4ed'</where>
+    </delete>
+
+    <rollback>
+      <!-- Re-insert the six deleted Ace cards in their original order. -->
+
+      <insert tableName="card">
+        <column name="id" value="048c87ce-e1e0-519b-be26-05f7b8ae9e5e"/>
+        <column name="suit" value="SPOOFING"/>
+        <column name="suit_order" valueNumeric="1"/>
+        <column name="card_rank" valueNumeric="14"/>
+        <column name="threat_prompt" value="Your code makes access control decisions all over the place, rather than with a security kernel"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="56c1a22f-b191-5a09-8231-faca8224ff2c"/>
+        <column name="suit" value="TAMPERING"/>
+        <column name="suit_order" valueNumeric="2"/>
+        <column name="card_rank" valueNumeric="14"/>
+        <column name="threat_prompt" value="An attacker can alter information in a data store because it has weak/open permissions or includes a group which is equivalent to everyone (&quot;anyone with a Facebook account&quot;)"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="089d68f1-0588-5840-a25f-5f6157731327"/>
+        <column name="suit" value="REPUDIATION"/>
+        <column name="suit_order" valueNumeric="3"/>
+        <column name="card_rank" valueNumeric="14"/>
+        <column name="threat_prompt" value="An attacker can brute-force file encryption because there&apos;s no defense in place (example defense, password stretching)"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="4d22c229-2edb-56eb-8983-28d885d1b9a8"/>
+        <column name="suit" value="INFORMATION_DISCLOSURE"/>
+        <column name="suit_order" valueNumeric="4"/>
+        <column name="card_rank" valueNumeric="14"/>
+        <column name="threat_prompt" value="An attacker can drain a battery that&apos;s hard to replace (sealed in a phone, an implanted medical device, or in a hard to reach location) (battery, persist)"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="59f51c4e-1887-5614-a9c9-c3916f2cfd86"/>
+        <column name="suit" value="DENIAL_OF_SERVICE"/>
+        <column name="suit_order" valueNumeric="5"/>
+        <column name="card_rank" valueNumeric="14"/>
+        <column name="threat_prompt" value="An attacker can exhaust resources needed by your system"/>
+      </insert>
+
+      <insert tableName="card">
+        <column name="id" value="2a497b0e-e59d-50c9-a24b-f03f347dd4ed"/>
+        <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
+        <column name="suit_order" valueNumeric="6"/>
+        <column name="card_rank" valueNumeric="14"/>
+        <column name="threat_prompt" value="An attacker can gain elevated privileges because your system doesn&apos;t use the principle of least privilege"/>
+      </insert>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

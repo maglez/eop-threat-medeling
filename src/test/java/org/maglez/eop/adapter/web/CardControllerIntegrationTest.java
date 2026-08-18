@@ -25,9 +25,9 @@ import org.springframework.test.web.servlet.MockMvc;
 class CardControllerIntegrationTest {
 
     private static final String CARDS = "/api/v1/cards";
-    /** Elevation of Privilege, Ace: the trump suit and an open threat card. */
-    private static final String TRUMP_ACE_ID = "2a497b0e-e59d-50c9-a24b-f03f347dd4ed";
-    private static final int DECK_SIZE = 74;
+    /** Elevation of Privilege, King: the trump suit's highest card. */
+    private static final String TRUMP_KING_ID = "f4ea3e6e-5cd5-53d0-a32d-b9f389069b74";
+    private static final int DECK_SIZE = 68;
     private static final String PROBLEM_JSON = "application/problem+json";
 
     @Autowired
@@ -49,12 +49,13 @@ class CardControllerIntegrationTest {
                 .andExpect(jsonPath("$.content[0].rankSymbol").value("2"))
                 .andExpect(jsonPath("$.content[0].rankValue").value(2))
                 .andExpect(jsonPath("$.content[0].threatPrompt").isNotEmpty())
-                // Thirteen cards per suit for Spoofing, so the first page of twenty crosses one
-                // suit boundary exactly: Spoofing 2..A (13 cards), then Tampering 3..9.
-                // (Tampering starts at 3 in the printed deck — rank 2 was omitted.)
-                .andExpect(jsonPath("$.content[12].rank").value("ACE"))
+                // Twelve cards per suit for Spoofing (2–K), so the first page of twenty crosses one
+                // suit boundary exactly: Spoofing 2..K (12 cards), then Tampering 3..10.
+                // (Tampering starts at 3 in the printed deck — rank 2 was omitted, and Aces are absent.)
+                .andExpect(jsonPath("$.content[12].rank").value("THREE"))
+                .andExpect(jsonPath("$.content[12].suit").value("TAMPERING"))
                 .andExpect(jsonPath("$.content[13].suit").value("TAMPERING"))
-                .andExpect(jsonPath("$.content[19].rankValue").value(9));
+                .andExpect(jsonPath("$.content[19].rankValue").value(10));
     }
 
     @Test
@@ -85,8 +86,8 @@ class CardControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(DECK_SIZE))
                 .andExpect(jsonPath("$.totalPages").value(1))
-                .andExpect(jsonPath("$.content[73].suit").value("ELEVATION_OF_PRIVILEGE"))
-                .andExpect(jsonPath("$.content[73].rank").value("ACE"));
+                .andExpect(jsonPath("$.content[67].suit").value("ELEVATION_OF_PRIVILEGE"))
+                .andExpect(jsonPath("$.content[67].rank").value("KING"));
     }
 
     @Test
@@ -103,13 +104,13 @@ class CardControllerIntegrationTest {
     @Test
     @DisplayName("returns a single card by identifier")
     void shouldReturnASingleCard() throws Exception {
-        mockMvc.perform(get(CARDS + "/" + TRUMP_ACE_ID))
+        mockMvc.perform(get(CARDS + "/" + TRUMP_KING_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.cardId").value(TRUMP_ACE_ID))
+                .andExpect(jsonPath("$.cardId").value(TRUMP_KING_ID))
                 .andExpect(jsonPath("$.suit").value("ELEVATION_OF_PRIVILEGE"))
-                .andExpect(jsonPath("$.rankSymbol").value("A"))
+                .andExpect(jsonPath("$.rankSymbol").value("K"))
                 .andExpect(jsonPath("$.threatPrompt")
-                        .value("You've invented a new Elevation of Privilege attack"));
+                        .value("An attacker can inject a command that the system will run at a higher privilege level"));
     }
 
     @Test

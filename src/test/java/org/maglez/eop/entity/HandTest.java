@@ -88,7 +88,7 @@ class HandTest {
                             card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.THREE),
                             card(StrideCategory.SPOOFING, Rank.KING),
                             card(StrideCategory.SPOOFING, Rank.FOUR),
-                            card(StrideCategory.TAMPERING, Rank.ACE))
+                            card(StrideCategory.TAMPERING, Rank.KING))
                     .build();
 
             assertThat(hand.cards())
@@ -96,7 +96,7 @@ class HandTest {
                     .containsExactly(
                             org.assertj.core.groups.Tuple.tuple(StrideCategory.SPOOFING, Rank.FOUR),
                             org.assertj.core.groups.Tuple.tuple(StrideCategory.SPOOFING, Rank.KING),
-                            org.assertj.core.groups.Tuple.tuple(StrideCategory.TAMPERING, Rank.ACE),
+                            org.assertj.core.groups.Tuple.tuple(StrideCategory.TAMPERING, Rank.KING),
                             org.assertj.core.groups.Tuple.tuple(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.THREE));
         }
 
@@ -341,7 +341,7 @@ class HandTest {
             final Card forged = CardBuilder.aCard()
                     .withCardId(held.cardId())
                     .withSuit(StrideCategory.ELEVATION_OF_PRIVILEGE)
-                    .withRank(Rank.ACE)
+                    .withRank(Rank.KING)
                     .build();
 
             final Card resolved = hand.resolve(forged);

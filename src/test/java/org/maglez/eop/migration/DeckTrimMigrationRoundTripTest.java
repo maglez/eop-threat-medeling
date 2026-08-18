@@ -38,6 +38,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>The four card IDs are taken directly from {@code 002-real-deck.xml} — the same source the
  * changeset uses — so the test cannot accidentally assert the wrong rows.
+ *
+ * <p>Note: the 2026-08-18--remove-ace-cards.xml migration runs after the trim migration, so the
+ * full migration chain produces 68 cards. Rolling back 1 changeset undoes the ace removal (68→74);
+ * rolling back 2 changesets undoes both the ace removal and the trim (74→78).
  */
 @DisplayName("2026-08-17--trim-deck-to-74-printed-cards migration round-trip")
 class DeckTrimMigrationRoundTripTest {
@@ -46,8 +50,11 @@ class DeckTrimMigrationRoundTripTest {
     private static final String JDBC_URL =
             "jdbc:h2:mem:deck-trim-roundtrip;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
 
-    /** Total card count after the full migration (78 seeded − 4 trimmed). */
-    private static final int DECK_SIZE_AFTER_TRIM = 74;
+    /** Total card count after the full migration chain (78 seeded − 4 trimmed − 6 aces removed). */
+    private static final int DECK_SIZE_AFTER_ALL_MIGRATIONS = 68;
+
+    /** Total card count after rolling back the ace-removal migration (68 + 6 aces restored). */
+    private static final int DECK_SIZE_AFTER_TRIM_ONLY = 74;
 
     /** Total card count before the trim migration (seeded by 002-real-deck.xml). */
     private static final int DECK_SIZE_BEFORE_TRIM = 78;
@@ -95,18 +102,18 @@ class DeckTrimMigrationRoundTripTest {
     }
 
     @Test
-    @DisplayName("forward migration removes the four absent cards, leaving 74 in the deck")
+    @DisplayName("forward migration removes the four absent cards, leaving 74 in the deck (before ace removal)")
     void forwardMigrationTrimsToSeventyFourCards() throws Exception {
         // Arrange — database is empty; Liquibase has not run yet.
 
-        // Act
+        // Act — apply all migrations (trim + ace removal)
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Assert — total card count is 74
+        // Assert — total card count is 68 (74 after trim, then 6 aces removed)
         assertThat(countCards(connection))
-                .as("deck must hold exactly 74 cards after the trim migration")
-                .isEqualTo(DECK_SIZE_AFTER_TRIM);
+                .as("deck must hold exactly 68 cards after all migrations (trim + ace removal)")
+                .isEqualTo(DECK_SIZE_AFTER_ALL_MIGRATIONS);
 
         // Assert — none of the four trimmed cards are present
         for (final String id : TRIMMED_CARD_IDS) {
@@ -117,49 +124,72 @@ class DeckTrimMigrationRoundTripTest {
     }
 
     @Test
-    @DisplayName("rollback of the trim migration re-inserts the four cards, restoring 78")
+    @DisplayName("rollback of the ace-removal migration restores 6 aces, giving 74 cards")
     void rollbackRestoresSeventyEightCards() throws Exception {
         // Arrange — apply the full migration first
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Act — roll back the single trim changeset
+        // Act — roll back 1 changeset (ace removal), leaving trim in place
         liquibase.rollback(1, new Contexts(), new LabelExpression());
+
+        // Assert — total card count is back to 74 (trim applied, aces restored)
+        assertThat(countCards(connection))
+                .as("deck must hold exactly 74 cards after rolling back the ace-removal migration")
+                .isEqualTo(DECK_SIZE_AFTER_TRIM_ONLY);
+
+        // Assert — all four trimmed cards are still absent (trim migration still applied)
+        for (final String id : TRIMMED_CARD_IDS) {
+            assertThat(cardExists(connection, id))
+                    .as("card %s must still be absent after rolling back only the ace-removal migration", id)
+                    .isFalse();
+        }
+    }
+
+    @Test
+    @DisplayName("rollback of both migrations restores all 78 original cards")
+    void rollbackBothMigrationsRestoresSeventyEightCards() throws Exception {
+        // Arrange — apply the full migration first
+        liquibase.update(new Contexts(), new LabelExpression());
+        connection.setAutoCommit(true);
+
+        // Act — roll back 2 changesets (ace removal + trim)
+        liquibase.rollback(2, new Contexts(), new LabelExpression());
 
         // Assert — total card count is back to 78
         assertThat(countCards(connection))
-                .as("deck must hold exactly 78 cards after rolling back the trim migration")
+                .as("deck must hold exactly 78 cards after rolling back both migrations")
                 .isEqualTo(DECK_SIZE_BEFORE_TRIM);
 
         // Assert — all four trimmed cards are present again
         for (final String id : TRIMMED_CARD_IDS) {
             assertThat(cardExists(connection, id))
-                    .as("card %s must be present after rolling back the trim migration", id)
+                    .as("card %s must be present after rolling back both migrations", id)
                     .isTrue();
         }
     }
 
     @Test
-    @DisplayName("re-applying the trim migration after rollback removes the four cards again")
+    @DisplayName("re-applying all migrations after rollback produces 68 cards again")
     void reapplyAfterRollbackTrimsAgain() throws Exception {
-        // Arrange — apply, roll back, then apply again
+        // Arrange — apply, roll back both, then apply again
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(1, new Contexts(), new LabelExpression());
+        liquibase.rollback(2, new Contexts(), new LabelExpression());
 
         // Act
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Assert — total card count is 74 again
+        // Assert — total card count is 68 again
         assertThat(countCards(connection))
-                .as("deck must hold exactly 74 cards after re-applying the trim migration")
-                .isEqualTo(DECK_SIZE_AFTER_TRIM);
+                .as("deck must hold exactly 68 cards after re-applying all migrations")
+                .isEqualTo(DECK_SIZE_AFTER_ALL_MIGRATIONS);
 
         // Assert — none of the four trimmed cards are present
         for (final String id : TRIMMED_CARD_IDS) {
             assertThat(cardExists(connection, id))
-                    .as("card %s must be absent after re-applying the trim migration", id)
+                    .as("card %s must be absent after re-applying all migrations", id)
                     .isFalse();
         }
     }
@@ -167,10 +197,10 @@ class DeckTrimMigrationRoundTripTest {
     @Test
     @DisplayName("precondition HALT fires when hand_card references a trimmed card — migration refuses and cards survive")
     void preconditionHaltsWhenHandCardReferencesATrimmedCard() throws Exception {
-        // Arrange — apply the full migration (74 cards), then roll back the trim (78 cards).
+        // Arrange — apply the full migration (68 cards), then roll back both migrations (78 cards).
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(1, new Contexts(), new LabelExpression());
+        liquibase.rollback(2, new Contexts(), new LabelExpression());
 
         // Insert a hand_card row referencing one of the trimmed cards.
         // Disable FK checks so we can insert without satisfying the hand → game_session → player chain.

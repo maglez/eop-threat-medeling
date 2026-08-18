@@ -105,8 +105,8 @@ class ScoreSheetTest {
         void shouldGiveTheTrickPointToATrump() {
             final TrickPlay lead = aPlayBy(0, card(StrideCategory.SPOOFING, Rank.KING)).build();
             final TrickPlay trump = aPlayBy(1, card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.TWO)).build();
-            final TrickPlay ace = aPlayBy(2, card(StrideCategory.SPOOFING, Rank.ACE)).build();
-            final Trick trick = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(lead, trump, ace).build().resolved();
+            final TrickPlay high = aPlayBy(2, card(StrideCategory.SPOOFING, Rank.QUEEN)).build();
+            final Trick trick = TrickBuilder.aTrick().withLeaderSeat(0).withPlays(lead, trump, high).build().resolved();
 
             final ScoreSheet sheet = ScoreSheet.of(threePlayers(), List.of(trick));
 

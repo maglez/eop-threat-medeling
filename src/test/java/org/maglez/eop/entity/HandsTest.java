@@ -43,17 +43,17 @@ class HandsTest {
     class Dealing {
 
         @Test
-        @DisplayName("three players each hold twenty-four cards (74 / 3 = 24, 2 discarded)")
+        @DisplayName("three players each hold twenty-two cards (68 / 3 = 22, 2 discarded)")
         void shouldDealEvenlyToThree() {
             final Hands hands = Hands.deal(fullDeck(), seats(3));
 
-            assertThat(hands.handOf(0).size()).isEqualTo(24);
-            assertThat(hands.handOf(1).size()).isEqualTo(24);
-            assertThat(hands.handOf(2).size()).isEqualTo(24);
+            assertThat(hands.handOf(0).size()).isEqualTo(22);
+            assertThat(hands.handOf(1).size()).isEqualTo(22);
+            assertThat(hands.handOf(2).size()).isEqualTo(22);
         }
 
         @Test
-        @DisplayName("six players each hold twelve cards (74 / 6 = 12, 2 discarded)")
+        @DisplayName("six players each hold eleven cards (68 / 6 = 11, 2 discarded)")
         void shouldDealEvenlyToSix() {
             final Hands hands = Hands.deal(fullDeck(), seats(6));
 
@@ -65,11 +65,11 @@ class HandsTest {
                             hands.handOf(3).size(),
                             hands.handOf(4).size(),
                             hands.handOf(5).size()))
-                    .containsExactly(12, 12, 12, 12, 12, 12);
+                    .containsExactly(11, 11, 11, 11, 11, 11);
         }
 
         @Test
-        @DisplayName("four players each hold eighteen cards (74 / 4 = 18, 2 discarded)")
+        @DisplayName("four players each hold seventeen cards (68 / 4 = 17, 0 discarded)")
         void shouldDealEqualHandsAtFour() {
             final Hands hands = Hands.deal(fullDeck(), seats(4));
 
@@ -78,11 +78,11 @@ class HandsTest {
                             hands.handOf(1).size(),
                             hands.handOf(2).size(),
                             hands.handOf(3).size()))
-                    .containsExactly(18, 18, 18, 18);
+                    .containsExactly(17, 17, 17, 17);
         }
 
         @Test
-        @DisplayName("five players each hold fourteen cards (74 / 5 = 14, 4 discarded)")
+        @DisplayName("five players each hold thirteen cards (68 / 5 = 13, 3 discarded)")
         void shouldDealEqualHandsAtFive() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
@@ -92,11 +92,11 @@ class HandsTest {
                             hands.handOf(2).size(),
                             hands.handOf(3).size(),
                             hands.handOf(4).size()))
-                    .containsExactly(14, 14, 14, 14, 14);
+                    .containsExactly(13, 13, 13, 13, 13);
         }
 
         @Test
-        @DisplayName("every dealt card is unique, and the remainder is discarded (5 players: 70 of 74 cards dealt)")
+        @DisplayName("every dealt card is unique, and the remainder is discarded (5 players: 65 of 68 cards dealt)")
         void shouldDealEveryCardExactlyOnce() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
@@ -105,8 +105,8 @@ class HandsTest {
                     .values()
                     .forEach(hand -> hand.cards().forEach(dealtCard -> dealt.add(dealtCard.cardId())));
 
-            assertThat(hands.totalCards()).isEqualTo(70);
-            assertThat(dealt).hasSize(70).doesNotHaveDuplicates();
+            assertThat(hands.totalCards()).isEqualTo(65);
+            assertThat(dealt).hasSize(65).doesNotHaveDuplicates();
         }
 
         @Test
@@ -226,7 +226,7 @@ class HandsTest {
             final Hands hands = Hands.reconstitute(at(
                     handAt(0, card(StrideCategory.SPOOFING, Rank.TWO)),
                     handAt(1, card(StrideCategory.REPUDIATION, Rank.TWO)),
-                    handAt(2, card(StrideCategory.TAMPERING, Rank.ACE))));
+                    handAt(2, card(StrideCategory.TAMPERING, Rank.KING))));
 
             assertThat(hands.openingLeaderSeat()).isEqualTo(2);
         }
@@ -237,7 +237,7 @@ class HandsTest {
             final Hands hands = Hands.reconstitute(at(
                     handAt(0, card(StrideCategory.SPOOFING, Rank.TWO)),
                     handAt(1, card(StrideCategory.REPUDIATION, Rank.THREE)),
-                    handAt(2, card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.ACE))));
+                    handAt(2, card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.KING))));
 
             assertThatExceptionOfType(NoTamperingCardDealtException.class)
                     .isThrownBy(hands::openingLeaderSeat)
@@ -409,7 +409,7 @@ class HandsTest {
 
             assertThat(hands.toString())
                     .contains("seats=3")
-                    .contains("cardsRemaining=72")
+                    .contains("cardsRemaining=66")
                     .doesNotContain("TAMPERING")
                     .doesNotContain("There's a way");
         }
@@ -469,7 +469,7 @@ class HandsTest {
                     handAt(0, DeckFixture.card(StrideCategory.TAMPERING, Rank.TWO),
                             DeckFixture.card(StrideCategory.TAMPERING, Rank.NINE)),
                     handAt(1, DeckFixture.card(StrideCategory.TAMPERING, Rank.FIVE)),
-                    handAt(2, DeckFixture.card(StrideCategory.SPOOFING, Rank.ACE))));
+                    handAt(2, DeckFixture.card(StrideCategory.SPOOFING, Rank.KING))));
 
             assertThat(hands.openingLeaderSeat()).isZero();
         }

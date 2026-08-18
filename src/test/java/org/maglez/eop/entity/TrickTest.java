@@ -26,10 +26,10 @@ class TrickTest {
 
     private static final Card SPOOFING_FOUR = card(StrideCategory.SPOOFING, Rank.FOUR);
     private static final Card SPOOFING_NINE = card(StrideCategory.SPOOFING, Rank.NINE);
+    private static final Card SPOOFING_QUEEN = card(StrideCategory.SPOOFING, Rank.QUEEN);
     private static final Card SPOOFING_KING = card(StrideCategory.SPOOFING, Rank.KING);
-    private static final Card SPOOFING_ACE = card(StrideCategory.SPOOFING, Rank.ACE);
     private static final Card TAMPERING_TWO = card(StrideCategory.TAMPERING, Rank.TWO);
-    private static final Card REPUDIATION_ACE = card(StrideCategory.REPUDIATION, Rank.ACE);
+    private static final Card REPUDIATION_KING = card(StrideCategory.REPUDIATION, Rank.KING);
     private static final Card DENIAL_KING = card(StrideCategory.DENIAL_OF_SERVICE, Rank.KING);
     private static final Card TRUMP_TWO = card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.TWO);
     private static final Card TRUMP_FOUR = card(StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.FOUR);
@@ -206,10 +206,10 @@ class TrickTest {
         @Test
         @DisplayName("allows any card once the hand is void of the led suit, trump included")
         void shouldAllowAnyCardWhenVoidOfTheLedSuit() {
-            final Hand hand = aHand().withCards(TRUMP_TWO, REPUDIATION_ACE).build();
+            final Hand hand = aHand().withCards(TRUMP_TWO, REPUDIATION_KING).build();
 
             spoofingLed.assertLegalPlay(TRUMP_TWO, hand);
-            spoofingLed.assertLegalPlay(REPUDIATION_ACE, hand);
+            spoofingLed.assertLegalPlay(REPUDIATION_KING, hand);
         }
 
         @Test
@@ -289,7 +289,7 @@ class TrickTest {
             final Trick trick = Trick.open(TRICK_ID, 1, 0)
                     .play(aPlayBy(0, SPOOFING_FOUR).build())
                     .play(aPlayBy(1, SPOOFING_KING).build())
-                    .play(aPlayBy(2, REPUDIATION_ACE).build());
+                    .play(aPlayBy(2, REPUDIATION_KING).build());
 
             assertThat(trick.seatToPlay(THREE_SEATS)).isEmpty();
             assertThat(trick.isComplete(THREE_SEATS)).isTrue();
@@ -356,7 +356,7 @@ class TrickTest {
             final Trick trick = Trick.open(TRICK_ID, 1, 0)
                     .play(aPlayBy(0, SPOOFING_FOUR).build())
                     .play(aPlayBy(1, SPOOFING_KING).build())
-                    .play(aPlayBy(2, REPUDIATION_ACE).build());
+                    .play(aPlayBy(2, REPUDIATION_KING).build());
 
             assertThatIllegalStateException().isThrownBy(() -> trick.assertSeatMayPlay(0, THREE_SEATS));
         }
@@ -447,7 +447,7 @@ class TrickTest {
         void shouldIgnoreOffSuitCards() {
             final Trick resolved = trickOf(
                     aPlayBy(0, SPOOFING_FOUR).build(),
-                    aPlayBy(1, REPUDIATION_ACE).build(),
+                    aPlayBy(1, REPUDIATION_KING).build(),
                     aPlayBy(2, DENIAL_KING).build());
 
             assertThat(resolved.winningSeat()).isZero();
@@ -457,9 +457,9 @@ class TrickTest {
         @DisplayName("a single trump beats the highest card of the led suit")
         void shouldAwardToTrumpOverTheLedSuit() {
             final Trick resolved = trickOf(
-                    aPlayBy(0, SPOOFING_ACE).build(),
+                    aPlayBy(0, SPOOFING_KING).build(),
                     aPlayBy(1, TRUMP_TWO).build(),
-                    aPlayBy(2, SPOOFING_KING).build());
+                    aPlayBy(2, SPOOFING_QUEEN).build());
 
             assertThat(resolved.winningSeat()).isEqualTo(1);
         }
@@ -468,7 +468,7 @@ class TrickTest {
         @DisplayName("the highest trump takes it when more than one was played")
         void shouldAwardToTheHighestTrump() {
             final Trick resolved = trickOf(
-                    aPlayBy(0, SPOOFING_ACE).build(),
+                    aPlayBy(0, SPOOFING_KING).build(),
                     aPlayBy(1, TRUMP_TEN).build(),
                     aPlayBy(2, TRUMP_TWO).build());
 
@@ -479,7 +479,7 @@ class TrickTest {
         @DisplayName("and it is the rank that decides, not the order the trumps were played in")
         void shouldNotAwardToTheFirstTrumpPlayed() {
             final Trick resolved = trickOf(
-                    aPlayBy(0, SPOOFING_ACE).build(),
+                    aPlayBy(0, SPOOFING_KING).build(),
                     aPlayBy(1, TRUMP_TWO).build(),
                     aPlayBy(2, TRUMP_TEN).build());
 
@@ -492,7 +492,7 @@ class TrickTest {
             final Trick resolved = trickOf(
                     aPlayBy(0, TRUMP_FOUR).build(),
                     aPlayBy(1, TRUMP_JACK).build(),
-                    aPlayBy(2, SPOOFING_ACE).build());
+                    aPlayBy(2, SPOOFING_KING).build());
 
             assertThat(resolved.winningSeat()).isEqualTo(1);
         }
@@ -668,7 +668,7 @@ class TrickTest {
         @DisplayName("refuses a card relabelled as the led suit to escape following suit")
         void shouldRefuseAForgedLedSuit() {
             final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR, TAMPERING_TWO);
-            final Card forged = relabelled(TAMPERING_TWO, StrideCategory.SPOOFING, Rank.ACE);
+            final Card forged = relabelled(TAMPERING_TWO, StrideCategory.SPOOFING, Rank.KING);
 
             assertThatExceptionOfType(MustFollowSuitException.class)
                     .isThrownBy(() -> spoofingLed().acceptPlay(1, aPlayBy(1, forged).build(), hands))
@@ -682,7 +682,7 @@ class TrickTest {
         @DisplayName("records the card that was dealt, not the card the request described")
         void shouldRecordTheDealtCard() {
             final Hands hands = tableWithSeatOneHolding(TAMPERING_TWO);
-            final Card forged = relabelled(TAMPERING_TWO, StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.ACE);
+            final Card forged = relabelled(TAMPERING_TWO, StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.KING);
 
             final Trick after = spoofingLed().acceptPlay(1, aPlayBy(1, forged).build(), hands);
 
@@ -694,7 +694,7 @@ class TrickTest {
         @DisplayName("so a relabelled card cannot take a trick it was never able to take")
         void shouldNotLetAForgedCardWin() {
             final Hands hands = table(handFor(0, SPOOFING_NINE), handFor(1, TAMPERING_TWO));
-            final Card forged = relabelled(TAMPERING_TWO, StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.ACE);
+            final Card forged = relabelled(TAMPERING_TWO, StrideCategory.ELEVATION_OF_PRIVILEGE, Rank.KING);
 
             final Trick resolved = spoofingLed()
                     .acceptPlay(1, aPlayBy(1, forged).build(), hands)
@@ -798,7 +798,7 @@ class TrickTest {
             final Hands hands = tableWithSeatOneHolding(SPOOFING_FOUR);
 
             assertThatExceptionOfType(OutOfTurnException.class)
-                    .isThrownBy(() -> spoofingLed().acceptPlay(2, aPlayBy(2, SPOOFING_ACE).build(), hands));
+                    .isThrownBy(() -> spoofingLed().acceptPlay(2, aPlayBy(2, SPOOFING_KING).build(), hands));
         }
 
         @Test

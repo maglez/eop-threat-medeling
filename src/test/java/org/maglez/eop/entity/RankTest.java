@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 class RankTest {
 
     @Test
-    @DisplayName("has thirteen ranks, two through ace")
-    void shouldHaveThirteenRanks() {
-        assertThat(Rank.values()).hasSize(13);
+    @DisplayName("has twelve ranks, two through king")
+    void shouldHaveTwelveRanks() {
+        assertThat(Rank.values()).hasSize(12);
         assertThat(Rank.TWO.value()).isEqualTo(2);
-        assertThat(Rank.ACE.value()).isEqualTo(14);
+        assertThat(Rank.KING.value()).isEqualTo(13);
     }
 
     @Test
@@ -27,10 +27,10 @@ class RankTest {
     }
 
     @Test
-    @DisplayName("the ace is high, which is what makes an Open Threat card worth playing")
-    void shouldTreatAceAsHighest() {
-        assertThat(Rank.ACE.beats(Rank.KING)).isTrue();
-        assertThat(Rank.KING.beats(Rank.ACE)).isFalse();
+    @DisplayName("king is the highest rank")
+    void shouldTreatKingAsHighest() {
+        assertThat(Rank.KING.beats(Rank.QUEEN)).isTrue();
+        assertThat(Rank.QUEEN.beats(Rank.KING)).isFalse();
         assertThat(Rank.TWO.beats(Rank.TWO)).isFalse();
     }
 
@@ -42,7 +42,6 @@ class RankTest {
         assertThat(Rank.JACK.symbol()).isEqualTo("J");
         assertThat(Rank.QUEEN.symbol()).isEqualTo("Q");
         assertThat(Rank.KING.symbol()).isEqualTo("K");
-        assertThat(Rank.ACE.symbol()).isEqualTo("A");
     }
 
     @Test
@@ -57,6 +56,6 @@ class RankTest {
     @DisplayName("rejects a value no card carries, rather than guessing")
     void shouldRejectUnknownValue() {
         assertThatIllegalArgumentException().isThrownBy(() -> Rank.ofValue(1)).withMessageContaining("1");
-        assertThatIllegalArgumentException().isThrownBy(() -> Rank.ofValue(15)).withMessageContaining("15");
+        assertThatIllegalArgumentException().isThrownBy(() -> Rank.ofValue(14)).withMessageContaining("14");
     }
 }

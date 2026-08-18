@@ -32,25 +32,25 @@ import org.springframework.boot.test.context.SpringBootTest;
 class CardRepositoryAdapterIntegrationTest {
 
     /**
-     * The physical printed deck has 74 cards. Tampering starts at rank 3 (12 cards),
-     * Elevation of Privilege starts at rank 5 (10 cards), all other suits run 2–A (13 cards each).
-     * 4 × 13 + 12 + 10 = 74.
+     * The physical printed deck has 68 cards after removing Aces. Tampering starts at rank 3
+     * (11 cards), Elevation of Privilege starts at rank 5 (9 cards), all other suits run 2–K
+     * (12 cards each). 4 × 12 + 11 + 9 = 68.
      */
-    private static final int DECK_SIZE = 74;
+    private static final int DECK_SIZE = 68;
 
     /**
      * Expected card count per suit in the printed deck.
-     * Suits not listed here hold the standard 13 cards.
+     * Suits not listed here hold the standard 12 cards (2–K, no Ace).
      */
     private static final Map<StrideCategory, Integer> CARDS_PER_SUIT;
 
     static {
         CARDS_PER_SUIT = new EnumMap<>(StrideCategory.class);
         for (final StrideCategory suit : StrideCategory.values()) {
-            CARDS_PER_SUIT.put(suit, 13);
+            CARDS_PER_SUIT.put(suit, 12);
         }
-        CARDS_PER_SUIT.put(StrideCategory.TAMPERING, 12);
-        CARDS_PER_SUIT.put(StrideCategory.ELEVATION_OF_PRIVILEGE, 10);
+        CARDS_PER_SUIT.put(StrideCategory.TAMPERING, 11);
+        CARDS_PER_SUIT.put(StrideCategory.ELEVATION_OF_PRIVILEGE, 9);
     }
 
     /** The largest page the contract allows, so one request returns the whole deck. */
@@ -69,7 +69,7 @@ class CardRepositoryAdapterIntegrationTest {
      * 10 cards (starts at 5).
      */
     @Test
-    @DisplayName("the deck holds seventy-four cards matching the printed deck's suit distribution")
+    @DisplayName("the deck holds sixty-eight cards matching the printed deck's suit distribution")
     void shouldSeedCorrectCardsPerSuit() {
         final PageResult<Card> page = adapter.findAll(WHOLE_DECK);
 
@@ -125,7 +125,7 @@ class CardRepositoryAdapterIntegrationTest {
                 .filter(card -> card.suit() == StrideCategory.SPOOFING)
                 .toList();
 
-        // Spoofing is a full suit (2–A), so all ranks must be present in order.
+        // Spoofing is a full suit (2–K), so all ranks must be present in order.
         assertThat(spoofing).extracting(Card::rank).containsExactly(Rank.values());
     }
 
@@ -139,7 +139,7 @@ class CardRepositoryAdapterIntegrationTest {
     }
 
     @Test
-    @DisplayName("pages are real: a page size of two yields thirty-seven pages over the deck")
+    @DisplayName("pages are real: a page size of two yields thirty-four pages over the deck")
     void shouldPaginateAtTheDatabase() {
         final PageResult<Card> firstPage = adapter.findAll(new PageQuery(0, 2));
 
@@ -155,33 +155,17 @@ class CardRepositoryAdapterIntegrationTest {
     @Test
     @DisplayName("a seeded card round-trips through the domain type intact")
     void shouldReadASeededCardById() {
-        // Elevation of Privilege, Ace: both the trump suit and an open threat card.
-        final UUID trumpAce = UUID.fromString("2a497b0e-e59d-50c9-a24b-f03f347dd4ed");
+        // Elevation of Privilege, King: the trump suit's highest card.
+        final UUID trumpKing = UUID.fromString("f4ea3e6e-5cd5-53d0-a32d-b9f389069b74");
 
-        final Optional<Card> found = adapter.findById(trumpAce);
+        final Optional<Card> found = adapter.findById(trumpKing);
 
         assertThat(found).isPresent();
         assertThat(found.get().suit()).isEqualTo(StrideCategory.ELEVATION_OF_PRIVILEGE);
-        assertThat(found.get().rank()).isEqualTo(Rank.ACE);
+        assertThat(found.get().rank()).isEqualTo(Rank.KING);
         assertThat(found.get().isTrump()).isTrue();
-        assertThat(found.get().isOpenThreat()).isTrue();
-        assertThat(found.get().threatPrompt()).isEqualTo("You've invented a new Elevation of Privilege attack");
-    }
-
-    /**
-     * Aces carry distinct behaviour in the game — the player must name a threat not
-     * printed on any other card — so the seeded text has to say so rather than read
-     * like an ordinary high card.
-     */
-    @Test
-    @DisplayName("every ace is an open threat card naming its own suit")
-    void shouldSeedEveryAceAsAnOpenThreat() {
-        final List<Card> aces = adapter.findAll(WHOLE_DECK).content().stream()
-                .filter(Card::isOpenThreat)
-                .toList();
-
-        assertThat(aces).hasSize(StrideCategory.values().length);
-        assertThat(aces).allSatisfy(ace -> assertThat(ace.threatPrompt()).startsWith("You've invented a new "));
+        assertThat(found.get().threatPrompt())
+                .isEqualTo("An attacker can inject a command that the system will run at a higher privilege level");
     }
 
     @Test
