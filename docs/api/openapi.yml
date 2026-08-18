@@ -1896,6 +1896,17 @@ components:
         identifier nor the seat, because a joining caller supplied only a join
         code and never held either.
 
+        The same no-disclosure guarantee applies to the two adjacent 409s on the
+        join-by-code endpoint and to the start endpoint: "Session is full" (EOP-54)
+        and "Session is not in the lobby" (EOP-55). Both exceptions carry the session
+        identifier and internal state (capacity and lifecycle status respectively).
+        On the join-by-code endpoint the caller never held either value; on the start
+        endpoint the caller supplied the session identifier themselves, so the UUID is
+        not a disclosure — but the lifecycle status enum name still is. A single
+        path-agnostic detail is used for both call sites: neither the UUID nor the
+        enum name appears in the response. The diagnostic is preserved server-side at
+        WARN level.
+
         Each of those is a separate `title` rather than a shared one, because a
         client's next move differs: wait for another player, deal, wait your turn,
         resolve, or stop. Collapsing them would leave the client guessing which

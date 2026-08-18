@@ -366,7 +366,7 @@ class SessionControllerIntegrationTest {
                     .andExpect(status().isConflict())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
                     .andExpect(jsonPath("$.title").value("Session is full"))
-                    .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("maximum of 6")));
+                    .andExpect(jsonPath("$.detail").value("This session has no available seats. Try a different join code."));
         }
 
         @Test
@@ -380,7 +380,7 @@ class SessionControllerIntegrationTest {
             attemptJoin(facilitator.joinCode(), unusedAddressHint())
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.title").value("Session is not in the lobby"))
-                    .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("IN_PROGRESS")));
+                    .andExpect(jsonPath("$.detail").value("This session is no longer in the lobby."));
         }
 
         @Test
@@ -516,7 +516,8 @@ class SessionControllerIntegrationTest {
 
             startPlay(facilitator.sessionId(), facilitator.playerToken())
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.title").value("Session is not in the lobby"));
+                    .andExpect(jsonPath("$.title").value("Session is not in the lobby"))
+                    .andExpect(jsonPath("$.detail").value("This session is no longer in the lobby."));
         }
 
         @Test
