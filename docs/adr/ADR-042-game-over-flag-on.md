@@ -77,7 +77,9 @@ The `@ConditionalOnProperty(prefix = "eop.features", name = "game-over", havingV
 guard on `GameOverController` (line 33) and the three dotted-spelling equivalents on the use-case
 beans **stay**, as does the OFF-position test
 `GameOverControllerDisabledIntegrationTest`, whose `properties = "eop.features.game-over=false"`
-override is now the only place in the suite where the OFF position is exercised at all. Removal of
+override is now the only place in the suite where this flag's OFF position is exercised at all —
+`TrickPlayDisabledIntegrationTest` and `SessionControllerDisabledIntegrationTest` do the same job
+for the other two flags. Removal of
 the flag and its guards is a separate story, with an expiry condition stated under Consequences
 rather than left as another open-ended promise.
 

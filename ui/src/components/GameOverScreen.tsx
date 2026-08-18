@@ -109,16 +109,29 @@ export function GameOverScreen({
         )}
 
         {error && !leaderboard && (
-          <button
-            type="button"
-            className="govuk-button govuk-button--secondary"
-            data-module="govuk-button"
-            disabled={isRetrying}
-            aria-disabled={isRetrying}
-            onClick={() => { void handleRetry(); }}
-          >
-            {isRetrying ? 'Retrying…' : 'Retry loading results'}
-          </button>
+          <>
+            <button
+              type="button"
+              className="govuk-button govuk-button--secondary"
+              data-module="govuk-button"
+              disabled={isRetrying}
+              aria-disabled={isRetrying}
+              onClick={() => { void handleRetry(); }}
+            >
+              {isRetrying ? 'Retrying…' : 'Retry loading results'}
+            </button>
+
+            {/*
+              Disabling the button removes it from the tab order and drops focus,
+              so the label flipping to 'Retrying…' is announced to nobody. The
+              'Loading results…' region below only renders while there is no
+              error, which is never true on this branch, so a screen-reader user
+              would otherwise get silence between the click and the outcome.
+            */}
+            <p className="govuk-visually-hidden" role="status" aria-live="polite">
+              {isRetrying ? 'Retrying. Loading results.' : ''}
+            </p>
+          </>
         )}
 
         {leaderboard ? (

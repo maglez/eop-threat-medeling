@@ -172,6 +172,92 @@ describe('GameOverScreen', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Test 3a — the retry pending state disables the button and announces itself
+    //
+    // Disabling the button is what actually prevents a double fetch: the
+    // data-module="govuk-button" attribute is inert in this app, because
+    // main.tsx imports only the compiled stylesheet and never calls initAll.
+    // Because disabling drops focus, the label change is announced through a
+    // role="status" region rather than by the button itself.
+    // -----------------------------------------------------------------------
+    it('disables the retry button and announces the retry while the refetch is in flight', async () => {
+        // Arrange — first call fails; the retry hangs until we resolve it by hand
+        let resolveRetry: (value: api.LeaderboardDto) => void = () => undefined;
+        const pending = new Promise<api.LeaderboardDto>((resolve) => {
+            resolveRetry = resolve;
+        });
+        mockGetLeaderboard
+            .mockRejectedValueOnce(new api.ApiError(404, 'Not yet persisted'))
+            .mockReturnValueOnce(pending);
+
+        const user = userEvent.setup();
+
+        render(<GameOverScreen {...defaultProps} />);
+
+        const retryButton = await waitFor(() =>
+            screen.getByRole('button', { name: 'Retry loading results' }),
+        );
+        expect(retryButton).not.toBeDisabled();
+
+        // Act — click, but leave the fetch unresolved
+        await user.click(retryButton);
+
+        // Assert — the button is disabled, relabelled, and the status region speaks
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Retrying…' })).toBeDisabled();
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('Retrying. Loading results.');
+
+        // Resolve — the pending state clears and the leaderboard renders
+        resolveRetry(makeLeaderboard());
+        await waitFor(() => {
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+        expect(screen.queryByRole('button', { name: 'Retrying…' })).not.toBeInTheDocument();
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 3b — a double-click issues exactly one extra fetch
+    //
+    // GET /leaderboard has no rate limit at any layer (EOP-88) and recomputes
+    // a ScoreSheet on every call, so the client must not amplify it.
+    // -----------------------------------------------------------------------
+    it('issues only one extra fetch when the retry button is double-clicked', async () => {
+        // Arrange — first call fails; the retry hangs so the button stays pending
+        let resolveRetry: (value: api.LeaderboardDto) => void = () => undefined;
+        const pending = new Promise<api.LeaderboardDto>((resolve) => {
+            resolveRetry = resolve;
+        });
+        mockGetLeaderboard
+            .mockRejectedValueOnce(new api.ApiError(404, 'Not yet persisted'))
+            .mockReturnValueOnce(pending);
+
+        const user = userEvent.setup();
+
+        render(<GameOverScreen {...defaultProps} />);
+
+        const retryButton = await waitFor(() =>
+            screen.getByRole('button', { name: 'Retry loading results' }),
+        );
+        const callsBeforeRetry = mockGetLeaderboard.mock.calls.length;
+
+        // Act — click, then click again while the first retry is still in flight
+        await user.click(retryButton);
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Retrying…' })).toBeDisabled();
+        });
+        await user.click(screen.getByRole('button', { name: 'Retrying…' }));
+
+        // Assert — exactly one additional call, not two
+        expect(mockGetLeaderboard.mock.calls.length).toBe(callsBeforeRetry + 1);
+
+        resolveRetry(makeLeaderboard());
+        await waitFor(() => {
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+    });
+
+    // -----------------------------------------------------------------------
     // Test 4 — a 403 DOES eject the client (credential is dead)
     // -----------------------------------------------------------------------
     it('calls onSessionEnd when the leaderboard returns 403', async () => {
