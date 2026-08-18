@@ -19,9 +19,11 @@ info:
     never mutated through this API. There is deliberately no POST, PUT, PATCH or
     DELETE on `/api/v1/cards`.
 
-    The deck is the real Elevation of Privilege deck: 74 cards — Tampering
-    starts at rank 3 and Elevation of Privilege starts at rank 5; all other
-    suits run from rank 2 to Ace. © 2009 Microsoft Corporation, licensed
+    The deck is the real Elevation of Privilege deck: 68 cards — Tampering
+    starts at rank 3 (11 cards), Elevation of Privilege starts at rank 5
+    (9 cards), and all other suits run from rank 2 to King (12 cards each).
+    There are no Ace cards; King is the highest rank. © 2009 Microsoft
+    Corporation, licensed
     Creative Commons Attribution 3.0 United States — see
     `docs/EoP_Microsoft_Docs/LICENCE-eop-deck.md`. Attribution is the only
     obligation the licence imposes, and it is discharged in the running
@@ -454,10 +456,10 @@ paths:
         Facilitator only, and only once per session: a second call is a `409`.
         Requires the session to be joinable and to hold at least three players.
 
-        **The deck is not dealt evenly.** All 74 cards are dealt, and the
+        **The deck is not dealt evenly.** All 68 cards are dealt, and the
         remainder goes to the lowest seats, so hands differ in size by at most
-        one — three players receive 25/25/24, four receive 19/19/18/18, five
-        receive 15/15/15/15/14, six receive 13/13/12/12/12/12. A
+        one — three players receive 23/23/22, four receive 17/17/17/17, five
+        receive 13/13/14/14/14, six receive 11/11/11/12/12/12. A
         trick is therefore one card from each seat that *still holds cards*, and
         the last trick of a hand is short.
 
@@ -905,7 +907,7 @@ paths:
       tags: [game-over]
       summary: Start a new game with the same players
       description: |
-        Clears all tricks and hands, re-deals the 74-card deck, and transitions
+        Clears all tricks and hands, re-deals the 68-card deck, and transitions
         the session back to `IN_PROGRESS`. All players remain in their original
         seats with the same seat numbers. The opening leader is the seat holding
         the 3 of Tampering.
@@ -975,8 +977,8 @@ components:
         The card's rank. Rank does double duty: it decides which card takes a
         trick, and it encodes a rough ordering of how commonly the threat is
         encountered, how much impact it has and how easy it is to exploit.
-        Ordering is `TWO` lowest through `ACE` highest.
-      enum: [TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, JACK, QUEEN, KING, ACE]
+        Ordering is `TWO` lowest through `KING` highest.
+      enum: [TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, JACK, QUEEN, KING]
 
     Card:
       type: object
@@ -994,13 +996,13 @@ components:
         rankSymbol:
           type: string
           description: How the rank is printed on the card face.
-          examples: ['2', '10', 'J', 'A']
+          examples: ['2', '10', 'J', 'K']
         rankValue:
           type: integer
           format: int32
           minimum: 2
-          maximum: 14
-          description: Numeric rank used for comparison. Ace is high, so 14.
+          maximum: 13
+          description: Numeric rank used for comparison. King is high, so 13.
         threatPrompt:
           type: string
           minLength: 1
@@ -1313,7 +1315,7 @@ components:
           maximum: 25
           description: |
             How many cards remain. Redundant with the length of `cards`, and
-            present because hands are not equal: the whole 74-card deck is dealt,
+            present because hands are not equal: the whole 68-card deck is dealt,
             so the counts differ across the table (the lowest seats receive the
             remainder) and shrink at different rates once the short final trick
             is reached.
@@ -1672,7 +1674,7 @@ components:
       properties:
         rows:
           type: array
-          maxItems: 74
+          maxItems: 68
           items:
             $ref: '#/components/schemas/ScoredPlay'
           description: |

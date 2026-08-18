@@ -215,7 +215,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a card that is neither cannot, however high it is")
         void offSuitCannotTake() {
-            final TrickPlay play = aTrickPlay().withCard(card(StrideCategory.DENIAL_OF_SERVICE, Rank.ACE)).build();
+            final TrickPlay play = aTrickPlay().withCard(card(StrideCategory.DENIAL_OF_SERVICE, Rank.KING)).build();
 
             assertThat(play.canTakeTrick(StrideCategory.REPUDIATION)).isFalse();
         }

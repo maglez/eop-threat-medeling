@@ -15,13 +15,14 @@ type CatalogueState =
  * Vite works.
  */
 /**
- * The full deck is 74 cards - Tampering starts at rank 3 and Elevation of Privilege
- * starts at rank 5, giving twelve and ten ranks respectively; the other four suits
- * hold thirteen ranks (2–A) each. The catalogue asks for all of them in one request
- * rather than paginating, because a reference list of the deck is only useful whole.
- * 74 is inside the server's maximum page size of 100, so this is a single round trip.
+ * The full deck is 68 cards — Tampering starts at rank 3 (eleven ranks), Elevation of
+ * Privilege starts at rank 5 (nine ranks), and the other four suits hold twelve ranks
+ * (2–K) each. King is the highest card. The catalogue asks for all of them in one
+ * request rather than paginating, because a reference list of the deck is only useful
+ * whole. 68 is inside the server's maximum page size of 100, so this is a single round
+ * trip. See ADR-041 for the authoritative deck-size decision.
  */
-const DECK_SIZE = 74;
+const DECK_SIZE = 68;
 
 export function CardCatalogue(): React.JSX.Element {
   const [state, setState] = useState<CatalogueState>({ status: "loading" });

@@ -56,10 +56,10 @@ class DealHandsUseCaseTest {
     private static final int SEATS = 3;
 
     /**
-     * With 74 cards and 3 seats, the deal is 24, 24, 24 (74 / 3 = 24, 2 discarded).
+     * With 68 cards and 3 seats, the deal is 22, 22, 22 (68 / 3 = 22, 2 discarded).
      * All seats receive the same number of cards.
      */
-    private static final int CARDS_PER_SEAT = 24;
+    private static final int CARDS_PER_SEAT = 22;
 
     private static final int TWO_PLAYERS = 2;
 

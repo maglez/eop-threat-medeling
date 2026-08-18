@@ -78,17 +78,18 @@ The game is a **trick-taking card game**, closest to Spades. The following is so
 system to be threat-modelled. This diagram is held outside the application — see §5 and
 [ASSUMPTION B, now confirmed].
 
-**Dealing:** the whole deck is dealt out to all players. There is no shared draw pile. At 74 cards,
-**all four supported table sizes** (3, 4, 5 and 6 players) produce unequal hands and a short final
-trick — the extra cards go to the lowest seat numbers ([ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md)).
-This paragraph previously read "dealt evenly", which cannot hold at those counts: dealing the
-*whole* deck and dealing it *equally* are incompatible unless 74 divides by the number of players. Players
-are encouraged to lay their cards face up, arranged by suit. The oversized physical card format
+**Dealing:** the whole deck is dealt out to all players. There is no shared draw pile. At 68 cards,
+**all four supported table sizes** (3, 4, 5 and 6 players) produce equal or near-equal hands — the
+remainder is discarded and the lowest Tampering card is guaranteed to be dealt
+([ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md)).
+This paragraph previously read "74 cards" (EOP-69 trimmed from 78 to 74); EOP-75 subsequently
+removed the six Ace cards, trimming from 74 to 68 — see [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md).
+Players are encouraged to lay their cards face up, arranged by suit. The oversized physical card format
 (12 cm × 7 cm) was chosen deliberately to make holding a hand awkward, so players help each
 other — the digital equivalent is that each player's hand is visible on their own screen.
 
 **Opening lead:** the holder of the **lowest-ranked Tampering card present in the deck** leads
-the first trick. The seeded deck is the 74-card printed deck, so this is the 3 of Tampering.
+the first trick. The seeded deck is the 68-card printed deck, so this is the 3 of Tampering.
 **Hardcoding this value is a defect.** The rule must be derived at runtime. This starting point was deliberate: Tampering
 issues are common, it gives a new player a quick first decision, and a playtest that started in
 Repudiation went badly.
@@ -104,6 +105,8 @@ suit** if they hold a card in the led suit. If they hold none, they may play any
 > order is therefore *the next seat clockwise that still holds a card*, and the final trick of
 > every game is short. The sentence above is the shipped instruction card's wording and is
 > right for a game where every hand empties together; it is not the rule the application implements.
+> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. With equal hands the final trick
+> is no longer short — all seats empty together. The general form of the rule is unchanged.)*
 
 **Linking a threat:** playing a card where a compensating control already exists is still valid —
 it lets the group discuss that control. **Critically: if the player cannot link the threat to the
@@ -123,10 +126,18 @@ Only EoP or the led suit can take a trick. The winner of a trick leads the next 
 > clockwise from the winner that does**; when no seat holds a card the game has ended. Taking the
 > sentence above literally opens a trick on a seat that can never play into it, and the game stops
 > with no error.
+> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. With equal hands the winner
+> always holds a card until the final trick. The general form of the rule is unchanged.)*
 
 **Aces — Open Threat cards:** each Ace reads "You've invented a new [Suit] attack." The player
 must identify a threat not printed on any other card, usually prompting a discussion about whether
 two threats are equivalent.
+
+> **Withdrawn by EOP-75 (2026-08-18):** The physical printed deck has no Ace cards. This rule
+> was documented based on the author's `cards.yaml` (78 cards, 6 × 13 ranks) and the whitepaper,
+> but the card artwork (`ui/src/assets/cards/`) contains 68 images with no Ace in any suit.
+> The artwork is authoritative. `Rank.ACE` and `Card.isOpenThreat()` have been removed.
+> See [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md).
 
 **Validity test:** when a threat causes an argument, the instruction card resolves it by asking:
 *"Would we take an actionable bug, feature request or design change for that?"* If yes, it is a
@@ -178,7 +189,7 @@ which trick is in progress, and the notes recorded against played cards.
 
 - Multiplayer sessions of **3–6 players (3–5 tested range)** — see [ASSUMPTION C, corrected]
 - Anonymous identity: a display name only. No password, no account, no email.
-- The real deck: 74 cards matching the printed game — Tampering starts at rank 3, Elevation of Privilege starts at rank 5 — © 2009 Microsoft Corporation under CC-BY-3.0 US, with attribution shown in the running application (delivered by EOP-13, trimmed to printed card count by EOP-69)
+- The real deck: 68 cards matching the printed game — Tampering starts at rank 3, Elevation of Privilege starts at rank 5, no Ace cards — © 2009 Microsoft Corporation under CC-BY-3.0 US, with attribution shown in the running application (delivered by EOP-13, trimmed to 74 by EOP-69, Aces removed by EOP-75 — see [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md))
 - Game state persisted in PostgreSQL: session, players, dealt hands, tricks, played cards
 - Real-time state synchronisation to every connected player
 - Resume after a browser refresh, a lost connection, or a server restart
@@ -186,8 +197,8 @@ which trick is in progress, and the notes recorded against played cards.
 - Plain HTTP on `localhost` — no TLS, no domain, no certificate (ADR-016 and ADR-017 record
   the topology; ADR-015 records what the absence of TLS costs)
 - Local deployment on the developer machine using the container runtime delivered in EOP-16 — no cloud account required
-- A searchable reference list of all 74 threat prompts (replaces the 6 physical reference cards
-  shipped with the deck, which players use to adjudicate whether an Ace's invented threat is
+- A searchable reference list of all 68 threat prompts (replaces the 6 physical reference cards
+  shipped with the deck, which players use to adjudicate whether a threat is
   already covered)
 - Server-computed scoring (removes the friction that forced the physical game's scoring
   simplification — see §3.4)
@@ -242,11 +253,13 @@ Hand                           (1:1 per Player per Session)
 Card                           (reference data; seeded once, never mutated during play)
   cardId                       UUID
   strideCategory               the existing StrideCategory enum
-  rank                         integer 2–14 (Ace = 14); rank order 2 < 3 < … < K < A
+  rank                         integer 2–13 (King = 13); rank order 2 < 3 < … < Q < K
                                Rank does double duty: trick-taking order AND a rough
                                frequency/impact/ease ordering of the threat (whitepaper §2.2)
   threatPrompt                 the text the group discusses
-                               Aces read "You've invented a new [Suit] attack."
+                               *(Note: Aces read "You've invented a new [Suit] attack" in the
+                               original game, but the printed deck has no Ace cards — see
+                               [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md).)*
 
   Card schema is exactly suit + rank + threat text. No score value, no difficulty rating,
   no example mitigations. Sourced from whitepaper p6 and cards.yaml. Closes R7.
@@ -525,7 +538,7 @@ Primary sources consulted for the rules correction on 2026-08-04. Claims in §3.
 | *Elevation of Privilege* instruction card | `docs/EoP_Microsoft_Docs/EoP_Instructions.pdf` | Dealing, trick-taking rules, opening lead, scoring rule, optional variants, licence copyright page |
 | Adam Shostack, "Elevation of Privilege: Drawing Developers into Threat Modeling" (whitepaper) | `docs/EoP_Microsoft_Docs/eop_whitepaper.pdf` | Player count rationale, rank design intent, scoring history (v0.21 abandoned system), system-model precondition, online-version decision, licence footnote 6 |
 | Official Score Card | `docs/EoP_Microsoft_Docs/EoP_Score Card.pdf` | Score Card column names (Name, Points, Card, Component(s), Notes on Threat) |
-| `cards.yaml` | `https://github.com/adamshostack/eop` | Suit completeness, licence in README. Note: the upstream file has 78 cards (6 × 13); the seeded deck is trimmed to 74 by EOP-69 to match the printed game |
+| `cards.yaml` | `https://github.com/adamshostack/eop` | Suit completeness, licence in README. Note: the upstream file has 78 cards (6 × 13); the seeded deck is trimmed to 74 by EOP-69 and further to 68 by EOP-75 (Ace removal) to match the printed game — see [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md) |
 
 **Licence:** © 2009 Microsoft Corporation. Licensed under Creative Commons Attribution 3.0
 United States. `http://creativecommons.org/licenses/by/3.0/us/`. Attribution to Microsoft is a

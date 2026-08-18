@@ -56,16 +56,17 @@ public final class DeckFixture {
     }
 
     /**
-     * The whole printed deck: seventy-four cards matching the physical Elevation of Privilege deck.
+     * The whole printed deck: sixty-eight cards matching the physical Elevation of Privilege deck.
      *
-     * <p>The printed deck omits four cards that were absent from the original whitepaper deck:
+     * <p>The printed deck omits cards that were absent from the original whitepaper deck:
      * Tampering starts at rank 3 (no rank 2), and Elevation of Privilege starts at rank 5
-     * (no ranks 2, 3, or 4). All other suits run 2–A (thirteen cards each).
+     * (no ranks 2, 3, or 4). Aces do not appear in the game; King is the highest rank.
+     * All other suits run 2–K (twelve cards each).
      *
      * <p>Ordered by suit and then by rank, which is a deck fresh out of the box rather than a shuffled
      * one. Dealing an unshuffled deck is exactly what makes the distribution assertable.
      *
-     * @return all seventy-four cards
+     * @return all sixty-eight cards
      */
     public static List<Card> fullDeck() {
         final List<Card> deck = new ArrayList<>();

@@ -1481,6 +1481,11 @@ chose derivation over a constant.
 reads: all 74 threat prompts are held by someone. The four removed cards carry threat prompts that
 are absent from the physical deck and are therefore not part of the game's threat coverage.
 
+> **Further amended by EOP-75 (2026-08-18):** The deck was subsequently trimmed from 74 to 68 cards
+> by removing the six Ace cards. TAMPERING now holds 11 ranks (3–K), ELEVATION_OF_PRIVILEGE holds
+> 9 ranks (5–K), and the remaining four suits hold 12 ranks (2–K) each. King is the highest rank.
+> See the EOP-75 amendment at the end of this ADR and [ADR-041](ADR-041-printed-deck-has-no-aces.md).
+
 **Cross-reference correction.** The reference "EOP-13 (the 78-card deck this arithmetic depends on)"
 (line 1394) is superseded: EOP-69 is the story that trimmed the deck to 74 cards, and the arithmetic
 above now depends on that count. EOP-13 seeded the original 78-card deck; EOP-69 trimmed it.
@@ -1521,4 +1526,41 @@ resolves to "all seats have played" for every trick, including the last.
 
 **Implementation.** `Hands.deal()` was updated in EOP-72. The swap is performed on a mutable copy
 of the deck before the round-robin loop; the original deck order is otherwise preserved.
+
+## Amendment, 2026-08-18 — Ace cards removed, deck trimmed to 68 (EOP-75)
+
+**Story:** EOP-75  
+**Amends:** The EOP-72 amendment's "Corrected deck arithmetic (74-card deck)" table above, and all
+references to 74 cards, 13 ranks per suit, and Ace as the highest rank throughout this ADR.
+
+The six Ace cards (one per suit, rank 14) were removed from the seeded deck by migration
+`2026-08-18--remove-ace-cards.xml`. The physical printed deck has no Ace cards — the card artwork
+in `ui/src/assets/cards/` (68 PNG files) is the authoritative source. See
+[ADR-041](ADR-041-printed-deck-has-no-aces.md) for the full decision and the resolution of the
+conflict between the author's "74 cards" quote and the 68-image artwork.
+
+The deck is now 68 cards: SPOOFING 12 ranks (2–K), TAMPERING 11 ranks (3–K),
+REPUDIATION 12 ranks (2–K), INFORMATION_DISCLOSURE 12 ranks (2–K),
+DENIAL_OF_SERVICE 12 ranks (2–K), ELEVATION_OF_PRIVILEGE 9 ranks (5–K).
+King is the highest rank at value 13.
+
+**Corrected deck arithmetic (68-card deck).**
+
+| Players | Cards each | Dealt | Discarded |
+|---|---|---|---|
+| 3 | 22 | 66 | 2 |
+| 4 | 17 | 68 | 0 |
+| 5 | 13 | 65 | 3 |
+| 6 | 11 | 66 | 2 |
+
+The formula `floor(D / n) × n` is unchanged; only `D` changes from 74 to 68.
+
+**Opening-lead rule is unaffected.** The lowest Tampering card is still rank 3 (unchanged by Ace
+removal), so the opening lead resolves to the same card as before.
+
+**Rollback compatibility note.** Rolling back `2026-08-18--remove-ace-cards.xml` restores the six
+Ace rows with `card_rank = 14`, but `Rank.ofValue(14)` now throws `IllegalArgumentException`
+because `ACE` was removed from the `Rank` enum in the same commit. A rollback of the migration
+therefore requires a coordinated application downgrade to a version that still contains `Rank.ACE`.
+This constraint is documented in ADR-041 §Consequences.
 

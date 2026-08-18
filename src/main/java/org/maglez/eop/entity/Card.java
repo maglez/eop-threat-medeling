@@ -44,16 +44,6 @@ public record Card(UUID cardId, StrideCategory suit, Rank rank, String threatPro
     }
 
     /**
-     * Whether this card is an Open Threat card. Playing one obliges the player
-     * to name a threat that appears on no other card in the deck.
-     *
-     * @return true if the card is an ace
-     */
-    public boolean isOpenThreat() {
-        return rank == Rank.ACE;
-    }
-
-    /**
      * Whether this card belongs to the trump suit. Only a trump card, or a card
      * of the suit that was led, can take a trick.
      *

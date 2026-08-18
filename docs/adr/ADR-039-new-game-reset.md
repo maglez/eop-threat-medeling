@@ -9,9 +9,12 @@
 
 ## Context
 
-EOP-65 adds a facilitator "Start new game" button that re-deals the same 74-card deck to
+EOP-65 adds a facilitator "Start new game" button that re-deals the same 68-card deck to
 the same seated players without creating a new session. This requires a new session-status
 transition: `COMPLETED → IN_PROGRESS`.
+
+*(Note: the deck was 74 cards when this ADR was written; it was trimmed to 68 by EOP-75 —
+see [ADR-041](ADR-041-printed-deck-has-no-aces.md). The reset logic is unaffected.)*
 
 ADR-032 documents the two existing paths to `COMPLETED` (automatic last-trick resolution
 and facilitator early end) and the `recordCompleted` compare-and-swap. It does not cover

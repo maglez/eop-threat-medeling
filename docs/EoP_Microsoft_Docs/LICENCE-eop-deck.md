@@ -67,5 +67,15 @@ Seeding from it also removes any need for suit-specific minimum-rank special cas
 > of the seeded data rather than an artefact to be avoided. See
 > [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md) for the full rationale.
 
+> **Amendment, 2026-08-18 (EOP-75):** The six Ace cards (one per suit, rank 14) were subsequently
+> removed by migration `2026-08-18--remove-ace-cards.xml`. The card artwork in
+> `ui/src/assets/cards/` contains 68 PNG files with no Ace in any suit; the artwork is the
+> authoritative source. The author's "74 cards" quote above refers to the deck without the four
+> absent low-rank cards (Tampering 2, EoP 2/3/4), not to a deck with Aces. The deck is now 68
+> cards: SPOOFING 12 ranks (2–K), TAMPERING 11 ranks (3–K), REPUDIATION 12 ranks (2–K),
+> INFORMATION_DISCLOSURE 12 ranks (2–K), DENIAL_OF_SERVICE 12 ranks (2–K),
+> ELEVATION_OF_PRIVILEGE 9 ranks (5–K). King is the highest rank at value 13.
+> See [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md) for the full decision.
+
 See `docs/requirements/PRD-eop-card-game.md` §11 for how each rule in the product requirements is
 attributed to these sources.

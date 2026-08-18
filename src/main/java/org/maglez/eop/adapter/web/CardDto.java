@@ -19,7 +19,7 @@ import org.maglez.eop.entity.Card;
  * @param suit         the STRIDE category
  * @param rank         the rank constant name
  * @param rankSymbol   how the rank is printed on the card
- * @param rankValue    numeric rank, ace high at 14
+ * @param rankValue    numeric rank, king high at 13
  * @param threatPrompt the threat described on the card face
  */
 @Schema(name = "Card", description = "A single threat card. Immutable reference data.")

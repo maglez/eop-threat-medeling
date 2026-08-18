@@ -79,13 +79,6 @@ class CardTest {
     class GameRules {
 
         @Test
-        @DisplayName("only an ace is an Open Threat card")
-        void shouldIdentifyOpenThreatCards() {
-            assertThat(aCard().withRank(Rank.ACE).build().isOpenThreat()).isTrue();
-            assertThat(aCard().withRank(Rank.KING).build().isOpenThreat()).isFalse();
-        }
-
-        @Test
         @DisplayName("only elevation of privilege is trump")
         void shouldIdentifyTrumpCards() {
             assertThat(aCard().withSuit(StrideCategory.ELEVATION_OF_PRIVILEGE).build().isTrump()).isTrue();
