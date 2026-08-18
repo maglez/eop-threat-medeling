@@ -42,16 +42,10 @@ type View =
  */
 export default function App(): React.JSX.Element {
   // Feature flags — read at component scope so they are available throughout the
-  // component, including in renderView. They must also be checked in the useState
-  // initializer below so that a stored session cannot bypass the flag entirely.
+  // component, including in renderView.
   const isGameScreenEnabled = import.meta.env.VITE_GAME_SCREEN_ENABLED === 'true';
 
   const [view, setView] = useState<View>(() => {
-  // The feature flag must be checked here too — not only on the home screen
-  // buttons — so that a stored session cannot bypass the flag entirely.
-  const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
-    if (!isLobbyUiEnabled) return { screen: 'home' };
-
     // Check if we have stored session credentials
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -259,9 +253,6 @@ interface HomeViewProps {
 }
 
 function HomeView({ onViewChange }: HomeViewProps): React.JSX.Element {
-  // Check if lobby UI is enabled via environment variable
-  const isLobbyUiEnabled = import.meta.env.VITE_LOBBY_UI_ENABLED === 'true';
-
   return (
     <div className="govuk-width-container">
       <main className="govuk-main-wrapper" id="main-content">
@@ -277,8 +268,6 @@ function HomeView({ onViewChange }: HomeViewProps): React.JSX.Element {
             type="button"
             className="govuk-button"
             data-module="govuk-button"
-            disabled={!isLobbyUiEnabled}
-            aria-disabled={!isLobbyUiEnabled}
             onClick={() => onViewChange('create')}
           >
             Create a session
@@ -287,19 +276,11 @@ function HomeView({ onViewChange }: HomeViewProps): React.JSX.Element {
             type="button"
             className="govuk-button govuk-button--secondary"
             data-module="govuk-button"
-            disabled={!isLobbyUiEnabled}
-            aria-disabled={!isLobbyUiEnabled}
             onClick={() => onViewChange('join')}
           >
             Join a session
           </button>
         </div>
-
-        {!isLobbyUiEnabled && (
-          <p className="govuk-hint">
-            Creating and joining a session is not available yet.
-          </p>
-        )}
 
         <h2 className="govuk-heading-l">The deck</h2>
         <CardCatalogue />

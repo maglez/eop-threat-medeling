@@ -136,6 +136,8 @@ cannot bypass it. Both positions are tested: `App.test.tsx` stubs
 `VITE_LOBBY_UI_ENABLED` to `'true'` for the enabled path and asserts that a valid
 stored session is ignored when the flag is off.
 
+**`VITE_LOBBY_UI_ENABLED` retired — `VITE_GAME_SCREEN_ENABLED` is now the live instance of this pattern (EOP-77 amendment, 2026-08-18).** The lobby UI feature was confirmed stable and the flag was removed per `feature-flags.md`. `HomeView`'s Create and Join buttons are now unconditionally enabled; the `isLobbyUiEnabled` guard and its `sessionStorage` short-circuit have been deleted from `App.tsx`. The flag-specific tests in `App.test.tsx` have been removed. `VITE_GAME_SCREEN_ENABLED` (declared in `ui/src/vite-env.d.ts`, read in `App.tsx` at the view router — `const isGameScreenEnabled = import.meta.env.VITE_GAME_SCREEN_ENABLED === 'true'`) is now the sole active front-end flag and the concrete example of the gating rule above: it gates the transition from lobby to `GameScreen` inside `App.tsx`, and both positions (flag on and flag off) are tested via `vi.stubEnv` in `App.test.tsx`.
+
 **`import.meta.glob` cannot be dead-code-eliminated by a flag (EOP-66/EOP-74 amendment).**
 Vite resolves `import.meta.glob` at parse time (module graph construction), before any
 tree-shaking or flag substitution occurs. A ternary guard such as

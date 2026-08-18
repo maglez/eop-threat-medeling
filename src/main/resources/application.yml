@@ -110,11 +110,6 @@ eop:
     # delay). eop.features.trick-play is now true (EOP-70, 2026-08-17).
     session-lifecycle: true
     
-    # Game lobby UI: create or join a session from the browser (EOP-11).
-    # While this is false the lobby UI buttons remain disabled.
-    # This flag is implemented as a Vite build-time env var VITE_LOBBY_UI_ENABLED.
-    lobby-ui: false
-
     # Dealing the deck, playing a trick and resolving the winner (EOP-14). While this is
     # false the deal-hands, read-own-hand, play-card, trick-state, resolve-trick and
     # get-score beans do not exist, so nothing in the application calls the ports that write a hand, a

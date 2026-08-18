@@ -789,10 +789,10 @@ security.
 ```mermaid
 flowchart TD
     subgraph bundle["Built bundle — static assets served by Caddy (ADR-017)"]
-        APP["App.tsx<br/>view state machine: home | create | join | lobby<br/>owns the sessionStorage key eop_session"]
-        HOME["HomeView<br/>reads VITE_LOBBY_UI_ENABLED (ADR-037)"]
+        APP["App.tsx<br/>view state machine: home | create | join | lobby | game | game-over<br/>owns the sessionStorage key eop_session<br/>reads VITE_GAME_SCREEN_ENABLED (ADR-037)"]
+        HOME["HomeView<br/>lobby entry point — Create / Join buttons always enabled"]
         FORMS["CreateSessionForm / JoinSessionForm<br/>GOV.UK error summary, client-side validation"]
-        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader<br/>reads VITE_GAME_SCREEN_ENABLED (ADR-037)"]
+        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader"]
         GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop"]
         API["api.ts<br/>typed DTOs, ApiError(status, message)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
     end
@@ -800,11 +800,11 @@ flowchart TD
     SS[("sessionStorage<br/>per-tab, per-origin<br/>key: eop_session (ADR-015)")]
     CADDY["Caddy — single origin<br/>/api/* reverse_proxy app:8080"]
 
-    APP -->|"rehydrates lobby on boot<br/>checks flag first — returns home if off"| SS
+    APP -->|"rehydrates lobby on boot"| SS
     APP --> HOME
     APP --> FORMS
     APP -->|"passes sessionId, playerId, playerToken"| LOBBY
-    LOBBY -->|"passes sessionId, playerId, playerToken"| GAME
+    APP -->|"passes sessionId, playerId, playerToken"| GAME
 
     FORMS -->|"createSession / joinSession"| API
     LOBBY -->|"getSession / startGame<br/>credentialed via api.ts"| API
@@ -824,12 +824,7 @@ to Caddy represents the SSE stream, which is opened by `subscribeToSession` in `
 and handed back to `LobbyScreen` as an `AbortController` — the component holds only the
 teardown handle, not the transport.
 
-**Build-time flags are read at their respective entry points (ADR-037).** `HomeView` consults
-`VITE_LOBBY_UI_ENABLED` and disables the two calls to action. The `App.tsx` rehydration
-path evaluates the flag *before* reading `sessionStorage`, returning `{ screen: 'home' }`
-immediately when the flag is off — so a stored session cannot bypass it. Both positions
-are tested in `App.test.tsx`. `LobbyScreen` reads `VITE_GAME_SCREEN_ENABLED` to gate the
-game screen transition. Both flags default to `false` (fail-closed) and are declared in
+**Build-time flag gates the game screen (ADR-037).** `App.tsx` (the view router) reads `VITE_GAME_SCREEN_ENABLED` at line 46 and gates the lobby-to-game transition at line 148 — `LobbyScreen` invokes the `onGameStarted` callback and `App.tsx` decides whether to advance to `{ screen: 'game' }`. The flag defaults to `false` (fail-closed) and is declared in
 `ui/src/vite-env.d.ts`.
 
 ### Reconnect and live update — the runtime path
