@@ -564,6 +564,44 @@ describe('GameScreen', () => {
       expect(screen.getByAltText('K of tampering')).toHaveAttribute('draggable', 'false');
     });
 
+    it('marks the played card image in the trick zone as not natively draggable', async () => {
+      // The trick zone sits beneath the same container that carries onPointerCancel, and
+      // handlePointerCancel filters no pointerId — so a native drag begun on a played card
+      // would abort a hand-card drag in flight. Same EOP-79 invariant, second surface.
+      const trickWithPlay: api.TrickStateDto = {
+        complete: false,
+        handComplete: false,
+        seatToPlay: 0,
+        trick: {
+          trickId: 'trick1',
+          sequence: 1,
+          leaderSeat: 0,
+          plays: [
+            {
+              trickPlayId: 'play1',
+              playerId: 'player2',
+              seatOrder: 1,
+              card: tamperingKing,
+              threatLinked: false,
+              components: [],
+              playedAt: '2023-01-01T00:00:00Z',
+            },
+          ],
+        },
+      };
+
+      vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+      vi.spyOn(api, 'getTrickState').mockResolvedValue(trickWithPlay);
+      vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+      vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+      render(<GameScreen {...defaultProps} />);
+
+      // The hand holds only the spoofing king, so this alt text resolves to the trick zone.
+      const playedCard = await screen.findByAltText('K of tampering');
+      expect(playedCard).toHaveAttribute('draggable', 'false');
+    });
+
     it('submits the play when a card is dropped inside the trick zone', async () => {
       const playCardSpy = vi.spyOn(api, 'playCard');
       const { card } = await renderWithHand();

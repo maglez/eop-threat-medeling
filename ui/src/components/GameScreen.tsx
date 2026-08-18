@@ -630,13 +630,18 @@ export function GameScreen({
                         <img
                           src={cardImagePath(play.card.suit, play.card.rank) as string}
                           alt={`${play.card.rankSymbol} of ${play.card.suit.toLowerCase().replace(/_/g, ' ')}`}
+                          // Same invariant as the hand card (EOP-79): this image is a descendant
+                          // of the container carrying onPointerCancel, so a native drag started
+                          // here would fire pointercancel and abort a hand-card drag in flight.
+                          draggable={false}
                           style={{
                             width: '100%',
                             height: '100%',
                             objectFit: 'contain',
                             borderRadius: '3px',
                             display: 'block',
-                          }}
+                            WebkitUserDrag: 'none',
+                          } as React.CSSProperties}
                         />
                       ) : (
                         <>

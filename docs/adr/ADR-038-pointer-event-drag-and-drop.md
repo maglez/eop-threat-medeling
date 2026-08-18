@@ -69,3 +69,46 @@ library.
 - WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) is satisfied: every card is a
   `role="button"` with a click handler and a "Play selected card" button provides a
   complete single-pointer alternative to dragging.
+
+**No descendant of a drag surface may be natively draggable (EOP-79 amendment, 2026-08-18).**
+This is a sixth invariant of the design above, added because violating it broke drag entirely
+and decision 5 masked the failure rather than surfacing it. An `<img>` is implicitly
+`draggable="true"` in every browser, so pressing on card artwork and moving started a *native*
+HTML5 drag; per the HTML drag-and-drop processing model the user agent then **must** suppress
+the pointer event stream for that pointer, which it does by firing `pointercancel`. Decision 5's
+`onPointerCancel` handler dutifully cleared `dragState`, so `pointerup` never reached the
+hit-test of decision 2 and no play was ever submitted — the card simply returned to the hand.
+Note that neither `userSelect: 'none'` nor `touchAction: 'none'` suppresses native image
+dragging; only `draggable={false}` (with `WebkitUserDrag: 'none'` for older WebKit) does.
+The invariant binds every natively-draggable descendant of the element carrying the pointer
+handlers, not merely the card that receives `pointerdown`: `handlePointerCancel` filters no
+`pointerId`, so a native drag begun anywhere beneath that container aborts an unrelated drag
+in flight. Both card images — the hand card in `CardFace` and the played card in the trick
+zone — therefore carry `draggable={false}`. The drag ghost does not need it, because
+`pointerEvents: 'none'` means it can never be a press target.
+
+**`pointerdown` default action is now cancelled, which moves focus behaviour (EOP-79 amendment,
+2026-08-18).** `handlePointerDown` calls `e.preventDefault()` before `setPointerCapture` as
+defence in depth for the text-fallback card face and any future draggable child. Cancelling
+`pointerdown` suppresses the compatibility `mousedown`, and it is `mousedown` that moves DOM
+focus to a `div[role="button"]`. A mouse press on a card therefore no longer focuses it — often
+desirable, but it means `onFocus` does not fire on click and a hybrid mouse/keyboard user tabs
+from the document start rather than from the card just clicked. Decision 4's contract survives
+intact: `click` is a `PointerEvent`, not a compatibility mouse event, so cancelling
+`pointerdown` cannot suppress it and the select-then-play path still works. Keyboard focus via
+Tab is unaffected, so SC 2.4.7 above still holds.
+
+**Accepted limitation: this class of defect is not reachable by the automated suite (EOP-79
+amendment, 2026-08-18).** The point above about jsdom and accessibility understated the problem.
+jsdom implements no native HTML5 drag at all, so it cannot fire `dragstart` in response to a
+pointer move and cannot reproduce the `dragstart` → `pointercancel` abort that constitutes this
+bug. It also implements neither `PointerEvent` nor `setPointerCapture`, both of which are
+shimmed in `ui/src/setupTests.ts` so that `fireEvent.pointer*` carries `clientX`/`clientY` at
+all. Consequently the pointer-gesture tests in `GameScreen.test.tsx` cover the hit-test
+arithmetic — real coverage that was previously absent, and whose absence is why EOP-79 escaped
+— but they pass with or without the fix. The only automated guard on this regression is the
+assertion that the rendered card `<img>` carries `draggable="false"`, and the same is true of
+the focus consequence described above, which no test can currently observe. We accept this
+gap rather than introducing a browser-driving test framework for one interaction: the invariant
+is declarative and assertable as an attribute, and the residue is covered by manual
+verification. Introducing Playwright or Vitest browser mode would supersede this paragraph.
