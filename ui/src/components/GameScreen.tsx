@@ -126,13 +126,21 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         <img
           src={cardImagePath(card.suit, card.rank) as string}
           alt={`${card.rankSymbol} of ${card.suit.toLowerCase().replace(/_/g, ' ')}`}
+          // An <img> is implicitly draggable="true" in every browser, so pressing on the
+          // card art and moving starts a *native* HTML5 drag. That fires `dragstart` and
+          // aborts the in-flight pointer stream with `pointercancel`, which
+          // `handlePointerCancel` correctly treats as "drag abandoned" — so the card
+          // snapped back to the hand and no play was ever submitted (EOP-79). Disabling
+          // native dragging is what lets the pointer-based drag reach `pointerup`.
+          draggable={false}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'contain',
             borderRadius: '4px',
             display: 'block',
-          }}
+            WebkitUserDrag: 'none',
+          } as React.CSSProperties}
         />
       ) : (
         <>
@@ -398,6 +406,10 @@ export function GameScreen({
 
   const handlePointerDown = (cardId: string) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isMyTurn || isPlayingCard) return;
+    // Suppress the browser's own drag/selection gesture. `draggable={false}` on the card
+    // image is the targeted fix for EOP-79; this is the belt-and-braces equivalent for the
+    // text-fallback card face and for any future natively-draggable child element.
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragState({
       cardId,

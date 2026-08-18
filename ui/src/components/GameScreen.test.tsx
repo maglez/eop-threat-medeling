@@ -520,4 +520,81 @@ describe('GameScreen', () => {
     fireEvent.blur(card);
     expect(card).not.toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });
   });
+
+  describe('drag and drop card play', () => {
+    // PointerEvent and Element.setPointerCapture are absent from jsdom and shimmed in
+    // src/setupTests.ts, so fireEvent.pointer* here behaves as it does in a browser.
+    const DROP_ZONE_RECT = { left: 100, top: 100, right: 300, bottom: 300, width: 200, height: 200, x: 100, y: 100 };
+
+    const mockDropZoneRect = (dropZone: HTMLElement): void => {
+      // getBoundingClientRect returns all-zeros in jsdom, so the bounds check in
+      // handlePointerUp could never pass without a real rect.
+      dropZone.getBoundingClientRect = vi.fn(() => ({
+        ...DROP_ZONE_RECT,
+        toJSON: () => DROP_ZONE_RECT,
+      }));
+    };
+
+    const renderWithHand = async (): Promise<{ card: HTMLElement; dropZone: HTMLElement }> => {
+      vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing, tamperingKing]));
+      vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+      vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+      vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+      render(<GameScreen {...defaultProps} />);
+
+      const card = await screen.findByRole('button', { name: /K of tampering/i });
+      const dropZone = screen.getByLabelText(/current trick.*drop a card/i);
+      mockDropZoneRect(dropZone);
+      return { card, dropZone };
+    };
+
+    beforeEach(() => {
+      vi.spyOn(api, 'playCard').mockResolvedValue(undefined as unknown as never);
+    });
+
+    // The regression guard for EOP-79. An <img> is implicitly draggable="true", so the
+    // browser started its own HTML5 drag on press-and-move, fired `dragstart`, and
+    // aborted the pointer stream with `pointercancel` — which handlePointerCancel treats
+    // as an abandoned drag. The card snapped back and no play was submitted. This
+    // assertion needs no pointer plumbing, so it holds regardless of jsdom's gaps.
+    it('marks the card image as not natively draggable', async () => {
+      await renderWithHand();
+
+      expect(screen.getByAltText('K of tampering')).toHaveAttribute('draggable', 'false');
+    });
+
+    it('submits the play when a card is dropped inside the trick zone', async () => {
+      const playCardSpy = vi.spyOn(api, 'playCard');
+      const { card } = await renderWithHand();
+
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 10, clientY: 400 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: 150, clientY: 250 });
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 200, clientY: 200 });
+
+      await waitFor(() => {
+        expect(playCardSpy).toHaveBeenCalledWith('test-session', 'test-token', { cardId: 'card2' });
+      });
+    });
+
+    it('does not submit the play when a card is dropped outside the trick zone', async () => {
+      const playCardSpy = vi.spyOn(api, 'playCard');
+      const { card, dropZone } = await renderWithHand();
+
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 10, clientY: 400 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: 480, clientY: 480 });
+
+      // Assert the drag genuinely started before asserting nothing was played, so this
+      // test cannot pass vacuously by never having begun a drag at all. The drop zone
+      // switches to its active border/background only while dragState is set.
+      expect(dropZone).toHaveStyle({ backgroundColor: 'rgb(232, 240, 251)' });
+
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 500, clientY: 500 });
+
+      await waitFor(() => {
+        expect(dropZone).toHaveStyle({ backgroundColor: 'rgb(243, 242, 241)' });
+      });
+      expect(playCardSpy).not.toHaveBeenCalled();
+    });
+  });
 });
