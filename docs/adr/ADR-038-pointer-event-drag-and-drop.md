@@ -83,9 +83,12 @@ dragging; only `draggable={false}` (with `WebkitUserDrag: 'none'` for older WebK
 The invariant binds every natively-draggable descendant of the element carrying the pointer
 handlers, not merely the card that receives `pointerdown`: `handlePointerCancel` filters no
 `pointerId`, so a native drag begun anywhere beneath that container aborts an unrelated drag
-in flight. Both card images — the hand card in `CardFace` and the played card in the trick
-zone — therefore carry `draggable={false}`. The drag ghost does not need it, because
-`pointerEvents: 'none'` means it can never be a press target.
+in flight. All three images in `GameScreen.tsx` therefore carry `draggable={false}`: the hand
+card in `CardFace`, the played card in the trick zone, and the drag ghost. The ghost does not
+strictly need it — `pointerEvents: 'none'` on its wrapper means it can never be a press target,
+so it cannot be a drag source — but it is set so the invariant holds uniformly at every `<img>`
+on the drag surface, and so a future edit granting the ghost pointer events cannot silently
+reintroduce this bug.
 
 **`pointerdown` default action is now cancelled, which moves focus behaviour (EOP-79 amendment,
 2026-08-18).** `handlePointerDown` calls `e.preventDefault()` before `setPointerCapture` as
@@ -94,15 +97,17 @@ defence in depth for the text-fallback card face and any future draggable child.
 focus to a `div[role="button"]`. A mouse press on a card therefore no longer focuses it — often
 desirable, but it means `onFocus` does not fire on click and a hybrid mouse/keyboard user's next
 Tab resumes from the sequential focus navigation starting point rather than from the card just
-clicked. Decision 4's contract survives intact: `click` is *not* one of the compatibility mouse
-events that cancelling `pointerdown` suppresses — only `mousedown`, `mousemove` and `mouseup`
-are — so it still fires and the select-then-play path still works. Note this is the reason, and
-not the fact that Level 3 reclassified `click` as a `PointerEvent`: that reclassification is
-recent and was not honoured uniformly across engines, whereas the suppression set has been
-stable. Keyboard focus via Tab is unaffected, so SC 2.4.7 above still holds. The paragraph is
-worded for mouse input, but `touchAction: 'none'` routes touch drags through the same handler,
-and the conclusion holds there too — cancelling `pointerdown` does not cancel `touchstart`, and
-the synthesised `click` still fires.
+clicked. Decision 4's contract survives intact, and Pointer Events Level 3 §11 is unconditional
+about it: "Calling preventDefault during a pointer event MUST NOT have an effect on whether
+click, auxclick, or contextmenu are fired or not." Only `mousedown`, `mousemove` and `mouseup`
+are suppressed, so `click` still fires and the select-then-play path still works. Rest the claim
+on that guarantee rather than on engine uptake of Level 3's reclassification of `click` as a
+`PointerEvent`. The spec does derive the exemption *from* that reclassification — the two are
+ground and consequence, not rivals — but the reclassification is recent and was not honoured
+uniformly across engines, so the citation above is the durable one to quote. Keyboard focus via
+Tab is unaffected, so SC 2.4.7 above still holds. The paragraph is worded for mouse input, but
+`touchAction: 'none'` routes touch drags through the same handler, and the conclusion holds there
+too, because the guarantee above is device-agnostic.
 
 **Accepted limitation: this class of defect is not reachable by the automated suite (EOP-79
 amendment, 2026-08-18).** The point above about jsdom and accessibility understated the problem.
@@ -115,9 +120,13 @@ arithmetic — real coverage that was previously absent, and whose absence is wh
 — but they pass with or without the fix. The only automated guards on this regression are the
 two assertions that the hand card's and the trick zone's rendered `<img>` each carries
 `draggable="false"`; they are independent of one another, and each fails only if its own image
-loses the attribute. The drag ghost's `<img>` carries the attribute but is asserted by no test,
-because it renders only mid-drag; it is also the one image that cannot be a drag source anyway,
-since its wrapper sets `pointerEvents: 'none'`. No guard at all exists for the focus consequence
+loses the attribute. The drag ghost's `<img>` carries the attribute but is asserted by no test.
+That is a choice, not an infeasibility: the ghost renders only while `dragState` is set, but the
+pointer-gesture tests already enter that state, so an assertion between `pointerdown` and
+`pointerup` would reach it. It is left unasserted because the ghost is the one image that cannot
+be a drag source anyway, its wrapper setting `pointerEvents: 'none'` — so the attribute there is
+defence against a future edit rather than a live guard. A test would be welcome, not redundant.
+No guard at all exists for the focus consequence
 described above, which no test can currently observe. We accept this
 gap rather than introducing a browser-driving test framework for one interaction: the invariant
 is declarative and assertable as an attribute, and the residue is covered by manual
