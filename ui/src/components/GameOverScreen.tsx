@@ -54,7 +54,11 @@ export function GameOverScreen({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load leaderboard';
       setError(message);
-      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+      // Only eject on 403 (token invalid/expired). A 404 here means the game
+      // result has not been persisted yet (race between the game-completed SSE
+      // event and the async persist write) — keep the user on the leaderboard
+      // screen so they can retry rather than silently sending them home.
+      if (err instanceof ApiError && err.status === 403) {
         onSessionEnd();
       }
     }
@@ -88,6 +92,16 @@ export function GameOverScreen({
             title="There is a problem"
             errors={[error]}
           />
+        )}
+
+        {error && !leaderboard && (
+          <button
+            type="button"
+            className="govuk-button govuk-button--secondary"
+            onClick={() => { void loadLeaderboard(); }}
+          >
+            Retry loading results
+          </button>
         )}
 
         {leaderboard ? (
