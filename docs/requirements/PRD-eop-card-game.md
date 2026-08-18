@@ -78,12 +78,14 @@ The game is a **trick-taking card game**, closest to Spades. The following is so
 system to be threat-modelled. This diagram is held outside the application — see §5 and
 [ASSUMPTION B, now confirmed].
 
-**Dealing:** the whole deck is dealt out to all players. There is no shared draw pile. At 68 cards,
-**all four supported table sizes** (3, 4, 5 and 6 players) produce equal or near-equal hands — the
-remainder is discarded and the lowest Tampering card is guaranteed to be dealt
-([ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md)).
+**Dealing:** the whole deck is dealt out to all players. There is no shared draw pile, and nothing is
+discarded. At 68 cards, **all four supported table sizes** (3, 4, 5 and 6 players) produce equal or
+near-equal hands — the remainder goes to the lowest seats, so the lowest Tampering card is dealt by
+construction rather than by a special case
+([ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md), Decision 1 reinstated by EOP-92).
 This paragraph previously read "74 cards" (EOP-69 trimmed from 78 to 74); EOP-75 subsequently
 removed the six Ace cards, trimming from 74 to 68 — see [ADR-041](../adr/ADR-041-printed-deck-has-no-aces.md).
+It also briefly read that the remainder was *discarded*, which was true only between EOP-72 and EOP-92.
 Players are encouraged to lay their cards face up, arranged by suit. The oversized physical card format
 (12 cm × 7 cm) was chosen deliberately to make holding a hand awkward, so players help each
 other — the digital equivalent is that each player's hand is visible on their own screen.
@@ -105,8 +107,9 @@ suit** if they hold a card in the led suit. If they hold none, they may play any
 > order is therefore *the next seat clockwise that still holds a card*, and the final trick of
 > every game is short. The sentence above is the shipped instruction card's wording and is
 > right for a game where every hand empties together; it is not the rule the application implements.
-> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. With equal hands the final trick
-> is no longer short — all seats empty together. The general form of the rule is unchanged.)*
+> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. Between EOP-72 and EOP-92 hands
+> were equal and the final trick was not short; EOP-92 restored the full deal, so the final trick is
+> short again at 3, 5 and 6 players. The general form of the rule is unchanged throughout.)*
 
 **Linking a threat:** playing a card where a compensating control already exists is still valid —
 it lets the group discuss that control. **Critically: if the player cannot link the threat to the
@@ -126,8 +129,9 @@ Only EoP or the led suit can take a trick. The winner of a trick leads the next 
 > clockwise from the winner that does**; when no seat holds a card the game has ended. Taking the
 > sentence above literally opens a trick on a seat that can never play into it, and the game stops
 > with no error.
-> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. With equal hands the winner
-> always holds a card until the final trick. The general form of the rule is unchanged.)*
+> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. Between EOP-72 and EOP-92 equal
+> hands meant the winner always held a card until the final trick; EOP-92 restored the full deal, so
+> the fallback to the next seat clockwise is load-bearing again. The general form is unchanged.)*
 
 **Aces — Open Threat cards:** each Ace reads "You've invented a new [Suit] attack." The player
 must identify a threat not printed on any other card, usually prompting a discussion about whether

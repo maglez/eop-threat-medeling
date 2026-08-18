@@ -320,6 +320,34 @@ class TrickTest {
             assertThat(trick.hasPlayed(1)).isFalse();
         }
 
+        /**
+         * The last trick of an uneven deal is short: the seats dealt fewer cards have already run out,
+         * so fewer cards are played than there are seats at the table. Because the whole deck is dealt
+         * and nothing is discarded (ADR-023 Decision 1, reinstated by EOP-92), a three-player table
+         * holding 23/23/22 reaches exactly this state on its final trick. Completion is decided against
+         * the seats that still hold cards rather than against the table size, so a short trick resolves
+         * normally — and a seat with an empty hand is never waited on.
+         */
+        @Test
+        @DisplayName("completes a short final trick once the seats that still hold cards have played")
+        void shouldCompleteAShortFinalTrick() {
+            final Set<Integer> stillHolding = Set.of(0, 1);
+
+            final Trick trick = Trick.open(TRICK_ID, 1, 0)
+                    .play(aPlayBy(0, SPOOFING_FOUR).build())
+                    .play(aPlayBy(1, SPOOFING_KING).build());
+
+            assertThat(trick.isComplete(stillHolding))
+                    .as("two of three seats have played, and the third holds no card, so the trick is done")
+                    .isTrue();
+            assertThat(trick.seatToPlay(stillHolding))
+                    .as("an empty-handed seat is never asked for a card")
+                    .isEmpty();
+            assertThat(trick.isComplete(THREE_SEATS))
+                    .as("the same trick is incomplete if the exhausted seat is wrongly said to hold a card")
+                    .isFalse();
+        }
+
         @Test
         @DisplayName("requires the set of seats holding cards, because it cannot count to the table size")
         void shouldRequireTheSeatsHoldingCards() {

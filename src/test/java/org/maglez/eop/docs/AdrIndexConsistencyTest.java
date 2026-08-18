@@ -140,6 +140,61 @@ class AdrIndexConsistencyTest {
         }
     }
 
+    @Test
+    @DisplayName("gives every row the column count the header declares, so no cell is silently dropped")
+    void shouldGiveEveryRowTheDeclaredColumnCount() throws IOException {
+        final List<String> lines = indexLines();
+        final String header = lines.stream()
+                .filter(line -> line.startsWith("| ADR |"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("the ADR index has lost its table header row"));
+        final int declared = dataCellCount(header);
+
+        for (final String line : lines) {
+            final Matcher row = INDEX_ROW.matcher(line);
+            if (!row.matches()) {
+                continue;
+            }
+            assertThat(dataCellCount(line))
+                    .as(
+                            "ADR-%s's index row has %d cells against the header's %d. Neither direction is"
+                                    + " visible in the rendered table: GFM ignores cells beyond the header count,"
+                                    + " so surplus text vanishes from the render while remaining in the source,"
+                                    + " and it silently inserts empty cells when a row is short, so a dropped"
+                                    + " cell reads as a blank one. EOP-92 hit the first mode — 6.4 KB of this"
+                                    + " row's own prose pasted past its terminating pipe, still passing a green"
+                                    + " build, because the other four invariants here look at content and none"
+                                    + " looked at shape.",
+                            row.group(1),
+                            dataCellCount(line),
+                            declared)
+                    .isEqualTo(declared);
+        }
+    }
+
+    /**
+     * Counts the data cells in a GitHub-Flavoured Markdown table row.
+     *
+     * <p>GFM treats the leading and trailing pipes as optional delimiters rather than as cell
+     * boundaries, so {@code | a | b |} and {@code a | b} both hold two cells. Stripping one
+     * pipe from each end before splitting therefore counts what a renderer counts, which is the
+     * only definition that matters here: the failure this guards against is a renderer silently
+     * discarding a cell the source still contains.
+     *
+     * @param row one line of the index table
+     * @return the number of cells a Markdown renderer will read from it
+     */
+    private static int dataCellCount(final String row) {
+        String trimmed = row.strip();
+        if (trimmed.startsWith("|")) {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.endsWith("|")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed.split("\\|", -1).length;
+    }
+
     /**
      * Returns the text of the ADR the given index row points at, failing the assertion rather
      * than throwing {@link NullPointerException} when no such file exists.

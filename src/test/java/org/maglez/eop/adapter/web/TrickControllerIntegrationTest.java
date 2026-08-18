@@ -42,8 +42,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * <p>Every test seats its own table, because a session is cheap and shared fixtures across tests in a suite that also
  * runs concurrent requests would couple the tests to each other's timing.</p>
  *
- * <p>The tables here hold three players, the fewest that can start play. The deck is 68 cards, so three players
- * receive 22 cards each (66 dealt, 2 discarded). An uneven deal is exercised where the arithmetic lives,
+ * <p>The tables here hold three players, the fewest that can start play. The deck is 68 cards and every card is dealt
+ * with nothing discarded (ADR-023 Decision 1, reinstated by EOP-92), so three players receive 23, 23 and 22 cards in
+ * seat order. The arithmetic of the uneven deal is exercised where it lives,
  * in the domain tests for {@code Hands}, and repeating it here would test the same code through a slower path.</p>
  *
  * <p>Several tests need to know which seat leads. They work it out by reading every player's hand, which they can do
@@ -73,7 +74,10 @@ class TrickControllerIntegrationTest {
 
     private static final int PLAYERS = 3;
 
-    private static final int CARDS_EACH = 22;
+    /** The whole deck is dealt and nothing is discarded (EOP-92), so three seats take 23, 23, 22. */
+    private static final int DECK_SIZE = 68;
+
+    private static final int CARDS_AT_FACILITATOR_SEAT = 23;
 
     @Autowired
     private MockMvc mockMvc;
@@ -194,8 +198,8 @@ class TrickControllerIntegrationTest {
             Assertions.assertThat(seen)
                     .as("no card is in two hands at once, so no player can see another player's cards")
                     .doesNotHaveDuplicates()
-                    .as("66 of the 68-card deck are dealt (2 discarded to equalise hands across 3 seats)")
-                    .hasSize(PLAYERS * CARDS_EACH);
+                    .as("every card of the 68-card deck is dealt, none discarded, across the 3 seats")
+                    .hasSize(DECK_SIZE);
         }
 
         @Test
@@ -209,7 +213,7 @@ class TrickControllerIntegrationTest {
             final var document = JsonPath.parse(body);
             Assertions.assertThat((Integer) document.read("$.cardCount"))
                     .as("the count is taken from the cards, so the two cannot disagree")
-                    .isEqualTo(CARDS_EACH);
+                    .isEqualTo(CARDS_AT_FACILITATOR_SEAT);
             Assertions.assertThat(document.read("$.playerId", String.class))
                     .as("the hand names its owner, which is the caller")
                     .isEqualTo(table.facilitator().playerId());
@@ -957,9 +961,10 @@ class TrickControllerIntegrationTest {
             final var table = dealtTable();
             final var facilitator = table.facilitator().playerToken();
 
-            // Sixty-six cards over three seats gives 22 each — all seats run out at the same trick.
-            // The loop drives from the server's state rather than a fixed count so it handles
-            // the equal deal correctly. Whose turn it is is taken from the route under test rather than
+            // Sixty-eight cards over three seats gives 23, 23 and 22, so seat 2 runs out one trick before
+            // the others and the final trick is short. The loop drives from the server's state rather than
+            // a fixed count so it handles that unevenness, skipping a seat whose hand is already empty.
+            // Whose turn it is is taken from the route under test rather than
             // derived from the cards, so playing the hand out is also a long exercise of it.
             boolean handComplete = false;
             int trick = 0;

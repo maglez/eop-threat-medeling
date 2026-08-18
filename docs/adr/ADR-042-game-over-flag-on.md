@@ -174,6 +174,17 @@ time since the third flag was introduced.
   `GetLeaderboardUseCase` in fact refuses with 409 unless the session is `COMPLETED` and that 409
   is undocumented; and the spec states a 68-card deal where the runtime deals 66. Recording the
   flag position does not make the contract accurate.
+
+  **Superseded in part, 2026-08-18 (EOP-92) — divergence 1 is closed, and closed in favour of the
+  spec.** The clause above is no longer true of the code: `Hands.deal` deals all 68 cards again, so
+  the runtime and `docs/api/openapi.yml` now agree and the deal is no longer a divergence at all.
+  EOP-92 resolved it by changing the *implementation*, because the spec had documented the full deal
+  correctly throughout — the code was what drifted, during the EOP-72 equal-hands period. See the
+  EOP-92 amendment to [ADR-023](ADR-023-deal-remainder-and-turn-order.md). **Only the leaderboard
+  divergence remains open under EOP-83**: the spec still describes the leaderboard as available in
+  any session state where `GetLeaderboardUseCase` refuses with an undocumented 409 unless the session
+  is `COMPLETED`. This note is left as an amendment rather than an edit so that the record of what
+  EOP-83 originally covered survives, per the amend-don't-rewrite convention.
 - `docs/architecture/building-blocks.md` is still absent project-wide (deferred to EOP-47), so the
   static module view of the now-live game-over surface exists only as Level 2 of
   `docs/architecture/C4-Diagrams.md`.

@@ -130,3 +130,13 @@ re-derived below for the new value.
 
 The opening-lead rule (lowest Tampering card guaranteed dealt) is unchanged. The lowest Tampering
 card is the 3 of Tampering (rank 3), since the 2 of Tampering does not exist in the printed deck.
+
+**Superseded 2026-08-18 by EOP-92 — the table above describes a rule that no longer holds.** It was
+derived against the EOP-72 equal-hands rule, which the product owner has since withdrawn. `D` is
+still 68, but the remainder is no longer discarded: every card is dealt, and the surplus falls to the
+lowest seats. Hand sizes in seat order are 23/23/22 at three players, 17/17/17/17 at four,
+14/14/14/13/13 at five and 12/12/11/11/11/11 at six, with a discarded count of zero at every table
+size. See the EOP-92 amendment to
+[ADR-023](ADR-023-deal-remainder-and-turn-order.md). The paragraph above about the opening lead
+survives unchanged and is in fact strengthened: the 3 of Tampering is now dealt by construction
+rather than by the scan-and-swap EOP-72 needed, which always placed it on the last seat.

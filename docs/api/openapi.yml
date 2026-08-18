@@ -456,10 +456,11 @@ paths:
         Facilitator only, and only once per session: a second call is a `409`.
         Requires the session to be joinable and to hold at least three players.
 
-        **The deck is not dealt evenly.** All 68 cards are dealt, and the
-        remainder goes to the lowest seats, so hands differ in size by at most
-        one — three players receive 23/23/22, four receive 17/17/17/17, five
-        receive 13/13/14/14/14, six receive 11/11/11/12/12/12. A
+        **The deck is not dealt evenly, and nothing is discarded.** All 68 cards
+        are dealt, and the remainder goes to the lowest seats, so hands differ in
+        size by at most one. Listed in seat order: three players receive
+        23/23/22, four receive 17/17/17/17, five receive 14/14/14/13/13, six
+        receive 12/12/11/11/11/11. A
         trick is therefore one card from each seat that *still holds cards*, and
         the last trick of a hand is short.
 

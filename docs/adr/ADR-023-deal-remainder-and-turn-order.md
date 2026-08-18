@@ -1564,3 +1564,89 @@ because `ACE` was removed from the `Rank` enum in the same commit. A rollback of
 therefore requires a coordinated application downgrade to a version that still contains `Rank.ACE`.
 This constraint is documented in ADR-041 §Consequences.
 
+
+## Amendment — EOP-92 (2026-08-18): Decision 1 Restored — Every Card Dealt, Nothing Discarded
+
+*(Accepted — supersedes the EOP-72 amendment above and reinstates Decision §1 as originally written)*
+
+**Context.** The EOP-72 amendment replaced the full deal with equal hands and a discarded remainder,
+on the grounds that an uneven deal is "confusing and unfair". The product owner has withdrawn that
+requirement. Their stated reason is the one EOP-72 itself named and then judged solvable: discarding
+the remainder risks discarding the lowest Tampering card, which is the card the opening lead is
+derived from, leaving the game unable to start.
+
+EOP-72 did solve that, but the solution introduced a defect nobody recorded. Its guarantee was a
+swap: scan the deck for the lowest Tampering card and, if it falls outside the kept range, exchange
+it with the card at index `keptSize - 1`. That index is dealt to seat `(keptSize - 1) % n`, which is
+**always the last seat**. So whenever the swap fired, the opening lead was handed deterministically
+to the highest-seated player rather than being left to the shuffle. The mitigation for one fairness
+complaint quietly created another, in the one part of the deal that is supposed to be random.
+
+Note that the bias was algebraic rather than incidental: `keptSize = floor(D / n) × n` is by
+construction a multiple of `n`, so `(keptSize - 1) mod n` is identically `n - 1` for every deck size
+and every table size. The swap could only ever land on the last seat. It fired whenever the lowest
+Tampering card fell in the discarded tail — roughly 2.9% of three- and six-player games and 4.4% of
+five-player games at 68 cards, and never at four players, where nothing was discarded.
+
+**What this does not claim.** Removing the swap makes the opening lead *shuffle-determined*, not
+uniformly distributed. The lead falls on whoever holds the lowest Tampering card, so each seat's
+probability is proportional to its hand size: at three players 0.338/0.338/0.324, at six players
+0.176/0.176/0.162 and so on. It is exactly uniform only at four players, where the deck divides
+evenly. That residual few percent is inherent to dealing an indivisible deck completely and is not a
+defect — the point of the change is that no seat receives the lead *by fiat*. Do not restate this as
+"the opening lead is now uniform"; it is not, and a future reader acting on that claim would be
+misled. There is no automated guard on this property today (see Consequences).
+
+**Decision.** `Hands.deal()` deals every card of the deck it is given. There is no truncation, no
+discard, and no Tampering swap — the round-robin loop simply runs to the end of the deck. The
+remainder falls to the lowest seats as a consequence of the round-robin order, not as a separate
+rule. This is Decision §1 exactly as originally accepted; the EOP-72 amendment is superseded in
+full.
+
+**Deck arithmetic (68-card deck, ADR-041).** Hand sizes are listed in seat order.
+
+| Players | Hands, by seat | Dealt | Discarded |
+|---|---|---|---|
+| 3 | 23 / 23 / 22 | 68 | 0 |
+| 4 | 17 / 17 / 17 / 17 | 68 | 0 |
+| 5 | 14 / 14 / 14 / 13 / 13 | 68 | 0 |
+| 6 | 12 / 12 / 11 / 11 / 11 / 11 | 68 | 0 |
+
+The `floor(D / n) × n` formula is withdrawn. The discarded column is retained only to make the point
+that it is now zero on every supported table size, and it supersedes the equivalent table in the
+EOP-75 amendment above, whose figures describe the withdrawn rule.
+
+**The opening-lead rule becomes total again, without a special case.** Every card is dealt, so the
+lowest Tampering card is in somebody's hand by construction. `Hands.openingLeaderSeat()` therefore
+always finds a holder, and it does so without the deck being reordered behind the shuffle's back.
+`NoTamperingCardDealtException` is retained, but its reachable meaning narrows to a deck that
+contains no Tampering card at all — a deck-composition fault, not a dealing outcome.
+
+**Consequence on trick completion — the EOP-72 note is withdrawn.** With unequal hands the seats
+dealt fewer cards run out first, so the final trick is short: fewer cards are played than there are
+seats. The rule "a trick is complete when no seat that still holds a card is yet to play" is
+unchanged and is once again doing real work **at 3, 5 and 6 players** rather than resolving trivially
+to "all seats have played". Four players is the exception and deliberately so: 68 divides evenly by
+four, so hands are equal at that one table size and the final trick is full. The rule is therefore
+load-bearing at three of the four supported sizes, not at all of them — which is also why the
+conservation guard is parameterised over every size rather than asserted once. This required no code
+change, because EOP-72 never removed the capability — it only made it
+unexercised. `Trick.isComplete(Collection<Integer>)` and `Trick.seatToPlay(Collection<Integer>)` are
+both *told* which seats still hold cards, and `PlayCardUseCase` passes that set. Short final tricks
+are supported rather than tolerated, and `TrickTest.shouldCompleteAShortFinalTrick` now pins the
+behaviour directly instead of leaving it to be inferred from a full-game integration test.
+
+**Implementation.** `Hands.deal()` lost its truncation arithmetic, its mutable working copy of the
+deck and its Tampering scan-and-swap block. Its loop bound is the deck size. The regression guard is
+`HandsTest.shouldDiscardNothingAtAnyTableSize`, a parameterised test asserting *conservation* — that
+the dealt cards are exactly the deck — across 3, 4, 5 and 6 players. Conservation is the property
+worth pinning, because a discarding deal satisfies every hand-size assertion while quietly losing
+cards. Restoring the truncation by hand fails that test at 3, 5 and 6 players and, correctly, not at
+4, where 68 divides evenly and nothing would have been discarded either way.
+
+**This resolves divergence 1 of EOP-83.** `docs/api/openapi.yml` already documented the full deal, so
+the specification was right and the implementation was wrong; the reconciliation is in favour of the
+specification. Two of the spec's own figures were corrected in passing: its five- and six-player hand
+lists were written in ascending order (`13/13/14/14/14`, `11/11/11/12/12/12`), which contradicted both
+its own prose that the remainder goes to the lowest seats and its own three-player example of
+`23/23/22`. EOP-83's second divergence, the leaderboard `409`, is unrelated and remains open.

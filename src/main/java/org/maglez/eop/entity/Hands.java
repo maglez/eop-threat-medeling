@@ -95,17 +95,28 @@ public final class Hands {
     }
 
     /**
-     * Deals an equal number of cards to each seat, discarding any remainder.
+     * Deals every card in the deck, so that nothing is discarded.
      *
      * <p>The deal is round-robin: the card at index {@code i} goes to the seat at index
-     * {@code i % seats.size()}, with the seats taken in ascending order. Only
-     * {@code floor(deckSize / playerCount) * playerCount} cards are dealt, so every hand is the same
-     * size and no player holds an extra card (ADR-023 Decision 1, amended).
+     * {@code i % seats.size()}, with the seats taken in ascending order. The loop runs to the end of
+     * the deck, so all {@code deckSize} cards are dealt (ADR-023 Decision 1, reinstated by EOP-92).
      *
-     * <p>The remainder cards are discarded before dealing. To preserve the opening-lead rule, the
-     * lowest-ranked Tampering card in the deck is guaranteed to fall within the kept portion: if it
-     * would otherwise be discarded, it is swapped with the last card of the kept range before
-     * truncation. This ensures {@link #openingLeaderSeat()} always finds a holder.
+     * <p>When the deck does not divide evenly the hands differ by at most one card, and the surplus
+     * falls to the lowest seats — a consequence of the round-robin order rather than a separate rule.
+     * Over the 68-card printed deck (ADR-041) that gives 23/23/22 for three players, 17 each for four,
+     * 14/14/14/13/13 for five and 12/12/11/11/11/11 for six.
+     *
+     * <p>Dealing everything is what makes the opening-lead rule total: the lowest-ranked Tampering card
+     * is in the deck, so it is in somebody's hand, so {@link #openingLeaderSeat()} always finds a
+     * holder. EOP-72 briefly truncated the deck to equal hands and kept that guarantee by swapping the
+     * lowest Tampering card into the kept range, but that swap always landed it on the last seat, which
+     * handed the opening lead to the highest-seated player instead of leaving it to the shuffle. Dealing
+     * every card removes the special case and the bias together.
+     *
+     * <p>An unequal deal means the last trick can be short. That is supported rather than tolerated:
+     * {@link Trick#isComplete(java.util.Collection)} and {@link Trick#seatToPlay(java.util.Collection)}
+     * are both told which seats still hold cards, so a trick is complete once every seat that still has
+     * a card has played.
      *
      * <p>Shuffling is deliberately not done here. This method deals the deck in exactly the order it is
      * given, so a test can hand it a known order and assert the exact distribution. Randomising the
@@ -153,38 +164,15 @@ public final class Hands {
             throw new IllegalArgumentException("Two seat assignments cannot share a seat order");
         }
 
-        // Truncate to an equal hand size, guaranteeing the lowest Tampering card is kept.
+        // Deal the whole deck. Nothing is truncated and nothing is discarded, so the surplus of an
+        // uneven deal falls to the lowest seats and the opening-lead card is always in somebody's hand.
         final int playerCount = ordered.size();
-        final int handSize = orderedDeck.size() / playerCount;
-        final int keptSize = handSize * playerCount;
-
-        final List<Card> workingDeck = new ArrayList<>(orderedDeck);
-
-        // Find the lowest-ranked Tampering card in the whole deck.
-        int lowestTamperingIndex = -1;
-        Card lowestTampering = null;
-        for (int i = 0; i < workingDeck.size(); i++) {
-            final Card c = workingDeck.get(i);
-            if (c.suit() == StrideCategory.TAMPERING) {
-                if (lowestTampering == null || lowestTampering.rank().beats(c.rank())) {
-                    lowestTampering = c;
-                    lowestTamperingIndex = i;
-                }
-            }
-        }
-
-        // If the lowest Tampering card would be discarded, swap it into the kept range.
-        if (lowestTamperingIndex >= keptSize) {
-            final Card displaced = workingDeck.get(keptSize - 1);
-            workingDeck.set(keptSize - 1, lowestTampering);
-            workingDeck.set(lowestTamperingIndex, displaced);
-        }
 
         final Map<Integer, List<Card>> dealt = new TreeMap<>();
         ordered.forEach(seat -> dealt.put(seat.seatOrder(), new ArrayList<>()));
-        for (int index = 0; index < keptSize; index++) {
+        for (int index = 0; index < orderedDeck.size(); index++) {
             final Seat seat = ordered.get(index % playerCount);
-            dealt.get(seat.seatOrder()).add(workingDeck.get(index));
+            dealt.get(seat.seatOrder()).add(orderedDeck.get(index));
         }
 
         final Map<Integer, Hand> hands = new TreeMap<>();
