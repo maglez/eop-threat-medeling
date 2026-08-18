@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { Card, PagedResponse } from "./api";
@@ -88,19 +87,6 @@ describe("App shell", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers both calls to action but leaves them disabled when the feature flag is off", async () => {
-    respondWith(200, pageOf([]));
-    // Explicitly disable the flag — .env.local may set it to true on developer machines
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "false");
-
-    await renderSettled();
-
-    // Disabled because VITE_LOBBY_UI_ENABLED is false,
-    // so the flag evaluates to false and the buttons are intentionally disabled.
-    expect(screen.getByRole("button", { name: /create a session/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /join a session/i })).toBeDisabled();
-  });
-
   it("credits Microsoft, because the licence obliges it", async () => {
     respondWith(200, pageOf([]));
 
@@ -157,58 +143,6 @@ describe("Card catalogue", () => {
   });
 });
 
-describe("Feature flag — lobby UI enabled", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    sessionStorage.clear();
-  });
-
-  it("enables Create and Join buttons when VITE_LOBBY_UI_ENABLED is true", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
-    respondWith(200, pageOf([]));
-
-    await renderSettled();
-
-    expect(screen.getByRole("button", { name: /create a session/i })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: /join a session/i })).not.toBeDisabled();
-  });
-
-  it("hides the 'not available yet' hint when the flag is on", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
-    respondWith(200, pageOf([]));
-
-    await renderSettled();
-
-    expect(screen.queryByText(/not available yet/i)).not.toBeInTheDocument();
-  });
-
-  it("navigates to the Create form when Create button is clicked", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
-    respondWith(200, pageOf([]));
-    const user = userEvent.setup();
-
-    await renderSettled();
-
-    await user.click(screen.getByRole("button", { name: /create a session/i }));
-
-    expect(screen.getByRole("heading", { name: /create a session/i })).toBeInTheDocument();
-  });
-
-  it("navigates to the Join form when Join button is clicked", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
-    respondWith(200, pageOf([]));
-    const user = userEvent.setup();
-
-    await renderSettled();
-
-    await user.click(screen.getByRole("button", { name: /join a session/i }));
-
-    expect(screen.getByRole("heading", { name: /join a session/i })).toBeInTheDocument();
-  });
-});
-
 describe("Feature flag — game screen enabled", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -220,7 +154,6 @@ describe("Feature flag — game screen enabled", () => {
   it("does not navigate to game screen when VITE_GAME_SCREEN_ENABLED is off (default)", async () => {
     // Flag is off — even if the session transitions to IN_PROGRESS,
     // the lobby should stay on screen (showing the "game has started" warning).
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
     // Explicitly disable the game screen flag — .env.local may set it to true on developer machines
     vi.stubEnv("VITE_GAME_SCREEN_ENABLED", "false");
 
@@ -259,7 +192,6 @@ describe("Feature flag — game screen enabled", () => {
   });
 
   it("navigates to game screen when VITE_GAME_SCREEN_ENABLED is on and session is IN_PROGRESS", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
     vi.stubEnv("VITE_GAME_SCREEN_ENABLED", "true");
 
     const inProgressSession = {
@@ -319,9 +251,7 @@ describe("sessionStorage reconnect", () => {
     sessionStorage.clear();
   });
 
-  it("restores lobby view from valid stored session when flag is on", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
-
+  it("restores lobby view from valid stored session", async () => {
     const storedSession = {
       playerToken: "stored-token",
       playerId: "player-1",
@@ -357,7 +287,6 @@ describe("sessionStorage reconnect", () => {
   });
 
   it("falls back to home view when stored JSON is invalid", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
     sessionStorage.setItem("eop_session", "not-valid-json{{{");
     respondWith(200, pageOf([]));
 
@@ -370,7 +299,6 @@ describe("sessionStorage reconnect", () => {
   });
 
   it("falls back to home view when stored object is missing required fields", async () => {
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "true");
     // Missing playerToken
     sessionStorage.setItem("eop_session", JSON.stringify({ playerId: "p1", sessionId: "s1" }));
     respondWith(200, pageOf([]));
@@ -379,22 +307,5 @@ describe("sessionStorage reconnect", () => {
 
     expect(screen.getByRole("heading", { name: /threat modelling card game/i })).toBeInTheDocument();
     expect(sessionStorage.getItem("eop_session")).toBeNull();
-  });
-
-  it("does not restore lobby when flag is off, even with valid stored session", async () => {
-    // Explicitly disable the flag — .env.local may set it to true on developer machines
-    vi.stubEnv("VITE_LOBBY_UI_ENABLED", "false");
-    const storedSession = {
-      playerToken: "stored-token",
-      playerId: "player-1",
-      sessionId: "session-1",
-    };
-    sessionStorage.setItem("eop_session", JSON.stringify(storedSession));
-    respondWith(200, pageOf([]));
-
-    await renderSettled();
-
-    // Should show home screen, not lobby
-    expect(screen.getByRole("heading", { name: /threat modelling card game/i })).toBeInTheDocument();
   });
 });
