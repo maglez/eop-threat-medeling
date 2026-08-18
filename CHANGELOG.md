@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`Rank` enum reduced from 13 to 12 values (EOP-75).** `TWO(2)` through `KING(13)`. `Rank.ofValue(14)` now throws `IllegalArgumentException`. The OpenAPI `Rank` enum is updated to remove `ACE`; `rankValue.maximum` is updated from 14 to 13.
 
+### Fixed
+
+- **`VITE_GAME_SCREEN_ENABLED` not passed to Docker build — game screen never mounted in local stack (EOP-78).** `ui/Dockerfile` had no `ARG`/`ENV` declaration for `VITE_GAME_SCREEN_ENABLED`, so `npm run build` ran with the variable unset → Vite substituted `undefined` → `isGameScreenEnabled = false` → the `onGameStarted` callback in `App.tsx` never called `setView({ screen: 'game' })` → the app stayed on `LobbyScreen` showing "The game has started" but never transitioning. Fixed by adding `ARG VITE_GAME_SCREEN_ENABLED=true` and `ENV VITE_GAME_SCREEN_ENABLED=$VITE_GAME_SCREEN_ENABLED` to `ui/Dockerfile` before `RUN npm run build`, and passing `--build-arg VITE_GAME_SCREEN_ENABLED=true` in `scripts/update-local.sh`. The `ARG` default of `true` means a plain `docker build` produces a fully-functional local image; CI/CD can override to `false` for a dark build.
+
 ### Added
 
 - **`scripts/update-local.sh` — one-command local stack refresh (EOP-76).** Rebuilds both `eop-threat-medeling:local` and `eop-ui:local` from the current working tree, then restarts `eop-app` and `eop-caddy` with `--force-recreate` while leaving `eop-postgres` untouched (data is preserved). Eliminates the class of bug where the running stack predates recent merges — the root cause of the Aug 17 incident where a stale app image disagreed with the 68-card database and silently blocked the opening drag. The script is self-documenting (comment block explains the gap and the AWS obsolescence condition), passes `shellcheck`, and has the executable bit set. It is a temporary convenience: once the CD pipeline deploys to AWS on every merge, the local stack is no longer the primary test target and this script can be deleted.
