@@ -5,11 +5,11 @@ import App from "./App";
 import type { Card, PagedResponse } from "./api";
 
 /**
- * The full deck is 74 cards: Tampering starts at rank 3 (twelve ranks) and
- * Elevation of Privilege starts at rank 5 (ten ranks); the other four suits
- * hold thirteen ranks (2–A) each.
+ * The full deck is 68 cards: Tampering starts at rank 3 (eleven ranks) and
+ * Elevation of Privilege starts at rank 5 (nine ranks); the other four suits
+ * hold twelve ranks (2–K) each. King is the highest card. See ADR-041.
  */
-const DECK_SIZE = 74;
+const DECK_SIZE = 68;
 
 /** The first card in deck order: Spoofing, rank two. */
 const SPOOFING_TWO: Card = {
@@ -23,17 +23,17 @@ const SPOOFING_TWO: Card = {
 };
 
 /**
- * The last card in deck order, and the highest card in the game: the ace of the
- * trump suit. Aces are open threat cards, which is why the text invites the
- * player to name a threat rather than describing one.
+ * The last card in deck order, and the highest card in the game: the King of the
+ * trump suit (Elevation of Privilege). King is the highest rank (13) since the
+ * physical printed deck has no Ace cards. See ADR-041.
  */
-const TRUMP_ACE: Card = {
-  cardId: "2a497b0e-e59d-50c9-a24b-f03f347dd4ed",
+const TRUMP_KING: Card = {
+  cardId: "f4ea3e6e-5cd5-53d0-a32d-b9f389069b74",
   suit: "ELEVATION_OF_PRIVILEGE",
-  rank: "ACE",
-  rankSymbol: "A",
-  rankValue: 14,
-  threatPrompt: "You've invented a new Elevation of Privilege attack",
+  rank: "KING",
+  rankSymbol: "K",
+  rankValue: 13,
+  threatPrompt: "An attacker can inject a command that the system will run at a higher privilege level",
 };
 
 function pageOf(cards: readonly Card[]): PagedResponse<Card> {
@@ -128,14 +128,14 @@ describe("Card catalogue", () => {
   });
 
   it("renders each card with a readable suit name rather than the wire enum", async () => {
-    respondWith(200, pageOf([SPOOFING_TWO, TRUMP_ACE]));
+    respondWith(200, pageOf([SPOOFING_TWO, TRUMP_KING]));
 
     render(<App />);
 
     expect(await screen.findByText("Spoofing")).toBeInTheDocument();
     expect(screen.getByText("Elevation of privilege")).toBeInTheDocument();
     expect(screen.getByText(SPOOFING_TWO.threatPrompt)).toBeInTheDocument();
-    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.getByText("K")).toBeInTheDocument();
   });
 
   it("surfaces the problem detail when the server rejects the request", async () => {

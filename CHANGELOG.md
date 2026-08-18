@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-SNAPSHOT] — Unreleased
 
+### Removed
+
+- **Ace cards removed from the deck — deck size is now 68 (EOP-75, ADR-041).** The six Ace cards (one per STRIDE suit, rank 14) do not appear in the physical printed Elevation of Privilege card game. The committed card artwork (`ui/src/assets/cards/`) contains exactly 68 PNG images with no Ace in any suit, confirming the physical deck. `Rank.ACE` (value 14) has been removed from the `Rank` enum; `Card.isOpenThreat()` has been removed — the Open-Threat concept does not exist in the physical game. The Liquibase migration `2026-08-18--remove-ace-cards.xml` deletes the six Ace rows. King (rank 13) is now the highest rank. ADR-041 records the decision and resolves the conflict between the author's "74 cards" quote in `LICENCE-eop-deck.md` and the committed card images. ADR-023 deal arithmetic is re-derived for D = 68.
+
+### Changed
+
+- **`Rank` enum reduced from 13 to 12 values (EOP-75).** `TWO(2)` through `KING(13)`. `Rank.ofValue(14)` now throws `IllegalArgumentException`. The OpenAPI `Rank` enum is updated to remove `ACE`; `rankValue.maximum` is updated from 14 to 13.
+
 ### Added
 
 - **Real card images in the Game Screen (EOP-66, flag removed by EOP-74).** 68 playable PNG card images (© 2009 Microsoft Corporation, CC-BY-3.0-US) are bundled under `ui/src/assets/cards/{Suit}/` via Vite's `import.meta.glob`. `CardFace`, the trick zone, and the drag ghost all render the real card artwork instead of plain coloured rectangles. Face-down cards (other players' hands) remain plain rectangles. The `cardImagePath(suit, rank)` helper maps suit/rank enum values to bundled PNG URLs and returns `null` for non-existent combinations (e.g. TWO of Tampering, any ACE). All `<img>` elements carry descriptive `alt` attributes (`"{rankSymbol} of {suit}"`) for WCAG 2.2 AA compliance. The 68 card PNGs (~6.7 MB) are always bundled into `dist/` — Vite processes `import.meta.glob` at parse time and cannot dead-code-eliminate it (ADR-037).

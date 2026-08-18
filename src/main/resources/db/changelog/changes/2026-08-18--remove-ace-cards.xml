@@ -71,6 +71,12 @@
         (a) delete all game sessions (and their cascading hand_card / trick_play rows), or
         (b) run the rollback of any in-flight sessions first.
       On a fresh database (e.g. CI, a new deployment) this precondition is always satisfied.
+
+      APPLICATION COMPATIBILITY WARNING: Rolling back this changeset restores rows with
+      card_rank=14. The application code deployed alongside this migration has removed
+      Rank.ACE (value 14) from the Rank enum, so Rank.ofValue(14) now throws
+      IllegalArgumentException. A rollback therefore requires a coordinated application
+      downgrade to a version that still contains Rank.ACE. See ADR-041.
     </comment>
 
     <!-- SPOOFING Ace -->
@@ -106,12 +112,13 @@
     <rollback>
       <!-- Re-insert the six deleted Ace cards in their original order. -->
 
+      <!-- Prompts are taken verbatim from 002-real-deck.xml lines 209, 314, 419, 524, 629, 734. -->
       <insert tableName="card">
         <column name="id" value="048c87ce-e1e0-519b-be26-05f7b8ae9e5e"/>
         <column name="suit" value="SPOOFING"/>
         <column name="suit_order" valueNumeric="1"/>
         <column name="card_rank" valueNumeric="14"/>
-        <column name="threat_prompt" value="Your code makes access control decisions all over the place, rather than with a security kernel"/>
+        <column name="threat_prompt" value="You&apos;ve invented a new Spoofing attack"/>
       </insert>
 
       <insert tableName="card">
@@ -119,7 +126,7 @@
         <column name="suit" value="TAMPERING"/>
         <column name="suit_order" valueNumeric="2"/>
         <column name="card_rank" valueNumeric="14"/>
-        <column name="threat_prompt" value="An attacker can alter information in a data store because it has weak/open permissions or includes a group which is equivalent to everyone (&quot;anyone with a Facebook account&quot;)"/>
+        <column name="threat_prompt" value="You&apos;ve invented a new Tampering attack"/>
       </insert>
 
       <insert tableName="card">
@@ -127,7 +134,7 @@
         <column name="suit" value="REPUDIATION"/>
         <column name="suit_order" valueNumeric="3"/>
         <column name="card_rank" valueNumeric="14"/>
-        <column name="threat_prompt" value="An attacker can brute-force file encryption because there&apos;s no defense in place (example defense, password stretching)"/>
+        <column name="threat_prompt" value="You&apos;ve invented a new Repudiation attack"/>
       </insert>
 
       <insert tableName="card">
@@ -135,7 +142,7 @@
         <column name="suit" value="INFORMATION_DISCLOSURE"/>
         <column name="suit_order" valueNumeric="4"/>
         <column name="card_rank" valueNumeric="14"/>
-        <column name="threat_prompt" value="An attacker can drain a battery that&apos;s hard to replace (sealed in a phone, an implanted medical device, or in a hard to reach location) (battery, persist)"/>
+        <column name="threat_prompt" value="You&apos;ve invented a new Information Disclosure attack"/>
       </insert>
 
       <insert tableName="card">
@@ -143,7 +150,7 @@
         <column name="suit" value="DENIAL_OF_SERVICE"/>
         <column name="suit_order" valueNumeric="5"/>
         <column name="card_rank" valueNumeric="14"/>
-        <column name="threat_prompt" value="An attacker can exhaust resources needed by your system"/>
+        <column name="threat_prompt" value="You&apos;ve invented a new Denial of Service attack"/>
       </insert>
 
       <insert tableName="card">
@@ -151,7 +158,7 @@
         <column name="suit" value="ELEVATION_OF_PRIVILEGE"/>
         <column name="suit_order" valueNumeric="6"/>
         <column name="card_rank" valueNumeric="14"/>
-        <column name="threat_prompt" value="An attacker can gain elevated privileges because your system doesn&apos;t use the principle of least privilege"/>
+        <column name="threat_prompt" value="You&apos;ve invented a new Elevation of Privilege attack"/>
       </insert>
     </rollback>
   </changeSet>

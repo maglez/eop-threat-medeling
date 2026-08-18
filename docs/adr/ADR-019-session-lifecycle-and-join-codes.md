@@ -171,6 +171,10 @@ data rather than presentation ordering.
 > last trick, at every player count. The decision recorded in this section — that
 > `seatOrder` is assigned once at
 > join, never re-derived, and enforced by a unique constraint — is unchanged.
+>
+> **Further amended 2026-08-18 (EOP-75):** The deck was subsequently trimmed from 74 to 68 cards
+> by removing the six Ace cards. The general form of the next-player formula is unchanged; only
+> the deck size `D` changes. See [ADR-041](ADR-041-printed-deck-has-no-aces.md).
 
 It is assigned at the moment of joining and **never re-derived** — not from a
 database sort, not from `joined_at`, not from list position. The failure this

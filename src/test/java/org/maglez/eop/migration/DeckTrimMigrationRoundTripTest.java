@@ -18,6 +18,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,6 +69,32 @@ class DeckTrimMigrationRoundTripTest {
             "24b333fb-38c4-581e-b86c-670cdc7b4c62",  // ELEVATION_OF_PRIVILEGE rank 2
             "e030b625-b4e3-51d4-9d91-1b50ae0bf0e1",  // ELEVATION_OF_PRIVILEGE rank 3
             "7229e28b-c578-5ab8-bbc5-fdc8d5b00521"   // ELEVATION_OF_PRIVILEGE rank 4
+    );
+
+    /**
+     * The six Ace card IDs removed by the ace-removal migration.
+     * Sourced from 002-real-deck.xml lines 205, 310, 415, 520, 625, 730.
+     */
+    private static final Set<String> ACE_CARD_IDS = Set.of(
+            "048c87ce-e1e0-519b-be26-05f7b8ae9e5e",  // SPOOFING rank 14
+            "56c1a22f-b191-5a09-8231-faca8224ff2c",  // TAMPERING rank 14
+            "089d68f1-0588-5840-a25f-5f6157731327",  // REPUDIATION rank 14
+            "4d22c229-2edb-56eb-8983-28d885d1b9a8",  // INFORMATION_DISCLOSURE rank 14
+            "59f51c4e-1887-5614-a9c9-c3916f2cfd86",  // DENIAL_OF_SERVICE rank 14
+            "2a497b0e-e59d-50c9-a24b-f03f347dd4ed"   // ELEVATION_OF_PRIVILEGE rank 14
+    );
+
+    /**
+     * The correct threat_prompt values for each Ace card, as seeded by 002-real-deck.xml.
+     * These are the values the rollback must restore exactly.
+     */
+    private static final Map<String, String> ACE_THREAT_PROMPTS = Map.of(
+            "048c87ce-e1e0-519b-be26-05f7b8ae9e5e", "You've invented a new Spoofing attack",
+            "56c1a22f-b191-5a09-8231-faca8224ff2c", "You've invented a new Tampering attack",
+            "089d68f1-0588-5840-a25f-5f6157731327", "You've invented a new Repudiation attack",
+            "4d22c229-2edb-56eb-8983-28d885d1b9a8", "You've invented a new Information Disclosure attack",
+            "59f51c4e-1887-5614-a9c9-c3916f2cfd86", "You've invented a new Denial of Service attack",
+            "2a497b0e-e59d-50c9-a24b-f03f347dd4ed", "You've invented a new Elevation of Privilege attack"
     );
 
     private Connection connection;
@@ -231,6 +258,75 @@ class DeckTrimMigrationRoundTripTest {
                 .isEqualTo(DECK_SIZE_BEFORE_TRIM);
     }
 
+    @Test
+    @DisplayName("ace-removal rollback restores all 6 Ace IDs and their correct threat_prompt values")
+    void aceRollbackRestoresCorrectThreatPrompts() throws Exception {
+        // Arrange — apply the full migration (68 cards)
+        liquibase.update(new Contexts(), new LabelExpression());
+        connection.setAutoCommit(true);
+
+        // Assert — all six Ace IDs are absent after the forward migration
+        for (final String id : ACE_CARD_IDS) {
+            assertThat(cardExists(connection, id))
+                    .as("Ace card %s must be absent after the ace-removal migration", id)
+                    .isFalse();
+        }
+
+        // Act — roll back 1 changeset (ace removal only)
+        liquibase.rollback(1, new Contexts(), new LabelExpression());
+
+        // Assert — all six Ace IDs are present again
+        for (final String id : ACE_CARD_IDS) {
+            assertThat(cardExists(connection, id))
+                    .as("Ace card %s must be present after rolling back the ace-removal migration", id)
+                    .isTrue();
+        }
+
+        // Assert — each restored Ace has the correct threat_prompt (not a duplicate of a live row)
+        for (final Map.Entry<String, String> entry : ACE_THREAT_PROMPTS.entrySet()) {
+            final String actualPrompt = readThreatPrompt(connection, entry.getKey());
+            assertThat(actualPrompt)
+                    .as("Ace card %s must have threat_prompt '%s' after rollback", entry.getKey(), entry.getValue())
+                    .isEqualTo(entry.getValue());
+        }
+    }
+
+    @Test
+    @DisplayName("ace-removal precondition HALT fires when hand_card references an Ace card")
+    void aceRemovalPreconditionHaltsWhenHandCardReferencesAnAce() throws Exception {
+        // Arrange — apply the full migration (68 cards), then roll back both (78 cards).
+        liquibase.update(new Contexts(), new LabelExpression());
+        connection.setAutoCommit(true);
+        liquibase.rollback(2, new Contexts(), new LabelExpression());
+
+        // Re-apply only the trim migration (74 cards) so the Ace rows exist.
+        // We do this by applying one changeset at a time — apply trim, then block ace removal.
+        // Since Liquibase applies in file order, we need to insert the FK reference before update().
+        // Insert a hand_card row referencing one of the Ace cards.
+        final String aceCardId = "048c87ce-e1e0-519b-be26-05f7b8ae9e5e"; // SPOOFING ACE
+        final String handId = "bbbbbbbb-0000-0000-0000-000000000002";
+        try (var stmt = connection.createStatement()) {
+            stmt.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO hand_card (hand_id, card_id) VALUES (?, ?)")) {
+            ps.setObject(1, java.util.UUID.fromString(handId));
+            ps.setObject(2, java.util.UUID.fromString(aceCardId));
+            ps.executeUpdate();
+        }
+        connection.commit();
+
+        // Act + Assert — applying all migrations must throw because the ace precondition detects the reference.
+        assertThatThrownBy(() -> liquibase.update(new Contexts(), new LabelExpression()))
+                .isInstanceOf(LiquibaseException.class)
+                .hasMessageContaining("Cannot remove Ace cards: they are still referenced by hand_card or trick_play");
+
+        // Assert — the Ace card still exists (migration was refused, not partially applied).
+        assertThat(cardExists(connection, aceCardId))
+                .as("Ace card must still exist after the precondition HALT")
+                .isTrue();
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -262,6 +358,24 @@ class DeckTrimMigrationRoundTripTest {
                         .as("card existence query must return a result row")
                         .isTrue();
                 return rs.getInt(1) > 0;
+            }
+        }
+    }
+
+    /**
+     * Returns the {@code threat_prompt} value for the card with the given UUID.
+     *
+     * @param id the UUID string to look up
+     */
+    private static String readThreatPrompt(final Connection conn, final String id) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT threat_prompt FROM card WHERE id = ?")) {
+            ps.setObject(1, java.util.UUID.fromString(id));
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next())
+                        .as("card with id %s must exist when reading threat_prompt", id)
+                        .isTrue();
+                return rs.getString(1);
             }
         }
     }

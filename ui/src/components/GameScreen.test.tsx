@@ -46,12 +46,12 @@ describe('GameScreen', () => {
     cards,
   });
 
-  const spoofingAce: api.CardDto = {
+  const spoofingKing: api.CardDto = {
     cardId: 'card1',
     suit: 'SPOOFING',
-    rank: 'ACE',
-    rankSymbol: 'A',
-    rankValue: 14,
+    rank: 'KING',
+    rankSymbol: 'K',
+    rankValue: 13,
     threatPrompt: 'Test prompt 1',
   };
 
@@ -99,7 +99,7 @@ describe('GameScreen', () => {
   });
 
   it("renders the player's hand with card images and rank symbols after data loads", async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce, tamperingKing, repudiationQueen]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing, tamperingKing, repudiationQueen]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -107,8 +107,8 @@ describe('GameScreen', () => {
     render(<GameScreen {...defaultProps} />);
 
     await waitFor(() => {
-      // spoofingAce has rank ACE — no image exists, so rank symbol text is rendered
-      expect(screen.getAllByText('A').length).toBeGreaterThanOrEqual(1);
+      // spoofingKing has rank KING — image exists, so alt text is rendered
+      expect(screen.getByAltText('K of spoofing')).toBeInTheDocument();
     });
 
     // tamperingKing and repudiationQueen have real images — they render <img> with alt text
@@ -117,7 +117,7 @@ describe('GameScreen', () => {
   });
 
   it("renders the player's display name above their hand", async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -130,7 +130,7 @@ describe('GameScreen', () => {
   });
 
   it('disables cards when it is not the player\'s turn', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue({
       complete: false,
       handComplete: false,
@@ -152,7 +152,7 @@ describe('GameScreen', () => {
   });
 
   it('shows whose turn it is', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue({
       complete: false,
       handComplete: false,
@@ -170,7 +170,7 @@ describe('GameScreen', () => {
   });
 
   it("shows 'Your turn' when it is the current player's turn", async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState); // seatToPlay: 0 = Alice
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -183,7 +183,7 @@ describe('GameScreen', () => {
   });
 
   it('allows card selection and shows play button when it is the player\'s turn', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -191,11 +191,11 @@ describe('GameScreen', () => {
     render(<GameScreen {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getAllByText('A').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByAltText('K of spoofing')).toBeInTheDocument();
     });
 
     // Click the card — aria-label format: "{rankSymbol} of {suit}: {threatPrompt}"
-    const cardButton = screen.getByRole('button', { name: /A of spoofing/i });
+    const cardButton = screen.getByRole('button', { name: /K of spoofing/i });
     fireEvent.click(cardButton);
 
     // Play selected card button should appear
@@ -203,7 +203,7 @@ describe('GameScreen', () => {
   });
 
   it('marks card as selected (aria-pressed) after click', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -211,10 +211,10 @@ describe('GameScreen', () => {
     render(<GameScreen {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /A of spoofing/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /K of spoofing/i })).toBeInTheDocument();
     });
 
-    const cardButton = screen.getByRole('button', { name: /A of spoofing/i });
+    const cardButton = screen.getByRole('button', { name: /K of spoofing/i });
     expect(cardButton).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(cardButton);
@@ -234,7 +234,7 @@ describe('GameScreen', () => {
             trickPlayId: 'play1',
             playerId: 'player1',
             seatOrder: 0,
-            card: spoofingAce,
+            card: spoofingKing,
             threatLinked: false,
             components: [],
             playedAt: '2023-01-01T00:00:00Z',
@@ -244,7 +244,7 @@ describe('GameScreen', () => {
       },
     };
 
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(completeTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -274,7 +274,7 @@ describe('GameScreen', () => {
             trickPlayId: 'play1',
             playerId: 'player1',
             seatOrder: 0,
-            card: spoofingAce,
+            card: spoofingKing,
             threatLinked: false,
             components: [],
             playedAt: '2023-01-01T00:00:00Z',
@@ -284,7 +284,7 @@ describe('GameScreen', () => {
       },
     };
 
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(completeTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -312,7 +312,7 @@ describe('GameScreen', () => {
             trickPlayId: 'play1',
             playerId: 'player1',
             seatOrder: 0,
-            card: spoofingAce,
+            card: spoofingKing,
             threatLinked: false,
             components: [],
             playedAt: '2023-01-01T00:00:00Z',
@@ -325,7 +325,7 @@ describe('GameScreen', () => {
     // Use fake timers from the start but keep Promise/microtask scheduling real
     vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
 
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(completeTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -366,7 +366,7 @@ describe('GameScreen', () => {
             trickPlayId: 'play1',
             playerId: 'player1',
             seatOrder: 0,
-            card: spoofingAce,
+            card: spoofingKing,
             threatLinked: false,
             components: [],
             playedAt: '2023-01-01T00:00:00Z',
@@ -376,7 +376,7 @@ describe('GameScreen', () => {
       },
     };
 
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(completeTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -431,7 +431,7 @@ describe('GameScreen', () => {
   it('calls onSessionEnd when getSession returns 404 (session genuinely gone)', async () => {
     const sessionGoneError = new api.ApiError(404, 'Session not found');
     vi.spyOn(api, 'getSession').mockRejectedValue(sessionGoneError);
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
 
@@ -445,7 +445,7 @@ describe('GameScreen', () => {
   });
 
   it('shows other players around the table', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -460,7 +460,7 @@ describe('GameScreen', () => {
   });
 
   it('shows the central trick zone drop area', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -486,7 +486,7 @@ describe('GameScreen', () => {
   });
 
   it('card buttons carry className eop-card so the CSS focus ring is reachable', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
@@ -494,20 +494,20 @@ describe('GameScreen', () => {
     render(<GameScreen {...defaultProps} />);
 
     await waitFor(() => {
-      const card = screen.getByRole('button', { name: /A of spoofing/i });
+      const card = screen.getByRole('button', { name: /K of spoofing/i });
       expect(card).toHaveClass('eop-card');
     });
   });
 
   it('applies GOV.UK focus box-shadow (yellow + dark inset) when card receives focus', async () => {
-    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingAce]));
+    vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
     vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
     vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
     vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
 
     render(<GameScreen {...defaultProps} />);
 
-    const card = await screen.findByRole('button', { name: /A of spoofing/i });
+    const card = await screen.findByRole('button', { name: /K of spoofing/i });
 
     // Before focus: no GOV.UK focus shadow
     expect(card).not.toHaveStyle({ boxShadow: '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c' });

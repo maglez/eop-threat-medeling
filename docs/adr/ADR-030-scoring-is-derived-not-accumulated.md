@@ -178,6 +178,8 @@ slice.
 - The score is recomputed on every read, and that cost is accepted rather than mitigated.
   A six-player game plays 74 cards in 13 tricks and a three-player game 74 in 25, so the
   input is bounded by the deck and is small enough that measuring it would be theatre.
+  *(Note: the deck was subsequently trimmed to 68 cards by EOP-75 — see [ADR-041](ADR-041-printed-deck-has-no-aces.md).
+  The bound is smaller; the argument is unchanged.)*
   Nothing here forecloses caching later if measurement ever contradicts that — but the
   honest position today is that this design trades a fixed, small, repeated cost for the
   removal of a whole class of drift bug, and the cost is real.
