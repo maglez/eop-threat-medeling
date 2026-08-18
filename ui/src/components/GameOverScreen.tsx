@@ -45,6 +45,7 @@ export function GameOverScreen({
   const [leaderboard, setLeaderboard] = useState<LeaderboardDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStartingNewGame, setIsStartingNewGame] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const loadLeaderboard = useCallback(async () => {
     try {
@@ -54,7 +55,11 @@ export function GameOverScreen({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load leaderboard';
       setError(message);
-      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+      // Only eject on 403 (token invalid/expired). A 404 here means the game
+      // result has not been persisted yet (race between the game-completed SSE
+      // event and the async persist write) — keep the user on the leaderboard
+      // screen so they can retry rather than silently sending them home.
+      if (err instanceof ApiError && err.status === 403) {
         onSessionEnd();
       }
     }
@@ -63,6 +68,19 @@ export function GameOverScreen({
   useEffect(() => {
     void loadLeaderboard();
   }, [loadLeaderboard]);
+
+  // Guards the retry button against a double-click issuing two concurrent
+  // fetches, mirroring the isStartingNewGame guard below. loadLeaderboard
+  // handles its own errors, so the finally always clears the pending state.
+  const handleRetry = async () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    try {
+      await loadLeaderboard();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const handleNewGame = async () => {
     if (isStartingNewGame) return;
@@ -88,6 +106,32 @@ export function GameOverScreen({
             title="There is a problem"
             errors={[error]}
           />
+        )}
+
+        {error && !leaderboard && (
+          <>
+            <button
+              type="button"
+              className="govuk-button govuk-button--secondary"
+              data-module="govuk-button"
+              disabled={isRetrying}
+              aria-disabled={isRetrying}
+              onClick={() => { void handleRetry(); }}
+            >
+              {isRetrying ? 'Retrying…' : 'Retry loading results'}
+            </button>
+
+            {/*
+              Disabling the button removes it from the tab order and drops focus,
+              so the label flipping to 'Retrying…' is announced to nobody. The
+              'Loading results…' region below only renders while there is no
+              error, which is never true on this branch, so a screen-reader user
+              would otherwise get silence between the click and the outcome.
+            */}
+            <p className="govuk-visually-hidden" role="status" aria-live="polite">
+              {isRetrying ? 'Retrying. Loading results.' : ''}
+            </p>
+          </>
         )}
 
         {leaderboard ? (

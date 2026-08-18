@@ -164,3 +164,7 @@ which `DealHandsUseCase` does not do. Delegating would require either modifying
   this ADR adds the path back from `COMPLETED`.
 - [ADR-013](ADR-013-feature-flags.md) — `eop.features.game-over` gates both
   `GameOverController` and the three new use-case beans.
+- [ADR-042](ADR-042-game-over-flag-on.md) — that flag is `true` as of EOP-82, so everything this
+  ADR describes is live in the default configuration. It shipped `false` for two stories after
+  this ADR was accepted; ADR-042 records why that went unnoticed and when the flag is to be
+  removed.
