@@ -92,11 +92,17 @@ zone — therefore carry `draggable={false}`. The drag ghost does not need it, b
 defence in depth for the text-fallback card face and any future draggable child. Cancelling
 `pointerdown` suppresses the compatibility `mousedown`, and it is `mousedown` that moves DOM
 focus to a `div[role="button"]`. A mouse press on a card therefore no longer focuses it — often
-desirable, but it means `onFocus` does not fire on click and a hybrid mouse/keyboard user tabs
-from the document start rather than from the card just clicked. Decision 4's contract survives
-intact: `click` is a `PointerEvent`, not a compatibility mouse event, so cancelling
-`pointerdown` cannot suppress it and the select-then-play path still works. Keyboard focus via
-Tab is unaffected, so SC 2.4.7 above still holds.
+desirable, but it means `onFocus` does not fire on click and a hybrid mouse/keyboard user's next
+Tab resumes from the sequential focus navigation starting point rather than from the card just
+clicked. Decision 4's contract survives intact: `click` is *not* one of the compatibility mouse
+events that cancelling `pointerdown` suppresses — only `mousedown`, `mousemove` and `mouseup`
+are — so it still fires and the select-then-play path still works. Note this is the reason, and
+not the fact that Level 3 reclassified `click` as a `PointerEvent`: that reclassification is
+recent and was not honoured uniformly across engines, whereas the suppression set has been
+stable. Keyboard focus via Tab is unaffected, so SC 2.4.7 above still holds. The paragraph is
+worded for mouse input, but `touchAction: 'none'` routes touch drags through the same handler,
+and the conclusion holds there too — cancelling `pointerdown` does not cancel `touchstart`, and
+the synthesised `click` still fires.
 
 **Accepted limitation: this class of defect is not reachable by the automated suite (EOP-79
 amendment, 2026-08-18).** The point above about jsdom and accessibility understated the problem.
@@ -106,9 +112,13 @@ bug. It also implements neither `PointerEvent` nor `setPointerCapture`, both of 
 shimmed in `ui/src/setupTests.ts` so that `fireEvent.pointer*` carries `clientX`/`clientY` at
 all. Consequently the pointer-gesture tests in `GameScreen.test.tsx` cover the hit-test
 arithmetic — real coverage that was previously absent, and whose absence is why EOP-79 escaped
-— but they pass with or without the fix. The only automated guard on this regression is the
-assertion that the rendered card `<img>` carries `draggable="false"`, and the same is true of
-the focus consequence described above, which no test can currently observe. We accept this
+— but they pass with or without the fix. The only automated guards on this regression are the
+two assertions that the hand card's and the trick zone's rendered `<img>` each carries
+`draggable="false"`; they are independent of one another, and each fails only if its own image
+loses the attribute. The drag ghost's `<img>` carries the attribute but is asserted by no test,
+because it renders only mid-drag; it is also the one image that cannot be a drag source anyway,
+since its wrapper sets `pointerEvents: 'none'`. No guard at all exists for the focus consequence
+described above, which no test can currently observe. We accept this
 gap rather than introducing a browser-driving test framework for one interaction: the invariant
 is declarative and assertable as an attribute, and the residue is covered by manual
 verification. Introducing Playwright or Vitest browser mode would supersede this paragraph.

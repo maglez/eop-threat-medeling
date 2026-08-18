@@ -747,17 +747,23 @@ export function GameScreen({
                 boxShadow: '4px 4px 12px rgba(0,0,0,0.3)',
               }}>
                 {cardImagePath(draggedCard.suit, draggedCard.rank) ? (
-                  <img
-                    src={cardImagePath(draggedCard.suit, draggedCard.rank) as string}
-                    alt={`${draggedCard.rankSymbol} of ${draggedCard.suit.toLowerCase().replace(/_/g, ' ')}`}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                      borderRadius: '4px',
-                      display: 'block',
-                    }}
-                  />
+                   <img
+                     src={cardImagePath(draggedCard.suit, draggedCard.rank) as string}
+                     alt={`${draggedCard.rankSymbol} of ${draggedCard.suit.toLowerCase().replace(/_/g, ' ')}`}
+                     // Not strictly required — the ghost's wrapper sets `pointerEvents: 'none'`, so it can
+                     // never be the press target that starts a native drag. Set anyway so the EOP-79
+                     // invariant holds uniformly at every `<img>` on the drag surface, and so a future
+                     // edit that gives the ghost pointer events cannot silently reintroduce the bug.
+                     draggable={false}
+                     style={{
+                       width: '100%',
+                       height: '100%',
+                       objectFit: 'contain',
+                       borderRadius: '4px',
+                       display: 'block',
+                       WebkitUserDrag: 'none',
+                     } as React.CSSProperties}
+                   />
                 ) : (
                   <>
                     <div style={{ fontSize: '14px', fontWeight: 'bold', color: SUIT_COLOURS[draggedCard.suit] ?? '#0b0c0c' }}>
