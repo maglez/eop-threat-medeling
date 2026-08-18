@@ -148,24 +148,30 @@ class GlobalExceptionHandlerTest {
         }
 
         @Test
-        @DisplayName("a session past the lobby is a 409 naming the status it reached")
+        @DisplayName("a session past the lobby is a 409 with a fixed detail — no UUID or status leaked")
         void shouldMapSessionNotJoinableTo409() {
             final ProblemDetail problem =
                     handler.handleSessionNotJoinable(new SessionNotJoinableException(SESSION_ID, SessionStatus.IN_PROGRESS));
 
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
             assertThat(problem.getTitle()).isEqualTo("Session is not in the lobby");
-            assertThat(problem.getDetail()).contains("IN_PROGRESS");
+            assertThat(problem.getDetail())
+                    .isEqualTo("This session is no longer in the lobby.")
+                    .doesNotContain(SESSION_ID.toString())
+                    .doesNotContain("IN_PROGRESS");
         }
 
         @Test
-        @DisplayName("a full table is a 409 naming the capacity")
+        @DisplayName("a full table is a 409 with a fixed detail — no UUID or capacity leaked")
         void shouldMapSessionFullTo409() {
             final ProblemDetail problem = handler.handleSessionFull(new SessionFullException(SESSION_ID, 6));
 
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
             assertThat(problem.getTitle()).isEqualTo("Session is full");
-            assertThat(problem.getDetail()).contains("maximum of 6 players");
+            assertThat(problem.getDetail())
+                    .isEqualTo("This session has no available seats. Try a different join code.")
+                    .doesNotContain(SESSION_ID.toString())
+                    .doesNotContain("6");
         }
 
         @Test

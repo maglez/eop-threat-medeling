@@ -206,14 +206,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * The session has left the lobby, so it can be neither joined nor started.
      *
-     * @param exception the domain exception
-     * @return a 409 problem detail
+     * <p>The detail is a fixed string and the exception's own message is deliberately
+     * not used. The exception carries the session identifier and the current
+     * {@link org.maglez.eop.entity.SessionStatus}, but a joining caller supplied only
+     * a join code and never held either value, so echoing the message would disclose
+     * an internal key and an internal enum name it had no way to know (EOP-55). On
+     * non-join paths (start, deal, play, resolve) the caller supplied the session
+     * identifier themselves, so the UUID is not a disclosure — but the enum name still
+     * is, and a single path-agnostic detail is simpler than branching on call site.
+     * The diagnostic is preserved server-side at WARN level.
+     *
+     * @param exception the domain exception, used only for server-side diagnostics
+     * @return a 409 problem detail whose detail is a fixed string
      */
     @ExceptionHandler(SessionNotJoinableException.class)
     public ProblemDetail handleSessionNotJoinable(final SessionNotJoinableException exception) {
+        LOG.warn("Session state refused the request: {}", exception.getMessage());
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Session is not in the lobby");
-        problem.setDetail(exception.getMessage());
+        problem.setDetail("This session is no longer in the lobby.");
         return problem;
     }
 
@@ -238,14 +249,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * Every seat at the table is taken.
      *
-     * @param exception the domain exception
-     * @return a 409 problem detail
+     * <p>The detail is a fixed string and the exception's own message is deliberately
+     * not used. The exception carries the session identifier and the capacity, but a
+     * joining caller supplied only a join code and never held either value, so echoing
+     * the message would disclose an internal key and a capacity constant it had no way
+     * to know (EOP-54). The diagnostic is preserved server-side at WARN level.
+     *
+     * @param exception the domain exception, used only for server-side diagnostics
+     * @return a 409 problem detail whose detail is a fixed string
      */
     @ExceptionHandler(SessionFullException.class)
     public ProblemDetail handleSessionFull(final SessionFullException exception) {
+        LOG.warn("Session state refused the request: {}", exception.getMessage());
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Session is full");
-        problem.setDetail(exception.getMessage());
+        problem.setDetail("This session has no available seats. Try a different join code.");
         return problem;
     }
 
