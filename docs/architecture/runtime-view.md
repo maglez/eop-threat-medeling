@@ -4,7 +4,10 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-65** (game-over leaderboard,
+Everything here reflects the code as it stands after **EOP-82** (all three `eop.features` flags now
+ship `true`, so every sequence below is live in the default configuration — ADR-042; the
+client-side handling of a leaderboard 404 is recorded in ADR-042 rather than duplicated here), on
+top of **EOP-65** (game-over leaderboard,
 new-game reset — ADR-039), on top of **EOP-15 Slice C** (end-of-game
 transitions), on top of Slice B's score route, Slice A's pure-domain scoring, EOP-14 Slice E
 (end of hand, the state-of-play read and the three broadcasts), Slice D's trick-play HTTP
@@ -27,11 +30,12 @@ it, and Slice E adds a fifth route: `TrickController` maps
 than a domain object. EOP-15 Slice B adds `GET /api/v1/sessions/{sessionId}/score` via
 `ScoreController`, and Slice C adds `POST /api/v1/sessions/{sessionId}/end` via
 `EndSessionController`. All three controllers and all seven use-case beans exist only while
-`eop.features.trick-play` is `true`, which `application.yml` still leaves `false`, so the routes
-answer 404 as shipped — but that is now a flag position rather than an absence of code, and the
-distinction matters because it is testable in both directions. It stays `false` after Slice C for
-reasons that are not about gameplay, recorded in
-[ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md). The refusals were always real:
+`eop.features.trick-play` is `true`, which `application.yml` has set as the shipped default since
+EOP-70 ([ADR-040](../adr/ADR-040-trick-play-flag-on.md)), so the routes answer for real. The flag
+stayed `false` from Slice D until EOP-70 for reasons that were not about gameplay, recorded in
+[ADR-028](../adr/ADR-028-end-of-hand-without-release-or-score.md); the flag and its
+`@ConditionalOnProperty` guards remain in place, so the position is still testable in both
+directions. The refusals were always real:
 `GlobalExceptionHandler` maps every exception drawn below, including
 `NoTrickToResolveException` at `GlobalExceptionHandler.java:484` and `TrickNotCompleteException` at
 `:518`, both 409, joined in Slice E by `HandCompleteException` at `:449`, also 409, and in Slice C

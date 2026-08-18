@@ -20,7 +20,9 @@ sits. No Level 1.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-65** (game-over leaderboard,
+Everything below reflects the code as it stands after **EOP-82** (`eop.features.game-over` flipped
+to `true`, so the game-over surface described below is live in the default configuration —
+ADR-042), on top of **EOP-65** (game-over leaderboard,
 new-game reset, `game_result` and `game_result_player` tables — changesets `2026-08-16--game-result`
 001 and 002, ADR-039), on top of **EOP-11** (the lobby single-page application — the Level 3 view)
 and **EOP-22** (session expiry, the sweep scheduler and the `expires_at` column — changeset `006`),
@@ -29,7 +31,11 @@ trick-play HTTP routes, Slice C2's use-case layer, Slice C1's persistence layer 
 `005`), the trick-play schema from Slice B (changeset `004`), the client-address resolution
 introduced by EOP-26 (ADR-021) and the session lifecycle from EOP-10.
 
-**EOP-65 adds the game-over feature (behind `eop.features.game-over`, default `false`).** When the
+**EOP-65 added the game-over feature behind `eop.features.game-over`, and EOP-82 flipped that flag
+to `true` — it is the shipped default in `application.yml`, and `application-prod.yml` carries no
+`eop.features` block, so the game-over surface described here is live under
+`SPRING_PROFILES_ACTIVE=prod` (ADR-042).** It shipped `false` from EOP-65 until EOP-82, during
+which the routes below existed in the code but not in the running application. When the
 last trick resolves, `ResolveTrickUseCase` calls `PersistGameResultUseCase` (best-effort, via
 `Optional` injection) to write a `game_result` header row and one `game_result_player` row per
 seated player. `GetLeaderboardUseCase` reads that record and re-derives scores from the live trick
@@ -1023,14 +1029,15 @@ trick-play row: `TrickController` injects five and publishes five routes,
 paragraph said no controller injected any of them and no route existed, and called that Slice D's
 work; Slice D did it, so containment by absence of a caller is over twice over — once because the
 callers exist and once because the caller of the callers does. What replaces it is
-`eop.features.trick-play`. `application.yml` declares **two** flags: `session-lifecycle` is `true`
-(on by default as of EOP-25, 2026-08-16) and `trick-play` is `false`
-(`application.yml:111,136`), and the seven use-case beans carry
+`eop.features.trick-play`. `application.yml` declares **three** flags, and as of EOP-82 all three
+are `true`: `session-lifecycle` (on since EOP-25, 2026-08-16, `application.yml:112`), `trick-play`
+(on since EOP-70, `:129`, ADR-040) and `game-over` (on since EOP-82, `:141`, ADR-042). The seven
+use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
 `matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:219-373`), as do
 `TrickController`, `ScoreController` and `EndSessionController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
-code can call them.
+code can call them. The flag is now on, so that second case is the shipped one.
 
 That is a different kind of guarantee from the one this section used to describe, and it is worth
 being honest about the direction of the change. An absent class cannot be injected by anybody; a flag

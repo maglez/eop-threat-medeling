@@ -45,6 +45,7 @@ export function GameOverScreen({
   const [leaderboard, setLeaderboard] = useState<LeaderboardDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStartingNewGame, setIsStartingNewGame] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const loadLeaderboard = useCallback(async () => {
     try {
@@ -67,6 +68,19 @@ export function GameOverScreen({
   useEffect(() => {
     void loadLeaderboard();
   }, [loadLeaderboard]);
+
+  // Guards the retry button against a double-click issuing two concurrent
+  // fetches, mirroring the isStartingNewGame guard below. loadLeaderboard
+  // handles its own errors, so the finally always clears the pending state.
+  const handleRetry = async () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    try {
+      await loadLeaderboard();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const handleNewGame = async () => {
     if (isStartingNewGame) return;
@@ -98,9 +112,12 @@ export function GameOverScreen({
           <button
             type="button"
             className="govuk-button govuk-button--secondary"
-            onClick={() => { void loadLeaderboard(); }}
+            data-module="govuk-button"
+            disabled={isRetrying}
+            aria-disabled={isRetrying}
+            onClick={() => { void handleRetry(); }}
           >
-            Retry loading results
+            {isRetrying ? 'Retrying…' : 'Retry loading results'}
           </button>
         )}
 

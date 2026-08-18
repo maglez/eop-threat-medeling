@@ -297,6 +297,13 @@ makes `ddl-auto: validate` load-bearing, which
   — where the application actually runs, and therefore where a flag is actually set
 - [ADR-019: Session lifecycle and join codes](./ADR-019-session-lifecycle-and-join-codes.md)
   — the first flag in the codebase, and why it is gated but not typed
+- [ADR-040: Enable `eop.features.trick-play`](./ADR-040-trick-play-flag-on.md)
+  — the second of the three flag flips catalogued below
+- [ADR-042: Enable `eop.features.game-over`, and the shipped-flag-default trap](./ADR-042-game-over-flag-on.md)
+  — the third flip, the masking trap that let a flag ship `false` for two stories with a green
+  build, and the only dated flag-removal commitment in the repository
+- [ADR-008: Liquibase migrations](./ADR-008-database-migration-liquibase.md)
+  — its EOP-27 amendment is the precedent for the same masking trap on `spring.h2.console.enabled`
 - [Product requirements](../requirements/PRD-eop-card-game.md)
 - [Configuration rules](../../.opencode/rules/configuration.md)
 
@@ -352,3 +359,49 @@ full decision record). The full game is now playable: deal, play-card and resolv
 live. The flag and its `@ConditionalOnProperty` guards remain in place until confirmed stable;
 removal is a separate story. No `EOP_FEATURES_TRICK_PLAY` entry is needed in `compose.app.yml` —
 the default is now `true` and the env var would only be needed to override it back to `false`.)*
+
+---
+
+**2026-08-18 (EOP-82) — `eop.features.game-over` is now ON, and is catalogued here for the first
+time.** `src/main/resources/application.yml` now sets `game-over: true` as the permanent default.
+This is a reviewed change, not an environment override — the default moves in the source file so
+the audit trail is the commit history rather than the shell history of whoever set an env var. The
+flag and its four `@ConditionalOnProperty` guards (`GameOverController` plus the
+`GetLeaderboardUseCase`, `PersistGameResultUseCase` and `NewGameUseCase` beans) remain in place
+until the feature is confirmed stable; removal is a separate story, and unlike the two amendments
+above it now carries a dated expiry condition, recorded in
+[ADR-042](ADR-042-game-over-flag-on.md). No `EOP_FEATURES_GAME_OVER` entry is needed in
+`compose.app.yml` — the default is now `true` and the env var would only be needed to override it
+back to `false`. `application-prod.yml` carries no `eop.features` block at all, so this
+default-profile value is authoritative under `SPRING_PROFILES_ACTIVE=prod` (ADR-012).
+
+**This flag was omitted from this ADR at EOP-65.** The rule at the head of this document —
+record each flag in `application.yml` next to its default *and here* — was not followed when
+EOP-65 introduced `game-over`, so the catalogue listed two of three flags for two stories. The
+omission is why the flag's position went unexamined until it produced an incident: there was no
+document in which "shipped `false`, feature complete" was visible in one place. The catalogue is
+complete again as of this amendment: `session-lifecycle` (EOP-25), `trick-play` (EOP-70) and
+`game-over` (EOP-82), all three `true`.
+
+**2026-08-18 (EOP-82) — the shipped default of a flag cannot be asserted through the Spring
+`Environment`.** `src/test/resources/application.properties` pins all three flags `true` (lines
+17, 22 and 27), which the rule above requires, because a suite running with a feature off would be
+testing its absence. The consequence is that no `@SpringBootTest` and no `Environment` lookup can
+observe what `application.yml` actually ships: in the test `Environment` the shipped value is
+exactly the value that has been overwritten. `game-over` shipped `false` for two stories with a
+complete, fully tested feature behind it and a green build throughout. This is the same masking
+trap that EOP-27 removed for `spring.h2.console.enabled` (see the `**Amendment, 2026-08-10
+(EOP-27).**` block of [ADR-008](ADR-008-database-migration-liquibase.md)), and EOP-27's remedy —
+stop pinning the property in test resources — is unavailable here, because pinning flags ON in
+tests is mandatory. `ShippedFeatureFlagDefaultsTest` is the interim mitigation: it reads
+`application.yml` off the classpath with `YamlPropertiesFactoryBean`, outside any Spring context.
+It asserts three hand-named keys, so a fourth flag is invisible to it; the structural fix — derive
+the assertion from the flags that exist and check them against a registry declaring intended state,
+owning story and expiry — is specified in ADR-042 and filed as a separate ticket.
+
+**Standing consequence — the deletion bullet in Decision is not being honoured.** "**A flag is
+deleted once its feature is released.**" (line 46) has now been restated at three flag flips
+(EOP-25, EOP-70, EOP-82) and acted on at none. All three flags are permanently `true` and all three
+guards are still in the code. Treat the bullet as an aspiration with one dated commitment against
+it (ADR-042's expiry condition for `game-over`) rather than as a description of practice, and do
+not add a fourth undated promise: a new flag flip must either delete a flag or state a date.
