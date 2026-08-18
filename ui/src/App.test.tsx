@@ -187,7 +187,7 @@ describe("Feature flag — game screen enabled", () => {
     sessionStorage.clear();
   });
 
-  it("does not navigate to game screen when VITE_GAME_SCREEN_ENABLED is off (default)", async () => {
+  it("does not navigate to game screen when VITE_GAME_SCREEN_ENABLED is off", async () => {
     // Flag is off — even if the session transitions to IN_PROGRESS,
     // the lobby should stay on screen (showing the "game has started" warning).
     // Explicitly disable the game screen flag — .env.local may set it to true on developer machines
