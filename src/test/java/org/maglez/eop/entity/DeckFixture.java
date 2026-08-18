@@ -9,7 +9,7 @@ import java.util.UUID;
  *
  * <p>Not a builder in the {@link CardBuilder} sense: it does not vary one field of one card, it produces
  * the specific cards a trick-taking rule needs to be tested against. A follow-suit test needs a hand
- * that holds the led suit and one that does not; a deal test needs all seventy-four cards.
+ * that holds the led suit and one that does not; a deal test needs all sixty-eight cards.
  *
  * <p>Card identifiers are derived from the suit and rank rather than random, so the same card is always
  * the same identifier across a test. That matters because {@link Hand#holds(Card)} compares by

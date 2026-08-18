@@ -5,7 +5,7 @@ package org.maglez.eop.entity;
  *
  * <p>The player holding the lowest-ranked tampering card in the deck leads the
  * first trick. That rank is deliberately never written down in code: the printed
- * 74-card deck starts on the three of tampering. The rule is "lowest tampering
+ * 68-card deck starts on the three of tampering. The rule is "lowest tampering
  * card actually dealt", so it holds for any future deck variant that starts
  * differently.
  *

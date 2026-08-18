@@ -63,10 +63,10 @@ class CardRepositoryAdapterIntegrationTest {
     private CardJpaRepository jpaRepository;
 
     /**
-     * Counts per suit rather than only the total, because a total of 74 is also
+     * Counts per suit rather than only the total, because a total of 68 is also
      * reachable with an uneven distribution. The printed deck is intentionally
-     * uneven: Tampering has 12 cards (starts at 3) and Elevation of Privilege has
-     * 10 cards (starts at 5).
+     * uneven: Tampering has 11 cards (starts at 3) and Elevation of Privilege has
+     * 9 cards (starts at 5).
      */
     @Test
     @DisplayName("the deck holds sixty-eight cards matching the printed deck's suit distribution")

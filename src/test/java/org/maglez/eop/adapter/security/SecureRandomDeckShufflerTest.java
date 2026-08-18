@@ -20,7 +20,7 @@ import org.maglez.eop.entity.DeckFixture;
  * order it arrived.
  *
  * <p>The assertion that the order changes is the only probabilistic one in the suite. A shuffle of
- * the seventy-four card deck has 74! possible outcomes, so the chance of two independent shuffles
+ * the sixty-eight card deck has 68! possible outcomes, so the chance of two independent shuffles
  * agreeing with each other by luck is far smaller than the chance of the machine running this test
  * failing mid-run. The assertion is written over two shuffles rather than one so that it fails for
  * the defect it is aimed at — an implementation that forgot to shuffle at all, or that shuffled a

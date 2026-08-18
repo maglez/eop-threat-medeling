@@ -24,6 +24,30 @@ Plugins pinned to specific versions for reproducible builds.
 >
 > **The margin is two instructions.** At 49 instructions total, adding ~10 untested production instructions drops the ratio to 0.71 and fails the build. That is the gate doing its job — the first real feature must arrive with its tests — but do not mistake such a failure for a misconfiguration.
 
+> **Amendment, 2026-08-18 (EOP-93): prose is now a build gate.**
+>
+> **Decision.** There is a fifth class of gate alongside Checkstyle, SpotBugs, JaCoCo and Enforcer: **documentation-integrity tests**, living in `src/test/java/org/maglez/eop/docs/`. They are plain JUnit tests with no Spring context, run by Surefire in the ordinary `verify` phase, and they read repository files as *text* — Surefire sets the working directory to the project base directory, so their relative `docs/` and `src/` paths resolve. There are three:
+>
+> | Test | Story | What it holds |
+> |---|---|---|
+> | `TrickPlayExceptionOriginTest` | EOP-14 | Derives the exception-origin count from the adapter and pins an ADR-023 paragraph to it |
+> | `AdrIndexConsistencyTest` | EOP-32 | `docs/adr/README.md` against every ADR's status line — one row each, agreeing status word, amendment dates carried, declared column count |
+> | `DeckArithmeticClaimsTest` | EOP-93 | Deck-arithmetic claims across all of `docs/**/*.md` and all of `src/**/*.java`, in Markdown prose and in javadoc alike |
+>
+> **What changed with EOP-93, and why this amendment exists.** The two earlier guards are each scoped to one artefact — one index file, one ADR paragraph. `DeckArithmeticClaimsTest` is the first that walks **the whole of `docs/` and the whole of `src/`**. Editing an arbitrary Markdown file anywhere under `docs/` can now turn the build red. That is a change to what `mvn verify` gates on, and this ADR is where such changes are recorded.
+>
+> **Consequences — positive.** EOP-92's review found three documents simultaneously stale while the build was green; EOP-75 left roughly nineteen sites stating a superseded deck size, four of them making an arithmetic claim that was outright false. Reviewer attention had already failed at this twice. On its first run `DeckArithmeticClaimsTest` found `GlobalExceptionHandlerTest.java:553`'s `new NoTamperingCardDealtException(78)` — a numeric literal two deck trims out of date that no prose search could have surfaced, and that two human review passes had missed.
+>
+> **Consequences — negative. These are the ones that must not be omitted:**
+>
+> - A Markdown edit anywhere under `docs/` can now fail the build. This is new, and it will surprise someone who thinks they are only writing prose.
+> - **The matchers are phrase lists, not semantic analysis.** A green build is *not* proof that no stale or false claim exists — coverage is incomplete by construction. `EVERY_TABLE_SIZE` matches the nine phrasings that have actually gone stale in this repository; "at all four table sizes", "at each player count" and "the final trick is always short" all escape it. Do not cite a green build as evidence of documentation correctness.
+> - Invariant B currently scans historical amendment blocks with no exemption. A *correctly historical* universal claim inside a dated block would fail the build and create pressure to rewrite history — the opposite of the convention that dated amendment blocks are immutable records. The fix, if it ever fires, is a region exemption for text under an `## Amendment` heading, not a loosening of the regex.
+> - `ui/**` is outside invariant D. The front-end is where the 68 card images ADR-041 calls authoritative actually live, and EOP-69's trail shows `CardCatalogue.tsx` once carried a stale `DECK_SIZE` literal. It is clean today and unguarded tomorrow.
+> - **Anti-vacuity rule.** Invariant B is meaningful only while some supported table size divides the deck evenly, and it asserts that precondition rather than skipping. If a future trim leaves no table size dividing evenly, the test must be **deleted**, not left passing — a guard that cannot fail is worse than no guard, which is the mistake the branch-coverage note above records.
+>
+> **Related:** [ADR-023](ADR-023-deal-remainder-and-turn-order.md) establishes reading a repository file from a test to hold documentation and code together as house practice; [ADR-041](ADR-041-printed-deck-has-no-aces.md) is the trim this guard defends; `.opencode/rules/build-quality.md` lists the gates and carries the same fifth entry.
+
 ## Consequences
 
 - **Positive:**
