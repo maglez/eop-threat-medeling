@@ -20,8 +20,11 @@ sits. No Level 1.
 - Dynamic behaviour lives in [`runtime-view.md`](runtime-view.md). This file shows
   what exists and how it is wired; that file shows what happens in what order.
 
-Everything below reflects the code as it stands after **EOP-82** (`eop.features.game-over` flipped
-to `true`, so the game-over surface described below is live in the default configuration —
+Everything below reflects the code as it stands after **EOP-92** (`Hands.deal` deals every card
+again, so the `POST /deal` row in the endpoint table below is a full deal with nothing discarded —
+ADR-023 as amended by EOP-92; that row was stale for the whole EOP-72 equal-hands period and no
+diagram statement other than that one is affected), on top of **EOP-82** (`eop.features.game-over`
+flipped to `true`, so the game-over surface described below is live in the default configuration —
 ADR-042), on top of **EOP-65** (game-over leaderboard,
 new-game reset, `game_result` and `game_result_player` tables — changesets `2026-08-16--game-result`
 001 and 002, ADR-039), on top of **EOP-11** (the lobby single-page application — the Level 3 view)

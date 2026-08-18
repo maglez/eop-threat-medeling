@@ -4,7 +4,10 @@ Dynamic behaviour of the session lifecycle, in Mermaid `sequenceDiagram` form. T
 static counterpart — what exists and how it is wired — is
 [`C4-Diagrams.md`](C4-Diagrams.md).
 
-Everything here reflects the code as it stands after **EOP-82** (all three `eop.features` flags now
+Everything here reflects the code as it stands after **EOP-92** (`Hands.deal` deals every card
+again, so hands are uneven and the final trick is short again at 3, 5 and 6 players — no sequence
+below states hand-size arithmetic, so none of them changes; ADR-023 as amended by EOP-92), on top of
+**EOP-82** (all three `eop.features` flags now
 ship `true`, so every sequence below is live in the default configuration — ADR-042; the
 client-side handling of a leaderboard 404 is recorded in ADR-042 rather than duplicated here), on
 top of **EOP-65** (game-over leaderboard,

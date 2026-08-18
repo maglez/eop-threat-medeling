@@ -1582,6 +1582,21 @@ it with the card at index `keptSize - 1`. That index is dealt to seat `(keptSize
 to the highest-seated player rather than being left to the shuffle. The mitigation for one fairness
 complaint quietly created another, in the one part of the deal that is supposed to be random.
 
+Note that the bias was algebraic rather than incidental: `keptSize = floor(D / n) × n` is by
+construction a multiple of `n`, so `(keptSize - 1) mod n` is identically `n - 1` for every deck size
+and every table size. The swap could only ever land on the last seat. It fired whenever the lowest
+Tampering card fell in the discarded tail — roughly 2.9% of three- and six-player games and 4.4% of
+five-player games at 68 cards, and never at four players, where nothing was discarded.
+
+**What this does not claim.** Removing the swap makes the opening lead *shuffle-determined*, not
+uniformly distributed. The lead falls on whoever holds the lowest Tampering card, so each seat's
+probability is proportional to its hand size: at three players 0.338/0.338/0.324, at six players
+0.176/0.176/0.162 and so on. It is exactly uniform only at four players, where the deck divides
+evenly. That residual few percent is inherent to dealing an indivisible deck completely and is not a
+defect — the point of the change is that no seat receives the lead *by fiat*. Do not restate this as
+"the opening lead is now uniform"; it is not, and a future reader acting on that claim would be
+misled. There is no automated guard on this property today (see Consequences).
+
 **Decision.** `Hands.deal()` deals every card of the deck it is given. There is no truncation, no
 discard, and no Tampering swap — the round-robin loop simply runs to the end of the deck. The
 remainder falls to the lowest seats as a consequence of the round-robin order, not as a separate
@@ -1610,8 +1625,12 @@ contains no Tampering card at all — a deck-composition fault, not a dealing ou
 **Consequence on trick completion — the EOP-72 note is withdrawn.** With unequal hands the seats
 dealt fewer cards run out first, so the final trick is short: fewer cards are played than there are
 seats. The rule "a trick is complete when no seat that still holds a card is yet to play" is
-unchanged and is once again doing real work rather than resolving trivially to "all seats have
-played". This required no code change, because EOP-72 never removed the capability — it only made it
+unchanged and is once again doing real work **at 3, 5 and 6 players** rather than resolving trivially
+to "all seats have played". Four players is the exception and deliberately so: 68 divides evenly by
+four, so hands are equal at that one table size and the final trick is full. The rule is therefore
+load-bearing at three of the four supported sizes, not at all of them — which is also why the
+conservation guard is parameterised over every size rather than asserted once. This required no code
+change, because EOP-72 never removed the capability — it only made it
 unexercised. `Trick.isComplete(Collection<Integer>)` and `Trick.seatToPlay(Collection<Integer>)` are
 both *told* which seats still hold cards, and `PlayCardUseCase` passes that set. Short final tricks
 are supported rather than tolerated, and `TrickTest.shouldCompleteAShortFinalTrick` now pins the
