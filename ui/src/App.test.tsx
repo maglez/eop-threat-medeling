@@ -117,7 +117,8 @@ describe("App shell", () => {
 
     await renderSettled();
 
-    await userEvent.click(screen.getByRole("button", { name: /create a session/i }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /create a session/i }));
 
     expect(screen.getByRole("heading", { name: /create a session/i })).toBeInTheDocument();
   });
@@ -127,7 +128,8 @@ describe("App shell", () => {
 
     await renderSettled();
 
-    await userEvent.click(screen.getByRole("button", { name: /join a session/i }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /join a session/i }));
 
     expect(screen.getByRole("heading", { name: /join a session/i })).toBeInTheDocument();
   });
