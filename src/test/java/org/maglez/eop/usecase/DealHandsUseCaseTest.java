@@ -56,10 +56,15 @@ class DealHandsUseCaseTest {
     private static final int SEATS = 3;
 
     /**
-     * With 68 cards and 3 seats, the deal is 22, 22, 22 (68 / 3 = 22, 2 discarded).
-     * All seats receive the same number of cards.
+     * The whole printed deck is dealt and nothing is discarded (ADR-023 Decision 1, reinstated by
+     * EOP-92), so with 68 cards and 3 seats the deal is 23, 23, 22 — the surplus falling to the lowest
+     * seats as a consequence of the round-robin order.
      */
-    private static final int CARDS_PER_SEAT = 22;
+    private static final int DECK_SIZE = 68;
+
+    private static final int CARDS_AT_FIRST_SEAT = 23;
+
+    private static final int CARDS_AT_LAST_SEAT = 22;
 
     private static final int TWO_PLAYERS = 2;
 
@@ -86,9 +91,10 @@ class DealHandsUseCaseTest {
 
         assertThat(handRepository.recordDealCalls()).isOne();
         assertThat(handRepository.recordedAt()).isEqualTo(NOW);
-        assertThat(handRepository.recordedHands().totalCards()).isEqualTo(SEATS * CARDS_PER_SEAT);
+        assertThat(handRepository.recordedHands().totalCards()).isEqualTo(DECK_SIZE);
         assertThat(handRepository.recordedHands().seats()).containsExactly(0, 1, 2);
-        assertThat(handRepository.recordedHands().handOf(0).size()).isEqualTo(CARDS_PER_SEAT);
+        assertThat(handRepository.recordedHands().handOf(0).size()).isEqualTo(CARDS_AT_FIRST_SEAT);
+        assertThat(handRepository.recordedHands().handOf(2).size()).isEqualTo(CARDS_AT_LAST_SEAT);
         assertThat(handRepository.recordedLeaderSeat())
                 .isEqualTo(handRepository.recordedHands().openingLeaderSeat());
         assertThat(order).containsExactly("shuffle", "recordDeal", "publish");
@@ -104,18 +110,19 @@ class DealHandsUseCaseTest {
      * whole set rather than a card from each end also refuses a shuffle that moved only some of
      * the deck.
      *
-     * <p>With equal hands, only the first {@code SEATS * CARDS_PER_SEAT} cards of the reversed deck
-     * are dealt. The loop therefore stops at canonical index {@code canonical.size() - SEATS * CARDS_PER_SEAT},
-     * which is the first canonical index that maps to a discarded reversed-deck position.
+     * <p>Every card is dealt (EOP-92), so the loop runs to the front of the canonical deck rather than
+     * stopping short of a discarded tail. Seat zero takes reversed-deck indices 0, 3, 6 … which are
+     * canonical indices 67, 64, 61 … 1 — the 23 indices congruent to 1 modulo 3. Canonical index 0 is
+     * not among them, which is what makes the final assertion discriminate a deal of the unshuffled
+     * order.
      */
     @Test
     @DisplayName("deals the shuffled order, not the order the deck was read in")
     void shouldDealTheShuffledOrder() {
         final var session = seatedTable(SEATS);
         final var canonical = DeckFixture.fullDeck();
-        final int keptSize = SEATS * CARDS_PER_SEAT;
         final var expectedAtSeatZero = new ArrayList<Card>();
-        for (int index = canonical.size() - 1; index >= canonical.size() - keptSize; index -= SEATS) {
+        for (int index = canonical.size() - 1; index >= 0; index -= SEATS) {
             expectedAtSeatZero.add(canonical.get(index));
         }
 
@@ -124,8 +131,9 @@ class DealHandsUseCaseTest {
         assertThat(shuffler.calls()).isOne();
         assertThat(shuffler.received()).isEqualTo(canonical);
         assertThat(expectedAtSeatZero)
-                .as("the reversed deal gives the first seat its share of the deck (%d of %d cards)", CARDS_PER_SEAT, keptSize)
-                .hasSize(CARDS_PER_SEAT);
+                .as("the reversed deal gives the first seat its share of the whole deck (%d of %d cards)",
+                        CARDS_AT_FIRST_SEAT, DECK_SIZE)
+                .hasSize(CARDS_AT_FIRST_SEAT);
         assertThat(handRepository.recordedHands().handOf(0).cards())
                 .as("every card at the first seat is one the reversed order would have put there")
                 .containsExactlyInAnyOrderElementsOf(expectedAtSeatZero)

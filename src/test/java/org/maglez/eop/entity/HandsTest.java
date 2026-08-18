@@ -18,6 +18,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("Hands")
 class HandsTest {
@@ -39,21 +41,22 @@ class HandsTest {
     }
 
     @Nested
-    @DisplayName("deals an equal number of cards to each seat, discarding the remainder")
+    @DisplayName("deals every card, so nothing is discarded")
     class Dealing {
 
         @Test
-        @DisplayName("three players each hold twenty-two cards (68 / 3 = 22, 2 discarded)")
+        @DisplayName("three players hold twenty-three, twenty-three and twenty-two (68 = 23 + 23 + 22, 0 discarded)")
         void shouldDealEvenlyToThree() {
             final Hands hands = Hands.deal(fullDeck(), seats(3));
 
-            assertThat(hands.handOf(0).size()).isEqualTo(22);
-            assertThat(hands.handOf(1).size()).isEqualTo(22);
+            assertThat(hands.handOf(0).size()).isEqualTo(23);
+            assertThat(hands.handOf(1).size()).isEqualTo(23);
             assertThat(hands.handOf(2).size()).isEqualTo(22);
+            assertThat(hands.totalCards()).isEqualTo(68);
         }
 
         @Test
-        @DisplayName("six players each hold eleven cards (68 / 6 = 11, 2 discarded)")
+        @DisplayName("six players hold twelve, twelve then eleven each (68 = 12 + 12 + 11 * 4, 0 discarded)")
         void shouldDealEvenlyToSix() {
             final Hands hands = Hands.deal(fullDeck(), seats(6));
 
@@ -65,11 +68,12 @@ class HandsTest {
                             hands.handOf(3).size(),
                             hands.handOf(4).size(),
                             hands.handOf(5).size()))
-                    .containsExactly(11, 11, 11, 11, 11, 11);
+                    .containsExactly(12, 12, 11, 11, 11, 11);
+            assertThat(hands.totalCards()).isEqualTo(68);
         }
 
         @Test
-        @DisplayName("four players each hold seventeen cards (68 / 4 = 17, 0 discarded)")
+        @DisplayName("four players each hold seventeen, because 68 divides evenly by four (0 discarded)")
         void shouldDealEqualHandsAtFour() {
             final Hands hands = Hands.deal(fullDeck(), seats(4));
 
@@ -79,10 +83,11 @@ class HandsTest {
                             hands.handOf(2).size(),
                             hands.handOf(3).size()))
                     .containsExactly(17, 17, 17, 17);
+            assertThat(hands.totalCards()).isEqualTo(68);
         }
 
         @Test
-        @DisplayName("five players each hold thirteen cards (68 / 5 = 13, 3 discarded)")
+        @DisplayName("five players hold fourteen, fourteen, fourteen then thirteen each (68 = 14 * 3 + 13 * 2, 0 discarded)")
         void shouldDealEqualHandsAtFive() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
@@ -92,11 +97,12 @@ class HandsTest {
                             hands.handOf(2).size(),
                             hands.handOf(3).size(),
                             hands.handOf(4).size()))
-                    .containsExactly(13, 13, 13, 13, 13);
+                    .containsExactly(14, 14, 14, 13, 13);
+            assertThat(hands.totalCards()).isEqualTo(68);
         }
 
         @Test
-        @DisplayName("every dealt card is unique, and the remainder is discarded (5 players: 65 of 68 cards dealt)")
+        @DisplayName("every card is dealt exactly once, and none is discarded (5 players: all 68 cards dealt)")
         void shouldDealEveryCardExactlyOnce() {
             final Hands hands = Hands.deal(fullDeck(), seats(5));
 
@@ -105,23 +111,65 @@ class HandsTest {
                     .values()
                     .forEach(hand -> hand.cards().forEach(dealtCard -> dealt.add(dealtCard.cardId())));
 
-            assertThat(hands.totalCards()).isEqualTo(65);
-            assertThat(dealt).hasSize(65).doesNotHaveDuplicates();
+            assertThat(hands.totalCards()).isEqualTo(68);
+            assertThat(dealt).hasSize(68).doesNotHaveDuplicates();
+        }
+
+        /**
+         * The regression guard for EOP-92. A discarding deal passes every hand-size assertion above
+         * while quietly losing cards, so the property worth pinning is conservation: the dealt cards are
+         * exactly the deck, on every table size the game supports.
+         */
+        @ParameterizedTest(name = "{0} players")
+        @ValueSource(ints = {3, 4, 5, 6})
+        @DisplayName("conserves the deck at every supported table size — no card lost, none duplicated")
+        void shouldDiscardNothingAtAnyTableSize(final int playerCount) {
+            final List<Card> deck = fullDeck();
+            final Hands hands = Hands.deal(deck, seats(playerCount));
+
+            final List<UUID> dealt = hands.handsBySeat().values().stream()
+                    .flatMap(hand -> hand.cards().stream())
+                    .map(Card::cardId)
+                    .toList();
+
+            assertThat(dealt)
+                    .as("every card in the deck reaches a hand, and no card is dealt twice")
+                    .hasSize(deck.size())
+                    .doesNotHaveDuplicates()
+                    .containsExactlyInAnyOrderElementsOf(deck.stream().map(Card::cardId).toList());
+        }
+
+        @ParameterizedTest(name = "{0} players")
+        @ValueSource(ints = {3, 4, 5, 6})
+        @DisplayName("spreads the surplus of an uneven deal across the lowest seats, one card at most apart")
+        void shouldPlaceTheSurplusOnTheLowestSeats(final int playerCount) {
+            final Hands hands = Hands.deal(fullDeck(), seats(playerCount));
+
+            final List<Integer> sizes = hands.handsBySeat().values().stream()
+                    .map(hand -> hand.cards().size())
+                    .toList();
+
+            assertThat(sizes)
+                    .as("no seat holds more than one card more than another")
+                    .isSortedAccordingTo((left, right) -> Integer.compare(right, left));
+            assertThat(sizes.getFirst() - sizes.getLast())
+                    .as("the largest and smallest hands differ by at most one card")
+                    .isBetween(0, 1);
         }
 
         @Test
-        @DisplayName("the lowest Tampering card is always dealt even when it falls in the discarded portion")
+        @DisplayName("deals the lowest Tampering card even when the shuffle puts it last, because nothing is discarded")
         void shouldAlwaysDealTheLowestTamperingCard() {
-            // Build a deck where the lowest Tampering card (THREE) is at the very end (index 73),
-            // which would normally be discarded for 5 players (only 70 cards kept).
+            // Move the lowest Tampering card (THREE) to the very end of the deck. Under the equal-hands
+            // rule this position was discarded for five players, which is what forced EOP-72 to swap it
+            // into the kept range. Dealing everything makes the position irrelevant.
             final List<Card> deck = new ArrayList<>(fullDeck());
-            // Find the THREE of TAMPERING and move it to the last position.
             final Card tamperingThree = deck.stream()
                     .filter(c -> c.suit() == StrideCategory.TAMPERING && c.rank() == Rank.THREE)
                     .findFirst()
                     .orElseThrow();
             deck.remove(tamperingThree);
-            deck.add(tamperingThree); // now at index 73
+            deck.add(tamperingThree);
 
             final Hands hands = Hands.deal(deck, seats(5));
 
@@ -134,6 +182,21 @@ class HandsTest {
                     .flatMap(hand -> hand.cards().stream())
                     .anyMatch(c -> c.suit() == StrideCategory.TAMPERING && c.rank() == Rank.THREE);
             assertThat(tamperingThreeDealt).isTrue();
+        }
+
+        @Test
+        @DisplayName("hands the last card of the deck to a seat rather than dropping it")
+        void shouldDealTheFinalCardOfTheDeck() {
+            final List<Card> deck = fullDeck();
+            final Card last = deck.getLast();
+
+            final Hands hands = Hands.deal(deck, seats(3));
+
+            assertThat(hands.handsBySeat().values().stream()
+                            .flatMap(hand -> hand.cards().stream())
+                            .map(Card::cardId))
+                    .as("the card at the end of an unevenly dividing deck is still dealt")
+                    .contains(last.cardId());
         }
 
         @Test
@@ -409,7 +472,7 @@ class HandsTest {
 
             assertThat(hands.toString())
                     .contains("seats=3")
-                    .contains("cardsRemaining=66")
+                    .contains("cardsRemaining=68")
                     .doesNotContain("TAMPERING")
                     .doesNotContain("There's a way");
         }

@@ -73,7 +73,10 @@ class TrickControllerIntegrationTest {
 
     private static final int PLAYERS = 3;
 
-    private static final int CARDS_EACH = 22;
+    /** The whole deck is dealt and nothing is discarded (EOP-92), so three seats take 23, 23, 22. */
+    private static final int DECK_SIZE = 68;
+
+    private static final int CARDS_AT_FACILITATOR_SEAT = 23;
 
     @Autowired
     private MockMvc mockMvc;
@@ -194,8 +197,8 @@ class TrickControllerIntegrationTest {
             Assertions.assertThat(seen)
                     .as("no card is in two hands at once, so no player can see another player's cards")
                     .doesNotHaveDuplicates()
-                    .as("66 of the 68-card deck are dealt (2 discarded to equalise hands across 3 seats)")
-                    .hasSize(PLAYERS * CARDS_EACH);
+                    .as("every card of the 68-card deck is dealt, none discarded, across the 3 seats")
+                    .hasSize(DECK_SIZE);
         }
 
         @Test
@@ -209,7 +212,7 @@ class TrickControllerIntegrationTest {
             final var document = JsonPath.parse(body);
             Assertions.assertThat((Integer) document.read("$.cardCount"))
                     .as("the count is taken from the cards, so the two cannot disagree")
-                    .isEqualTo(CARDS_EACH);
+                    .isEqualTo(CARDS_AT_FACILITATOR_SEAT);
             Assertions.assertThat(document.read("$.playerId", String.class))
                     .as("the hand names its owner, which is the caller")
                     .isEqualTo(table.facilitator().playerId());
