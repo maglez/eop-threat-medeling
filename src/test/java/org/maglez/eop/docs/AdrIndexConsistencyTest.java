@@ -157,11 +157,14 @@ class AdrIndexConsistencyTest {
             }
             assertThat(dataCellCount(line))
                     .as(
-                            "ADR-%s's index row has %d cells against the header's %d. A renderer discards"
-                                    + " cells beyond the header count, so the surplus text vanishes from the"
-                                    + " rendered index while remaining in the source — which is how EOP-92"
-                                    + " duplicated 6.4 KB of this row's prose past its terminating pipe and"
-                                    + " still passed a green build.",
+                            "ADR-%s's index row has %d cells against the header's %d. Neither direction is"
+                                    + " visible in the rendered table: GFM ignores cells beyond the header count,"
+                                    + " so surplus text vanishes from the render while remaining in the source,"
+                                    + " and it silently inserts empty cells when a row is short, so a dropped"
+                                    + " cell reads as a blank one. EOP-92 hit the first mode — 6.4 KB of this"
+                                    + " row's own prose pasted past its terminating pipe, still passing a green"
+                                    + " build, because the other four invariants here look at content and none"
+                                    + " looked at shape.",
                             row.group(1),
                             dataCellCount(line),
                             declared)
