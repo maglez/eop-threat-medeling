@@ -101,12 +101,14 @@ up, reading it aloud, and explaining how the threat applies to the system. A pla
 suit** if they hold a card in the led suit. If they hold none, they may play any suit.
 
 > **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** "One
- > time around the table" holds for every trick but the last. Because the whole deck is dealt and 74
-> cards do not divide equally at any supported table size (3, 4, 5 or 6 players), hands are unequal, so a trick is **one card
-> from each player who still holds cards** — not a fixed count, and not one card per seat. Turn
-> order is therefore *the next seat clockwise that still holds a card*, and the final trick of
-> every game is short. The sentence above is the shipped instruction card's wording and is
-> right for a game where every hand empties together; it is not the rule the application implements.
+> time around the table" holds for every trick but the last at most table sizes. Because the whole
+> deck is dealt and 68 cards do not divide equally at three, five or six players, hands are unequal
+> there, so a trick is **one card from each player who still holds cards** — not a fixed count, and
+> not one card per seat. Turn order is therefore *the next seat clockwise that still holds a card*,
+> and the final trick is short. Four players is the exception: 68 divides evenly by four, every seat
+> holds seventeen, and the sentence above is literally true at that one table size. The sentence is
+> the shipped instruction card's wording and is right for a game where every hand empties together;
+> it is not the rule the application implements at three, five or six players.
 > *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. Between EOP-72 and EOP-92 hands
 > were equal and the final trick was not short; EOP-92 restored the full deal, so the final trick is
 > short again at 3, 5 and 6 players. The general form of the rule is unchanged throughout.)*
@@ -121,15 +123,17 @@ Privilege cards were played, in which case the highest EoP card wins. EoP is the
 Only EoP or the led suit can take a trick. The winner of a trick leads the next trick.
 
 > **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).** The
-> winner leads the next trick *only if the winner still holds a card*. At 74 cards no supported
-> table size divides evenly, so a player can play their last card and win the trick they played it
-> into: at four players seats 0 and 1 hold nineteen cards and seats 2 and 3 hold eighteen, so a win
-> by seat 2 or 3 on trick eighteen leaves the winner with nothing to lead. The rule the application
+> winner leads the next trick *only if the winner still holds a card*. At 68 cards three of the four
+> supported table sizes divide unevenly, so a player can play their last card and win the trick they
+> played it into: at six players seats 0 and 1 hold twelve cards and seats 2 to 5 hold eleven, so a
+> win by any of seats 2 to 5 on trick eleven leaves the winner with nothing to lead. Four players is
+> the exception — 68 divides evenly by four, so every seat holds seventeen and all four seats
+> exhaust together. The rule the application
 > implements is therefore **the winner if the winner still holds a card, otherwise the next seat
 > clockwise from the winner that does**; when no seat holds a card the game has ended. Taking the
 > sentence above literally opens a trick on a seat that can never play into it, and the game stops
 > with no error.
-> *(Note: the deck was subsequently trimmed to 68 cards by EOP-75. Between EOP-72 and EOP-92 equal
+> *(Note: the deck reached 68 cards when EOP-75 removed the Aces. Between EOP-72 and EOP-92 equal
 > hands meant the winner always held a card until the final trick; EOP-92 restored the full deal, so
 > the fallback to the next seat clockwise is load-bearing again. The general form is unchanged.)*
 
@@ -246,7 +250,8 @@ Player
                                that question has no answer, so this field is load-bearing,
                                not bookkeeping. See the deviation note below this block:
                                an earlier wording gave a simpler formula that is wrong on
-                               the last trick at every player count.
+                               the last trick at the table sizes whose deal is uneven —
+                               three, five and six players, but not four.
   role                         FACILITATOR | PARTICIPANT
   connectionStatus             CONNECTED | DISCONNECTED
 
@@ -310,9 +315,11 @@ GameState                      (within a Session)
 > **Deviation, 2026-08-12 — see [ADR-023](../adr/ADR-023-deal-remainder-and-turn-order.md).**
 > The `Player.seatOrder` block above previously stated that *"who plays next" is derived from the
 > current leader's seat plus the number of plays already in the trick*. That formula holds only
- > while every seat still holds a card. EOP-14 deals the whole deck out, so at every supported
- > player count (3, 4, 5 and 6) the hands are unequal and the final trick is short — and the arithmetic then names a
-> seat that has already run out of cards and cannot play. The general rule is **the next seat
+> while every seat still holds a card. EOP-14 deals the whole deck out, so at three, five and six
+> players the hands are unequal and the final trick is short — and the arithmetic then names a
+> seat that has already run out of cards and cannot play. At four players it happens to be
+> harmless, because 68 divides evenly by four and every seat runs out together. The general rule
+> is **the next seat
 > clockwise that still holds a card**, which is what `Trick.seatToPlay` implements. The decision
 > this section records is unchanged: a seat is assigned once at join, never re-derived, and
 > enforced by the `uq_player_session_seat` constraint. Only the derivation stated alongside it

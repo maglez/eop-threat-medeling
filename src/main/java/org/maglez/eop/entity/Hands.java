@@ -200,9 +200,9 @@ public final class Hands {
      * that was actually dealt.
      *
      * <p>The rank is derived and never written down, because there is no single right answer to write.
-      * The printed deck that ships with the game starts on the three of Tampering (rank 2 is absent),
-      * and the 74-card deck this application seeds matches that. A literal three in this method would
-      * be a defect against any future deck variant that starts differently.
+     * The printed deck that ships with the game starts on the three of Tampering (rank 2 is absent),
+     * and the 68-card deck this application seeds matches that. A literal three in this method would
+     * be a defect against any future deck variant that starts differently.
      *
      * <p>Tampering is where the game starts on purpose rather than by accident: tampering threats are
      * common and easy to see, so the first player gets a decision they can actually make.

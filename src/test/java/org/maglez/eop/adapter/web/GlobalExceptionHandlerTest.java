@@ -550,11 +550,11 @@ class GlobalExceptionHandlerTest {
         @DisplayName("a deck holding no tampering card is a server fault, 500, and says nothing about the deck")
         void shouldMapNoTamperingCardDealtToServerError() {
             final ProblemDetail problem =
-                    handler.handleNoTamperingCardDealt(new NoTamperingCardDealtException(78));
+                    handler.handleNoTamperingCardDealt(new NoTamperingCardDealtException(68));
 
             assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
             assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
-            assertThat(problem.getDetail()).doesNotContain("78");
+            assertThat(problem.getDetail()).doesNotContain("68");
         }
 
         /**

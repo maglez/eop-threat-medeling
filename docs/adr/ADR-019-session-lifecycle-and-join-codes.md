@@ -163,13 +163,14 @@ data rather than presentation ordering.
 
 > **Amended 2026-08-12 — see [ADR-023](ADR-023-deal-remainder-and-turn-order.md).**
 > The formula in the paragraph above holds only while every seat still holds a card.
- > EOP-14 deals the whole 74-card deck with the extra cards going to the lowest seats.
-> At 74 cards, **all four supported table sizes** (3, 4, 5 and 6 players) produce
-> unequal hands and a **short final trick** — fewer cards than there are players. The
-> general form is **the next seat clockwise that still holds a card**. Copying the
-> simpler formula into play-order code will produce a defect that appears only on the
-> last trick, at every player count. The decision recorded in this section — that
-> `seatOrder` is assigned once at
+> EOP-14 deals the whole 68-card deck with the extra cards going to the lowest seats.
+> At 68 cards, **three of the four supported table sizes** (3, 5 and 6 players) produce
+> unequal hands and a **short final trick** — fewer cards than there are players. Four
+> players is the exception: 68 divides evenly by four, so every seat holds seventeen and
+> the final trick is full. The general form is **the next seat clockwise that still holds
+> a card**. Copying the simpler formula into play-order code will produce a defect that
+> appears only on the last trick, and only at those three table sizes. The decision
+> recorded in this section — that `seatOrder` is assigned once at
 > join, never re-derived, and enforced by a unique constraint — is unchanged.
 >
 > **Further amended 2026-08-18 (EOP-75):** The deck was subsequently trimmed from 74 to 68 cards
