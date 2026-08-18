@@ -20,8 +20,13 @@ import org.springframework.test.web.servlet.MockMvc;
 /**
  * Verifies that the {@code eop.features.game-over} flag actually withholds the feature.
  *
- * <p>The main suite runs with the flag off (the default). This class makes that explicit and
- * asserts both that the controller bean is absent and that the routes return 404 — asserting
+ * <p>The flag is ON everywhere else: {@code src/test/resources/application.properties} pins it
+ * true for the whole suite, and since EOP-82 {@code src/main/resources/application.yml} ships it
+ * true as well. The {@code properties} override on this class is therefore load-bearing — it is
+ * the only place the OFF position is exercised, and removing it would silently turn every
+ * assertion below into a test of the ON position.
+ *
+ * <p>Asserts both that the controller bean is absent and that the routes return 404 — asserting
  * only on 404s would still pass if the controller existed but its handlers were mapped elsewhere.
  */
 @SpringBootTest(properties = "eop.features.game-over=false")

@@ -150,6 +150,92 @@ class GameOverControllerIntegrationTest {
         }
     }
 
+    /**
+     * Regression guards for the RFC 9457 contract on the leaderboard route.
+     *
+     * <p>Fault 1 of EOP-82 caused {@code GET /api/v1/sessions/{id}/leaderboard} to fall through
+     * to Spring's static-resource handler when the {@code eop.features.game-over} flag was
+     * {@code false}, producing a framework 404 whose detail contained
+     * {@code "No static resource api/v1/sessions/…/leaderboard."} rather than an application
+     * problem document. The flag is now {@code true} by default (verified by
+     * {@code ShippedFeatureFlagDefaultsTest}), but a future refactor of the conditional, the
+     * request-mapping path, or the {@code @ControllerAdvice} could reintroduce a framework 404
+     * while the flag stays {@code true}. These tests fail in that world and pass only when the
+     * route is mapped and the {@code GlobalExceptionHandler} is in the dispatch chain.
+     *
+     * <p>The 409 for a non-completed session is currently undocumented in
+     * {@code docs/api/openapi.yml} for this operation — that reconciliation is tracked as EOP-83.
+     */
+    @Nested
+    @DisplayName("RFC 9457 contract guards — leaderboard route")
+    class Rfc9457ContractGuards {
+
+        @Test
+        @DisplayName("unknown session returns application 404, not a framework static-resource 404")
+        void leaderboard404IsApplicationProblemNotFramework() throws Exception {
+            final var table = startedTable();
+
+            final var result = getLeaderboard(UNKNOWN_SESSION_ID, table.facilitator().playerToken());
+
+            // Status must be 404
+            Assertions.assertThat(result.getResponse().getStatus())
+                    .as("unknown session id returns 404")
+                    .isEqualTo(404);
+
+            // Content-Type must be application/problem+json — a framework 404 returns
+            // application/json or text/html, not the RFC 9457 media type
+            assertProblemJson(result);
+
+            final var document = JsonPath.parse(result.getResponse().getContentAsString());
+
+            // Title must be the application's own title, not Spring's "Not Found"
+            Assertions.assertThat(document.read("$.title", String.class))
+                    .as("title is the application's own, not the framework's")
+                    .isEqualTo("Session not found");
+
+            // Detail must contain the session identifier the caller supplied
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("detail names the unknown session identifier")
+                    .contains(UNKNOWN_SESSION_ID);
+
+            // THE REGRESSION GUARD: the framework 404 detail contains this literal string.
+            // If this assertion fails the route has fallen through to static-resource handling.
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("detail must not contain the framework static-resource signature — "
+                            + "if it does, the route is not mapped and the flag guard has been bypassed")
+                    .doesNotContain("No static resource");
+        }
+
+        @Test
+        @DisplayName("non-completed session returns 409 with full RFC 9457 body including detail")
+        void leaderboard409ForNonCompletedSessionHasFullProblemBody() throws Exception {
+            final var table = startedTable();
+
+            final var result = getLeaderboard(table.sessionId(), table.facilitator().playerToken());
+
+            // Status
+            Assertions.assertThat(result.getResponse().getStatus())
+                    .as("in-progress session returns 409 Conflict")
+                    .isEqualTo(409);
+
+            // Content-Type
+            assertProblemJson(result);
+
+            final var document = JsonPath.parse(result.getResponse().getContentAsString());
+
+            // Title
+            Assertions.assertThat(document.read("$.title", String.class))
+                    .as("title is 'Game not completed'")
+                    .isEqualTo("Game not completed");
+
+            // Detail — GlobalExceptionHandler builds: "Session " + sessionId + " is not yet completed."
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("detail names the session and states it is not yet completed")
+                    .contains(table.sessionId())
+                    .contains("not yet completed");
+        }
+    }
+
     @Nested
     @DisplayName("Happy path — completed session")
     class HappyPath {
