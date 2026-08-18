@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { Card, PagedResponse } from "./api";
@@ -96,6 +97,39 @@ describe("App shell", () => {
     expect(
       screen.getByRole("link", { name: /Creative Commons Attribution 3.0/i }),
     ).toHaveAttribute("href", "https://creativecommons.org/licenses/by/3.0/us/");
+  });
+
+  it("shows Create and Join buttons as enabled (lobby UI always on)", async () => {
+    respondWith(200, pageOf([]));
+
+    await renderSettled();
+
+    const createButton = screen.getByRole("button", { name: /create a session/i });
+    const joinButton = screen.getByRole("button", { name: /join a session/i });
+    expect(createButton).not.toBeDisabled();
+    expect(joinButton).not.toBeDisabled();
+    expect(createButton).not.toHaveAttribute("aria-disabled", "true");
+    expect(joinButton).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("navigates to the Create form when Create button is clicked", async () => {
+    respondWith(200, pageOf([]));
+
+    await renderSettled();
+
+    await userEvent.click(screen.getByRole("button", { name: /create a session/i }));
+
+    expect(screen.getByRole("heading", { name: /create a session/i })).toBeInTheDocument();
+  });
+
+  it("navigates to the Join form when Join button is clicked", async () => {
+    respondWith(200, pageOf([]));
+
+    await renderSettled();
+
+    await userEvent.click(screen.getByRole("button", { name: /join a session/i }));
+
+    expect(screen.getByRole("heading", { name: /join a session/i })).toBeInTheDocument();
   });
 });
 
