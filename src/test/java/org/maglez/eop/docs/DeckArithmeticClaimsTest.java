@@ -37,15 +37,22 @@ import org.junit.jupiter.api.Test;
  * <p>The third invariant was added by EOP-96 for a defect the second structurally cannot see: a number that is not a
  * deck size but is <em>derived</em> from one. Five places priced a per-trick score assembler at the figure a
  * 78-card deck produces, and because 79 is not 78 the figure survived two deck trims and EOP-93's sweep untouched.
- * Both the trick count and the read count are computed here from {@link #CURRENT_DECK_SIZE}, so the next trim again
- * needs one number changed.
+ * Both the trick count and the read count are computed here from {@link #CURRENT_DECK_SIZE}, so a trim needs that one
+ * number changed — and one further thing the first version of this invariant got wrong. Prose writes a total as a
+ * word, so {@link #spell(int)} has to know the word for the cost the current deck implies <em>before</em> that cost
+ * becomes superseded. Nothing announces a missing spelling: an unspellable number simply fails to match, and the
+ * guard goes quiet while reporting success. So {@link #shouldNotStateASupersededRoundTripCount()} asserts the
+ * spelling exists rather than trusting whoever trims the deck next to notice that it must be added.
  *
  * <p>That invariant is narrow on purpose, and the narrowness is the interesting part. It matches only a round-trip
- * count, only where the line is pricing a read, and never inside a Markdown table row. Each restriction was forced
- * by a real line in this repository: ADR-023 tabulates the 78-card and 74-card deals under EOP-69's Amends header,
- * which is correct history; ADR-011 says "while the 26 descriptions existed ... neither graphify_get_node nor
- * graphify_query_graph rendered them", which any matcher keyed on "query" or on the derived trick count would have
- * flagged. Widening it would trade a defect this repository has had for false positives it has not.
+ * count, and only in a sentence that is pricing a read. That anchor does all of the work. ADR-023 tabulates the
+ * 78-card and 74-card deals under EOP-69's Amends header, which is correct history, and ADR-011 says "while the 26
+ * descriptions existed ... neither graphify_get_node nor graphify_query_graph rendered them" — neither prices a read,
+ * so neither can fire, though a matcher keyed on "query" or on the derived trick count would have flagged both. An
+ * earlier draft of this invariant also skipped Markdown table rows out of the same fear. That skip was removed: it
+ * protected against nothing the anchor does not already prevent, and it blinded the invariant to docs/adr/README.md,
+ * whose ADR-031 row is itself one of the sites EOP-96 had to correct by hand. Widening the anchor would trade a
+ * defect this repository has had for false positives it has not; narrowing the walk cost it a site it needed.
  *
  * <p>The standing caveat applies to all three: these are phrase lists, not semantic analysis. A green build here is
  * not proof that the documentation is right, only that the specific wordings that have gone stale before are absent.
@@ -240,30 +247,46 @@ class DeckArithmeticClaimsTest {
      * read. EOP-96's defect class — a figure that is not a deck size but is computed from one, which therefore
      * survives a deck trim untouched and is invisible to the second invariant.
      *
-     * <p>Line-scoped rather than sentence-scoped because all five sites carried the number on the same line as the
-     * phrase pricing the read, including a Mermaid note that is one long line with no sentence boundary a splitter
-     * would find. Markdown table rows are skipped: ADR-023's original body tabulates the 78-card and 74-card deals
-     * under EOP-69's Amends header, and that arithmetic is correct history rather than a stale claim. Skipping the
-     * rows is what lets this invariant coexist with the promise in this class's javadoc not to police that body.
+     * <p>Sentence-scoped, using the same splitter as the first invariant. An earlier draft scoped it to single lines,
+     * reasoning that all five pre-fix sites carried the number on the same line as the phrase pricing the read. That
+     * was true when it was written and false by the time the fix landed: rewrapping ADR-031 section six left
+     * "= seventy" ending one line and "round trips" beginning the next, so the one site this invariant exists for had
+     * moved out of its reach — and a green build said nothing, because a guard that cannot see a claim reports no
+     * offence. Line scope rests on where an author's paragraph happens to wrap, which is a property nobody maintains;
+     * {@code sentencesOf} already argues exactly this a few methods below. Nothing is lost on the Mermaid note in
+     * runtime-view.md, which is one long line with no sentence boundary: a splitter that finds none yields it whole.
+     *
+     * <p>Markdown table rows are scanned like any other prose. An earlier draft skipped them, fearing ADR-023's
+     * historical deal tables, but the read-pricing anchor already acquits those — a row reading "| 3 | 26 | 0 |"
+     * prices nothing — while the skip blinded this invariant to the ADR-031 row of docs/adr/README.md, which is one of
+     * the nine sites EOP-96 corrected and had carried a stale derived figure across two deck trims.
      *
      * @throws IOException when a file cannot be read
      */
     @Test
     @DisplayName("no round-trip count derived from a superseded deck size, in prose costing out a read")
     void shouldNotStateASupersededRoundTripCount() throws IOException {
+        final List<Integer> unspellable = Stream.concat(Stream.of(CURRENT_DECK_SIZE), SUPERSEDED_DECK_SIZES.stream())
+                .map(DeckArithmeticClaimsTest::perTrickReadCount)
+                .filter(cost -> spell(cost) == null)
+                .toList();
+        assertThat(unspellable)
+                .as("prose states a total as a word, so a cost this guard cannot spell fails to match in silence "
+                        + "rather than failing the build. Every cost a supported deck size implies needs a spelling in "
+                        + "spell() before the trim that makes it superseded, not after; %s have none. EOP-96 shipped "
+                        + "without a spelling for the cost the current deck implies, which would have left this "
+                        + "invariant reaching one of the four corrected sites while its own javadoc promised all four.",
+                        unspellable)
+                .isEmpty();
+
         final List<String> offences = new ArrayList<>();
         for (final Path file : prosePaths()) {
             if (isExempt(file)) {
                 continue;
             }
-            final List<String> lines = Files.readAllLines(file);
-            for (int index = 0; index < lines.size(); index++) {
-                if (lines.get(index).stripLeading().startsWith("|")) {
-                    continue;
-                }
-                final String line = normalise(lines.get(index));
-                if (statesASupersededRoundTripCount(line)) {
-                    offences.add("%s:%d %s".formatted(file, index + 1, line));
+            for (final String sentence : sentencesOf(Files.readAllLines(file))) {
+                if (statesASupersededRoundTripCount(sentence)) {
+                    offences.add("%s: %s".formatted(file, sentence));
                 }
             }
         }
@@ -333,11 +356,13 @@ class DeckArithmeticClaimsTest {
      * that replaced them. Without this the invariant could be quietly defeated by a change to {@link #READ_COST} or
      * {@link #statesTheNumberStrictly} and would still pass, having stopped looking.
      *
-     * <p>Four of the six flagged literals are the real pre-fix sentences from ADR-031 section six, the ADR index row,
-     * the runtime-view note and the {@code findTricks} javadoc. The other two cover what no real site happened to
-     * exercise: the figure in digits, and the 74-card figure, so the guard is not left knowing about one trim only.
-     * Each literal is asserted on its own rather than through {@code allMatch}, so a failure names the wording that
-     * stopped being recognised instead of the whole list.
+     * <p>Four of the seven flagged literals are the real pre-fix sentences from ADR-031 section six, the ADR index row,
+     * the runtime-view note and the {@code findTricks} javadoc. The index row keeps its leading pipe, because the walk
+     * reads table rows and an assertion that dropped the pipe would exercise the predicate on a line the walk was
+     * never able to deliver. The other three cover what no real site happened to exercise: the figure in digits, the
+     * 74-card figure, and a sentence whose figure and anchor sat on different physical lines, which is the shape that
+     * defeated line scope. Each literal is asserted on its own rather than through {@code allMatch}, so a failure
+     * names the wording that stopped being recognised instead of the whole list.
      *
      * <p>These are the only copies of the stale figures left in the repository. Quoting them is safe here and
      * nowhere else, because this file is listed in {@link #EXEMPT_FILES} and the invariant honours it — the note
@@ -348,14 +373,17 @@ class DeckArithmeticClaimsTest {
     void shouldRecogniseTheStaleRoundTripCountsItGuardsAgainst() {
         final String adrSectionSix = "A three-player game reaches twenty-six tricks, so mapping it over the history "
                 + "would cost seventy-nine round trips - one for the trick rows and three for each trick.";
-        final String adrIndexRow = "Its adapter reads four queries for the whole session rather than three per trick, "
-                + "which at three players is four round trips instead of seventy-nine.";
+        final String adrIndexRow = "| [ADR-031](ADR-031-the-score-is-read-through-its-own-route.md) | Accepted | Its "
+                + "adapter reads four queries for the whole session rather than three per trick, which at three "
+                + "players is four round trips instead of seventy-nine. |";
         final String mermaidNote = "Mapping the single-trick assembler over every row would have cost three reads per "
                 + "trick: seventy-nine in a twenty-six-trick hand.";
         final String adapterJavadoc = "Assembling each trick on its own would cost seventy-nine round trips at three "
                 + "players, for an answer whose size the deck already bounds.";
         final String inDigits = "Mapping the assembler over the history would cost 79 round trips.";
         final String previousDeck = "Assembling each trick on its own would cost seventy-six round trips.";
+        final String wrappedAcrossLines = "A three-player game reaches twenty-six tricks, so mapping it over the "
+                + "history would cost seventy-nine round trips for one score read.";
 
         assertThat(statesASupersededRoundTripCount(adrSectionSix))
                 .as("ADR-031 section six's wording must still be caught, or this guard has rotted into a no-op")
@@ -377,6 +405,17 @@ class DeckArithmeticClaimsTest {
         assertThat(statesASupersededRoundTripCount(previousDeck))
                 .as("the 74-card figure must be caught too, or the guard only ever knew about one trim")
                 .isTrue();
+        assertThat(statesASupersededRoundTripCount(wrappedAcrossLines))
+                .as("a figure and its anchor that sat on different physical lines must be caught once the sentence is "
+                        + "rejoined — this is the shape line scope missed, and the shape ADR-031 section six took the "
+                        + "moment EOP-96 rewrapped it")
+                .isTrue();
+
+        assertThat(statesTheNumberStrictly(adapterJavadoc, perTrickReadCount(CURRENT_DECK_SIZE)))
+                .as("'seventy' must not be found inside 'seventy-nine'. Every word spell() knows shares a prefix, so "
+                        + "once the current deck's cost is spellable a substring test would report it in the very "
+                        + "sentence that states a superseded one — an offence raised against the wrong number")
+                .isFalse();
 
         final String correctedAdr = "A three-player hand runs to twenty-three tricks, so mapping it over the history "
                 + "would cost 1 + 3 x 23 = seventy round trips for one score read.";
@@ -463,6 +502,7 @@ class DeckArithmeticClaimsTest {
      */
     private static String spell(final int number) {
         return switch (number) {
+            case 70 -> "seventy";
             case 74 -> "seventy-four";
             case 76 -> "seventy-six";
             case 78 -> "seventy-eight";
@@ -518,6 +558,11 @@ class DeckArithmeticClaimsTest {
     /**
      * Reports whether a line states a number as a figure in its own right, rather than as part of something else.
      *
+     * <p>The spelled form is matched with hyphen-aware boundaries rather than by substring, because every word this
+     * class spells shares a prefix: "seventy" occurs inside "seventy-nine". A substring test would therefore report
+     * the cost of the current deck wherever a superseded one is written out, and once both are in {@link #spell(int)}
+     * that misfires in the direction that matters — announcing an offence in the very sentence that corrected one.
+     *
      * @param line one line of prose
      * @param number the number to look for, in digits or spelled out
      * @return true when the line states that number
@@ -528,7 +573,11 @@ class DeckArithmeticClaimsTest {
             return true;
         }
         final String spelled = spell(number);
-        return spelled != null && line.toLowerCase(Locale.ROOT).contains(spelled);
+        if (spelled == null) {
+            return false;
+        }
+        final String words = "(?<![\\w-])" + Pattern.quote(spelled) + "(?![\\w-])";
+        return Pattern.compile(words, Pattern.CASE_INSENSITIVE).matcher(line).find();
     }
 
     /**
