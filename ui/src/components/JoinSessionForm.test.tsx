@@ -23,7 +23,7 @@ const mockAdmission: SessionAdmissionDto = {
         playerId: 'player-2',
         displayName: 'Test User',
         seatOrder: 1,
-        role: 'PLAYER',
+        role: 'PARTICIPANT',
         connectionStatus: 'CONNECTED'
       }
     ],

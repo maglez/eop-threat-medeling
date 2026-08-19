@@ -42,6 +42,40 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
       setSession(sessionData);
       setError(null);
       
+      // The lobby has no view for a session that is over, and `COMPLETED` is
+      // reachable while a player is sitting here: the facilitator's end-session
+      // endpoint sets it, and everyone else learns of it on the next doorbell
+      // refresh. Leave the session rather than rendering a lobby that can never
+      // progress — the same exit the 403/404 branch below takes.
+      //
+      // Home rather than the game-over screen, deliberately. A player still in
+      // the lobby when the session completed never entered the game and has no
+      // score on the leaderboard, so `onSessionEnd` (which clears the stored
+      // token) is the honest destination. A player who *was* playing reaches
+      // game-over by GameScreen's onGameOver callback instead, never by this
+      // branch. See ADR-009 on the two lifecycle representations.
+      //
+      // The state setters above run first on purpose. If `onSessionEnd` ever
+      // failed to unmount this component, rendering with `status === 'COMPLETED'`
+      // shows a lobby with neither a Start button (gated on LOBBY) nor a
+      // "game has started" notice (gated on IN_PROGRESS) — inert. Returning
+      // before `setSession` would instead leave the *previous* state on screen,
+      // which for a facilitator means a live Start button for a session that is
+      // over. Inert beats misleading.
+      //
+      // `ABANDONED` deliberately gets no branch of its own. The expiry sweep is
+      // the only code that writes it, and it deletes the row inside the same
+      // transaction (`SessionRepository.abandonAndDelete`), so no client observes
+      // it via that path — the next fetch is a 404, handled below. Nothing
+      // structurally prevents a future second writer from leaving the row alive,
+      // which is exactly why it is listed in `SESSION_STATUSES`: on the day that
+      // happens, the gap surfaces as a missing branch on a type that already has
+      // the member, rather than as an unmodelled string.
+      if (sessionData.status === 'COMPLETED') {
+        onSessionEnd();
+        return;
+      }
+
       // Fire onGameStarted exactly once, on the first refresh that sees IN_PROGRESS.
       // Reading through a ref keeps this callback stable (no dep on onGameStarted).
       if (sessionData.status === 'IN_PROGRESS' && !gameStartedFiredRef.current) {

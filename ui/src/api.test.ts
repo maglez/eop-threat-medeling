@@ -14,7 +14,20 @@
  *  2. Non-ok response → throws ApiError with correct status
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { subscribeToSession, dealCards, ApiError } from './api';
+import {
+  subscribeToSession,
+  dealCards,
+  ApiError,
+  PLAYER_ROLES,
+  SESSION_STATUSES,
+  CONNECTION_STATUSES,
+  STRIDE_CATEGORIES,
+  SUIT_LABELS,
+  isPlayerRole,
+  isSessionStatus,
+  isConnectionStatus,
+  isStrideCategory,
+} from './api';
 
 // Helper: build a minimal Response-like object
 function makeResponse(
@@ -267,5 +280,114 @@ describe('dealCards', () => {
       const apiErr = e as ApiError;
       expect(apiErr.status).toBe(409);
     }
+  });
+});
+
+/**
+ * Drift guard for the enum mirrors (EOP-105).
+ *
+ * These four unions are hand-maintained copies of server-side Java enums, and
+ * two of them had silently drifted: `role` listed a `PLAYER` the server never
+ * sends while omitting the `PARTICIPANT` it sends for every non-facilitator, and
+ * `status` listed a non-existent `ENDED` while omitting `COMPLETED` and
+ * `ABANDONED`. Nothing failed, because a TypeScript union is erased at runtime
+ * and DTOs arrive through a type assertion rather than a parse, so every
+ * comparison against the real value just evaluated false.
+ *
+ * `STRIDE_CATEGORIES` is here because the review of this story found it in the
+ * same condition the other two had been in — a bare union whose comment asserted
+ * parity with the server while nothing checked it. It had not drifted, which is
+ * exactly why it is worth pinning now rather than after it does.
+ *
+ * The members are therefore kept as runtime `as const` arrays, and asserted here
+ * literally rather than by iterating the array under test — a test that looped
+ * over `PLAYER_ROLES` would pass no matter what that array contained. The
+ * cross-artefact check against `docs/api/openapi.yml` and the Java enums lives in
+ * `EnumMirrorParityTest` on the Java side, which can read all three files.
+ */
+describe('enum mirrors', () => {
+  it('lists exactly the members of the Java PlayerRole enum', () => {
+    expect([...PLAYER_ROLES]).toEqual(['FACILITATOR', 'PARTICIPANT']);
+  });
+
+  it('lists exactly the members of the Java SessionStatus enum', () => {
+    expect([...SESSION_STATUSES]).toEqual(['LOBBY', 'IN_PROGRESS', 'COMPLETED', 'ABANDONED']);
+  });
+
+  it('lists exactly the members of the ConnectionStatus schema', () => {
+    expect([...CONNECTION_STATUSES]).toEqual(['CONNECTED', 'DISCONNECTED']);
+  });
+
+  it('lists exactly the members of the Java StrideCategory enum, in deck order', () => {
+    // Order is asserted here, unlike in EnumMirrorParityTest which compares
+    // membership only: StrideCategory.deckOrder() on the server is `ordinal() + 1`,
+    // so the declaration order is load-bearing and the mirror should not reshuffle
+    // it even though the parity gate would tolerate that.
+    expect([...STRIDE_CATEGORIES]).toEqual([
+      'SPOOFING',
+      'TAMPERING',
+      'REPUDIATION',
+      'INFORMATION_DISCLOSURE',
+      'DENIAL_OF_SERVICE',
+      'ELEVATION_OF_PRIVILEGE'
+    ]);
+  });
+
+  it('accepts every declared member', () => {
+    for (const role of PLAYER_ROLES) {
+      expect(isPlayerRole(role)).toBe(true);
+    }
+    for (const status of SESSION_STATUSES) {
+      expect(isSessionStatus(status)).toBe(true);
+    }
+    for (const status of CONNECTION_STATUSES) {
+      expect(isConnectionStatus(status)).toBe(true);
+    }
+    for (const suit of STRIDE_CATEGORIES) {
+      expect(isStrideCategory(suit)).toBe(true);
+    }
+  });
+
+  it('labels every STRIDE category it declares', () => {
+    // SUIT_LABELS is annotated Readonly<Record<StrideCategory, string>>, so tsc already
+    // catches a missing key and — via excess-property checking on the object literal —
+    // a key with no matching union member. The direction the compiler genuinely cannot
+    // see is a key that is present but whose label is empty or otherwise falsy: `''`
+    // satisfies `string`. That is what the truthiness loop below is for. The length
+    // check is belt-and-braces behind tsc for the two structural directions.
+    // Removing a member from BOTH the array and the map is deliberately not this
+    // case's job — the loop would then iterate five truthy members and the length check
+    // would read 5 === 5. That mutation is caught by the literal-equality case above,
+    // whose hard-coded six-member list is the only thing here that pins the count.
+    for (const suit of STRIDE_CATEGORIES) {
+      expect(SUIT_LABELS[suit]).toBeTruthy();
+    }
+    expect(Object.keys(SUIT_LABELS)).toHaveLength(STRIDE_CATEGORIES.length);
+  });
+
+  it('rejects the two values that had drifted into the mirror', () => {
+    // The exact regression this story fixes: both of these used to typecheck.
+    expect(isPlayerRole('PLAYER')).toBe(false);
+    expect(isSessionStatus('ENDED')).toBe(false);
+  });
+
+  it('rejects non-members, including case variants and non-strings', () => {
+    expect(isPlayerRole('facilitator')).toBe(false);
+    expect(isPlayerRole('')).toBe(false);
+    expect(isPlayerRole(undefined)).toBe(false);
+    expect(isPlayerRole(null)).toBe(false);
+    expect(isPlayerRole(0)).toBe(false);
+
+    expect(isSessionStatus('lobby')).toBe(false);
+    expect(isSessionStatus('IN PROGRESS')).toBe(false);
+    expect(isSessionStatus(undefined)).toBe(false);
+
+    expect(isConnectionStatus('connected')).toBe(false);
+    expect(isConnectionStatus('UNKNOWN')).toBe(false);
+    expect(isConnectionStatus(undefined)).toBe(false);
+
+    expect(isStrideCategory('spoofing')).toBe(false);
+    expect(isStrideCategory('ELEVATION OF PRIVILEGE')).toBe(false);
+    expect(isStrideCategory(undefined)).toBe(false);
   });
 });

@@ -23,9 +23,9 @@ describe('GameScreen', () => {
     joinCode: 'ABC123',
     status: 'IN_PROGRESS',
     players: [
-      { playerId: 'player1', displayName: 'Alice', seatOrder: 0, role: 'PLAYER', connectionStatus: 'CONNECTED' },
-      { playerId: 'player2', displayName: 'Bob', seatOrder: 1, role: 'PLAYER', connectionStatus: 'CONNECTED' },
-      { playerId: 'player3', displayName: 'Charlie', seatOrder: 2, role: 'PLAYER', connectionStatus: 'CONNECTED' }
+      { playerId: 'player1', displayName: 'Alice', seatOrder: 0, role: 'PARTICIPANT', connectionStatus: 'CONNECTED' },
+      { playerId: 'player2', displayName: 'Bob', seatOrder: 1, role: 'PARTICIPANT', connectionStatus: 'CONNECTED' },
+      { playerId: 'player3', displayName: 'Charlie', seatOrder: 2, role: 'PARTICIPANT', connectionStatus: 'CONNECTED' }
     ],
     createdAt: '2023-01-01T00:00:00Z',
     updatedAt: '2023-01-01T00:00:00Z'

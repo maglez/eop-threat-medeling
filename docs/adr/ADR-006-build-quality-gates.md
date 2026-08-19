@@ -1,6 +1,6 @@
 # ADR-006: Build Quality Gates
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-08-18 and 2026-08-19)
 **Date:** 2026-07-26
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -57,6 +57,23 @@ Plugins pinned to specific versions for reproducible builds.
 > **Admission test for the next one.** A configuration-absence gate is warranted only when the breach it prevents is **silent, fail-open, and invisible at startup** — the triad ADR-043 establishes for Liquibase context gating. Where a breach is loud, the breach is its own alarm and a guard is an accumulating tax. Do not add one for a property whose misconfiguration fails fast.
 >
 > **The fifth class's anti-vacuity rule applies here, with one correction.** This gate stays *fireable* for as long as Liquibase supports the attributes, so the deletion rule above is not expected to bite; the test's own javadoc pre-writes the protocol for the one case that would trigger it (genuinely wanting environment-restricted migrations — delete the test visibly and amend ADR-043 in the same commit, never weaken the assertions for one changeset). But EOP-35 also established that this class does **not** escape the phrase-list caveat: an XML attribute name is a spelling, and the guard's first revision matched `context=` and a non-existent `contexts=` while missing `contextFilter=`, which `liquibase-core` 5.0.3 reads *first* (`ChangeSet.java:432-434`). A configuration-absence matcher is a closed enumeration of the spellings the schema accepts, and must be revisited when the schema admits another.
+
+> **Amendment, 2026-08-19 (EOP-105): a fourth documentation-integrity test, and the first one a TypeScript edit can turn red.**
+>
+> **Decision.** `EnumMirrorParityTest` (`org.maglez.eop.docs`, EOP-105) joins the three tests tabulated in the EOP-93 amendment above, whose count of three was correct on 2026-08-18 and is now **four**. It asserts three-way parity of the mirrored enums — the constants of a Java enum in `org.maglez.eop.entity`, the `enum:` list for the matching schema in `docs/api/openapi.yml`, and the `as const` array in `ui/src/api.ts` — over four mirrors (`PlayerRole`, `SessionStatus`, `ConnectionStatus`, `StrideCategory`) and two directions, giving eight parameterised cases. It covered three mirrors and six cases when first written; `StrideCategory` was registered later the same day, during this story's own review, after a gate agent found it mirrored as a bare union whose comment asserted parity while nothing checked it — see ADR-009's known-limitation sections for why that matters more than the arithmetic. It is the gate that converts ADR-009's hand-maintained DTO mirror from an unenforced manual invariant into a build failure; see [ADR-009](ADR-009-frontend-react-typescript.md)'s EOP-105 amendment for why codegen was rejected in its place.
+>
+> **What changes about the blast radius of an edit.** EOP-93 established that a Markdown edit under `docs/` can fail the build. This gate extends that to **two file types outside `docs/**/*.md`**: editing `docs/api/openapi.yml` — a YAML contract, not prose — or `ui/src/api.ts` can now fail a *Java* build. That is the surprising direction. A front-end change that renames a mirrored enum member, and passes `npm run verify` in `ui/` because TypeScript is internally consistent, fails `./mvnw verify`. Do not read that failure as a broken test; it is the guard reporting that one of three artefacts moved alone.
+>
+> **Why it is a Java test at all**, given that its subject is a TypeScript file: `ui/` deliberately carries no `@types/node`, so a Vitest case cannot read a file off disk. The browser-side half of the same duty lives in `ui/src/api.test.ts`, which exercises the type guards. Recorded here because the split is otherwise inexplicable.
+>
+> **Consequences — negative.** Two, and neither is optional reading:
+>
+> - **The phrase-list caveat applies, in a new shape.** The matchers are regexes over a Java enum declaration, a YAML `enum:` block and a TypeScript `as const` array — three source formats, three ways to write something the regex will not see. Membership is compared, **not order**, deliberately: asserting order would fail the build for a harmless re-alphabetising, which is how guards get deleted rather than obeyed. A green build proves the four mirrors it knows about agree on membership.
+> - **It cannot know about a fifth mirror.** `mirrors()` is a hand-written enumeration. Adding a mirrored enum to `ui/src/api.ts` without adding a row there is undetected — the one hole the guard leaves, and a reviewer is the only thing closing it. This is the same class of limitation as the fifth class's phrase lists: coverage is a list someone maintains, not a property of the codebase.
+>
+> **Anti-vacuity.** Its helpers throw rather than pass vacuously — a missing enum, a missing schema, an empty `enum:` list, a missing or empty `as const` array all raise, so two empty sets can never satisfy each other. Verified by mutation: reintroducing the original defect (`['FACILITATOR', 'PLAYER']` in `api.ts`) failed exactly one case with the intended diagnostic, and only that one — the guard discriminates rather than failing broadly.
+>
+> **Related:** [ADR-009](ADR-009-frontend-react-typescript.md) (the mirror and the codegen rejection), [ADR-004](ADR-004-api-contract-first.md) (the contract this parity is measured against), `.opencode/rules/build-quality.md`, which lists the documentation-integrity tests and carries the same fourth entry.
 
 ## Consequences
 

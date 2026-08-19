@@ -199,8 +199,8 @@ describe("Feature flag — game screen enabled", () => {
       status: "IN_PROGRESS",
       players: [
         { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" },
-        { playerId: "player-2", displayName: "Bob", seatOrder: 1, role: "PLAYER", connectionStatus: "CONNECTED" },
-        { playerId: "player-3", displayName: "Carol", seatOrder: 2, role: "PLAYER", connectionStatus: "CONNECTED" },
+        { playerId: "player-2", displayName: "Bob", seatOrder: 1, role: "PARTICIPANT", connectionStatus: "CONNECTED" },
+        { playerId: "player-3", displayName: "Carol", seatOrder: 2, role: "PARTICIPANT", connectionStatus: "CONNECTED" },
       ],
       createdAt: "2023-01-01T00:00:00Z",
       updatedAt: "2023-01-01T00:00:00Z",
@@ -236,8 +236,8 @@ describe("Feature flag — game screen enabled", () => {
       status: "IN_PROGRESS",
       players: [
         { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" },
-        { playerId: "player-2", displayName: "Bob", seatOrder: 1, role: "PLAYER", connectionStatus: "CONNECTED" },
-        { playerId: "player-3", displayName: "Carol", seatOrder: 2, role: "PLAYER", connectionStatus: "CONNECTED" },
+        { playerId: "player-2", displayName: "Bob", seatOrder: 1, role: "PARTICIPANT", connectionStatus: "CONNECTED" },
+        { playerId: "player-3", displayName: "Carol", seatOrder: 2, role: "PARTICIPANT", connectionStatus: "CONNECTED" },
       ],
       createdAt: "2023-01-01T00:00:00Z",
       updatedAt: "2023-01-01T00:00:00Z",
