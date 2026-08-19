@@ -128,7 +128,7 @@ The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the 
 **Amendment, 2026-08-19 (EOP-40): five claims corrected against the shipped code.**
 
 This ADR was written on 2026-07-26, before `ui/` existed. The decision it records — React +
-TypeScript + Vite + `govuk-frontend` CSS — was executed and holds. Four of its *descriptive*
+TypeScript + Vite + `govuk-frontend` CSS — was executed and holds. Five of its *descriptive*
 claims about how that would look were never true of the code that shipped, and one of them
 (the React major) is a version claim an agent could act on. The original text above is left
 intact as the historical record, per the house convention; this section is what is true.
