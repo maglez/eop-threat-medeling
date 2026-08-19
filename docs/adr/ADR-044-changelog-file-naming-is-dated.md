@@ -141,12 +141,19 @@ into every agent's context every session pays for its length on every turn.
 **Negative and residual risks — stated plainly**
 
 - **Nothing enforces the naming scheme.** There is no test asserting that no new
-  `00N-` file appears, and this ADR deliberately does not add one. The story that
-  raised it carries an explicit warning that widening scope on this ticket family
-  "buys a fourth round rather than a better repo", and the guard would be cheap
-  but not free: it would have to encode the frozen legacy set as an allow-list and
-  would go stale against it. So the `007-` hazard is closed by convention and
-  review, not by the build. A reviewer seeing a new `NNN-` file should reject it.
+  `00N-` file appears, and this ADR deliberately does not add one. The reason is
+  scope discipline and nothing else: the story that raised it carries an explicit
+  warning that widening scope on this ticket family "buys a fourth round rather
+  than a better repo", and a review-enforced convention is proportionate to a
+  hazard nobody has yet triggered. Note what is *not* a reason, because an earlier
+  draft of this bullet claimed it and was wrong: such a guard would need to name
+  the frozen legacy six as an allow-list, and that list would **not** go stale —
+  this very decision freezes the sequence at `006-` permanently, and Golden Rule 1
+  forbids renaming or deleting any of the six, so the allow-list is a constant.
+  A justification that inverts its own premise is the defect class this story
+  exists to remove, one remove out, so it is corrected here rather than left
+  standing. The `007-` hazard is closed by convention and review, not by the
+  build. A reviewer seeing a new `NNN-` file should reject it.
 - **Two schemes remain visible forever**, and the directory will always look
   inconsistent to a newcomer. That is the accepted price of Golden Rule 1. The
   alternative — renaming for tidiness — trades a cosmetic problem for checksum
