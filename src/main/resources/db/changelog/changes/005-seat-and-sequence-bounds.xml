@@ -18,6 +18,16 @@
   H2 and production runs on PostgreSQL 17.
   
   Changesets are immutable once merged. Later stories add files.
+
+  One deviation, recorded here because this file's own git log shows it and the
+  line above would otherwise deny it: EOP-96 corrected a stale trick count in the
+  <comment> of changeset 002 in place. `ChangeSet.generateCheckSum()` in
+  liquibase-core 5.0.3 digests only getChanges() and getSqlVisitors(), never
+  getComments(), so comment text cannot move a checksum. That was verified by
+  decompiling that class, not inferred from a green build. Structural elements
+  (<sql>, <preConditions>, <rollback>) remain immutable once
+  merged, and correcting a factual error in comment text is the only exception
+  this file claims.
 -->
 <databaseChangeLog
   xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
