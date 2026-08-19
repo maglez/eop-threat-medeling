@@ -14,10 +14,10 @@ unless the *runtime* also names a context, so a changeset that looks restricted
 runs everywhere.
 
 This ADR exists because the explanation had outgrown its home. The mechanism was
-documented in `.opencode/rules/database.md` as a single 1858-byte bullet — 40% of
-that rule file, 5.2x its next-longest line — sitting in a three-item lookup list
-whose other entries are roughly 50 and 40 characters. Two things made that
-placement wrong rather than merely untidy:
+documented in `.opencode/rules/database.md` as a single bullet of a little over
+1.8 kB — 40% of that rule file, 5.2x its next-longest line — sitting in a
+three-item lookup list whose other entries are roughly 50 and 40 characters. Two
+things made that placement wrong rather than merely untidy:
 
 1. **Rule files are a hot-path artefact.** `.opencode/rules/*.md` is injected into
    every agent's context every session, so the cost is paid every turn while the
@@ -292,13 +292,31 @@ be dated, amended and superseded.
 **Positive**
 
 - The rule file is back to being a set of directives an agent can act on. The
-  `context` entry went from 1859 bytes to 1112, a 40% cut, and names no version,
-  so it cannot silently rot. Re-measure with
-  `awk 'NR==37' .opencode/rules/database.md | wc -c`.
+  `context` entry is down from a little over 1.8 kB to roughly 1.3 kB — measure
+  it with `awk 'NR==37' .opencode/rules/database.md | wc -c` rather than trusting
+  a figure quoted here. The size is not the load-bearing claim and it is not
+  stable: the entry grew again within this same story when the `labels` half of
+  the directive was added, and it will grow again whenever another operative
+  clause is genuinely needed, because an agent that never follows this link must
+  still be told everything it must not do. **The invariant that matters is that
+  the entry names no library version and carries no mechanism, so it cannot
+  silently rot.** That one is checkable by reading the line, and it holds
+  regardless of length. An earlier revision of this bullet asserted an exact byte
+  count and a percentage alongside the command that disproved both — it was
+  falsified by the very commit that wrote it. Quoting a measurement of a file
+  that is still being edited is the same failure this ADR exists to prevent, so
+  the number is deliberately approximate.
 - The verification is now falsifiable in the honest sense: it states the versions
   it holds for, so a dependency bump makes it *checkable* rather than quietly
-  untrue. `docs/adr/README.md` and `AdrIndexConsistencyTest` make any future
-  amendment visible.
+  untrue. Note the limit of the enforcement around that, because it is narrower
+  than it looks: `AdrIndexConsistencyTest.shouldCarryAmendmentDates` derives the
+  dates it demands *from the ADR's own `**Status:**` line*, and skips entirely
+  when that line carries none. So it guarantees only that a date an ADR
+  **declares** in its status line also appears in `docs/adr/README.md`. An
+  amendment that leaves the status line alone is invisible to the test and to the
+  index by construction — this story amended two ADRs, and neither amendment
+  would have been visible had the status line not been updated by hand. Keeping
+  an amendment visible is therefore a discipline, not a guarantee.
 - The three discard mechanisms are recorded with the bytecode that proves them,
   so the next person does not have to re-derive them from behaviour.
 

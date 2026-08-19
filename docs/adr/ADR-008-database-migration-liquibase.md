@@ -1,6 +1,6 @@
 # ADR-008: Database Migration Strategy with Liquibase
 
-- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; see Amendments)
+- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; amended 2026-08-19 — the "Context labels" comparison row records a capability this project has decided not to use, see ADR-043; both in Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, DevOps Engineer, Security Auditor

@@ -15,7 +15,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [005](ADR-005-error-handling-strategy.md) | Error handling via RFC 9457 Problem Details | Accepted | Yes — `GlobalExceptionHandler` maps every 4xx and 5xx |
 | [006](ADR-006-build-quality-gates.md) | Build quality gates | Accepted | Yes |
 | [007](ADR-007-versioning-strategy.md) | Semantic Versioning | Accepted | Yes |
-| [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted (amended 2026-08-10) | Yes — autoconfiguration fixed and the first changeset applies; the H2 console consequence is withdrawn |
+| [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted (amended 2026-08-10, 2026-08-19) | Yes — autoconfiguration fixed and the first changeset applies; the H2 console consequence is withdrawn and the Context labels row is glossed by ADR-043 |
 | [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted | Yes — `ui/` scaffolded, built and served |
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
