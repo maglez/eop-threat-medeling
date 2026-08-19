@@ -1,6 +1,6 @@
 # ADR-045: Response DTOs are parsed at the browser boundary by hand-written parsers, and a contract violation is a 502 `ContractViolationError`
 
-**Status:** Accepted (amended 2026-08-19 by EOP-109 — §4 gained one further scope call: a `capturedBySuit` key-type tightening was considered and **declined**, because §2's bound is what makes it unenforceable)
+**Status:** Accepted (amended 2026-08-19 by EOP-109 — §4 gained a follow-up note whose substance is that `TrickDto.ledSuit` was narrowed to `StrideCategory` and parsed through an `optionalEnum` helper, together with two scope calls that were **declined**: a `Rank` mirror, and a `capturedBySuit` key-type tightening — the latter because §2 bounds the violation *message* rather than forbidding a key check, so a narrowed index type would be unenforced rather than unenforceable)
 **Date:** 2026-08-19
 **Deciders:** @tech-lead, @architecture-guardian, @security-auditor, @ui-builder
 
@@ -237,5 +237,7 @@ consumer that does not exist yet rather than a fix for a live defect.
   `string` against a *mirrored* enum schema, `TrickDto.ledSuit`, and declined both a `Rank` mirror
   and a `capturedBySuit` tightening — see the follow-up note in §4), EOP-110 (`ui/` dev-toolchain
   CVEs). Read EOP-109's scope with its qualifier: `Card.rank` is still typed bare `string` against a
-  `$ref` to `Rank`, deliberately, because `Rank` has no mirror — so that bullet does not mean "no
+  `$ref` to `Rank`, deliberately, because `Rank` has no mirror **in `ui/src/api.ts`** — no `as const`
+  array, no derived union, no `is*` guard, which is the only sense of "mirror" the gate recognises,
+  and not a claim that no rank list exists anywhere in `ui/` — so that bullet does not mean "no
   contract enum is left wide"

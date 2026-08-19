@@ -117,12 +117,18 @@ class EnumMirrorParityTest {
      *       derived union, no {@code is*} guard — and EOP-109 decided it should stay that way rather
      *       than adding one by default. State it with that scope rather than as "no mirror at all":
      *       a hand-written twelve-member rank list does exist in
-     *       {@code ui/src/utils/cardImagePath.test.ts}, and it is invisible to
-     *       {@link #typeScriptArrayValues} because that method recognises only the
-     *       {@code export const NAME = [...] as const;} idiom. It is test-only, so drifting from the
-     *       Java enum would under-test asset coverage rather than corrupt production behaviour, and
-     *       it does not change the decision recorded here. Be precise about what that costs: the
-     *       contract
+     *       {@code ui/src/utils/cardImagePath.test.ts}. It is invisible to this gate for two
+     *       independent reasons, and the operative one is file scope:
+     *       {@link #typeScriptArrayValues} reads only {@link #API_CLIENT} — that is
+     *       {@code ui/src/api.ts} — and never opens another file, so its idiom regex never gets the
+     *       chance to run. The second reason is that the list is neither exported nor
+     *       {@code as const}, so it would not match the
+     *       {@code export const NAME = [...] as const;} idiom even if it were read. Do not infer
+     *       from the idiom bound alone that rewriting the list in that form would bring it under
+     *       this gate — it would not, because the file is never read. The list is test-only, so
+     *       drifting from the Java enum would under-test asset coverage rather than corrupt
+     *       production behaviour, and it does not change the decision recorded here. Be precise
+     *       about what that costs: the contract
      *       {@code $ref}s {@code Rank} for that field, so {@code Card.rank} and
      *       {@code CardDto.rank} being bare {@code string} in {@code ui/src/api.ts} is an accepted
      *       <em>drift</em>, not fidelity. Do not restate it as the contract declaring {@code rank}

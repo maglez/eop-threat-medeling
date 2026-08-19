@@ -393,7 +393,11 @@ though the mirror they should have used was already under the gate. EOP-108 narr
 and EOP-109 narrowed `TrickDto.ledSuit` — the last one. Every field whose contract schema is a
 *mirrored* enum is now both typed against that mirror and membership-checked by a parser (ADR-045).
 Read that scope precisely: it is a claim about *mirrored* enums, and `rank` sits outside it because
-`Rank` has no mirror, not because `rank` is narrow. Keep it that way: a new bare-`string` field whose
+`Rank` has no mirror **in `ui/src/api.ts`** — no `as const` array, no derived union, no `is*` guard —
+not because `rank` is narrow. State the scope rather than saying "no mirror at all": a hand-written
+twelve-member rank list does exist in `ui/src/utils/cardImagePath.test.ts`, test-only and outside the
+gate's reach because `EnumMirrorParityTest` reads only `ui/src/api.ts`. Keep it that way: a new
+bare-`string` field whose
 schema `$ref`s a *mirrored* enum belongs in neither this list nor the code.
 
 `TrickDto.ledSuit` narrowed through a new `optionalEnum` helper rather than `requireEnum`, because the
