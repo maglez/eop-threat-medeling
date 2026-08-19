@@ -1,6 +1,6 @@
 # ADR-045: Response DTOs are parsed at the browser boundary by hand-written parsers, and a contract violation is a 502 `ContractViolationError`
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-08-19 by EOP-109 — §4 gained one further scope call: a `capturedBySuit` key-type tightening was considered and **declined**, because §2's bound is what makes it unenforceable)
 **Date:** 2026-08-19
 **Deciders:** @tech-lead, @architecture-guardian, @security-auditor, @ui-builder
 

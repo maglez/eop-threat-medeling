@@ -113,8 +113,16 @@ class EnumMirrorParityTest {
      * <p>Two enums the contract declares are deliberately absent from the table below:
      *
      * <ul>
-     *   <li>{@code Rank} has no TypeScript mirror at all, and EOP-109 decided it should stay that
-     *       way rather than adding one by default. Be precise about what that costs: the contract
+     *   <li>{@code Rank} has no mirror in {@code ui/src/api.ts} — no {@code as const} array, no
+     *       derived union, no {@code is*} guard — and EOP-109 decided it should stay that way rather
+     *       than adding one by default. State it with that scope rather than as "no mirror at all":
+     *       a hand-written twelve-member rank list does exist in
+     *       {@code ui/src/utils/cardImagePath.test.ts}, and it is invisible to
+     *       {@link #typeScriptArrayValues} because that method recognises only the
+     *       {@code export const NAME = [...] as const;} idiom. It is test-only, so drifting from the
+     *       Java enum would under-test asset coverage rather than corrupt production behaviour, and
+     *       it does not change the decision recorded here. Be precise about what that costs: the
+     *       contract
      *       {@code $ref}s {@code Rank} for that field, so {@code Card.rank} and
      *       {@code CardDto.rank} being bare {@code string} in {@code ui/src/api.ts} is an accepted
      *       <em>drift</em>, not fidelity. Do not restate it as the contract declaring {@code rank}
