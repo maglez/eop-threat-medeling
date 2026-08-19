@@ -840,7 +840,7 @@ sequenceDiagram
     TPRA->>DB: SELECT * FROM trick_play WHERE trick_id IN (…)
     TPRA->>DB: SELECT * FROM card WHERE id IN (…)
     TPRA->>DB: SELECT * FROM trick_play_component WHERE trick_play_id IN (…) ORDER BY trick_play_id, ordinal
-    Note over TPRA,DB: Four reads for the whole session — the tricks, then their<br/>plays, cards and components one batch each. Mapping the<br/>single-trick assembler over every row would have cost three<br/>reads per trick: seventy-nine in a twenty-six-trick hand.<br/>No predicate on winner_play_id — whether a trick is finished<br/>is a question the trick answers about itself, and a second<br/>authority in SQL would disagree the moment that changed.
+    Note over TPRA,DB: Four reads for the whole session — the tricks, then their<br/>plays, cards and components one batch each. Mapping the<br/>single-trick assembler over every row would have cost three<br/>reads per trick: 1 + 3 × 23 = seventy in a twenty-three-trick<br/>hand, which is what a three-player 68-card deal runs to.<br/>No predicate on winner_play_id — whether a trick is finished<br/>is a question the trick answers about itself, and a second<br/>authority in SQL would disagree the moment that changed.
     TPRA-->>GS: List&lt;Trick&gt;, the whole history, unresolved tricks included
 
     GS->>SS: ScoreSheet.of(session.players(), tricks)

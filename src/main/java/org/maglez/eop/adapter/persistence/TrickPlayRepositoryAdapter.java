@@ -307,8 +307,10 @@ public class TrickPlayRepositoryAdapter implements HandRepository, TrickReposito
      * trust: the plays of an unfinished trick still scored their threats.
      *
      * <p>Four reads serve the whole session rather than three per trick. Assembling each trick on
-     * its own would cost seventy-nine round trips at three players, for an answer whose size the deck
-     * already bounds.
+     * its own would cost {@code 1 + 3 * 23} = 70 round trips at three players — the 68-card deck
+     * deals 23/23/22, so a hand runs to 23 tricks — for an answer whose size the deck already
+     * bounds. The derivation is stated rather than reduced to its total on purpose: it is what makes
+     * the figure visibly wrong the next time the deck changes size, which a bare total was not.
      *
      * <p>Authorises nobody, and cannot: there is no acting player in the signature to check against
      * (ADR-024). A caller that has not already established membership is handing a stranger a

@@ -100,11 +100,13 @@ this itself, giving no trick point to a trick with no winner.
 ### Four reads for the whole session, not three per trick
 
 `assemble` costs three queries per trick — its plays, its cards and its components. A three-player
-game reaches twenty-six tricks, so mapping it over the history would cost seventy-nine round trips — one for the trick rows and three for each trick
-for one score read. `findTricks` instead fetches all plays with one `findByTrickIdIn`, one card
-catalogue read and one components read, then groups in memory and reuses the existing rotation
-comparator per trick. Four reads regardless of how far the game has gone: the trick rows, then their plays, cards and
-components one batch each.
+hand runs to twenty-three tricks, so mapping it over the history would cost **`1 + 3 × 23` = seventy
+round trips** for one score read — one for the trick rows, three for each trick. The derivation is
+written out rather than reduced to its total on purpose: it is what makes the figure visibly wrong
+the next time the deck changes size. `findTricks` instead fetches all plays with one
+`findByTrickIdIn`, one card catalogue read and one components read, then groups in memory and reuses
+the existing rotation comparator per trick. Four reads regardless of how far the game has gone: the
+trick rows, then their plays, cards and components one batch each.
 
 `assemble` was split into a fetching method and a pure overload to make this possible, and the
 components accumulation was extracted into a helper both paths share.
@@ -258,6 +260,12 @@ will check before approving slice C):
   read count a per-trick assembler would have cost comes from, and it is also why the sheet counts the
   plays it finds rather than assuming a trick holds one card per seat.
   *(Note: the deck reached 68 cards when EOP-75 removed the Aces — see [ADR-041](ADR-041-printed-deck-has-no-aces.md).)*
+  *(EOP-96: section six once carried a 78-card-era trick count, and the read count derived from it, both of
+  which survived two deck trims. They survived because they were figures **derived** from the deck size rather
+  than the deck size itself, so EOP-93's sweep for stale deck sizes never saw them. Both halves now derive the
+  count from 23 tricks, and the derivation is stated wherever the total is. The stale figures are deliberately
+  not quoted here: a superseded number reprinted in a note is still a number a reader can lift out of context,
+  and `DeckArithmeticClaimsTest` now rejects it on sight.)*
 - [ADR-024](ADR-024-trick-play-persistence-boundary.md) — `findTricks` takes no acting player, so authorising
   the requester stays the use case's obligation.
 - [ADR-026](ADR-026-use-case-observability.md) — still `Proposed`, so neither the new controller nor

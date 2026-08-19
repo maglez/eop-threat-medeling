@@ -237,15 +237,18 @@ class SeatAndSequenceBoundsTest {
         // Arrange
         final UUID sessionId = MigrationTestFixtures.insertMinimalGameSession(connection);
 
-        // Act + Assert — 1 is the first legal trick. The high value documents a deliberate
-        // absence: no upper bound is derivable, because a three-player deal is 26 tricks and
-        // no domain constant caps it, so the changeset asserts only `>= 1`.
+        // Act + Assert — 1 is the first legal trick, and 23 is the last one a three-player hand
+        // reaches: the 68-card deck deals 23/23/22, so ceil(68 / 3) = 23 tricks.
+        // 999 documents a deliberate absence — no upper bound is derivable, because no domain
+        // constant caps the sequence, so the changeset asserts only `>= 1`. A value past every
+        // legal game length is what demonstrates that; a legal length on its own would not.
         assertThatCode(() -> {
             insertTrickWithSequence(sessionId, 1);
-            insertTrickWithSequence(sessionId, 26);
+            insertTrickWithSequence(sessionId, 23);
+            insertTrickWithSequence(sessionId, 999);
         })
-                .as("sequence 1 is the first trick and 26 is a legal three-player game length; "
-                        + "both must be accepted")
+                .as("sequence 1 is the first trick, 23 is the last a three-player hand reaches, "
+                        + "and 999 is past every legal length; the check bounds none of them")
                 .doesNotThrowAnyException();
     }
 
