@@ -207,6 +207,53 @@ expiry sweep sets it and deletes the row in the same transaction, so the next fe
 a 404 and the second route already covers it (see `SessionStatus`'s javadoc for why
 that is a property of the only path that writes it today, not of the state itself).
 
+**EOP-108 gave an HTTP `200` a new way to fail, and routed it to an outcome that already
+existed rather than adding a fourth `onSessionEnd()` trigger — and that routing is the whole
+point.** Be precise about what is new: the *outcome* (message rendered, player stays put) is not,
+since any non-403/404 failure — a `500`, a dropped connection — has always reached the same
+`catch`, hit `setError` and fallen through the 403/404 test. What EOP-108 added is a new **cause**
+able to reach it, and an unprecedented one: a response the server considers successful. Since ADR-045 every
+response body is parsed rather than asserted, so a `200` whose body is out of contract now
+throws `ContractViolationError extends ApiError` with a synthetic `status = 502` instead of
+flowing into React state. That reaches the same `catch`, and because `setError(message)` runs
+*before* the `err.status === 403 || err.status === 404` test, a `502` renders the message
+through the GOV.UK error summary and then falls through: the player stays in the lobby with
+the previously validated state still rendered beneath the error, rather than being ejected.
+
+Keeping it out of the give-up set is the correct call, and for a reason the three existing
+triggers do not share. Those three are all judgements that *the session is over* — expired,
+deleted, or terminal — and discarding the token is the right response to each. A contract
+violation says nothing about the session; it says the **server sent something the client
+cannot read**, which is very likely transient (a version skew between a deployed bundle and a
+deployed API) and is certainly not grounds for destroying a token that may still be perfectly
+valid. Calling `onSessionEnd()` here would convert a recoverable read failure into
+irrecoverable data loss on the next `getSession` retry.
+
+Two further properties of this outcome, both deliberate: the lifecycle transitions
+(`status === 'COMPLETED'` → `onSessionEnd()`, and the `IN_PROGRESS` one-shot) sit *after* the
+parse inside the same `try`, so a rejected payload cannot fire one — which is what makes the
+"three triggers" count above still exact rather than merely approximately true. And the state
+left on screen is stale-but-valid, never partial: ADR-045 explicitly rejected degrading to a
+partial render, because dropping the offending field and rendering the rest would reinstate the
+exact defect EOP-108 was raised to remove, an out-of-contract value producing a plausible UI.
+
+So: **three** `onSessionEnd()` triggers, and **four** distinguishable outcomes of a
+`refreshSession` call. Because the second count was previously asserted without being
+enumerated — which makes it uncheckable, the defect this document exists to avoid — here it
+is in full:
+
+1. **Re-read succeeds, session live** — `setSession(sessionData)`, lobby re-renders. If the
+   status is `IN_PROGRESS` the one-shot `onGameStarted` handoff fires as part of this outcome;
+   it advances the view rather than ending the session, so it is not a fourth trigger.
+2. **Re-read succeeds, status terminal** — `COMPLETED` calls `onSessionEnd()`. Trigger 1.
+3. **Re-read fails with 403/404** — expired or deleted; `catch` calls `onSessionEnd()`.
+   Trigger 2. (Trigger 3 is the same test in the SSE `onError`, not in this handler.)
+4. **Re-read fails any other way** — a `500`, a transport error, or since EOP-108 a `200`
+   whose body is out of contract: message rendered, token kept, player stays put.
+
+Anyone extending this handler should keep the two counts separate, and should extend the
+enumeration above rather than incrementing a bare number.
+
 One asymmetry is worth stating plainly, because it is a consequence of the client
 holding its own lifecycle rather than reading the server's. `COMPLETED` reaches the
 client two ways and they land in different places. Observed by `GameScreen`, it arrives

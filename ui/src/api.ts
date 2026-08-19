@@ -73,6 +73,178 @@ interface ProblemDetail {
   readonly detail?: string;
 }
 
+// ---- Response validation (ADR-045) ----
+//
+// Every JSON-returning helper below passes its body through a `parseX` function
+// rather than asserting a type onto it. An assertion is erased at compile time,
+// so before EOP-108 a payload carrying `role: "ROOT"` reached React state and
+// every comparison against it silently evaluated false. A parse turns that into
+// a loud, diagnosable failure at the boundary.
+//
+// Strictness is bounded on purpose: object-ness, presence and `typeof` of
+// required fields, arrays actually being arrays, and enum fields checked with the
+// four `is*` guards. There is deliberately no format validation — no UUID regex,
+// no ISO-8601 parsing, no range checks. So the DTOs are *structurally and
+// enumerably* validated, which is a weaker claim than "validated", and the weaker
+// claim is the true one. ADR-045 records why, and `.opencode/rules/error-handling.md`
+// carries the directive.
+//
+// Parsers reconstruct rather than pass through, so a field the server sends but no
+// parser reads is dropped. That is the known hazard: adding a field to a DTO
+// interface without adding it here still typechecks, and the field then arrives
+// `undefined`. Nothing detects it but review.
+//
+// The `parse*` functions are deliberately NOT exported. This module is the only
+// place a response is parsed, and keeping them module-private is what makes that
+// enforceable rather than merely stated: a component cannot reach for one, and a
+// test cannot call one directly and mistake that for evidence the boundary works.
+// They are covered through the exported helpers with global `fetch` stubbed, which
+// is the only route that exercises the real boundary — a `vi.spyOn(api, …)` test
+// replaces the helper wholesale and never reaches a parser at all.
+
+/**
+ * A response that was syntactically JSON but did not match the contract.
+ *
+ * Extends {@link ApiError} deliberately: every component already catches
+ * `instanceof ApiError` and renders `.message` through `ErrorSummary`, so a
+ * standalone class would slip past every existing catch and surface as a blank
+ * screen. The status is a fixed 502 rather than the response's own status,
+ * because the server said 200 and reusing that would misreport what happened.
+ */
+export class ContractViolationError extends ApiError {
+  constructor(message: string) {
+    super(502, message);
+    this.name = "ContractViolationError";
+  }
+}
+
+/**
+ * Rejects a payload, naming the DTO and field but never the value.
+ *
+ * The offending value is deliberately excluded from the message so that a
+ * response body cannot be laundered into rendered output.
+ */
+function violation(path: string, expectation: string): never {
+  throw new ContractViolationError(`${path}: ${expectation}`);
+}
+
+function asObject(value: unknown, path: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    violation(path, "expected a JSON object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function requireString(source: Record<string, unknown>, key: string, path: string): string {
+  const value = source[key];
+  if (typeof value !== "string") {
+    violation(`${path}.${key}`, "expected a string");
+  }
+  return value;
+}
+
+function requireNumber(source: Record<string, unknown>, key: string, path: string): number {
+  const value = source[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    violation(`${path}.${key}`, "expected a finite number");
+  }
+  return value;
+}
+
+function requireBoolean(source: Record<string, unknown>, key: string, path: string): boolean {
+  const value = source[key];
+  if (typeof value !== "boolean") {
+    violation(`${path}.${key}`, "expected a boolean");
+  }
+  return value;
+}
+
+function requireArray(source: Record<string, unknown>, key: string, path: string): readonly unknown[] {
+  const value = source[key];
+  if (!Array.isArray(value)) {
+    violation(`${path}.${key}`, "expected an array");
+  }
+  return value;
+}
+
+/**
+ * Narrows an enum-typed field using one of the four exported guards.
+ *
+ * The guard is passed in rather than the member list being re-inlined here:
+ * `EnumMirrorParityTest` holds the `as const` arrays in step with the Java enums
+ * and `docs/api/openapi.yml`, and a duplicated member list inside a parser would
+ * be invisible to it.
+ */
+function requireEnum<T extends string>(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  guard: (value: unknown) => value is T,
+  members: readonly string[],
+): T {
+  const value = source[key];
+  if (!guard(value)) {
+    violation(`${path}.${key}`, `expected one of ${members.join(", ")}`);
+  }
+  return value;
+}
+
+/** An absent field and an explicit `null` are both treated as "not present". */
+function isAbsent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+function optionalString(source: Record<string, unknown>, key: string, path: string): string | undefined {
+  return isAbsent(source[key]) ? undefined : requireString(source, key, path);
+}
+
+function optionalNumber(source: Record<string, unknown>, key: string, path: string): number | undefined {
+  return isAbsent(source[key]) ? undefined : requireNumber(source, key, path);
+}
+
+function requireStringArray(source: Record<string, unknown>, key: string, path: string): readonly string[] {
+  return requireArray(source, key, path).map((element, index) => {
+    if (typeof element !== "string") {
+      violation(`${path}.${key}[${index}]`, "expected a string");
+    }
+    return element;
+  });
+}
+
+/**
+ * Validates a map of string keys to numbers.
+ *
+ * The keys of such a map are themselves payload — the server chooses them — so
+ * they must NOT reach the violation message. Naming the offending key would
+ * reflect an attacker-influenced string into the GOV.UK error summary, which is
+ * exactly what `.opencode/rules/error-handling.md` forbids ("names the DTO and
+ * the field, never the payload"). So this deliberately does not delegate to
+ * `requireNumber`, whose message interpolates the key it was given: it reports
+ * only the field, and says "every value" rather than naming which one failed.
+ * The cost is a slightly coarser diagnostic; the alternative is a reflection
+ * vector, and a coarse message is the cheaper of the two.
+ *
+ * `Object.create(null)` rather than `{}` so a `__proto__`, `constructor` or
+ * `toString` key in the payload cannot shadow an `Object.prototype` member and
+ * leave the result non-coercible for a future consumer.
+ */
+function requireNumberRecord(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+): Readonly<Record<string, number>> {
+  const record = asObject(source[key], `${path}.${key}`);
+  const parsed: Record<string, number> = Object.create(null) as Record<string, number>;
+  for (const entryKey of Object.keys(record)) {
+    const value = record[entryKey];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      violation(`${path}.${key}`, "expected every value to be a finite number");
+    }
+    parsed[entryKey] = value;
+  }
+  return parsed;
+}
+
 /** Human-readable suit names, since the wire format is a shouting enum. */
 export const SUIT_LABELS: Readonly<Record<StrideCategory, string>> = {
   SPOOFING: "Spoofing",
@@ -83,15 +255,61 @@ export const SUIT_LABELS: Readonly<Record<StrideCategory, string>> = {
   ELEVATION_OF_PRIVILEGE: "Elevation of privilege",
 };
 
+/**
+ * Extracts a human-readable message from an RFC 9457 problem body.
+ *
+ * This is not a DTO parser and deliberately never throws: it runs on a path that is
+ * *already* an error, so a second failure here would replace a useful status code with
+ * a `ContractViolationError` about the error body. It does still refuse to trust the
+ * shape — `detail` and `title` are used only when they really are strings, so a body
+ * carrying `{"detail": {...}}` degrades to the status text rather than rendering
+ * `[object Object]` into the error summary.
+ */
 async function problemMessage(response: Response): Promise<string> {
   try {
-    const problem = (await response.json()) as ProblemDetail;
-    return problem.detail ?? problem.title ?? response.statusText;
+    const problem: unknown = await response.json();
+    if (typeof problem === "object" && problem !== null) {
+      const source = problem as ProblemDetail;
+      if (typeof source.detail === "string") return source.detail;
+      if (typeof source.title === "string") return source.title;
+    }
+    return response.statusText;
   } catch {
     // A body that is not JSON is not an error worth surfacing on its own; the
     // status code is the useful part.
     return response.statusText;
   }
+}
+
+/** Parses one catalogue card. */
+function parseCard(value: unknown, path = "Card"): Card {
+  const source = asObject(value, path);
+  return {
+    cardId: requireString(source, "cardId", path),
+    suit: requireEnum(source, "suit", path, isStrideCategory, STRIDE_CATEGORIES),
+    rank: requireString(source, "rank", path),
+    rankSymbol: requireString(source, "rankSymbol", path),
+    rankValue: requireNumber(source, "rankValue", path),
+    threatPrompt: requireString(source, "threatPrompt", path),
+  };
+}
+
+/** Parses the server's paged envelope, delegating each element to `parseItem`. */
+function parsePagedResponse<T>(
+  value: unknown,
+  parseItem: (element: unknown, path: string) => T,
+  path: string,
+): PagedResponse<T> {
+  const source = asObject(value, path);
+  return {
+    content: requireArray(source, "content", path).map((element, index) =>
+      parseItem(element, `${path}.content[${index}]`),
+    ),
+    page: requireNumber(source, "page", path),
+    size: requireNumber(source, "size", path),
+    totalElements: requireNumber(source, "totalElements", path),
+    totalPages: requireNumber(source, "totalPages", path),
+  };
 }
 
 /** Fetch one page of the card catalogue. */
@@ -104,7 +322,7 @@ export async function fetchCards(size = 20): Promise<PagedResponse<Card>> {
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as PagedResponse<Card>;
+  return parsePagedResponse(await response.json(), parseCard, "PagedResponse<Card>");
 }
 
 // Session API types
@@ -112,16 +330,17 @@ export async function fetchCards(size = 20): Promise<PagedResponse<Card>> {
 // The three enums below mirror server-side Java enums, and each one is declared
 // as a runtime `as const` array with the union *derived* from it rather than as a
 // bare union type. The reason is that a TypeScript union is erased at compile
-// time: DTOs arrive through a type assertion in the fetch helpers below, never a
-// parse, so a union alone cannot detect that the server sent a value the mirror
-// does not list — every comparison against it just silently evaluates false.
-// Keeping the members at runtime gives two tests something to check, and the
-// split between them is deliberate. `api.test.ts` asserts each declared member is
-// accepted and a non-member rejected, which is all a browser-side test can do:
-// this project has no `@types/node` on purpose, so Vitest cannot read a file off
-// disk. The cross-artefact comparison against the `enum` lists in
-// `docs/api/openapi.yml` and the Java sources therefore lives in the Java suite,
-// in `src/test/java/org/maglez/eop/docs/EnumMirrorParityTest.java`, which fails
+// time, so a union alone cannot detect that the server sent a value the mirror
+// does not list. Keeping the members at runtime is what makes the `is*` guards
+// below possible, and since EOP-108 those guards are consumed by the parsers in
+// this module rather than existing only for their own tests — see ADR-045.
+// Two tests check the mirrors, and the split between them is deliberate.
+// `api.test.ts` asserts each declared member is accepted and a non-member
+// rejected, which is all a browser-side test can do: this project has no
+// `@types/node` on purpose, so Vitest cannot read a file off disk. The
+// cross-artefact comparison against the `enum` lists in `docs/api/openapi.yml`
+// and the Java sources therefore lives in the Java suite, in
+// `src/test/java/org/maglez/eop/docs/EnumMirrorParityTest.java`, which fails
 // `./mvnw verify` when the three drift apart. See ADR-009 (EOP-105).
 
 /** Mirrors `PlayerRole` (`org.maglez.eop.entity.PlayerRole`). */
@@ -177,6 +396,40 @@ export interface SessionAdmissionDto {
   readonly session: SessionStateDto;
 }
 
+function parsePlayerDto(value: unknown, path = "PlayerDto"): PlayerDto {
+  const source = asObject(value, path);
+  return {
+    playerId: requireString(source, "playerId", path),
+    displayName: requireString(source, "displayName", path),
+    seatOrder: requireNumber(source, "seatOrder", path),
+    role: requireEnum(source, "role", path, isPlayerRole, PLAYER_ROLES),
+    connectionStatus: requireEnum(source, "connectionStatus", path, isConnectionStatus, CONNECTION_STATUSES),
+  };
+}
+
+function parseSessionStateDto(value: unknown, path = "SessionStateDto"): SessionStateDto {
+  const source = asObject(value, path);
+  return {
+    sessionId: requireString(source, "sessionId", path),
+    joinCode: requireString(source, "joinCode", path),
+    status: requireEnum(source, "status", path, isSessionStatus, SESSION_STATUSES),
+    players: requireArray(source, "players", path).map((element, index) =>
+      parsePlayerDto(element, `${path}.players[${index}]`),
+    ),
+    createdAt: requireString(source, "createdAt", path),
+    updatedAt: requireString(source, "updatedAt", path),
+  };
+}
+
+function parseSessionAdmissionDto(value: unknown, path = "SessionAdmissionDto"): SessionAdmissionDto {
+  const source = asObject(value, path);
+  return {
+    playerToken: requireString(source, "playerToken", path),
+    playerId: requireString(source, "playerId", path),
+    session: parseSessionStateDto(source["session"], `${path}.session`),
+  };
+}
+
 // Header name constant (matches backend)
 export const PLAYER_TOKEN_HEADER = 'X-EoP-Player-Token';
 
@@ -197,7 +450,7 @@ export async function createSession(displayName: string): Promise<SessionAdmissi
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as SessionAdmissionDto;
+  return parseSessionAdmissionDto(await response.json());
 }
 
 /**
@@ -217,7 +470,7 @@ export async function joinSession(joinCode: string, displayName: string): Promis
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as SessionAdmissionDto;
+  return parseSessionAdmissionDto(await response.json());
 }
 
 /**
@@ -235,7 +488,7 @@ export async function getSession(sessionId: string, playerToken: string): Promis
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as SessionStateDto;
+  return parseSessionStateDto(await response.json());
 }
 
 /**
@@ -254,7 +507,7 @@ export async function startGame(sessionId: string, playerToken: string): Promise
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as SessionStateDto;
+  return parseSessionStateDto(await response.json());
 }
 
 /**
@@ -354,6 +607,29 @@ export interface LeaderboardDto {
   readonly sessionStatus: SessionStatus;
 }
 
+function parseLeaderboardRowDto(value: unknown, path = 'LeaderboardRowDto'): LeaderboardRowDto {
+  const source = asObject(value, path);
+  return {
+    playerId: requireString(source, 'playerId', path),
+    seatOrder: requireNumber(source, 'seatOrder', path),
+    displayName: requireString(source, 'displayName', path),
+    points: requireNumber(source, 'points', path),
+    position: requireNumber(source, 'position', path),
+    tied: requireBoolean(source, 'tied', path),
+    capturedBySuit: requireNumberRecord(source, 'capturedBySuit', path),
+  };
+}
+
+function parseLeaderboardDto(value: unknown, path = 'LeaderboardDto'): LeaderboardDto {
+  const source = asObject(value, path);
+  return {
+    rows: requireArray(source, 'rows', path).map((row, index) =>
+      parseLeaderboardRowDto(row, `${path}.rows[${index}]`),
+    ),
+    sessionStatus: requireEnum(source, 'sessionStatus', path, isSessionStatus, SESSION_STATUSES),
+  };
+}
+
 export async function getLeaderboard(sessionId: string, playerToken: string): Promise<LeaderboardDto> {
   const response = await fetch(`/api/v1/sessions/${sessionId}/leaderboard`, {
     headers: {
@@ -366,7 +642,7 @@ export async function getLeaderboard(sessionId: string, playerToken: string): Pr
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as LeaderboardDto;
+  return parseLeaderboardDto(await response.json());
 }
 
 export async function startNewGame(sessionId: string, playerToken: string): Promise<void> {
@@ -387,7 +663,13 @@ export async function startNewGame(sessionId: string, playerToken: string): Prom
 
 export interface CardDto {
   readonly cardId: string;
-  readonly suit: string;
+  /**
+   * Narrowed from a bare `string` to `StrideCategory` by EOP-108: `isStrideCategory`
+   * already existed and `parseCardDto` below checks membership, so leaving the type
+   * wide would have described the field as less certain than it now is. `TrickDto.ledSuit`
+   * is deliberately still a bare `string` — see EOP-109.
+   */
+  readonly suit: StrideCategory;
   readonly rank: string;
   readonly rankSymbol: string;
   readonly rankValue: number;
@@ -436,6 +718,82 @@ export interface PlayCardRequest {
   readonly notes?: string;
 }
 
+function parseCardDto(value: unknown, path = 'CardDto'): CardDto {
+  const source = asObject(value, path);
+  return {
+    cardId: requireString(source, 'cardId', path),
+    suit: requireEnum(source, 'suit', path, isStrideCategory, STRIDE_CATEGORIES),
+    rank: requireString(source, 'rank', path),
+    rankSymbol: requireString(source, 'rankSymbol', path),
+    rankValue: requireNumber(source, 'rankValue', path),
+    threatPrompt: requireString(source, 'threatPrompt', path),
+  };
+}
+
+function parseHandDto(value: unknown, path = 'HandDto'): HandDto {
+  const source = asObject(value, path);
+  return {
+    handId: requireString(source, 'handId', path),
+    playerId: requireString(source, 'playerId', path),
+    cardCount: requireNumber(source, 'cardCount', path),
+    cards: requireArray(source, 'cards', path).map((card, index) =>
+      parseCardDto(card, `${path}.cards[${index}]`),
+    ),
+  };
+}
+
+/**
+ * Optional fields are spread in conditionally rather than assigned `undefined`, because
+ * `ui/tsconfig.json` sets `exactOptionalPropertyTypes: true`: under that flag `notes?: string`
+ * means "absent or a string", and explicitly writing `notes: undefined` is a type error.
+ */
+function parseTrickPlayDto(value: unknown, path = 'TrickPlayDto'): TrickPlayDto {
+  const source = asObject(value, path);
+  const notes = optionalString(source, 'notes', path);
+  return {
+    trickPlayId: requireString(source, 'trickPlayId', path),
+    playerId: requireString(source, 'playerId', path),
+    seatOrder: requireNumber(source, 'seatOrder', path),
+    card: parseCardDto(source['card'], `${path}.card`),
+    threatLinked: requireBoolean(source, 'threatLinked', path),
+    components: requireStringArray(source, 'components', path),
+    playedAt: requireString(source, 'playedAt', path),
+    ...(notes === undefined ? {} : { notes }),
+  };
+}
+
+function parseTrickDto(value: unknown, path = 'TrickDto'): TrickDto {
+  const source = asObject(value, path);
+  // `ledSuit` stays a bare string: the contract declares it as a STRIDE suit, but
+  // narrowing it is EOP-109's scope, not this story's.
+  const ledSuit = optionalString(source, 'ledSuit', path);
+  const winningSeat = optionalNumber(source, 'winningSeat', path);
+  return {
+    trickId: requireString(source, 'trickId', path),
+    sequence: requireNumber(source, 'sequence', path),
+    leaderSeat: requireNumber(source, 'leaderSeat', path),
+    plays: requireArray(source, 'plays', path).map((play, index) =>
+      parseTrickPlayDto(play, `${path}.plays[${index}]`),
+    ),
+    ...(ledSuit === undefined ? {} : { ledSuit }),
+    ...(winningSeat === undefined ? {} : { winningSeat }),
+  };
+}
+
+function parseTrickStateDto(value: unknown, path = 'TrickStateDto'): TrickStateDto {
+  const source = asObject(value, path);
+  const trick = isAbsent(source['trick']) ? undefined : parseTrickDto(source['trick'], `${path}.trick`);
+  const seatToPlay = optionalNumber(source, 'seatToPlay', path);
+  const nextLeaderSeat = optionalNumber(source, 'nextLeaderSeat', path);
+  return {
+    complete: requireBoolean(source, 'complete', path),
+    handComplete: requireBoolean(source, 'handComplete', path),
+    ...(trick === undefined ? {} : { trick }),
+    ...(seatToPlay === undefined ? {} : { seatToPlay }),
+    ...(nextLeaderSeat === undefined ? {} : { nextLeaderSeat }),
+  };
+}
+
 /**
  * Deal cards to all players (facilitator only).
  *
@@ -469,7 +827,7 @@ export async function fetchHand(sessionId: string, playerToken: string): Promise
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as HandDto;
+  return parseHandDto(await response.json());
 }
 
 /** Get the current trick state */
@@ -485,7 +843,7 @@ export async function getTrickState(sessionId: string, playerToken: string): Pro
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as TrickStateDto;
+  return parseTrickStateDto(await response.json());
 }
 
 /** Play a card into the current trick */
@@ -504,7 +862,7 @@ export async function playCard(sessionId: string, playerToken: string, request: 
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as TrickDto;
+  return parseTrickDto(await response.json());
 }
 
 /** Resolve the current trick */
@@ -521,5 +879,5 @@ export async function resolveTrick(sessionId: string, playerToken: string): Prom
     throw new ApiError(response.status, await problemMessage(response));
   }
 
-  return (await response.json()) as TrickDto;
+  return parseTrickDto(await response.json());
 }

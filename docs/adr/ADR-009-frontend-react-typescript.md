@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended twice on 2026-08-19 — five stack and layout claims diverged from the shipped code, and the DTO mirror's unenforced manual invariant is now a build gate; see Amendments)
+- **Status:** Accepted (amended three times on 2026-08-19 — five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant is now a build gate, and codegen was re-evaluated once response parsing landed and again declined; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -127,6 +127,13 @@ The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the 
 > considered and rejected; `EnumMirrorParityTest` now fails `verify` if the mirrored enum members in
 > `ui/src/api.ts` disagree with the Java enums or with `docs/api/openapi.yml`. The third mitigation
 > is a contract anchor a build gate holds in place, for enum members. See the EOP-105 amendment.
+>
+> **Amended a third time the same day (EOP-108): the anchor is now exercised at runtime, not only
+> compared at build time.** The interfaces are still hand-maintained and still in `ui/src/api.ts`,
+> but the ten JSON-returning helpers now *parse* their responses through hand-written per-DTO
+> parsers instead of asserting `as SomeDto`, so the mirrored enum members are load-bearing against
+> live payloads. Codegen was re-evaluated as ADR-045 required and is still declined. See the EOP-108
+> amendment.
 
 ## Amendments
 
@@ -143,7 +150,7 @@ intact as the historical record, per the house convention; this section is what 
 | "React **19** with functional components and hooks" (Stack components) | React **18** | `ui/package.json` — `react ^18.3.1`, `react-dom ^18.3.1`, `@types/react ^18.3.11` |
 | `src/` has `components/`, `pages/`, `hooks/`, `services/`, `types/`, plus `public/` (Project layout) | Only `components/` was built. No `pages/`, `hooks/`, `services/`, `types/` or `public/`. The tree also has `assets/` and `utils/`, which the ADR does not list | `git ls-files ui/`; `ui/src/` |
 | "the front-end runs on `:5173`" (Development workflow) | `:5371`, and the proxy covers `/api` **and** `/health` | `ui/vite.config.ts` — `server.port: 5371`, `server.proxy` keys `/api` and `/health` |
-| "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory — and they are hand-maintained rather than generated from `docs/api/openapi.yml`, so the anchor holds only as long as someone keeps the two in step. **Superseded in part the same day by EOP-105:** the enum members are now held in step by `EnumMirrorParityTest` rather than by diligence; the rest of each DTO shape is still unguarded | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
+| "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory — and they are hand-maintained rather than generated from `docs/api/openapi.yml`, so the anchor holds only as long as someone keeps the two in step. **Superseded in part the same day by EOP-105:** the enum members are now held in step by `EnumMirrorParityTest` rather than by diligence; the rest of each DTO shape is still unguarded. **Superseded further the same day by EOP-108:** each shape is now checked at runtime by a hand-written parser (ADR-045) — object-ness, required-field presence and `typeof`, arrays, and enum membership via the `is*` guards — so "unguarded" is no longer accurate. What remains unguarded is *parser field coverage*: a field added to an interface but not to its parser is silently dropped, and only review catches it | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
 | "A base `GovUkPage` layout component will be created during bootstrapping" (second Mitigation) | No such component exists, and the five items the mitigation lists are split across **two** files rather than gathered into one — which is why no single component emerged. The `<head>` and the skip link are in the Vite entry document; the header, footer and main content area are inline in the root component. The consistency the mitigation aimed at is achieved without the named abstraction | `git ls-files ui/src/components/` lists no `GovUkPage`, and `grep -rn govuk-skip-link ui/src/` returns nothing; `ui/index.html:14` carries `govuk-skip-link`; `ui/src/App.tsx` carries `govuk-header` (:210), `govuk-footer` (:222) and `govuk-main-wrapper` / `id="main-content"` (:111, :127, :258) |
 
 ### The shipped layout
@@ -233,6 +240,14 @@ Two things about this failure mode drive the decision that follows:
 
 The mirror is small, and the generator is not free. Adopting one would also be a stack decision in
 its own right, requiring its own ADR rather than an amendment to this one.
+
+> **Re-evaluated the same day (EOP-108): the third revisit trigger below has fired, and the
+> rejection is nevertheless upheld — but on narrower grounds than the ones tabulated above.** The
+> table's argument was that the protected surface is "a three-enum, roughly twenty-line surface".
+> That argument no longer holds: the surface is now twelve parsers over eleven DTO shapes. The
+> rejection now rests on the second row instead — a generator is a stack decision needing its own
+> ADR, and the parsers it would replace are already written and tested. See the EOP-108 amendment
+> for the full re-evaluation.
 
 #### Decision 2 — the manual invariant becomes a build gate
 
@@ -391,7 +406,12 @@ Reopen the Decision 1 rejection if any of these hold:
   strictly met; that wording was too generous, and this is the honest restatement. A second
   occurrence should be read as the mechanism failing rather than as bad luck
 - Runtime validation of responses is adopted (a parse rather than an assertion), at which point a
-  generated schema and a generated type are the same artefact and the dependency buys two things
+  generated schema and a generated type are the same artefact and the dependency buys two things.
+  **This trigger fired on 2026-08-19 (EOP-108).** It did not tip the decision, and the EOP-108
+  amendment records why — but it is now spent, so it cannot be cited a second time. The first
+  trigger has also effectively fired with it: the guarded surface is DTO *shapes* now, not enum
+  members. What is left un-fired is the second (a second registration-hole occurrence), and one
+  new trigger the parsers introduce, stated in the EOP-108 amendment
 
 
 #### What this changes in the text above
@@ -400,11 +420,88 @@ The third Mitigation and its row in the EOP-40 table are annotated in place rath
 the claim that the anchor "holds only as long as someone keeps the two in step" is now true only of
 DTO shapes, not of the four mirrored enums, whose members are held in step by a build gate.
 
+### Amendment — EOP-108 (2026-08-19): codegen re-evaluated because the parse landed, and still declined
+
+ADR-045 adopted runtime validation of responses: the ten JSON-returning helpers in `ui/src/api.ts`
+now parse their bodies through hand-written per-DTO parsers instead of `as SomeDto`. That is
+precisely the third of the three "When to revisit codegen" triggers above, and ADR-045's fifth
+acceptance criterion required this ADR to re-evaluate rather than let the trigger pass unremarked.
+
+**Decision: the Decision 1 rejection is upheld. No generator is adopted.**
+
+The re-evaluation, honestly stated:
+
+| What the trigger predicted | What is actually true now |
+|---|---|
+| A generated schema and a generated type become one artefact, so the dependency buys two things instead of one | Correct, and it is the strongest form of the codegen case yet available. Twelve parsers and eleven interfaces are two hand-written expressions of one contract, and a generator would collapse them |
+| The protected surface stays small enough for hand-writing to be cheap | **No longer true.** Decision 1's table justified hand-writing partly by "a three-enum, roughly twenty-line surface". `ui/src/api.ts` went from 525 to 883 lines, most of it parsers. That specific argument is spent and must not be recycled |
+| — | A *new* hazard exists that codegen would remove: because a parser reconstructs its object from the fields it reads, a field added to an interface but not to its parser is **dropped** and arrives `undefined`, while still typechecking. ADR-045 records this as its principal negative. Nothing detects it today; review does — but see the correction below: codegen is **not** the only mechanism that would remove it |
+
+Why the decision nevertheless stands:
+
+- **A generator is a stack decision, not an amendment.** That was Decision 1's second and more
+  durable ground and it is untouched by the trigger firing. Introducing one means a new `ui/`
+  dependency, a generator step in the `ui` CI job, and a policy on whether output is committed —
+  each of which needs its own ADR, and none of which EOP-108's scope covers.
+- **The work a generator would have saved is already done.** The parsers exist, are tested by 42
+  new Vitest cases, and `npm run verify` is green. Adopting codegen now would mean deleting working,
+  reviewed code to reintroduce a dependency — a rewrite, not a saving. **This is the weakest of the
+  four grounds** — see the self-reinforcing caveat at the end of this amendment.
+- **EOP-110 is open against the `ui/` dev toolchain** (six CVEs, one critical). Adding a generator to
+  that toolchain while its existing supply chain is under remediation is the wrong order.
+- **The parsers are hand-written *deliberately*, per ADR-045 §1**, not as a stopgap. Reversing that
+  belongs in a superseding ADR, not in an amendment written the same day.
+
+**What this leaves for next time.** Two of the three original triggers are now spent — shapes are
+guarded (trigger 1) and a parse exists (trigger 3) — so a future argument for codegen cannot lean on
+either. It should lean on the new trigger this amendment adds instead:
+
+- **A parser field-coverage defect reaches `main`** — a field present in a DTO interface, absent from
+  its parser, and therefore silently dropped at runtime. Review has already been shown to miss
+  defects of exactly this shape once (EOP-105's unregistered `StrideCategory` mirror), and unlike
+  the spent triggers it would be an observed failure rather than a predicted one. One occurrence
+  should reopen Decision 1 with the presumption reversed.
+
+**A correction, because the option set here is three wide and not two.** An earlier draft of this
+amendment called field-coverage "the defect class only a generator removes". That is false in *this*
+repository, and the error mattered enough to fix in place rather than leave for a reader to quote:
+`src/test/java/org/maglez/eop/docs/` already runs four gates that read source and Markdown **as
+text** and compare two extracted sets — `EnumMirrorParityTest`, `AdrIndexConsistencyTest`,
+`DeckArithmeticClaimsTest` and `TrickPlayExceptionOriginTest`. A fifth in the same idiom would close
+field coverage with no generator, no `ui/` dependency and no contact with EOP-110's supply-chain
+remediation. Concretely it would read `ui/src/api.ts` as text (in Java, for the same reason
+`EnumMirrorParityTest` is a Java test: `ui/` deliberately has no `@types/node`, so nothing inside
+`ui/` can read files off disk), collect for each `interface X` the declared property names and their
+`?` optionality, collect for the matching `function parseX(` every string literal passed as the `key`
+argument to the nine field readers plus the keys in the returned object literal and the
+`...(x === undefined ? {} : { x })` spread, and assert the two sets are equal in both directions with
+optional properties read by an `optional*` reader rather than a `require*` one. Registration would be
+by the `interface X` ⇒ `parseX` convention rather than a hand-written list, so unlike
+`EnumMirrorParityTest.mirrors()` it would not carry the unregistered-mirror hole that
+`StrideCategory` fell through. It would inherit the same acknowledged limitation as its siblings —
+it recognises only the idioms currently in the file — which ADR-006 already accepts as the price of
+this class of gate.
+
+So the honest statement of the choice, should the trigger fire, is between **three** options and not
+two: adopt codegen, add a text-comparison build gate, or continue with review. This amendment
+declines codegen on the three grounds above that survive scrutiny — a generator is a stack decision,
+EOP-110 sequences ahead of it, and reversing ADR-045 §1 belongs in a superseding ADR — and it does
+**not** rest on the claim that codegen is the sole remedy. The fourth ground offered above ("the work
+is already done, so adopting now means deleting working code") is the weakest of the four and is
+noted here as self-reinforcing: it grows stronger every time it is used and would have blocked
+codegen at any point after the first parser was written, so it should not be treated as admissible a
+second time in the way the other three are. Two further notes for whoever picks this up: the build
+gate is the *cheaper* of the two mechanical options and should be evaluated first; and it is not
+free either, since a hand-written text matcher is itself code that can drift from the idioms it
+scans.
+
 ## Related
 
 - [ADR-004: API Contract-First](ADR-004-api-contract-first.md) — OpenAPI contract drives shared types
 - [ADR-006: Build Quality Gates](ADR-006-build-quality-gates.md) — records `EnumMirrorParityTest` as
   a documentation-integrity gate
+- [ADR-045: Front-End Response Validation](ADR-045-frontend-response-validation.md) — adopts the
+  hand-written per-DTO parsers that fired this ADR's third codegen revisit trigger (EOP-108)
 
 - GOV.UK Design System: https://design-system.service.gov.uk/
 - GOV.UK Frontend: https://frontend.design-system.service.gov.uk/

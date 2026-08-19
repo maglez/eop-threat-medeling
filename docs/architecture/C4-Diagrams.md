@@ -803,7 +803,7 @@ flowchart TD
         FORMS["CreateSessionForm / JoinSessionForm<br/>GOV.UK error summary, client-side validation"]
         LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader"]
         GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop"]
-        API["api.ts<br/>typed DTOs, ApiError(status, message)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
+        API["api.ts<br/>typed DTOs + per-DTO runtime parsers (ADR-045)<br/>ApiError(status, message), ContractViolationError(502)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
     end
 
     SS[("sessionStorage<br/>per-tab, per-origin<br/>key: eop_session (ADR-015)")]
@@ -824,7 +824,8 @@ flowchart TD
 ```
 
 **One boundary, and it is now fully respected.** `api.ts` is the SPA's interface adapter: it owns
-every wire concern — the relative-URL rule from ADR-017, the DTO shapes, the
+every wire concern — the relative-URL rule from ADR-017, the DTO shapes, **the runtime validation
+of every response body against those shapes (ADR-045)**, the
 `X-EoP-Player-Token` header name, and the translation of a `problem+json` body into an
 `ApiError` carrying a numeric `status`. Components hold view state and call it. All five
 server calls honour this boundary: `createSession`, `joinSession`, `getSession`,
@@ -832,6 +833,23 @@ server calls honour this boundary: `createSession`, `joinSession`, `getSession`,
 to Caddy represents the SSE stream, which is opened by `subscribeToSession` in `api.ts`
 and handed back to `LobbyScreen` as an `AbortController` — the component holds only the
 teardown handle, not the transport.
+
+> **Amended 2026-08-19 (EOP-108): response validation is the fifth wire concern, and it is
+> the reason the boundary is enforceable rather than merely documented.** Until EOP-108 the
+> list above had four items and every helper ended `return (await response.json()) as SomeDto;` —
+> a type assertion TypeScript erases at runtime, so `api.ts` owned the DTO *shapes* as a
+> compile-time claim and validated nothing. Each of the ten JSON-returning helpers now passes its
+> body through a **module-private** `parse*` function; the twelve parsers are deliberately not
+> exported, which is what turns "`api.ts` is the only place a response is parsed" from a
+> convention a reviewer must police into a property the compiler enforces — no component can
+> reach for one. An out-of-contract body throws `ContractViolationError extends ApiError` with a
+> synthetic `status = 502` (the server said `200`, so reusing its status would lie), which every
+> existing `catch (e) { if (e instanceof ApiError) … }` already handles unchanged. Three helpers
+> correctly have no parser and this is not an omission: `startNewGame` reads no body, `dealCards`
+> returns `204`, and `subscribeToSession`'s `data:` frames carry no DTO — the re-fetch they
+> trigger goes through a parsed helper. Strictness is bounded to structure and enum membership,
+> **not** value formats, so the honest claim about these DTOs is that they are *structurally and
+> enumerably* validated. See [ADR-045](../adr/ADR-045-frontend-response-validation.md).
 
 **Build-time flag gates the game screen (ADR-037).** `App.tsx` (the view router) reads `VITE_GAME_SCREEN_ENABLED` at line 46 and gates the lobby-to-game transition at line 148 — `LobbyScreen` invokes the `onGameStarted` callback and `App.tsx` decides whether to advance to `{ screen: 'game' }`. The flag defaults to `false` (fail-closed) and is declared in
 `ui/src/vite-env.d.ts`.
@@ -878,7 +896,35 @@ sequenceDiagram
     API-->>L: onError(ApiError(status=403, message=detail))
     Note over L: branches on err.status === 403 — calls onSessionEnd()<br/>which clears eop_session and returns to home screen
     end
+
+    rect rgb(255, 240, 220)
+    Note over L,SRV: Out-of-contract 200 body (ADR-045, EOP-108) — a second outcome of a 200
+    SRV-->>API: 200 {"status":"WHATEVER", ...}
+    Note over API: parseSessionStateDto rejects before any state is returned
+    API-->>L: throws ContractViolationError(status=502,<br/>"SessionStateDto.status: expected one of LOBBY, IN_PROGRESS, COMPLETED, ABANDONED")
+    Note over L: setError(message) runs before the 403/404 test, so the<br/>player stays in the lobby with the previous validated state<br/>rendered beneath the error summary — never a partial render
+    end
 ```
+
+**A `200` now has two outcomes, and that is the change EOP-108 made to this path.** Before
+EOP-108 the only arrow out of a `200` was `API-->>L: session`, because the body was cast rather
+than parsed and therefore always "succeeded" — an out-of-contract enum flowed into React state
+and every positive comparison against it silently evaluated `false`, forever, with nothing on
+the diagram or in the UI to show it. The orange block is the branch that replaced that silence.
+Three properties of it are worth stating because each was a deliberate choice recorded in
+[ADR-045](../adr/ADR-045-frontend-response-validation.md):
+
+- **It fails closed and stays closed.** `LobbyScreen`'s `catch` calls `setError(message)` *before*
+  it tests `err.status === 403 || err.status === 404`, so a `502` renders the message and falls
+  through without ejecting the player. The lifecycle transitions (`status === 'COMPLETED'` →
+  `onSessionEnd()`, `'IN_PROGRESS'` → `onGameStarted`) sit *after* the parse inside the same
+  `try`, so a rejected payload cannot fire one.
+- **The previous state is stale-but-valid, never partial.** No component merges fields out of a
+  rejected body; ADR-045 explicitly rejected degrading to a partial render, because that would
+  reinstate the original defect of an out-of-contract value producing a plausible-looking UI.
+- **The message names the DTO and the field, never the value.** These messages render into a
+  GOV.UK `ErrorSummary`, so echoing the offending payload would launder a response body into
+  rendered output.
 
 **The stream is a doorbell, not a data channel.** Every frame triggers a fresh
 credentialed `getSession`, so no state ever arrives over the stream and the SSE payload
