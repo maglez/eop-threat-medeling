@@ -197,6 +197,51 @@ does, and an unset label filter matches every changeset including labelled ones.
 The decision below therefore covers labels as well as contexts: neither is used,
 and neither may be reached for as the other's replacement.
 
+### The attribute has two spellings, and `contextFilter` is the primary one
+
+This was found by @architecture-guardian while reviewing EOP-35 and is recorded
+here because it falsified the guard test's first revision. On a changeset, the
+gating attribute has **two** legal spellings in `liquibase-core` 5.0.3, and the
+one most people would write is the deprecated one:
+
+| attribute | declarations in `dbchangelog-latest.xsd` | status |
+|---|---|---|
+| `contextFilter` | 6 | primary — read first |
+| `context` | 6 | fallback, used only when `contextFilter` is empty |
+| `contexts` (plural) | 0 | not a changeset attribute at all |
+| `labels` | 5 | the only label spelling on a changeset |
+| `labelFilter` | 0 | a *runtime* property name, not an attribute |
+
+`dbchangelog-latest.xsd` is the schema `db.changelog-master.xml` names in its
+`xsi:schemaLocation`, so it is authoritative for what our changesets may legally
+carry. The precedence is explicit in `liquibase/changelog/ChangeSet.java:432-434`:
+
+```java
+this.contextFilter = new ContextExpression(node.getChildValue(null, "contextFilter", String.class));
+if (this.contextFilter.isEmpty()) {
+    contextFilter = new ContextExpression(node.getChildValue(null, "context", String.class));
+}
+```
+
+The same precedence governs SQL visitors at `:506-508`; the serialised field list
+at `:1496` names `contextFilter`; `:1532` accepts either. The field itself is
+`private ContextExpression contextFilter` (`:155`). Labels have no such pair —
+`:436` reads `labels` with no fallback.
+
+Why this is recorded rather than merely fixed: the guard test's first revision
+matched `\bcontexts?\s*=`, which covers `context=` **and a `contexts=` spelling
+that the schema does not declare anywhere**, while missing `contextFilter=`
+entirely because `Filter` intervenes before the `=`. It therefore spent its only
+flexibility on a spelling that cannot occur and left the preferred spelling
+unguarded — and `.opencode/rules/database.md` had already been changed to promise
+agents that the build would catch it. The matcher is now
+`\b(context|contexts|contextFilter)\s*=`, and injecting
+`contextFilter="prod"` into `001-card-catalogue.xml` was confirmed to fail the
+build before this was called done. The general lesson is in the amendment to
+[ADR-006](ADR-006-build-quality-gates.md): an attribute matcher is a closed
+enumeration of accepted spellings and must be revisited when the schema admits
+another.
+
 ### Resolved versions at time of verification
 
 Read from the project's own test classpath via
@@ -247,8 +292,9 @@ be dated, amended and superseded.
 **Positive**
 
 - The rule file is back to being a set of directives an agent can act on. The
-  `context` entry is roughly half its former size and names no version, so it
-  cannot silently rot.
+  `context` entry went from 1859 bytes to 1112, a 40% cut, and names no version,
+  so it cannot silently rot. Re-measure with
+  `awk 'NR==37' .opencode/rules/database.md | wc -c`.
 - The verification is now falsifiable in the honest sense: it states the versions
   it holds for, so a dependency bump makes it *checkable* rather than quietly
   untrue. `docs/adr/README.md` and `AdrIndexConsistencyTest` make any future
@@ -277,8 +323,9 @@ be dated, amended and superseded.
   the walk finding no files, so the first two cannot pass vacuously. What the
   test does **not** cover is the gap to keep in mind: it reads the two YAML
   files, so an environment override (`SPRING_LIQUIBASE_CONTEXTS=...` set on the
-  container, which per [ADR-013](ADR-013-feature-flags.md) is exactly how
-  properties get changed in a deployed environment) bypasses it entirely and
+  container — the same env-var override mechanism [ADR-013](ADR-013-feature-flags.md)
+  relies on for flags, though that ADR governs `eop.features.*` rather than
+  arbitrary Spring properties) bypasses it entirely and
   would still be silent. It also only proves *absence* — it says nothing about
   whether a filter, once deliberately introduced, names the right context.
 - **One row of the matrix above is invisible to the profile half of that test.**

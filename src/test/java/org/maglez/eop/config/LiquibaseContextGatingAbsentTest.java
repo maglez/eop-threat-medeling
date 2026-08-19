@@ -41,12 +41,24 @@ import org.springframework.core.io.ClassPathResource;
  * impersonation structurally unrepresentable, which is what turns a convention breach here into a
  * security regression nobody observes. Before this class, all three could happen with a green build.
  *
- * <p>The assertions are deliberately structural rather than prose-matching. They check for the
- * presence of specific XML attributes and specific configuration keys, so they cannot rot into the
- * phrase-list guards that {@code build-quality.md} warns about — a guard whose matcher is a list of
- * spellings proves only that those spellings are absent, whereas an attribute either is or is not
- * present on a changeset. Equally, they are not guards that can become unfireable: they stay firing
- * for as long as Liquibase supports the attributes.
+  * <p>The assertions are structural rather than prose-matching: they check for specific XML
+  * attributes and specific configuration keys, not for a phrasing that a rewrite could dodge. That
+  * makes them sturdier than the {@code docs} guards {@code build-quality.md} warns about, but it does
+  * not exempt them from the same caveat, and an earlier revision of this Javadoc claimed it did. An
+  * XML attribute name <em>is</em> a spelling, so the context matcher below is a closed enumeration of
+  * the spellings Liquibase accepts and proves only that those are absent. It must be revisited
+  * whenever the changelog schema admits another. That is not hypothetical: the first revision of this
+  * class matched only {@code context}/{@code contexts} and was blind to {@code contextFilter}, which
+  * is the <em>primary</em> spelling in the pinned {@code liquibase-core} 5.0.3 —
+  * {@code ChangeSet.java:432-434} reads {@code contextFilter} first and falls back to {@code context}
+  * only when it is empty, {@code dbchangelog-latest.xsd} declares each of the two six times, and the
+  * serialised field list at {@code ChangeSet.java:1496} names {@code contextFilter}. A changeset
+  * written the way Liquibase 5 prefers passed all five assertions. Conversely {@code contexts=} is
+  * declared nowhere in that schema and is matched only as defensive breadth.
+  *
+  * <p>What the assertions genuinely cannot become is unfireable, in the sense ADR-006 uses when it
+  * instructs that a guard with nothing left to catch be deleted rather than left passing: these stay
+  * capable of failing for as long as Liquibase supports the attributes at all.
  *
  * <p>{@code labels} and {@code label-filter} are covered alongside {@code context} on purpose.
  * Labels are Liquibase's sibling gating mechanism and fail open in precisely the same shape —
@@ -66,11 +78,26 @@ class LiquibaseContextGatingAbsentTest {
 
     private static final Path CHANGELOG_DIRECTORY = Path.of("src/main/resources/db/changelog");
 
-    /** Matches a {@code context=} or {@code contexts=} XML attribute, whatever the surrounding whitespace. */
-    private static final Pattern CONTEXT_ATTRIBUTE = Pattern.compile("\\bcontexts?\\s*=");
+    /**
+     * Matches any of the changeset-side context attributes, whatever the surrounding whitespace.
+     *
+     * <p>{@code contextFilter} is the primary spelling in {@code liquibase-core} 5.0.3 and
+     * {@code context} its deprecated fallback ({@code ChangeSet.java:432-434}); the schema this
+     * repository's master changelog names, {@code dbchangelog-latest.xsd}, declares each six times.
+     * {@code contexts} is declared nowhere in that schema and is included only as defensive breadth.
+     */
+    private static final Pattern CONTEXT_ATTRIBUTE = Pattern.compile("\\b(context|contexts|contextFilter)\\s*=");
 
-    /** Matches a {@code labels=} XML attribute. Liquibase spells the changeset-side attribute plural. */
-    private static final Pattern LABELS_ATTRIBUTE = Pattern.compile("\\blabels\\s*=");
+    /**
+     * Matches the changeset-side labels attribute.
+     *
+     * <p>{@code labels} is the only spelling Liquibase accepts here — {@code ChangeSet.java:436} reads
+     * it with no fallback alternative, and the schema declares it five times while declaring
+     * {@code labelFilter} not at all. {@code labelFilter} is the runtime filter's name
+     * ({@code spring.liquibase.label-filter}, covered by the profile assertions below) rather than a
+     * changeset attribute, and is matched here only as defensive breadth.
+     */
+    private static final Pattern LABELS_ATTRIBUTE = Pattern.compile("\\b(labels|labelFilter)\\s*=");
 
     @Test
     @DisplayName("no changeset carries a context attribute, because a bare context restricts nothing")

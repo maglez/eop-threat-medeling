@@ -99,8 +99,21 @@ if anybody ever wants it. Until then, ad-hoc inspection of the in-memory schema 
 an in-memory H2 database is only reachable from inside the JVM that owns it in any case, unless
 an H2 TCP server is explicitly started, which nothing here does.
 
+**Amendment, 2026-08-19 (EOP-35).** The "Context labels" row in the comparison table above
+records a capability this project has since decided never to use. The row stands as written —
+it was true at selection time and it remains true of Liquibase — but it is not a reason to
+reach for `context="prod"`. A context attribute restricts nothing unless
+`spring.liquibase.contexts` names a real, non-empty context in **every** profile, including the
+one that must not run the changeset; left unset, as it is here, the tag is inert and the
+changeset runs everywhere. `LiquibaseContextGatingAbsentTest` now fails the build if any
+changeset in this repository carries `context`, `contextFilter` or `labels`, or if either
+profile file sets the property. See
+[ADR-043](ADR-043-liquibase-contexts-are-not-used.md) for the mechanism, the evidence and the
+residual risks.
+
 ## Related
 
 - [ADR-002: Spring Boot Walking Skeleton](ADR-002-spring-boot-bootstrap.md)
 - [ADR-007: Versioning Strategy](ADR-007-versioning-strategy.md)
+- [ADR-043: Liquibase contexts are not used](ADR-043-liquibase-contexts-are-not-used.md)
 - `.opencode/rules/database.md`
