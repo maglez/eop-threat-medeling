@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - **Java 21** (JDK) — Install via [Homebrew](https://brew.sh): `brew install openjdk@21`
-- **Node.js 20+** — **required** for the Graphify knowledge graph, whose CLI OpenCode launches as a separate Node process from `mcp.graphify.command` in `.opencode/opencode.json`. Install via [Homebrew](https://brew.sh): `brew install node`. Below Node 20 the MCP server silently fails to start and no `graphify_*` tools appear. OpenCode's own plugins under `.opencode/` do **not** need it — they run on OpenCode's embedded runtime, which installs their `node_modules` itself. Also required later for the React front-end (ADR-009), which is not scaffolded yet.
+- **Node.js 22+** — two separate consumers, and the higher floor wins. The **front end** sets it: `ui/package.json` declares `engines.node >= 22`, and CI builds `ui/` on Node 22 (`SETUP.md`, `.github/workflows/ci.yml`). The **Graphify knowledge graph** needs only Node 20+ — but that is its minimum, not a supported choice here, since Node 20 reached end-of-life on 2026-04-30 and receives no further security patches. Its CLI is launched by OpenCode as a separate Node process from `mcp.graphify.command` in `.opencode/opencode.json`, and below Node 20 the MCP server silently fails to start and no `graphify_*` tools appear. Install via [Homebrew](https://brew.sh): `brew install node`. OpenCode's own plugins under `.opencode/` do **not** need it — they run on OpenCode's embedded runtime, which installs their `node_modules` itself.
 - **direnv** — [install guide](https://direnv.net/docs/installation.html)
 - **uv** — **required** for the Atlassian MCP server, which OpenCode launches as `uvx mcp-atlassian`. Install via [Homebrew](https://brew.sh): `brew install uv`. Without `uvx` on `PATH` the server silently fails to start and no `atlassian_jira_*` tools appear.
 - **GitHub PAT** with `repo` scope — used by both the read-only GitHub MCP server and the `gh` CLI
@@ -176,8 +176,11 @@ See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/c
 ## Front-End (React + TypeScript)
 
 `ui/` is scaffolded and tracked. Stack: React 18 + TypeScript + Vite + GOV.UK Design System
-CSS (ADR-009). The Vite dev server proxies `/api/*` to Spring Boot on `:8080` so local
-development and the deployed Caddy stack (ADR-017) share a single origin.
+CSS (ADR-009). The Vite dev server proxies `/api` and `/health` to Spring Boot on `:8080` so
+local development and the deployed Caddy stack (ADR-017) share a single origin.
+
+The dev server listens on **`:5371`**, not Vite's default `:5173` — `ui/vite.config.ts` sets
+`server.port` explicitly, and that file is the only source of truth for the port.
 
 ### Quick start
 
@@ -185,14 +188,14 @@ development and the deployed Caddy stack (ADR-017) share a single origin.
 cd ui
 npm install
 npm run dev
-# Opens at http://localhost:5173 — /api/* proxied to :8080
+# Opens at http://localhost:5371 — /api and /health proxied to :8080
 ```
 
 ### Development workflow
 
 ```
 Terminal 1: ./mvnw spring-boot:run     # API on :8080
-Terminal 2: cd ui && npm run dev        # Front-end on :5173
+Terminal 2: cd ui && npm run dev        # Front-end on :5371
 ```
 
 ### Available scripts

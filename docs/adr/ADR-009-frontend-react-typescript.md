@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-08-19 — five stack and layout claims diverged from the shipped code; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -41,6 +41,11 @@ Adopt **React + TypeScript + Vite + `govuk-frontend` CSS** as the front-end tech
 
 ### Stack components
 
+> **Amendment, 2026-08-19 (EOP-40): the React major below is wrong.** `ui/package.json` pins
+> `react ^18.3.1` and `@types/react ^18.3.11` — React **18**, not 19. The rest of this list holds.
+> The typed `fetch` wrappers exist but live in `ui/src/api.ts`, not in a `services/` directory.
+> See Amendments.
+
 - **Language:** TypeScript (strict mode)
 - **UI framework:** React 19 with functional components and hooks
 - **Build tool:** Vite
@@ -50,6 +55,11 @@ Adopt **React + TypeScript + Vite + `govuk-frontend` CSS** as the front-end tech
 - **Testing:** Vitest + React Testing Library
 
 ### Project layout
+
+> **Amendment, 2026-08-19 (EOP-40): the tree below is aspirational, not actual.** Of the five
+> `src/` subdirectories only `components/` was built. There is no `pages/`, `hooks/`, `services/`
+> or `types/`, and no `public/`; the real tree also has `assets/` and `utils/`, and the entry
+> document is `ui/index.html` at the package root. See Amendments for the shipped layout.
 
 ```
 ui/
@@ -67,9 +77,17 @@ ui/
 
 ### Development workflow
 
+> **Amendment, 2026-08-19 (EOP-40): the port is `:5371`, not `:5173`.** `ui/vite.config.ts` sets
+> `server.port` explicitly and is the only source of truth for it. The proxy covers `/api` **and**
+> `/health`. See Amendments.
+
 The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the front-end runs on `:5173` and the back-end on `:8080` during development with no CORS issues.
 
 ### AI agent implications
+
+> **Amendment, 2026-08-19 (EOP-40): the contract anchor is a module, not a directory.** The DTO
+> interfaces are in `ui/src/api.ts`; `ui/src/types/` does not exist. The intent below is honoured,
+> the location is not. Same correction applies to the third Mitigation. See Amendments.
 
 - `@ui-builder` produces `.tsx` components using functional patterns
 - TypeScript interfaces in `ui/src/types/` mirror backend DTOs — agents use these as a contract anchor
@@ -97,6 +115,75 @@ The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the 
 - The UI builder agent's rules specify GOV.UK CSS class usage and GOV.UK page template structure
 - A base `GovUkPage` layout component will be created during bootstrapping that wraps `<head>`, skip link, header, footer, and main content area — this stays consistent across all pages
 - TypeScript interfaces shared between API DTOs and front-end types serve as the contract anchor for agents on both sides
+
+> **Amendment, 2026-08-19 (EOP-40): the second mitigation was never built as a component, and the
+> third stands in a different place and by hand.** There is no `GovUkPage`, and the page furniture it
+> lists is split across two files rather than one: the `<head>` and skip link are in `ui/index.html`,
+> the header, footer and main content area are inline in `ui/src/App.tsx`. The shared interfaces were
+> never placed in a `types/` directory; they are in `ui/src/api.ts`, hand-maintained rather than
+> generated from the OpenAPI contract. See Amendments.
+
+## Amendments
+
+**Amendment, 2026-08-19 (EOP-40): five claims corrected against the shipped code.**
+
+This ADR was written on 2026-07-26, before `ui/` existed. The decision it records — React +
+TypeScript + Vite + `govuk-frontend` CSS — was executed and holds. Five of its *descriptive*
+claims about how that would look were never true of the code that shipped, and one of them
+(the React major) is a version claim an agent could act on. The original text above is left
+intact as the historical record, per the house convention; this section is what is true.
+
+| Claim in this ADR | Reality | Evidence |
+|---|---|---|
+| "React **19** with functional components and hooks" (Stack components) | React **18** | `ui/package.json` — `react ^18.3.1`, `react-dom ^18.3.1`, `@types/react ^18.3.11` |
+| `src/` has `components/`, `pages/`, `hooks/`, `services/`, `types/`, plus `public/` (Project layout) | Only `components/` was built. No `pages/`, `hooks/`, `services/`, `types/` or `public/`. The tree also has `assets/` and `utils/`, which the ADR does not list | `git ls-files ui/`; `ui/src/` |
+| "the front-end runs on `:5173`" (Development workflow) | `:5371`, and the proxy covers `/api` **and** `/health` | `ui/vite.config.ts` — `server.port: 5371`, `server.proxy` keys `/api` and `/health` |
+| "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory — and they are hand-maintained rather than generated from `docs/api/openapi.yml`, so the anchor holds only as long as someone keeps the two in step | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
+| "A base `GovUkPage` layout component will be created during bootstrapping" (second Mitigation) | No such component exists, and the five items the mitigation lists are split across **two** files rather than gathered into one — which is why no single component emerged. The `<head>` and the skip link are in the Vite entry document; the header, footer and main content area are inline in the root component. The consistency the mitigation aimed at is achieved without the named abstraction | `git ls-files ui/src/components/` lists no `GovUkPage`, and `grep -rn govuk-skip-link ui/src/` returns nothing; `ui/index.html:14` carries `govuk-skip-link`; `ui/src/App.tsx` carries `govuk-header` (:210), `govuk-footer` (:222) and `govuk-main-wrapper` / `id="main-content"` (:111, :127, :258) |
+
+### The shipped layout
+
+```
+ui/
+  index.html            # entry document (no public/)
+  package.json          # react 18, typescript 5.6, vite 5.4, govuk-frontend 5.7, engines.node >=22
+  package-lock.json
+  tsconfig.json         # strict: true
+  vite.config.ts        # dev server :5371, proxies /api + /health to :8080, build → dist/
+  eslint.config.js
+  Dockerfile            # Node build stage → Caddy serve stage
+  Caddyfile             # single origin: static assets + /api + /health (ADR-017)
+  scripts/
+    copy-govuk-assets.mjs   # wired as the prebuild/predev npm scripts
+  src/
+    main.tsx            # entry
+    App.tsx
+    api.ts              # DTO interfaces + typed fetch wrappers (the contract anchor)
+    components/         # GOV.UK-styled screens and forms, co-located *.test.tsx
+    utils/              # cardImagePath.ts
+    assets/cards/       # 68 card images (EOP-66)
+    setupTests.ts
+    vite-env.d.ts
+```
+
+### What did not change
+
+- The decision itself: React + TypeScript + Vite + `govuk-frontend` CSS, TypeScript strict mode,
+  React built-in state management with no external state library, Vitest + React Testing Library.
+  All four are verifiable in `ui/package.json` and `ui/tsconfig.json`
+- The single-origin claim in Development workflow. There are no CORS issues, and the reason
+  survives into production: `ui/Caddyfile` serves assets and forwards `/api` and `/health` from
+  one origin (ADR-017)
+- The `Implemented?` cell for this ADR in `docs/adr/README.md` — `Yes — ui/ scaffolded, built and
+  served` — which is correct and was verified against the filesystem, not against prose. Only the
+  Status cell moved, and only because `AdrIndexConsistencyTest` requires every ISO date in an ADR's
+  status line to appear in its index row
+
+### Why the front-end port is `:5371`
+
+`5371` is a digit transposition of Vite's default `5173`, and is very likely a typo in the original
+commit. It is nonetheless what the code does, so every document now says `:5371`. Changing the port
+is a code change, out of scope for a documentation-truth story, and is raised separately.
 
 ## Related
 
