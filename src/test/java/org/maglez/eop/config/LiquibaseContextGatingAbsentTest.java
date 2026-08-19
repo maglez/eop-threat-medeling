@@ -114,6 +114,18 @@ class LiquibaseContextGatingAbsentTest {
      * {@link YamlPropertiesFactoryBean} — the same flattening Spring itself applies — so a key written
      * in nested or dotted form is caught either way, and a value of any shape is caught rather than only
      * a non-empty one. An empty value is the dangerous case, not the safe one.
+     *
+     * <p>Deliberately enumerates {@code keySet()} rather than {@code stringPropertyNames()}: the latter
+     * returns only entries whose <em>value</em> is a {@code String}, so YAML that coerces to another type
+     * — {@code contexts: no} binds to a {@code Boolean}, {@code contexts: 0} to an {@code Integer} — would
+     * set the key while leaving this assertion green. Those two happen to be fail-closed for filtering
+     * (Liquibase ends up matching on the literal name {@code false} or {@code 0}, which never matches
+     * {@code prod}), but they are still a breach of this decision, and a guard that misses them is not
+     * saying what its own failure message claims. One encoding remains invisible here and cannot be
+     * reached by any choice of accessor: {@code contexts: {}} is an empty map, which
+     * {@code YamlProcessor.buildFlattenedMap} recurses into, contributing no key at all rather than
+     * flattening to the empty string. It is backstopped by the changeset-attribute half of this test,
+     * and conceded in ADR-043's consequences.
      */
     private void assertGatingUnsetIn(final String resourceName) {
         final YamlPropertiesFactoryBean factory = new YamlPropertiesFactoryBean();
@@ -121,7 +133,9 @@ class LiquibaseContextGatingAbsentTest {
         final Properties properties = factory.getObject();
         assertThat(properties).as("%s should be readable from the classpath", resourceName).isNotNull();
 
-        assertThat(properties.stringPropertyNames())
+        final List<String> propertyNames = properties.keySet().stream().map(String::valueOf).toList();
+
+        assertThat(propertyNames)
                 .as("%s must not set Liquibase context or label gating — see ADR-043", resourceName)
                 .noneMatch(name -> name.startsWith("spring.liquibase.contexts")
                         || name.startsWith("spring.liquibase.label-filter")

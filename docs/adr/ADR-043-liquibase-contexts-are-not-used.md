@@ -281,6 +281,22 @@ be dated, amended and superseded.
   properties get changed in a deployed environment) bypasses it entirely and
   would still be silent. It also only proves *absence* — it says nothing about
   whether a filter, once deliberately introduced, names the right context.
+- **One row of the matrix above is invisible to the profile half of that test.**
+  `contexts: {}` is an empty YAML *map*, and `YamlProcessor.buildFlattenedMap`
+  recurses into it, so it contributes no flattened key at all rather than
+  flattening to the empty string. The property assertion therefore cannot see it,
+  even though the table above classes it as one of the thirteen leaking
+  encodings. No choice of accessor fixes this — it is a property of the
+  flattener, not of the test. Two things stop it mattering much: the
+  changeset-attribute half is unaffected, so a `context="prod"` changeset still
+  turns the build red no matter how the property was written; and this direction
+  is only reachable at all by someone deliberately setting a property the
+  decision says to leave alone. It is recorded here so the enumeration above is
+  read as what it is — a control with a known blind spot — rather than as
+  complete coverage of the matrix. The sibling encodings `contexts: no` and
+  `contexts: 0`, which coerce to non-`String` values, *were* in this blind spot
+  and no longer are: the test enumerates `keySet()` rather than
+  `stringPropertyNames()` precisely so that a type coercion cannot hide a key.
 - **A green build is not proof that the property is unset at runtime.** Following
   from the above: this decision is enforced at the source level only. The
   fail-open direction is unchanged, so an override that names nothing produces a
