@@ -112,7 +112,7 @@ PostgreSQL connection details are read from `DATASOURCE_URL`, `DATASOURCE_USER`,
 
 ### Adding a migration
 
-1. Create a new file in `src/main/resources/db/changelog/changes/YYYY-MM-DD--<description>.xml`, using the date of authorship. **Never add a `007-` file** — the legacy `NNN-` sequence is frozen at `006-`, because `<includeAll>` orders by filename and a `007-` name would execute ahead of all three dated migrations. See [ADR-044](../adr/ADR-044-changelog-file-naming-is-dated.md).
+1. Create a new file in `src/main/resources/db/changelog/changes/YYYY-MM-DD--<description>.xml`, using the date of authorship. **Never add a `007-` file** — the legacy `NNN-` sequence is frozen at `006-`, because `<includeAll>` orders by filename and a `007-` name would execute ahead of every dated migration. See [ADR-044](../adr/ADR-044-changelog-file-naming-is-dated.md).
 2. Add one or more `<changeSet>` blocks with `<rollback>` instructions
 3. Run `./mvnw spring-boot:run` — Liquibase applies the new changeset automatically
 4. To preview the SQL: `./mvnw liquibase:updateSQL`
