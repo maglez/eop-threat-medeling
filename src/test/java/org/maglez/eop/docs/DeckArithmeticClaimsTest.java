@@ -34,6 +34,22 @@ import org.junit.jupiter.api.Test;
  * number changed rather than a re-reading of every document. The second invariant is the cheap one the first cannot
  * express: no superseded deck size stated in Java prose, where javadoc went stale five times in a row.
  *
+ * <p>The third invariant was added by EOP-96 for a defect the second structurally cannot see: a number that is not a
+ * deck size but is <em>derived</em> from one. Five places priced a per-trick score assembler at the figure a
+ * 78-card deck produces, and because 79 is not 78 the figure survived two deck trims and EOP-93's sweep untouched.
+ * Both the trick count and the read count are computed here from {@link #CURRENT_DECK_SIZE}, so the next trim again
+ * needs one number changed.
+ *
+ * <p>That invariant is narrow on purpose, and the narrowness is the interesting part. It matches only a round-trip
+ * count, only where the line is pricing a read, and never inside a Markdown table row. Each restriction was forced
+ * by a real line in this repository: ADR-023 tabulates the 78-card and 74-card deals under EOP-69's Amends header,
+ * which is correct history; ADR-011 says "while the 26 descriptions existed ... neither graphify_get_node nor
+ * graphify_query_graph rendered them", which any matcher keyed on "query" or on the derived trick count would have
+ * flagged. Widening it would trade a defect this repository has had for false positives it has not.
+ *
+ * <p>The standing caveat applies to all three: these are phrase lists, not semantic analysis. A green build here is
+ * not proof that the documentation is right, only that the specific wordings that have gone stale before are absent.
+ *
  * <p>Be precise about what "a universal claim" means here, because the phrase flatters the implementation. {@link
  * #EVERY_TABLE_SIZE} is a list of the phrasings that have actually gone stale in this repository, not a semantic
  * analysis of quantification. "At all four table sizes", "at each player count" and "the final trick is always
@@ -137,6 +153,19 @@ class DeckArithmeticClaimsTest {
     /** Splits a paragraph into sentences. Sentence scope is what keeps the first invariant honest. */
     private static final Pattern SENTENCE_BOUNDARY = Pattern.compile("(?<=[.!?])\\s+");
 
+    /**
+     * Matches prose that is costing out a read, and nothing wider. Keyed on these two phrases rather than on "read"
+     * or "query" alone because ADR-011 reads "while the 26 descriptions existed, graph.json held them but neither
+     * graphify_get_node nor graphify_query_graph rendered them" — a bare superseded figure in a line that mentions a
+     * query, which a looser context pattern would have flagged. The second alternative is not redundant: the
+     * runtime-view note stated its figure as "three reads per trick: seventy-nine", never using the words "round
+     * trip", so a pattern matching only the first alternative would have missed one of the five sites EOP-96 fixed.
+     */
+    private static final Pattern READ_COST = Pattern.compile("round.?trips?|reads?\\s+per\\s+trick", Pattern.CASE_INSENSITIVE);
+
+    /** The table size every figure in the third invariant is derived for. ADR-031 section six argues at three. */
+    private static final int THREE_PLAYERS = 3;
+
     @Test
     @DisplayName("never claims the deal is uneven at every supported table size, when one of them divides evenly")
     void shouldNotClaimTheDealIsUnevenAtEveryTableSize() throws IOException {
@@ -207,6 +236,52 @@ class DeckArithmeticClaimsTest {
     }
 
     /**
+     * The third invariant: no round trip count derived from a superseded deck size, in prose that is costing out a
+     * read. EOP-96's defect class — a figure that is not a deck size but is computed from one, which therefore
+     * survives a deck trim untouched and is invisible to the second invariant.
+     *
+     * <p>Line-scoped rather than sentence-scoped because all five sites carried the number on the same line as the
+     * phrase pricing the read, including a Mermaid note that is one long line with no sentence boundary a splitter
+     * would find. Markdown table rows are skipped: ADR-023's original body tabulates the 78-card and 74-card deals
+     * under EOP-69's Amends header, and that arithmetic is correct history rather than a stale claim. Skipping the
+     * rows is what lets this invariant coexist with the promise in this class's javadoc not to police that body.
+     *
+     * @throws IOException when a file cannot be read
+     */
+    @Test
+    @DisplayName("no round-trip count derived from a superseded deck size, in prose costing out a read")
+    void shouldNotStateASupersededRoundTripCount() throws IOException {
+        final List<String> offences = new ArrayList<>();
+        for (final Path file : prosePaths()) {
+            if (isExempt(file)) {
+                continue;
+            }
+            final List<String> lines = Files.readAllLines(file);
+            for (int index = 0; index < lines.size(); index++) {
+                if (lines.get(index).stripLeading().startsWith("|")) {
+                    continue;
+                }
+                final String line = normalise(lines.get(index));
+                if (statesASupersededRoundTripCount(line)) {
+                    offences.add("%s:%d %s".formatted(file, index + 1, line));
+                }
+            }
+        }
+
+        assertThat(offences)
+                .as("prose prices a read using a round-trip count the current deck no longer produces. At %d cards a "
+                        + "three-player hand runs to %d tricks, so a per-trick assembler costs 1 + 3 x %d = %d round "
+                        + "trips; the superseded decks %s give %s. Five sites stated the 78-card figure and carried it "
+                        + "through two deck trims, because a number derived from the deck size is not the deck size "
+                        + "and so the second invariant never looked at it. State the derivation beside any total.",
+                        CURRENT_DECK_SIZE, tricksAtThreePlayers(CURRENT_DECK_SIZE),
+                        tricksAtThreePlayers(CURRENT_DECK_SIZE), perTrickReadCount(CURRENT_DECK_SIZE),
+                        SUPERSEDED_DECK_SIZES,
+                        SUPERSEDED_DECK_SIZES.stream().map(DeckArithmeticClaimsTest::perTrickReadCount).toList())
+                .isEmpty();
+    }
+
+    /**
      * Reports whether a file is one of the two that may state what this test otherwise forbids.
      *
      * <p>Compares a repository-relative path, not a bare filename, so the exemption cannot be inherited by an
@@ -251,6 +326,49 @@ class DeckArithmeticClaimsTest {
         assertThat(contradictsTheDeal(properlyQualified))
                 .as("the corrected wording must not be flagged, or the guard would forbid its own fix")
                 .isFalse();
+    }
+
+    /**
+     * Proves the third invariant fires on the five sentences EOP-96 actually found on main, and stays silent on the
+     * wording that replaced them. Without this the invariant could be quietly defeated by a change to
+     * {@link #READ_COST} or {@link #statesTheNumberStrictly} and would still pass, having stopped looking.
+     *
+     * <p>These are the only copies of the stale figures left in the repository. Quoting them is safe here and
+     * nowhere else, because this file is listed in {@link #EXEMPT_FILES} and the invariant honours it — the note
+     * added to ADR-031 deliberately describes the stale figures instead of reprinting them.
+     */
+    @Test
+    @DisplayName("still recognises the five stale round-trip counts EOP-96 removed")
+    void shouldRecogniseTheStaleRoundTripCountsItGuardsAgainst() {
+        final String adrSectionSix = "A three-player game reaches twenty-six tricks, so mapping it over the history "
+                + "would cost seventy-nine round trips - one for the trick rows and three for each trick.";
+        final String adrIndexRow = "Its adapter reads four queries for the whole session rather than three per trick, "
+                + "which at three players is four round trips instead of seventy-nine.";
+        final String mermaidNote = "Mapping the single-trick assembler over every row would have cost three reads per "
+                + "trick: seventy-nine in a twenty-six-trick hand.";
+        final String adapterJavadoc = "Assembling each trick on its own would cost seventy-nine round trips at three "
+                + "players, for an answer whose size the deck already bounds.";
+        final String inDigits = "Mapping the assembler over the history would cost 79 round trips.";
+        final String previousDeck = "Assembling each trick on its own would cost seventy-six round trips.";
+
+        assertThat(List.of(adrSectionSix, adrIndexRow, mermaidNote, adapterJavadoc, inDigits, previousDeck))
+                .as("every wording EOP-96 removed must still be recognised, spelled out or in digits, and for both "
+                        + "superseded decks - the runtime-view note never said 'round trip' at all")
+                .allMatch(DeckArithmeticClaimsTest::statesASupersededRoundTripCount);
+
+        final String correctedAdr = "A three-player hand runs to twenty-three tricks, so mapping it over the history "
+                + "would cost 1 + 3 x 23 = seventy round trips for one score read.";
+        final String correctedNote = "Mapping the single-trick assembler over every row would have cost three reads "
+                + "per trick: 1 + 3 x 23 = seventy in a twenty-three-trick hand.";
+        final String unrelatedQuery = "While the 26 descriptions existed, graph.json held them but neither "
+                + "graphify_get_node nor graphify_query_graph rendered them.";
+        final String jiraKeyOnly = "EOP-79 and EOP-76 both touched the round trip count.";
+        final String cidrSuffix = "Route 10.0.0.79/25 costs one round trip, and ADR-079 records why.";
+
+        assertThat(List.of(correctedAdr, correctedNote, unrelatedQuery, jiraKeyOnly, cidrSuffix))
+                .as("the corrected wording must not be flagged, or the guard would forbid its own fix; nor may a "
+                        + "figure that is part of an identifier, a Jira key or a CIDR suffix be read as a read count")
+                .noneMatch(DeckArithmeticClaimsTest::statesASupersededRoundTripCount);
     }
 
     /**
@@ -311,9 +429,71 @@ class DeckArithmeticClaimsTest {
     private static String spell(final int number) {
         return switch (number) {
             case 74 -> "seventy-four";
+            case 76 -> "seventy-six";
             case 78 -> "seventy-eight";
+            case 79 -> "seventy-nine";
             default -> null;
         };
+    }
+
+    /**
+     * Returns how many tricks a three-player hand runs to for a given deck size. The whole deck is dealt (ADR-023),
+     * so the longest hand sets the trick count and the last trick is short when the deal does not divide evenly.
+     *
+     * @param deckSize the number of cards in the deck
+     * @return the number of tricks a three-player hand runs to
+     */
+    private static int tricksAtThreePlayers(final int deckSize) {
+        return Math.ceilDiv(deckSize, THREE_PLAYERS);
+    }
+
+    /**
+     * Returns what a per-trick score assembler would cost in round trips at three players: one read for the trick
+     * rows, then three per trick for its plays, its cards and its components (ADR-031 section six).
+     *
+     * <p>Derived rather than listed, which is the point of the third invariant. The figure that went stale five
+     * times was a total someone had computed by hand, so the deck could shrink twice without it looking wrong.
+     *
+     * @param deckSize the number of cards in the deck
+     * @return the number of round trips a per-trick assembler would cost
+     */
+    private static int perTrickReadCount(final int deckSize) {
+        return 1 + THREE_PLAYERS * tricksAtThreePlayers(deckSize);
+    }
+
+    /**
+     * Reports whether a line states a round-trip count belonging to a superseded deck size, while costing out a read.
+     *
+     * <p>Stricter than {@link #statesTheNumber} on purpose: it is looking for small numbers that occur all over a
+     * repository inside version strings, timestamps, CIDR suffixes and identifiers, so adjacency to any of
+     * {@code / : - .} or a word character disqualifies a match. Jira keys go first, so EOP-79 is never a read count.
+     *
+     * @param line one line of prose, already normalised
+     * @return true when the line prices a read using a figure the current deck no longer produces
+     */
+    private static boolean statesASupersededRoundTripCount(final String line) {
+        final String stripped = JIRA_KEY.matcher(line).replaceAll("");
+        if (!READ_COST.matcher(stripped).find()) {
+            return false;
+        }
+        return SUPERSEDED_DECK_SIZES.stream()
+                .anyMatch(deckSize -> statesTheNumberStrictly(stripped, perTrickReadCount(deckSize)));
+    }
+
+    /**
+     * Reports whether a line states a number as a figure in its own right, rather than as part of something else.
+     *
+     * @param line one line of prose
+     * @param number the number to look for, in digits or spelled out
+     * @return true when the line states that number
+     */
+    private static boolean statesTheNumberStrictly(final String line, final int number) {
+        final String digits = "(?<![\\w./:-])" + number + "(?![\\w/:-])(?!\\.\\d)";
+        if (Pattern.compile(digits).matcher(line).find()) {
+            return true;
+        }
+        final String spelled = spell(number);
+        return spelled != null && line.toLowerCase(Locale.ROOT).contains(spelled);
     }
 
     /**
