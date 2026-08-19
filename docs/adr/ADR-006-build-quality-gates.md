@@ -48,6 +48,16 @@ Plugins pinned to specific versions for reproducible builds.
 >
 > **Related:** [ADR-023](ADR-023-deal-remainder-and-turn-order.md) establishes reading a repository file from a test to hold documentation and code together as house practice; [ADR-041](ADR-041-printed-deck-has-no-aces.md) is the trim this guard defends; `.opencode/rules/build-quality.md` lists the gates and carries the same fifth entry.
 
+> **Amendment, 2026-08-19 (EOP-35): configuration absence is now a build gate too.**
+>
+> **Decision.** There is a **sixth** class of gate: **configuration-absence tests**, which live beside the configuration they constrain rather than in `src/test/java/org/maglez/eop/docs/`. The first is `LiquibaseContextGatingAbsentTest` (`org.maglez.eop.config`), which fails `verify` if any changeset under `src/main/resources/db/changelog` carries a `context`, `contextFilter` or `labels` attribute, or if `application.yml` or `application-prod.yml` sets `spring.liquibase.contexts` or its `label-filter` sibling. See [ADR-043](ADR-043-liquibase-contexts-are-not-used.md) for why that absence is load-bearing.
+>
+> **Why it is not a documentation-integrity test.** It reads *shipped configuration* as text — XML under `src/main/resources/**` and the two profile YAML files — not prose under `docs/`. The count of three above stands unchanged, and the distinction is worth keeping: the fifth class carries the explicit warning that its matchers are phrase lists, and blurring the two would make that warning illegible. Its package placement follows the same reasoning — its peers are `ShippedFeatureFlagDefaultsTest`, `H2ConsoleAbsentIntegrationTest` and `ForwardHeadersStrategyPinnedIntegrationTest`, all of which assert something about configuration rather than about documents.
+>
+> **Admission test for the next one.** A configuration-absence gate is warranted only when the breach it prevents is **silent, fail-open, and invisible at startup** — the triad ADR-043 establishes for Liquibase context gating. Where a breach is loud, the breach is its own alarm and a guard is an accumulating tax. Do not add one for a property whose misconfiguration fails fast.
+>
+> **The fifth class's anti-vacuity rule applies here, with one correction.** This gate stays *fireable* for as long as Liquibase supports the attributes, so the deletion rule above is not expected to bite; the test's own javadoc pre-writes the protocol for the one case that would trigger it (genuinely wanting environment-restricted migrations — delete the test visibly and amend ADR-043 in the same commit, never weaken the assertions for one changeset). But EOP-35 also established that this class does **not** escape the phrase-list caveat: an XML attribute name is a spelling, and the guard's first revision matched `context=` and a non-existent `contexts=` while missing `contextFilter=`, which `liquibase-core` 5.0.3 reads *first* (`ChangeSet.java:432-434`). A configuration-absence matcher is a closed enumeration of the spellings the schema accepts, and must be revisited when the schema admits another.
+
 ## Consequences
 
 - **Positive:**

@@ -15,7 +15,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [005](ADR-005-error-handling-strategy.md) | Error handling via RFC 9457 Problem Details | Accepted | Yes — `GlobalExceptionHandler` maps every 4xx and 5xx |
 | [006](ADR-006-build-quality-gates.md) | Build quality gates | Accepted | Yes |
 | [007](ADR-007-versioning-strategy.md) | Semantic Versioning | Accepted | Yes |
-| [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted (amended 2026-08-10) | Yes — autoconfiguration fixed and the first changeset applies; the H2 console consequence is withdrawn |
+| [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted (amended 2026-08-10, 2026-08-19) | Yes — autoconfiguration fixed and the first changeset applies; the H2 console consequence is withdrawn and the Context labels row is glossed by ADR-043 |
 | [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted | Yes — `ui/` scaffolded, built and served |
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
@@ -50,6 +50,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [040](ADR-040-trick-play-flag-on.md) | Enable `eop.features.trick-play` (EOP-70) | Accepted (2026-08-17) | Yes — `trick-play: true` in `application.yml`; ADR-026 discharged (option 4: audit logging at HTTP boundary in `TrickController`); UI wires `POST /deal` after `POST /start`; `canStartGame >= 3`; `GameScreen` distinguishes 409 (HandNotDealtException) from 404 (session gone). |
 | [041](ADR-041-printed-deck-has-no-aces.md) | Printed deck has no Ace cards — deck size is 68, King is highest (EOP-75) | Accepted (2026-08-18) | Yes — `Rank.ACE` removed, `Card.isOpenThreat()` removed, migration `2026-08-18--remove-ace-cards.xml` deletes 6 Ace rows. |
 | [042](ADR-042-game-over-flag-on.md) | Enable `eop.features.game-over`, and the shipped-flag-default trap (EOP-82) | Accepted (2026-08-18) | Yes — `game-over: true` in `application.yml`; `GameOverController` and the three use-case beans are live, so leaderboard refusals are RFC 9457 again and `game_result` rows are written. `GameOverScreen` ejects on 403 only, with a `Retry loading results` button on 404. `ShippedFeatureFlagDefaultsTest` pins the three shipped flag defaults by reading `application.yml` off the classpath — recorded as an interim workaround, not the tripwire EOP-27 built. Expiry condition for the flag is dated, not open-ended. |
+| [043](ADR-043-liquibase-contexts-are-not-used.md) | Liquibase contexts are not used — a bare `context="prod"` restricts nothing unless `spring.liquibase.contexts` names a real, non-empty context in every profile, verified across 21 YAML encodings (EOP-35) | Accepted (2026-08-19) | Yes — no changeset carries a `context`, the property is unset, `.opencode/rules/database.md` keeps the directive, and `LiquibaseContextGatingAbsentTest` fails the build on either half |
 
 The "Implemented?" column exists because an accepted ADR is a decision, not a
 delivery. `CHANGELOG.md` separates the same two things for the same reason.
