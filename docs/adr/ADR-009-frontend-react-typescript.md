@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended four times on 2026-08-19 — five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant is now a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last bare-`string` contract enum was closed while `Rank` was explicitly rejected as a mirror; see Amendments)
+- **Status:** Accepted (amended four times on 2026-08-19 — five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant is now a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -518,7 +518,7 @@ gate is the *cheaper* of the two mechanical options and should be evaluated firs
 free either, since a hand-written text matcher is itself code that can drift from the idioms it
 scans.
 
-### Amendment — EOP-109 (2026-08-19): the last bare-`string` contract enum is closed, and `Rank` becomes a decision rather than a gap
+### Amendment — EOP-109 (2026-08-19): the last *mirrored*-enum field typed `string` is closed, and `Rank` becomes a decision rather than a gap
 
 EOP-105 left an exclusion list with three entries: two principled (`Rank`, and response schemas that
 carry no enums of their own) and one recorded as **weaker** — `StrideCategory`-valued fields typed

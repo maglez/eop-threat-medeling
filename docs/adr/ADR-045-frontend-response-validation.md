@@ -233,6 +233,9 @@ consumer that does not exist yet rather than a fix for a live defect.
 - [`docs/architecture/runtime-view.md`](../architecture/runtime-view.md) — the `refreshSession`
   exit enumeration; this change adds a fourth *outcome* without adding a fourth
   `onSessionEnd()` trigger
-- EOP-105 (enum mirror parity), EOP-108 (this change), EOP-109 (closed the last bare-`string`
-  contract enum, `TrickDto.ledSuit`, and declined both a `Rank` mirror and a `capturedBySuit`
-  tightening — see the follow-up note in §4), EOP-110 (`ui/` dev-toolchain CVEs)
+- EOP-105 (enum mirror parity), EOP-108 (this change), EOP-109 (closed the last field typed bare
+  `string` against a *mirrored* enum schema, `TrickDto.ledSuit`, and declined both a `Rank` mirror
+  and a `capturedBySuit` tightening — see the follow-up note in §4), EOP-110 (`ui/` dev-toolchain
+  CVEs). Read EOP-109's scope with its qualifier: `Card.rank` is still typed bare `string` against a
+  `$ref` to `Rank`, deliberately, because `Rank` has no mirror — so that bullet does not mean "no
+  contract enum is left wide"
