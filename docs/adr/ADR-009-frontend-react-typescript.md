@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended 2026-08-19 — four stack and layout claims diverged from the shipped code; see Amendments)
+- **Status:** Accepted (amended 2026-08-19 — five stack and layout claims diverged from the shipped code; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -116,12 +116,14 @@ The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the 
 - A base `GovUkPage` layout component will be created during bootstrapping that wraps `<head>`, skip link, header, footer, and main content area — this stays consistent across all pages
 - TypeScript interfaces shared between API DTOs and front-end types serve as the contract anchor for agents on both sides
 
-> **Amendment, 2026-08-19 (EOP-40): the third mitigation stands, in `ui/src/api.ts`.** The shared
-> interfaces were never placed in a `types/` directory. See Amendments.
+> **Amendment, 2026-08-19 (EOP-40): the second mitigation was never built as a component, and the
+> third stands but in a different place.** There is no `GovUkPage` — the page furniture it describes
+> is inline in `ui/src/App.tsx`. The shared interfaces were never placed in a `types/` directory;
+> they are in `ui/src/api.ts`. See Amendments.
 
 ## Amendments
 
-**Amendment, 2026-08-19 (EOP-40): four claims corrected against the shipped code.**
+**Amendment, 2026-08-19 (EOP-40): five claims corrected against the shipped code.**
 
 This ADR was written on 2026-07-26, before `ui/` existed. The decision it records — React +
 TypeScript + Vite + `govuk-frontend` CSS — was executed and holds. Four of its *descriptive*
@@ -135,6 +137,7 @@ intact as the historical record, per the house convention; this section is what 
 | `src/` has `components/`, `pages/`, `hooks/`, `services/`, `types/`, plus `public/` (Project layout) | Only `components/` was built. No `pages/`, `hooks/`, `services/`, `types/` or `public/`. The tree also has `assets/` and `utils/`, which the ADR does not list | `git ls-files ui/`; `ui/src/` |
 | "the front-end runs on `:5173`" (Development workflow) | `:5371`, and the proxy covers `/api` **and** `/health` | `ui/vite.config.ts` — `server.port: 5371`, `server.proxy` keys `/api` and `/health` |
 | "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
+| "A base `GovUkPage` layout component will be created during bootstrapping" (second Mitigation) | No such component exists. The skip link, header, footer and main content area are written inline in the root component instead, so the consistency the mitigation aimed at is achieved without the named abstraction | `git ls-files ui/src/components/` lists no `GovUkPage`; `ui/src/App.tsx` carries `govuk-skip-link`, `govuk-header` and `govuk-footer` |
 
 ### The shipped layout
 
