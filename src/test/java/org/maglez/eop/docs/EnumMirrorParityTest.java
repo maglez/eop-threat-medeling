@@ -114,23 +114,30 @@ class EnumMirrorParityTest {
      * reason — there is nothing on the client to compare against:
      *
      * <ul>
-     *   <li>{@code Rank} has no TypeScript mirror at all. {@code Card.rank} and {@code CardDto.rank}
-     *       are bare {@code string}, because the client only ever displays the rank. Registering it
-     *       would also need {@link #openApiEnumValues} taught to read a YAML flow sequence, since
-     *       {@code Rank} is written {@code enum: [TWO, THREE, ...]} on one line rather than as a
-     *       block.
+     *   <li>{@code Rank} has no TypeScript mirror at all, and EOP-109 decided it should stay that
+     *       way rather than adding one by default. {@code Card.rank} and {@code CardDto.rank} are
+     *       bare {@code string} because the client only ever <em>displays</em> a rank; it never
+     *       compares or orders one, so a narrowed type would protect no branch. The trick-winning
+     *       arithmetic that does depend on rank ordering runs server-side. {@code CardDto.rank} is
+     *       additionally outside this guard's reach by contract: {@code CardDto} declares it
+     *       {@code type: string}, not a {@code $ref} to {@code Rank}, so bare {@code string} is the
+     *       faithful type there rather than a drift. Registering the mirror would also need
+     *       {@link #openApiEnumValues} taught to read a YAML flow sequence, since {@code Rank} is
+     *       written {@code enum: [TWO, THREE, ...]} on one line rather than as a block — a change to
+     *       this gate's own parser, bought for a field with no client-side comparison to protect. If
+     *       rank ever becomes something the front end orders, add the mirror and teach the parser
+     *       then.
      *   <li>{@code ProblemDetail} and the other response schemas carry no enums.
      * </ul>
      *
-     * <p>One field is absent for a weaker reason, and it is recorded here so the exclusion list is
-     * not mistaken for a complete justification: {@code CardDto.suit} in {@code ui/src/api.ts} is a
-     * {@code StrideCategory}-valued field still declared as bare {@code string}, even though its
-     * sibling {@code Card.suit} in the same file is properly typed against the mirror registered
-     * below. That is not a case of having nothing to compare against — the mirror exists and the
-     * field simply is not using it. Drift there fails safe today ({@code cardImagePath} returns
-     * {@code null} for an unknown suit and every consumer null-checks or falls back), which is why
-     * it is a follow-up rather than part of EOP-105, but a follow-up ticket written as "Rank only"
-     * would be wrong.
+     * <p>A third exclusion used to sit here for a weaker reason, and it is now closed rather than
+     * merely re-worded: {@code StrideCategory}-valued fields in {@code ui/src/api.ts} that were
+     * declared bare {@code string} even though the mirror they should have used was registered
+     * below. EOP-108 narrowed {@code CardDto.suit} and EOP-109 narrowed {@code TrickDto.ledSuit},
+     * the last one, so every field whose contract schema is a mirrored enum is now both typed
+     * against that mirror and membership-checked by a parser in {@code ui/src/api.ts}. Keep it that
+     * way: a new bare-{@code string} field whose schema {@code $ref}s a mirrored enum belongs in
+     * neither this list nor the code.
      *
      * @return one case per mirrored enum
      */

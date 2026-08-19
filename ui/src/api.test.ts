@@ -621,6 +621,19 @@ const boundaries: readonly BoundaryCase[] = [
     path: 'TrickDto.plays[0].card.suit',
     badValue: 'ELEVATION OF PRIVILEGE',
   },
+  {
+    // EOP-109: `ledSuit` is optional, so it is parsed with `optionalEnum` rather than
+    // `requireEnum`. This case pins the half that optionality must not weaken — a
+    // supplied value is still held to membership.
+    helper: 'resolveTrick (ledSuit)',
+    call: () => resolveTrick('s-1', 'token'),
+    validBody: trick,
+    corruptBody: withCorruptEnum(trick, (c) => {
+      c['ledSuit'] = 'DIAMONDS';
+    }),
+    path: 'TrickDto.ledSuit',
+    badValue: 'DIAMONDS',
+  },
 ];
 
 describe('response validation at the boundary (ADR-045)', () => {
@@ -837,6 +850,24 @@ describe('response validation at the boundary (ADR-045)', () => {
 
     expect(Object.hasOwn(parsed, 'ledSuit')).toBe(false);
     expect(Object.hasOwn(parsed, 'winningSeat')).toBe(false);
+  });
+
+  it('holds a supplied ledSuit to StrideCategory membership while still allowing absence', async () => {
+    // EOP-109. `optionalEnum` concedes absence and nothing else, so the two halves are
+    // asserted together: an explicit null is admitted as "not present", and a value
+    // that is present but out of contract is rejected naming the full member list.
+    const absent: Record<string, unknown> = { ...trick, ledSuit: null };
+    stubOkJson(absent);
+
+    const parsed = await resolveTrick('s-1', 'token');
+    expect(Object.hasOwn(parsed, 'ledSuit')).toBe(false);
+
+    stubOkJson({ ...trick, ledSuit: 'spoofing' });
+
+    await expect(resolveTrick('s-1', 'token')).rejects.toThrow(
+      'TrickDto.ledSuit: expected one of SPOOFING, TAMPERING, REPUDIATION, '
+        + 'INFORMATION_DISCLOSURE, DENIAL_OF_SERVICE, ELEVATION_OF_PRIVILEGE',
+    );
   });
 
   it('omits absent optional trick, seatToPlay and nextLeaderSeat rather than setting them undefined', async () => {

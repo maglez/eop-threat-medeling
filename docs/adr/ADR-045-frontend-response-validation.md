@@ -138,6 +138,21 @@ consumer that does not exist yet rather than a fix for a live defect.
   `isStrideCategory`. Parsing every enum around it while leaving this one asserted would be
   incoherent, and the guard already existed. This closes the first of EOP-109's three items;
   that ticket shrinks to its remaining two bare-`string` fields.
+  > **Follow-up, EOP-109 (2026-08-19): those remaining items are now resolved, and only one of
+  > them was a narrowing.** `TrickDto.ledSuit` was the last field whose contract schema `$ref`s a
+  > mirrored enum while its type was bare `string`; it is now `StrideCategory`, parsed through a
+  > new `optionalEnum` helper that delegates to `requireEnum` once a value is present, so
+  > optionality weakens presence but never membership. The field is genuinely optional on the wire
+  > (`TrickDto` is `@JsonInclude(NON_NULL)`; `ledSuit` is unset until the first card of a trick is
+  > played), which is why `requireEnum` alone would have been wrong. `CardDto.rank` was **not**
+  > narrowed: the contract declares it `type: string`, not a `$ref` to `Rank`, so bare `string` is
+  > faithful there, and ADR-009's EOP-109 amendment records the matching rejection of a `Rank`
+  > mirror. A tightening of `LeaderboardRowDto.capturedBySuit` to
+  > `Readonly<Record<StrideCategory, number>>` was considered and declined, because
+  > `requireNumberRecord` deliberately never inspects keys (§2's key-secrecy rule), so the narrower
+  > index type would be an unenforced compile-time claim — the very thing this ADR exists to
+  > remove. Every enum-typed field the front end receives is now both typed against a mirror and
+  > membership-checked by a parser.
 - **`startNewGame` and `dealCards` gain no parser.** Neither reads a body — `dealCards`
   returns `204 No Content`. Adding a parser to a void helper would be theatre.
 - **`subscribeToSession` gains no parser.** The SSE stream is a *doorbell*: a `data:` frame
@@ -212,5 +227,6 @@ consumer that does not exist yet rather than a fix for a live defect.
 - [`docs/architecture/runtime-view.md`](../architecture/runtime-view.md) — the `refreshSession`
   exit enumeration; this change adds a fourth *outcome* without adding a fourth
   `onSessionEnd()` trigger
-- EOP-105 (enum mirror parity), EOP-108 (this change), EOP-109 (remaining bare-`string`
-  contract enums), EOP-110 (`ui/` dev-toolchain CVEs)
+- EOP-105 (enum mirror parity), EOP-108 (this change), EOP-109 (closed the last bare-`string`
+  contract enum, `TrickDto.ledSuit`, and declined both a `Rank` mirror and a `capturedBySuit`
+  tightening — see the follow-up note in §4), EOP-110 (`ui/` dev-toolchain CVEs)

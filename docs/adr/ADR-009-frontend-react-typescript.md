@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended three times on 2026-08-19 — five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant is now a build gate, and codegen was re-evaluated once response parsing landed and again declined; see Amendments)
+- **Status:** Accepted (amended four times on 2026-08-19 — five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant is now a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last bare-`string` contract enum was closed while `Rank` was explicitly rejected as a mirror; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -371,23 +371,41 @@ Anyone planning to bring a further mirror under the gate should budget for the s
 Two enums in `docs/api/openapi.yml` remain deliberately outside the gate, both because there is
 nothing client-side to compare rather than because they were overlooked:
 
-- **`Rank`** has no TypeScript mirror. `Card.rank` and `CardDto.rank` are bare `string`, because the
-  client only ever displays the value. Registering it would additionally require teaching the parser
-  YAML *flow* sequences, since `Rank`'s `enum:` is written inline on one line rather than as a block
-  list, and `ENUM_KEY` (`^ {6}enum:\s*$`) cannot match that
+- **`Rank`** has no TypeScript mirror, and **EOP-109 decided it should stay that way** rather than
+  adding one by default. `Card.rank` and `CardDto.rank` are bare `string` because the client only ever
+  *displays* a rank; it never compares or orders one, so a narrowed type would protect no branch — the
+  trick-winning arithmetic that does depend on rank ordering runs server-side. `CardDto.rank` is
+  additionally faithful rather than drifted: `CardDto` declares `rank` as `type: string`, not a `$ref`
+  to `Rank`, so bare `string` is what the contract asks for there. Registering the mirror would also
+  require teaching the parser YAML *flow* sequences, since `Rank`'s `enum:` is written inline on one
+  line rather than as a block list and `ENUM_KEY` (`^ {6}enum:\s*$`) cannot match that — a change to
+  the gate's own parser, bought for a field with no client-side comparison to protect. Revisit it if
+  rank ever becomes something the front end orders
 - The response schemas carry no enums of their own
 
-One field sits outside the gate for a **weaker** reason, and it is named here so the two bullets above
-are not read as a complete justification. `CardDto.suit` (`ui/src/api.ts`) is a `StrideCategory`-valued
-field still declared as bare `string`, while its sibling `Card.suit` in the same file is typed against
-the mirror the gate now covers. Unlike `Rank`, this is not a case of having nothing client-side to
-compare — the mirror exists, and the field simply is not using it. Drift there fails safe today:
-`cardImagePath` returns `null` for an unknown suit, and every consumer either null-checks or falls back
-(`SUIT_COLOURS[…] ?? '#0b0c0c'`, `SUIT_LABELS[…] ?? card.suit[0]`), so an unexpected value degrades to a
-missing image rather than a wrong comparison. That is why it is a follow-up rather than part of EOP-105.
-It is recorded because a follow-up ticket written as "`Rank` only" would be wrong: three bare-`string`
-fields remain (`Card.rank`, `CardDto.suit`, `CardDto.rank`), and only two of them have the `Rank`
-excuse.
+A third exclusion used to sit here for a **weaker** reason, and it is now **closed** rather than merely
+re-worded: `StrideCategory`-valued fields in `ui/src/api.ts` that were declared bare `string` even
+though the mirror they should have used was already under the gate. EOP-108 narrowed `CardDto.suit`,
+and EOP-109 narrowed `TrickDto.ledSuit` — the last one. Every field whose contract schema is a mirrored
+enum is now both typed against that mirror and membership-checked by a parser (ADR-045), so the two
+bullets above *are* now a complete justification. Keep it that way: a new bare-`string` field whose
+schema `$ref`s a mirrored enum belongs in neither this list nor the code.
+
+`TrickDto.ledSuit` narrowed through a new `optionalEnum` helper rather than `requireEnum`, because the
+field is genuinely optional on the wire — `TrickDto` is `@JsonInclude(NON_NULL)` server-side and
+`ledSuit` is unset until the first card of a trick is played. `optionalEnum` treats absent and `null`
+alike as "not present" and delegates to `requireEnum` once a value *is* present, so optionality
+weakens presence but never membership.
+
+**One related tightening was considered and declined.** `LeaderboardRowDto.capturedBySuit` is
+`Readonly<Record<string, number>>` while the contract requires all six STRIDE categories, so
+`Readonly<Record<StrideCategory, number>>` looks like the obvious narrowing. It was rejected because
+the parser cannot back it: `requireNumberRecord` deliberately never inspects keys — the keys are
+server-chosen payload, and ADR-045 forbids reflecting them into a violation message — so a narrowed
+index type would be an unenforced claim, exactly the compile-time-only assertion ADR-045 exists to
+remove. The laxity fails safe: `GameOverScreen.tsx` reads the map through a fixed `STRIDE_LABELS` list
+with `?? 0`, so a missing or extra key renders a zero rather than misreporting a score. Revisit only
+together with key validation that can report a violation without echoing the key.
 
 `QUOTED` was widened to accept both quote styles for the same reason the idiom limitation matters:
 `api.ts` uses double quotes in its card-catalogue half and single quotes in its session half, and a
@@ -494,6 +512,65 @@ second time in the way the other three are. Two further notes for whoever picks 
 gate is the *cheaper* of the two mechanical options and should be evaluated first; and it is not
 free either, since a hand-written text matcher is itself code that can drift from the idioms it
 scans.
+
+### Amendment — EOP-109 (2026-08-19): the last bare-`string` contract enum is closed, and `Rank` becomes a decision rather than a gap
+
+EOP-105 left an exclusion list with three entries: two principled (`Rank`, and response schemas that
+carry no enums of their own) and one recorded as **weaker** — `StrideCategory`-valued fields typed
+bare `string` even though the mirror they needed was already registered and gated. EOP-108 closed half
+of that weak entry (`CardDto.suit`); this ticket closes the other half (`TrickDto.ledSuit`) and turns
+`Rank` from an unexamined omission into a recorded rejection. The "Known limitation" section above has
+been rewritten *in place* to describe the position after this ticket rather than before it; this
+amendment records what changed and why.
+
+**1. `TrickDto.ledSuit` is now `StrideCategory`, still optional.** It was the last field in
+`ui/src/api.ts` whose contract schema is a `$ref` to a mirrored enum but whose TypeScript type was
+bare `string`, and its parser read it with `optionalString`, which admits *any* string. It now reads
+through a new `optionalEnum` helper that delegates to `requireEnum` once a value is present, so the
+field consumes the existing `isStrideCategory` guard rather than re-inlining the member list — the
+seam `.opencode/rules/error-handling.md` requires, and the only form `EnumMirrorParityTest` can see.
+
+Why a new helper rather than `requireEnum` directly: `ledSuit` is genuinely optional on the wire.
+Server-side `TrickDto` is `@JsonInclude(NON_NULL)` and `ledSuit` is unset on a trick that has been
+opened but holds no plays yet, which the contract states explicitly. `optionalEnum` therefore weakens
+*presence* and nothing else — a supplied value is held to membership exactly as a required one is, and
+absent and explicit `null` are treated alike, consistent with `isAbsent`'s existing meaning. Two
+Vitest cases pin both halves: the shared boundary table gains a case proving an out-of-contract
+`ledSuit` throws `ContractViolationError` without echoing the offending value, and an explicit test
+asserts `null` is still admitted as absent (`Object.hasOwn` is `false`) while `'spoofing'` is rejected
+with a message naming the DTO and field.
+
+**2. `Rank`: mirror rejected, not deferred.** The acceptance criteria asked for a decision rather than
+a default, and the decision is to leave `Rank` unmirrored. Three independent reasons, in descending
+order of weight:
+
+- **Nothing on the client compares a rank.** The front end only ever *displays* it. The trick-winning
+  arithmetic, which is the only logic depending on rank *ordering*, runs server-side. A narrowed type
+  would protect no branch — the same ground the other principled exclusion rests on
+- **For `CardDto.rank`, bare `string` is faithful, not drifted.** `CardDto` declares `rank` as
+  `type: string`, not a `$ref` to `Rank`. Narrowing it would make the client *more* specific than the
+  contract: drift in the opposite direction, and a change that would need the contract amended first
+- **It would cost a change to the gate's own parser.** `Rank`'s `enum:` is a one-line flow sequence,
+  so `openApiEnumValues` would need teaching a second YAML form for zero behavioural gain
+
+The exit condition is written into both this ADR and `EnumMirrorParityTest.mirrors()`: if rank ever
+becomes something the front end orders or compares, add the mirror and teach the parser then.
+
+**3. `capturedBySuit`: tightening declined, and the reason is a property of the parser.** Narrowing
+`LeaderboardRowDto.capturedBySuit` to `Readonly<Record<StrideCategory, number>>` was considered and
+rejected. `requireNumberRecord` deliberately never inspects keys, because the keys are server-chosen
+payload and ADR-045 forbids reflecting them into a violation message; the narrowed index type would
+therefore be a compile-time claim with no runtime check behind it — precisely the defect class ADR-045
+was written to remove. Declining it is not deferral of work but refusal to reintroduce an unenforced
+assertion. The condition for revisiting is recorded in the section above.
+
+**What this closes.** The exclusion list is now complete on its own terms: every field in
+`ui/src/api.ts` whose contract schema is a mirrored enum is both typed against that mirror and
+membership-checked by a parser. No new `mirrors()` row was needed — `STRIDE_CATEGORIES` was already
+registered — so EOP-109's third acceptance criterion is satisfied *vacuously*. That is worth stating
+explicitly, because "no row was needed" and "a row was forgotten" look identical in a diff, and the
+unregistered-`StrideCategory` hole found during EOP-105 is exactly what that looks like when it goes
+wrong.
 
 ## Related
 
