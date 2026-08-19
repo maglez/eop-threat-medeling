@@ -117,9 +117,11 @@ The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the 
 - TypeScript interfaces shared between API DTOs and front-end types serve as the contract anchor for agents on both sides
 
 > **Amendment, 2026-08-19 (EOP-40): the second mitigation was never built as a component, and the
-> third stands but in a different place.** There is no `GovUkPage` — the page furniture it describes
-> is inline in `ui/src/App.tsx`. The shared interfaces were never placed in a `types/` directory;
-> they are in `ui/src/api.ts`. See Amendments.
+> third stands in a different place and by hand.** There is no `GovUkPage`, and the page furniture it
+> lists is split across two files rather than one: the `<head>` and skip link are in `ui/index.html`,
+> the header, footer and main content area are inline in `ui/src/App.tsx`. The shared interfaces were
+> never placed in a `types/` directory; they are in `ui/src/api.ts`, hand-maintained rather than
+> generated from the OpenAPI contract. See Amendments.
 
 ## Amendments
 
@@ -136,8 +138,8 @@ intact as the historical record, per the house convention; this section is what 
 | "React **19** with functional components and hooks" (Stack components) | React **18** | `ui/package.json` — `react ^18.3.1`, `react-dom ^18.3.1`, `@types/react ^18.3.11` |
 | `src/` has `components/`, `pages/`, `hooks/`, `services/`, `types/`, plus `public/` (Project layout) | Only `components/` was built. No `pages/`, `hooks/`, `services/`, `types/` or `public/`. The tree also has `assets/` and `utils/`, which the ADR does not list | `git ls-files ui/`; `ui/src/` |
 | "the front-end runs on `:5173`" (Development workflow) | `:5371`, and the proxy covers `/api` **and** `/health` | `ui/vite.config.ts` — `server.port: 5371`, `server.proxy` keys `/api` and `/health` |
-| "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
-| "A base `GovUkPage` layout component will be created during bootstrapping" (second Mitigation) | No such component exists. The skip link, header, footer and main content area are written inline in the root component instead, so the consistency the mitigation aimed at is achieved without the named abstraction | `git ls-files ui/src/components/` lists no `GovUkPage`; `ui/src/App.tsx` carries `govuk-skip-link`, `govuk-header` and `govuk-footer` |
+| "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory — and they are hand-maintained rather than generated from `docs/api/openapi.yml`, so the anchor holds only as long as someone keeps the two in step | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
+| "A base `GovUkPage` layout component will be created during bootstrapping" (second Mitigation) | No such component exists, and the five items the mitigation lists are split across **two** files rather than gathered into one — which is why no single component emerged. The `<head>` and the skip link are in the Vite entry document; the header, footer and main content area are inline in the root component. The consistency the mitigation aimed at is achieved without the named abstraction | `git ls-files ui/src/components/` lists no `GovUkPage`, and `grep -rn govuk-skip-link ui/src/` returns nothing; `ui/index.html:14` carries `govuk-skip-link`; `ui/src/App.tsx` carries `govuk-header` (:210), `govuk-footer` (:222) and `govuk-main-wrapper` / `id="main-content"` (:111, :127, :258) |
 
 ### The shipped layout
 

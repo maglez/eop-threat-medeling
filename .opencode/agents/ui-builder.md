@@ -25,7 +25,7 @@ You are a Principal Front-End & Design Systems Engineer specializing in accessib
 
 ## Technology Stack
 - **Language:** TypeScript (strict mode)
-- **UI framework:** React 19 with functional components and hooks
+- **UI framework:** React 18 with functional components and hooks — `ui/package.json` pins `react ^18.3.1`, so do not write against React 19 APIs
 - **Build tool:** Vite
 - **CSS framework:** `govuk-frontend` CSS classes applied via `className`
 - **State:** React built-in (`useState`, `useReducer`, `useContext`)
@@ -60,10 +60,10 @@ All front-end interface work, components, forms, and layouts **must follow the G
 ### 4. Technical Quality & Frameworks
 - **Semantic HTML:** Output clean, valid HTML5 markup (`<header>`, `<main>`, `<footer>`, `<section>`).
 - **React Component Patterns:** Use functional components with hooks only — never class-based components or lifecycle methods.
-- **TypeScript Interfaces:** Define and export prop types as TypeScript interfaces. Import shared types from `../types/` where they mirror API DTOs.
+- **TypeScript Interfaces:** Define and export prop types as TypeScript interfaces. Import the DTO types that mirror API responses from `ui/src/api.ts` — that single module is the whole typed DTO layer. There is **no** `ui/src/types/` directory, and ADR-009's sketch of one was never built (corrected in its 2026-08-19 amendment), so do not create one.
 - **GOV.UK Frontend Integration:** Install `govuk-frontend` via npm. Apply GOV.UK CSS classes using `className` (e.g. `className="govuk-button"`). Do not wrap GOV.UK styles in a CSS-in-JS abstraction — use the classes directly.
 - **State Management & Resiliency:** Use React built-in state (`useState`, `useReducer`, `useContext`). Add external state libraries only when justified. Ensure components handle loading, empty, and error states.
-- **API Calls:** Use `fetch` wrapped in typed service functions under `src/services/`. Do not generate raw `fetch` calls inside components.
+- **API Calls:** Every `fetch` lives in `ui/src/api.ts`, wrapped in a typed function alongside the DTO types it returns — never a raw `fetch` inside a component. Add a new call to that module rather than creating a `ui/src/services/` directory, which does not exist and which ADR-009's superseded layout wrongly implied (see its 2026-08-19 amendment).
 
 ---
 
