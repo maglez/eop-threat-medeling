@@ -20,9 +20,23 @@ public enum SessionStatus {
     /** Every trick has been played and the score is final. */
     COMPLETED,
     /**
-     * Given up on rather than finished. No code reaches this state yet: it
-     * exists so that expiry and abandonment have somewhere to live when they
-     * are implemented, rather than being bolted on as a nullable flag later.
+     * Given up on rather than finished. Written by the expiry sweep, and not
+     * observable by a client via that path.
+     *
+     * <p>{@code SessionRepository.abandonAndDelete} sets this state and deletes
+     * the row in the same transaction, so no fetch can observe it — the next
+     * request for an expired session is a 404, not a session reporting
+     * {@code ABANDONED}. The write exists so that the deletion has a reason
+     * recorded against it rather than happening silently, and so that the sweep
+     * can exclude rows it has already claimed.
+     *
+     * <p>Read that as a property of the one path that writes it, not of the state
+     * itself. The sweep is the sole writer today and nothing structural enforces
+     * that; a future caller that marked sessions for later reaping would make
+     * this state observable, and no test would fail. The TypeScript mirror in
+     * {@code ui/src/api.ts} therefore lists it and deliberately gives it no
+     * branch, so that the day it becomes observable the gap shows up as a missing
+     * branch on a type that already has the member (EOP-105).
      */
     ABANDONED;
 

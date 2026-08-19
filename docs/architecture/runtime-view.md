@@ -188,6 +188,45 @@ branching and the `onSessionEnd()` call live in `LobbyScreen`). Either path call
 `sessionStorage.removeItem(STORAGE_KEY)` and returns the player to the home screen.
 The re-read half of "a re-read, never a replay" works; the give-up half works too.
 
+EOP-105 added a **third** route to that same exit, so the two error paths above are no
+longer the whole set. `refreshSession` now also gives up when the re-read succeeds but
+reports a terminal status: `sessionData.status === 'COMPLETED'` calls `onSessionEnd()`
+and returns, before the `IN_PROGRESS` one-shot. That case is not an error — the fetch
+returned 200 — which is why it needed its own branch rather than falling out of the
+`ApiError` handling. It is reachable whenever the facilitator ends a session while
+somebody is still sitting in the lobby: the `game-completed` doorbell arrives, the
+lobby re-reads, and the status it gets back is one no lobby view can render. Before
+EOP-105 `COMPLETED` was not even in the client's `SessionStatus` union, so that player
+was stranded on a screen showing neither a Start button (gated on `LOBBY`) nor a "game
+has started" notice (gated on `IN_PROGRESS`).
+
+So the count to carry forward is **three** `onSessionEnd()` triggers in `LobbyScreen`,
+not two: the `COMPLETED` branch, the 403/404 branch in `refreshSession`'s `catch`, and
+the 403/404 branch in the SSE `onError`. `ABANDONED` deliberately has no branch — the
+expiry sweep sets it and deletes the row in the same transaction, so the next fetch is
+a 404 and the second route already covers it (see `SessionStatus`'s javadoc for why
+that is a property of the only path that writes it today, not of the state itself).
+
+One asymmetry is worth stating plainly, because it is a consequence of the client
+holding its own lifecycle rather than reading the server's. `COMPLETED` reaches the
+client two ways and they land in different places. Observed by `GameScreen`, it arrives
+through the `onGameOver` callback and `App.tsx` moves to `game-over`, which shows the
+leaderboard. Observed by `LobbyScreen`, it goes to `onSessionEnd()` and thence to
+`home`, discarding the stored token. That is intentional rather than an oversight: a
+player still in the lobby never entered the game and has no score on the leaderboard,
+so there is nothing for `game-over` to show them. The rule, stated in full as ADR-009
+Decision 4, is that `view.screen` is the client's own state machine and the only thing
+that decides which screen renders; `session.status` is consulted for two purposes and no
+others — to *gate* what a screen renders while it is mounted (`LobbyScreen.tsx:267`
+gates the Start button on `LOBBY`, `:279` gates the started-notice on `IN_PROGRESS`), and
+to *leave* a screen the server has moved past. It is never the subject of a lookup that
+maps a server state onto a screen name. Note that leaving a screen necessarily names
+where you land — the lobby's `IN_PROGRESS` exit reaches `game`, though only when
+`VITE_GAME_SCREEN_ENABLED` is `true`, since `App.tsx` gates that `setView` on the flag and
+the container default is `false` (`ui/Dockerfile`); with the flag off the read leaves
+nothing and `:279`'s gate shows the started-notice instead. Either way that is the same
+transition seen from the other side, not a violation.
+
 ---
 
 ## 2. The SSE stream — subscribe, heartbeat, publish
@@ -951,6 +990,30 @@ because the group has reached a conclusion, not because the score is meaningless
 **`GAME_COMPLETED` carries no payload.** Consistent with ADR-014: the event names the
 session and the time; a subscriber re-reads `GET /sessions/{sessionId}` to see `COMPLETED`
 and `GET /sessions/{sessionId}/score` for the final standings.
+
+### What the client does with `COMPLETED` (EOP-105)
+
+The sequence above stops at the doorbell, which is where the server's responsibility
+ends but not where the flow does. Two different clients re-read and take two different
+actions, and which one a given player gets depends on the screen they were on when the
+facilitator ended the session:
+
+| Player was on | Re-read happens in | Destination |
+|---|---|---|
+| `GameScreen` (playing) | the trick/`game-completed` handling | `game-over` — leaderboard and final standings |
+| `LobbyScreen` (never joined the play) | `refreshSession`, on the same doorbell | `home`, via `onSessionEnd()`, which clears the stored token |
+
+That divergence is deliberate. A player still in the lobby has no plays and therefore no
+row worth showing on a leaderboard, so returning them to the front door is the honest
+outcome rather than a score screen full of zeroes. The governing rule, stated in full in
+"The custody and recovery path" above and as ADR-009 Decision 4: `view.screen` is the
+client's own state machine and the only thing deciding which screen renders, and
+`session.status` is read to *gate* what a mounted screen shows and to *leave* a screen
+the server has moved past — never as a lookup mapping a server state onto a screen name.
+
+Before EOP-105 the lobby had no branch at all here, because `COMPLETED` was missing from
+the client's `SessionStatus` union — so this doorbell left that player on a lobby screen
+with neither a Start button nor a "game has started" notice, indefinitely.
 
 ---
 

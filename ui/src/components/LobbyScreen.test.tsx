@@ -20,14 +20,14 @@ const mockSession: SessionStateDto = {
       playerId: 'player-2',
       displayName: 'Player 2',
       seatOrder: 1,
-      role: 'PLAYER',
+      role: 'PARTICIPANT',
       connectionStatus: 'CONNECTED'
     },
     {
       playerId: 'player-3',
       displayName: 'Player 3',
       seatOrder: 2,
-      role: 'PLAYER',
+      role: 'PARTICIPANT',
       connectionStatus: 'CONNECTED'
     }
   ],
@@ -192,6 +192,72 @@ describe('LobbyScreen', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Start game' })).not.toBeInTheDocument();
     });
+  });
+
+  it('calls onSessionEnd when the session has already reached COMPLETED', async () => {
+    // A player sitting in the lobby when the facilitator ends the session receives
+    // `game-completed` on the SSE doorbell and re-reads the session, which now
+    // reports COMPLETED. Before EOP-105 that status was not even in the union, so
+    // the lobby had no branch for it and the player was stranded on a screen with
+    // neither a Start button (gated on LOBBY) nor a "game has started" notice
+    // (gated on IN_PROGRESS). This pins the exit that replaced that dead end.
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/events')) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ ...mockSession, status: 'COMPLETED' })
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockOnSessionEnd).toHaveBeenCalled();
+    });
+  });
+
+  it('does not treat an in-progress session as completed', async () => {
+    // Guards the branch ordering: the COMPLETED check sits immediately before the
+    // IN_PROGRESS one-shot in refreshSession, so a test that only asserted
+    // "COMPLETED exits" would still pass if the condition were inverted or widened
+    // to every non-LOBBY status. IN_PROGRESS must fire onGameStarted and must not
+    // eject the player.
+    const mockOnGameStarted = vi.fn();
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/events')) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockInProgressSession)
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+        onGameStarted={mockOnGameStarted}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockOnGameStarted).toHaveBeenCalledWith(mockInProgressSession);
+    });
+    expect(mockOnSessionEnd).not.toHaveBeenCalled();
   });
 
   it('calls onSessionEnd when session returns 404 (ApiError with status 404)', async () => {

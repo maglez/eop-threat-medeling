@@ -7,14 +7,32 @@
  * cross-origin handling anywhere in the system.
  */
 
-/** A STRIDE suit, matching the server's enum exactly. */
-export type StrideCategory =
-  | "SPOOFING"
-  | "TAMPERING"
-  | "REPUDIATION"
-  | "INFORMATION_DISCLOSURE"
-  | "DENIAL_OF_SERVICE"
-  | "ELEVATION_OF_PRIVILEGE";
+/**
+ * A STRIDE suit. Mirrors `org.maglez.eop.entity.StrideCategory` and the
+ * `StrideCategory` schema in `docs/api/openapi.yml`.
+ *
+ * Declared as an `as const` array rather than a bare union of literals so that
+ * the members survive compilation and `EnumMirrorParityTest` can compare them
+ * with the other two artefacts. It was a bare union until EOP-105, and the
+ * comment above it asserted parity with the server while nothing checked it —
+ * the same unenforced invariant that let `PlayerDto.role` drift. `SUIT_LABELS`
+ * below is keyed exhaustively off this union, so a drifted member would take the
+ * label map with it while `tsc` stayed green.
+ */
+export const STRIDE_CATEGORIES = [
+  "SPOOFING",
+  "TAMPERING",
+  "REPUDIATION",
+  "INFORMATION_DISCLOSURE",
+  "DENIAL_OF_SERVICE",
+  "ELEVATION_OF_PRIVILEGE",
+] as const;
+export type StrideCategory = (typeof STRIDE_CATEGORIES)[number];
+
+/** Narrows an unknown value to a {@link StrideCategory}. */
+export function isStrideCategory(value: unknown): value is StrideCategory {
+  return STRIDE_CATEGORIES.includes(value as StrideCategory);
+}
 
 /** One threat card, as published by `GET /api/v1/cards`. */
 export interface Card {
@@ -90,18 +108,64 @@ export async function fetchCards(size = 20): Promise<PagedResponse<Card>> {
 }
 
 // Session API types
+
+// The three enums below mirror server-side Java enums, and each one is declared
+// as a runtime `as const` array with the union *derived* from it rather than as a
+// bare union type. The reason is that a TypeScript union is erased at compile
+// time: DTOs arrive through a type assertion in the fetch helpers below, never a
+// parse, so a union alone cannot detect that the server sent a value the mirror
+// does not list — every comparison against it just silently evaluates false.
+// Keeping the members at runtime gives two tests something to check, and the
+// split between them is deliberate. `api.test.ts` asserts each declared member is
+// accepted and a non-member rejected, which is all a browser-side test can do:
+// this project has no `@types/node` on purpose, so Vitest cannot read a file off
+// disk. The cross-artefact comparison against the `enum` lists in
+// `docs/api/openapi.yml` and the Java sources therefore lives in the Java suite,
+// in `src/test/java/org/maglez/eop/docs/EnumMirrorParityTest.java`, which fails
+// `./mvnw verify` when the three drift apart. See ADR-009 (EOP-105).
+
+/** Mirrors `PlayerRole` (`org.maglez.eop.entity.PlayerRole`). */
+export const PLAYER_ROLES = ['FACILITATOR', 'PARTICIPANT'] as const;
+export type PlayerRole = (typeof PLAYER_ROLES)[number];
+
+/** Mirrors `SessionStatus` (`org.maglez.eop.entity.SessionStatus`). */
+export const SESSION_STATUSES = ['LOBBY', 'IN_PROGRESS', 'COMPLETED', 'ABANDONED'] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+
+/**
+ * Mirrors the `ConnectionStatus` schema in `docs/api/openapi.yml`.
+ *
+ * Advisory only: the server discovers a dead connection on its next failed
+ * write, so this can over-report `CONNECTED` between heartbeats. It is a display
+ * hint and never an input to a game rule.
+ */
+export const CONNECTION_STATUSES = ['CONNECTED', 'DISCONNECTED'] as const;
+export type ConnectionStatus = (typeof CONNECTION_STATUSES)[number];
+
+export function isPlayerRole(value: unknown): value is PlayerRole {
+  return PLAYER_ROLES.includes(value as PlayerRole);
+}
+
+export function isSessionStatus(value: unknown): value is SessionStatus {
+  return SESSION_STATUSES.includes(value as SessionStatus);
+}
+
+export function isConnectionStatus(value: unknown): value is ConnectionStatus {
+  return CONNECTION_STATUSES.includes(value as ConnectionStatus);
+}
+
 export interface PlayerDto {
   readonly playerId: string;
   readonly displayName: string;
   readonly seatOrder: number;
-  readonly role: 'FACILITATOR' | 'PLAYER';
-  readonly connectionStatus: string;
+  readonly role: PlayerRole;
+  readonly connectionStatus: ConnectionStatus;
 }
 
 export interface SessionStateDto {
   readonly sessionId: string;
   readonly joinCode: string;
-  readonly status: 'LOBBY' | 'IN_PROGRESS' | 'ENDED';
+  readonly status: SessionStatus;
   readonly players: readonly PlayerDto[];
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -287,7 +351,7 @@ export interface LeaderboardRowDto {
 
 export interface LeaderboardDto {
   readonly rows: readonly LeaderboardRowDto[];
-  readonly sessionStatus: string;
+  readonly sessionStatus: SessionStatus;
 }
 
 export async function getLeaderboard(sessionId: string, playerToken: string): Promise<LeaderboardDto> {
