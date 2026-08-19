@@ -15,7 +15,7 @@ runs everywhere.
 
 This ADR exists because the explanation had outgrown its home. The mechanism was
 documented in `.opencode/rules/database.md` as a single bullet of a little over
-1.8 kB — 40% of that rule file, 5.2x its next-longest line — sitting in a
+1.8 kB — 40% of that rule file, 5.1x its next-longest line — sitting in a
 three-item lookup list whose other entries are roughly 50 and 40 characters. Two
 things made that placement wrong rather than merely untidy:
 
@@ -314,8 +314,11 @@ be dated, amended and superseded.
   when that line carries none. So it guarantees only that a date an ADR
   **declares** in its status line also appears in `docs/adr/README.md`. An
   amendment that leaves the status line alone is invisible to the test and to the
-  index by construction — this story amended two ADRs, and neither amendment
-  would have been visible had the status line not been updated by hand. Keeping
+  index by construction — and this story is its own demonstration. It amended
+  two ADRs. ADR-008's amendment is visible only because its status line was
+  extended by hand in the same commit; ADR-006's is **invisible in the index
+  today**, because that ADR's status line carries no date and the amendment did
+  not add one, so the assertion never fires. Keeping
   an amendment visible is therefore a discipline, not a guarantee.
 - The three discard mechanisms are recorded with the bytecode that proves them,
   so the next person does not have to re-derive them from behaviour.
