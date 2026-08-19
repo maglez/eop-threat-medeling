@@ -85,8 +85,9 @@
 
     <comment>
       Add CHECK constraint to ensure trick.sequence is 1-based as documented in
-      changeset 004. No upper bound is derivable: at three players a session has
-      26 tricks, but no domain constant bounds it.
+      changeset 004. No upper bound is derivable: at three players a session runs
+      to ceil(68 / 3) = 23 tricks, but no domain constant bounds it, and the deck
+      size that figure derives from is not a constant this file can read.
     </comment>
 
     <!-- Raw <sql> is mandatory here, not a stylistic choice: addCheckConstraint
