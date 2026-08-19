@@ -145,14 +145,20 @@ consumer that does not exist yet rather than a fix for a live defect.
   > optionality weakens presence but never membership. The field is genuinely optional on the wire
   > (`TrickDto` is `@JsonInclude(NON_NULL)`; `ledSuit` is unset until the first card of a trick is
   > played), which is why `requireEnum` alone would have been wrong. `CardDto.rank` was **not**
-  > narrowed: the contract declares it `type: string`, not a `$ref` to `Rank`, so bare `string` is
-  > faithful there, and ADR-009's EOP-109 amendment records the matching rejection of a `Rank`
-  > mirror. A tightening of `LeaderboardRowDto.capturedBySuit` to
+  > narrowed, and that is an accepted drift rather than fidelity: the contract *does* `$ref` `Rank`
+  > there, so the wide type is genuinely less specific than the contract. It is left wide because the
+  > client never compares or orders a rank — the contract supplies `rankValue: integer` "used for
+  > comparison", the card face renders from `rankSymbol`, and `card.rank` reaches exactly one
+  > consumer, `cardImagePath(suit, rank)`, which returns `null` for anything it does not recognise
+  > and whose every call site null-checks. An out-of-contract rank therefore degrades to a missing
+  > image, not a wrong comparison. ADR-009's EOP-109 amendment records the matching rejection of a
+  > `Rank` mirror and the evidence behind it. A tightening of `LeaderboardRowDto.capturedBySuit` to
   > `Readonly<Record<StrideCategory, number>>` was considered and declined, because
   > `requireNumberRecord` deliberately never inspects keys (§2's key-secrecy rule), so the narrower
   > index type would be an unenforced compile-time claim — the very thing this ADR exists to
-  > remove. Every enum-typed field the front end receives is now both typed against a mirror and
-  > membership-checked by a parser.
+  > remove. Every field whose contract schema is a *mirrored* enum is now both typed against that
+  > mirror and membership-checked by a parser; `rank` sits outside that claim because `Rank` has no
+  > mirror, not because `rank` is narrow.
 - **`startNewGame` and `dealCards` gain no parser.** Neither reads a body — `dealCards`
   returns `204 No Content`. Adding a parser to a void helper would be theatre.
 - **`subscribeToSession` gains no parser.** The SSE stream is a *doorbell*: a `data:` frame

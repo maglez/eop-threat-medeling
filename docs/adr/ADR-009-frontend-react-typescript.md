@@ -368,28 +368,33 @@ array named", so registration requires first rewriting the declaration. That is 
 formality: it is why closing the `StrideCategory` gap above changed `api.ts` as well as the test.
 Anyone planning to bring a further mirror under the gate should budget for the source change.
 
-Two enums in `docs/api/openapi.yml` remain deliberately outside the gate, both because there is
-nothing client-side to compare rather than because they were overlooked:
+Two enums in `docs/api/openapi.yml` remain deliberately outside the gate, and neither was overlooked:
 
 - **`Rank`** has no TypeScript mirror, and **EOP-109 decided it should stay that way** rather than
-  adding one by default. `Card.rank` and `CardDto.rank` are bare `string` because the client only ever
-  *displays* a rank; it never compares or orders one, so a narrowed type would protect no branch — the
-  trick-winning arithmetic that does depend on rank ordering runs server-side. `CardDto.rank` is
-  additionally faithful rather than drifted: `CardDto` declares `rank` as `type: string`, not a `$ref`
-  to `Rank`, so bare `string` is what the contract asks for there. Registering the mirror would also
-  require teaching the parser YAML *flow* sequences, since `Rank`'s `enum:` is written inline on one
-  line rather than as a block list and `ENUM_KEY` (`^ {6}enum:\s*$`) cannot match that — a change to
-  the gate's own parser, bought for a field with no client-side comparison to protect. Revisit it if
-  rank ever becomes something the front end orders
+  adding one by default. Be precise about what that costs: the contract *does* `$ref` `Rank` for this
+  field (`Card.rank` is `$ref: '#/components/schemas/Rank'`), so `Card.rank` and `CardDto.rank` being
+  bare `string` in `ui/src/api.ts` is an **accepted drift, not fidelity**. Do not restate it as the
+  contract declaring `rank` as `type: string` — it does not, and an earlier draft of this ADR said so
+  wrongly. The drift is accepted because the client never compares or orders a rank: the contract
+  supplies `rankValue` expressly "for comparison", the card face is rendered from `rankSymbol`, and
+  `rank` reaches exactly one consumer — `cardImagePath(suit, rank)`, which returns `null` for anything
+  it does not recognise and whose every call site null-checks. An out-of-contract rank therefore
+  degrades to a missing card image, never to a wrong comparison — the same fail-safe shape that made
+  the `suit` drift a MINOR before EOP-108 closed it. Registering the mirror would also require
+  teaching the parser YAML *flow* sequences, since `Rank`'s `enum:` is written inline on one line
+  rather than as a block list and `ENUM_KEY` (`^ {6}enum:\s*$`) cannot match that — a change to the
+  gate's own parser, bought for a field with no client-side comparison to protect. Revisit it if rank
+  ever becomes something the front end orders or compares
 - The response schemas carry no enums of their own
 
 A third exclusion used to sit here for a **weaker** reason, and it is now **closed** rather than merely
 re-worded: `StrideCategory`-valued fields in `ui/src/api.ts` that were declared bare `string` even
 though the mirror they should have used was already under the gate. EOP-108 narrowed `CardDto.suit`,
-and EOP-109 narrowed `TrickDto.ledSuit` — the last one. Every field whose contract schema is a mirrored
-enum is now both typed against that mirror and membership-checked by a parser (ADR-045), so the two
-bullets above *are* now a complete justification. Keep it that way: a new bare-`string` field whose
-schema `$ref`s a mirrored enum belongs in neither this list nor the code.
+and EOP-109 narrowed `TrickDto.ledSuit` — the last one. Every field whose contract schema is a
+*mirrored* enum is now both typed against that mirror and membership-checked by a parser (ADR-045).
+Read that scope precisely: it is a claim about *mirrored* enums, and `rank` sits outside it because
+`Rank` has no mirror, not because `rank` is narrow. Keep it that way: a new bare-`string` field whose
+schema `$ref`s a *mirrored* enum belongs in neither this list nor the code.
 
 `TrickDto.ledSuit` narrowed through a new `optionalEnum` helper rather than `requireEnum`, because the
 field is genuinely optional on the wire — `TrickDto` is `@JsonInclude(NON_NULL)` server-side and
@@ -544,14 +549,25 @@ with a message naming the DTO and field.
 a default, and the decision is to leave `Rank` unmirrored. Three independent reasons, in descending
 order of weight:
 
-- **Nothing on the client compares a rank.** The front end only ever *displays* it. The trick-winning
-  arithmetic, which is the only logic depending on rank *ordering*, runs server-side. A narrowed type
-  would protect no branch — the same ground the other principled exclusion rests on
-- **For `CardDto.rank`, bare `string` is faithful, not drifted.** `CardDto` declares `rank` as
-  `type: string`, not a `$ref` to `Rank`. Narrowing it would make the client *more* specific than the
-  contract: drift in the opposite direction, and a change that would need the contract amended first
+- **Nothing on the client compares or orders a rank.** The contract itself supplies the field for
+  that: `rankValue` is an `integer` described as "Numeric rank used for comparison", and the
+  trick-winning arithmetic that consumes it runs server-side. The card face renders from `rankSymbol`,
+  not from `rank`. A narrowed `rank` would protect no branch
+- **`rank` reaches exactly one consumer, and that consumer already fails safe.** `card.rank` is passed
+  only to `cardImagePath(suit, rank)` (`ui/src/utils/cardImagePath.ts`), which takes both arguments as
+  bare `string` and returns `string | null`; every call site in `GameScreen.tsx` null-checks and falls
+  back to a text rendering. An out-of-contract rank therefore degrades to a missing card image — never
+  a wrong comparison. This is the same fail-safe shape the `suit` drift had before EOP-108, which is
+  why the two were always separable
 - **It would cost a change to the gate's own parser.** `Rank`'s `enum:` is a one-line flow sequence,
   so `openApiEnumValues` would need teaching a second YAML form for zero behavioural gain
+
+State the resulting position accurately: `Card.rank`/`CardDto.rank` typed `string` **is** drift, because
+the contract does `$ref` `Rank` at `docs/api/openapi.yml` (`Card.rank`). It is *accepted, fail-safe,
+recorded* drift, not fidelity. An earlier draft of this amendment claimed the contract declared `rank`
+as `type: string` — it does not, there is no separate `CardDto` schema, and both TypeScript interfaces
+map onto the one `Card` schema. Gate 2 (@tester-api) caught that during review; the claim is corrected
+here and at every other site that carried it.
 
 The exit condition is written into both this ADR and `EnumMirrorParityTest.mirrors()`: if rank ever
 becomes something the front end orders or compares, add the mirror and teach the parser then.

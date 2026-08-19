@@ -110,23 +110,27 @@ class EnumMirrorParityTest {
      * {@code ui/src/api.ts} mirrored a fourth, {@code StrideCategory}, as a bare union whose own
      * comment claimed parity with the server. EOP-105's review caught it and it is registered below.
      *
-     * <p>Two enums the contract declares are deliberately absent, and both are absent for the same
-     * reason — there is nothing on the client to compare against:
+     * <p>Two enums the contract declares are deliberately absent from the table below:
      *
      * <ul>
      *   <li>{@code Rank} has no TypeScript mirror at all, and EOP-109 decided it should stay that
-     *       way rather than adding one by default. {@code Card.rank} and {@code CardDto.rank} are
-     *       bare {@code string} because the client only ever <em>displays</em> a rank; it never
-     *       compares or orders one, so a narrowed type would protect no branch. The trick-winning
-     *       arithmetic that does depend on rank ordering runs server-side. {@code CardDto.rank} is
-     *       additionally outside this guard's reach by contract: {@code CardDto} declares it
-     *       {@code type: string}, not a {@code $ref} to {@code Rank}, so bare {@code string} is the
-     *       faithful type there rather than a drift. Registering the mirror would also need
-     *       {@link #openApiEnumValues} taught to read a YAML flow sequence, since {@code Rank} is
-     *       written {@code enum: [TWO, THREE, ...]} on one line rather than as a block — a change to
-     *       this gate's own parser, bought for a field with no client-side comparison to protect. If
-     *       rank ever becomes something the front end orders, add the mirror and teach the parser
-     *       then.
+     *       way rather than adding one by default. Be precise about what that costs: the contract
+     *       {@code $ref}s {@code Rank} for that field, so {@code Card.rank} and
+     *       {@code CardDto.rank} being bare {@code string} in {@code ui/src/api.ts} is an accepted
+     *       <em>drift</em>, not fidelity. Do not restate it as the contract declaring {@code rank}
+     *       as {@code type: string} — it does not; {@code Card.rank} is
+     *       {@code $ref: '#/components/schemas/Rank'}. The drift is accepted because the client
+     *       never compares or orders a rank: the contract supplies {@code rankValue} expressly for
+     *       comparison, the card face is rendered from {@code rankSymbol}, and {@code rank} reaches
+     *       exactly one consumer — {@code cardImagePath(suit, rank)}, which returns {@code null}
+     *       for anything it does not recognise and whose every call site null-checks. An
+     *       out-of-contract rank therefore degrades to a missing image, never to a wrong
+     *       comparison. Registering the mirror would also need {@link #openApiEnumValues} taught to
+     *       read a YAML flow sequence, since {@code Rank} is written
+     *       {@code enum: [TWO, THREE, ...]} on one line rather than as a block — a change to this
+     *       gate's own parser, bought for a field with no client-side comparison to protect. If
+     *       rank ever becomes something the front end orders or compares, add the mirror and teach
+     *       the parser then.
      *   <li>{@code ProblemDetail} and the other response schemas carry no enums.
      * </ul>
      *
@@ -134,10 +138,12 @@ class EnumMirrorParityTest {
      * merely re-worded: {@code StrideCategory}-valued fields in {@code ui/src/api.ts} that were
      * declared bare {@code string} even though the mirror they should have used was registered
      * below. EOP-108 narrowed {@code CardDto.suit} and EOP-109 narrowed {@code TrickDto.ledSuit},
-     * the last one, so every field whose contract schema is a mirrored enum is now both typed
-     * against that mirror and membership-checked by a parser in {@code ui/src/api.ts}. Keep it that
-     * way: a new bare-{@code string} field whose schema {@code $ref}s a mirrored enum belongs in
-     * neither this list nor the code.
+     * the last of them, so every field whose contract schema is a <em>mirrored</em> enum is now
+     * both typed against that mirror and membership-checked by a parser in {@code ui/src/api.ts}.
+     * Read that scope precisely: it is a claim about mirrored enums, and {@code rank} sits outside
+     * it because {@code Rank} has no mirror, not because {@code rank} is narrow. Keep it that way:
+     * a new bare-{@code string} field whose schema {@code $ref}s a <em>mirrored</em> enum belongs
+     * in neither this list nor the code.
      *
      * @return one case per mirrored enum
      */

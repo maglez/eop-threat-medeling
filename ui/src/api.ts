@@ -685,11 +685,17 @@ export interface CardDto {
    * Narrowed from a bare `string` to `StrideCategory` by EOP-108: `isStrideCategory`
    * already existed and `parseCardDto` below checks membership, so leaving the type
    * wide would have described the field as less certain than it now is. EOP-109 did
-   * the same for `TrickDto.ledSuit`, the last contract enum still typed `string`.
+   * the same for `TrickDto.ledSuit`, the last field typed `string` against a
+   * *mirrored* enum schema.
    *
-   * `rank` below stays a bare `string` deliberately: the contract declares it
-   * `type: string` on `CardDto`, not an enum `$ref`, so there is nothing to narrow
-   * to. The sibling `Rank` schema is a separate decision, recorded in ADR-009.
+   * `rank` below stays a bare `string`, and that is an accepted drift rather than
+   * fidelity: the contract does `$ref` the `Rank` enum here, so the wide type is
+   * genuinely less specific than the contract. It is accepted because the client
+   * never compares or orders a rank — `rankValue` exists for comparison and the card
+   * face is rendered from `rankSymbol` — leaving `rank` with exactly one consumer,
+   * `cardImagePath(suit, rank)`, which returns `null` for anything it does not
+   * recognise and whose every call site null-checks. EOP-109 rejected adding a `Rank`
+   * mirror on those grounds; see ADR-009.
    */
   readonly suit: StrideCategory;
   readonly rank: string;
