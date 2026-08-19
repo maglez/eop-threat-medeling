@@ -17,7 +17,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   subscribeToSession,
   dealCards,
+  fetchCards,
+  createSession,
+  joinSession,
+  getSession,
+  startGame,
+  getLeaderboard,
+  fetchHand,
+  getTrickState,
+  playCard,
+  resolveTrick,
   ApiError,
+  ContractViolationError,
   PLAYER_ROLES,
   SESSION_STATUSES,
   CONNECTION_STATUSES,
@@ -290,9 +301,13 @@ describe('dealCards', () => {
  * two of them had silently drifted: `role` listed a `PLAYER` the server never
  * sends while omitting the `PARTICIPANT` it sends for every non-facilitator, and
  * `status` listed a non-existent `ENDED` while omitting `COMPLETED` and
- * `ABANDONED`. Nothing failed, because a TypeScript union is erased at runtime
- * and DTOs arrive through a type assertion rather than a parse, so every
- * comparison against the real value just evaluated false.
+ * `ABANDONED`. Nothing failed, because a TypeScript union is erased at runtime and
+ * DTOs arrived through a type assertion rather than a parse, so every comparison
+ * against the real value just evaluated false. Since EOP-108 the arrays are also
+ * load-bearing at runtime — the guards below are consumed by the parsers in
+ * `api.ts`, so a drifted member would now reject live payloads rather than merely
+ * mis-compare them, which raises the cost of drift and is the reason this block
+ * pins the members literally.
  *
  * `STRIDE_CATEGORIES` is here because the review of this story found it in the
  * same condition the other two had been in — a bare union whose comment asserted
@@ -389,5 +404,530 @@ describe('enum mirrors', () => {
     expect(isStrideCategory('spoofing')).toBe(false);
     expect(isStrideCategory('ELEVATION OF PRIVILEGE')).toBe(false);
     expect(isStrideCategory(undefined)).toBe(false);
+  });
+});
+
+/**
+ * Response validation at the boundary (EOP-108, ADR-045).
+ *
+ * Every JSON-returning helper used to end `return (await response.json()) as SomeDto`
+ * — an assertion TypeScript erases at runtime, so an out-of-contract payload reached
+ * React state and every comparison against it silently evaluated false. Each helper
+ * now parses instead, and a payload that does not match the contract raises a
+ * `ContractViolationError` (a 502 `ApiError`) rather than being admitted.
+ *
+ * These tests stub global `fetch` deliberately. That is the only route that reaches a
+ * parser: the `parse*` functions are module-private, and a `vi.spyOn(api, …)` test
+ * replaces the helper wholesale, so such a test is not evidence the boundary works.
+ *
+ * Fixtures below are contract-complete on purpose. The happy-path assertion is
+ * `toEqual(validBody)`, which is stronger than a spot-check: because parsers
+ * reconstruct rather than pass through, it fails if a parser drops a contracted field.
+ */
+
+const catalogueCard = {
+  cardId: 'S2',
+  suit: 'SPOOFING',
+  rank: 'TWO',
+  rankSymbol: '2',
+  rankValue: 2,
+  threatPrompt: 'An attacker could impersonate another user.',
+};
+
+const pagedCards = { content: [catalogueCard], page: 0, size: 20, totalElements: 1, totalPages: 1 };
+
+const player = {
+  playerId: 'p-1',
+  displayName: 'Ada',
+  seatOrder: 0,
+  role: 'FACILITATOR',
+  connectionStatus: 'CONNECTED',
+};
+
+const session = {
+  sessionId: 's-1',
+  joinCode: 'ABCD',
+  status: 'LOBBY',
+  players: [player],
+  createdAt: '2026-08-19T10:00:00Z',
+  updatedAt: '2026-08-19T10:01:00Z',
+};
+
+const admission = { playerToken: 'opaque-token', playerId: 'p-1', session };
+
+const leaderboardRow = {
+  playerId: 'p-1',
+  seatOrder: 0,
+  displayName: 'Ada',
+  points: 3,
+  position: 1,
+  tied: false,
+  capturedBySuit: { SPOOFING: 2, TAMPERING: 1 },
+};
+
+const leaderboard = { rows: [leaderboardRow], sessionStatus: 'IN_PROGRESS' };
+
+const hand = { handId: 'h-1', playerId: 'p-1', cardCount: 1, cards: [catalogueCard] };
+
+const trickPlay = {
+  trickPlayId: 'tp-1',
+  playerId: 'p-1',
+  seatOrder: 0,
+  card: catalogueCard,
+  threatLinked: true,
+  components: ['auth-service'],
+  notes: 'session fixation',
+  playedAt: '2026-08-19T10:05:00Z',
+};
+
+const trick = { trickId: 't-1', sequence: 1, leaderSeat: 0, plays: [trickPlay], ledSuit: 'SPOOFING', winningSeat: 0 };
+
+const trickState = { complete: false, handComplete: false, trick, seatToPlay: 1, nextLeaderSeat: 0 };
+
+/** Stubs `fetch` with a 200 response carrying `body`. */
+function stubOkJson(body: unknown): void {
+  vi.stubGlobal('fetch', vi.fn(() =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: () => Promise.resolve(body),
+      headers: new Headers(),
+    } as unknown as Response)
+  ));
+}
+
+/** Replaces one key of a nested clone, so a fixture can be corrupted at a single point. */
+function withCorruptEnum<T>(fixture: T, mutate: (clone: Record<string, unknown>) => void): unknown {
+  const clone = JSON.parse(JSON.stringify(fixture)) as Record<string, unknown>;
+  mutate(clone);
+  return clone;
+}
+
+interface BoundaryCase {
+  readonly helper: string;
+  readonly call: () => Promise<unknown>;
+  readonly validBody: unknown;
+  readonly corruptBody: unknown;
+  /** The exact `DTO.field` path the rejection must name. */
+  readonly path: string;
+  /** The out-of-contract value, which must NOT appear in the message. */
+  readonly badValue: string;
+}
+
+const boundaries: readonly BoundaryCase[] = [
+  {
+    helper: 'fetchCards',
+    call: () => fetchCards(20),
+    validBody: pagedCards,
+    corruptBody: withCorruptEnum(pagedCards, (c) => {
+      (c['content'] as Record<string, unknown>[])[0]!['suit'] = 'CHAOS';
+    }),
+    path: 'PagedResponse<Card>.content[0].suit',
+    badValue: 'CHAOS',
+  },
+  {
+    helper: 'createSession',
+    call: () => createSession('Ada'),
+    validBody: admission,
+    corruptBody: withCorruptEnum(admission, (c) => {
+      (c['session'] as Record<string, unknown>)['status'] = 'ENDED';
+    }),
+    path: 'SessionAdmissionDto.session.status',
+    badValue: 'ENDED',
+  },
+  {
+    helper: 'joinSession',
+    call: () => joinSession('ABCD', 'Grace'),
+    validBody: admission,
+    corruptBody: withCorruptEnum(admission, (c) => {
+      const s = c['session'] as Record<string, unknown>;
+      (s['players'] as Record<string, unknown>[])[0]!['role'] = 'PLAYER';
+    }),
+    path: 'SessionAdmissionDto.session.players[0].role',
+    badValue: 'PLAYER',
+  },
+  {
+    helper: 'getSession',
+    call: () => getSession('s-1', 'token'),
+    validBody: session,
+    corruptBody: withCorruptEnum(session, (c) => {
+      c['status'] = 'WHATEVER';
+    }),
+    path: 'SessionStateDto.status',
+    badValue: 'WHATEVER',
+  },
+  {
+    helper: 'startGame',
+    call: () => startGame('s-1', 'token'),
+    validBody: session,
+    corruptBody: withCorruptEnum(session, (c) => {
+      (c['players'] as Record<string, unknown>[])[0]!['connectionStatus'] = 'FLAKY';
+    }),
+    path: 'SessionStateDto.players[0].connectionStatus',
+    badValue: 'FLAKY',
+  },
+  {
+    helper: 'getLeaderboard',
+    call: () => getLeaderboard('s-1', 'token'),
+    validBody: leaderboard,
+    corruptBody: withCorruptEnum(leaderboard, (c) => {
+      c['sessionStatus'] = 'ENDED';
+    }),
+    path: 'LeaderboardDto.sessionStatus',
+    badValue: 'ENDED',
+  },
+  {
+    helper: 'fetchHand',
+    call: () => fetchHand('s-1', 'token'),
+    validBody: hand,
+    corruptBody: withCorruptEnum(hand, (c) => {
+      (c['cards'] as Record<string, unknown>[])[0]!['suit'] = 'ROOT';
+    }),
+    path: 'HandDto.cards[0].suit',
+    badValue: 'ROOT',
+  },
+  {
+    helper: 'getTrickState',
+    call: () => getTrickState('s-1', 'token'),
+    validBody: trickState,
+    corruptBody: withCorruptEnum(trickState, (c) => {
+      const t = c['trick'] as Record<string, unknown>;
+      const play = (t['plays'] as Record<string, unknown>[])[0]!;
+      (play['card'] as Record<string, unknown>)['suit'] = 'CHAOS';
+    }),
+    path: 'TrickStateDto.trick.plays[0].card.suit',
+    badValue: 'CHAOS',
+  },
+  {
+    helper: 'playCard',
+    call: () => playCard('s-1', 'token', { cardId: 'S2' }),
+    validBody: trick,
+    corruptBody: withCorruptEnum(trick, (c) => {
+      const play = (c['plays'] as Record<string, unknown>[])[0]!;
+      (play['card'] as Record<string, unknown>)['suit'] = 'PRIVILEGE_ESCALATION';
+    }),
+    path: 'TrickDto.plays[0].card.suit',
+    badValue: 'PRIVILEGE_ESCALATION',
+  },
+  {
+    helper: 'resolveTrick',
+    call: () => resolveTrick('s-1', 'token'),
+    validBody: trick,
+    corruptBody: withCorruptEnum(trick, (c) => {
+      const play = (c['plays'] as Record<string, unknown>[])[0]!;
+      (play['card'] as Record<string, unknown>)['suit'] = 'ELEVATION OF PRIVILEGE';
+    }),
+    path: 'TrickDto.plays[0].card.suit',
+    badValue: 'ELEVATION OF PRIVILEGE',
+  },
+];
+
+describe('response validation at the boundary (ADR-045)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // AC-4: one rejection case per parsed boundary.
+  it.each(boundaries)(
+    '$helper rejects a payload whose enum value is out of contract',
+    async ({ call, corruptBody, path, badValue }) => {
+      stubOkJson(corruptBody);
+
+      await expect(call()).rejects.toThrow(ContractViolationError);
+
+      stubOkJson(corruptBody);
+      try {
+        await call();
+        expect.unreachable('the out-of-contract payload was admitted');
+      } catch (e) {
+        const err = e as ContractViolationError;
+        expect(err).toBeInstanceOf(ContractViolationError);
+        // Subclassing ApiError is load-bearing: every component catches that.
+        expect(err).toBeInstanceOf(ApiError);
+        expect(err.status).toBe(502);
+        expect(err.message).toContain(`${path}: expected one of `);
+        // The offending value must never be laundered into rendered output.
+        expect(err.message).not.toContain(badValue);
+      }
+    },
+  );
+
+  it.each(boundaries)('$helper admits a contract-complete payload unchanged', async ({ call, validBody }) => {
+    stubOkJson(validBody);
+
+    await expect(call()).resolves.toEqual(validBody);
+  });
+
+  it('names the DTO, the field and the permitted members, and nothing else', async () => {
+    stubOkJson({ ...session, status: 'WHATEVER' });
+
+    await expect(getSession('s-1', 'token')).rejects.toThrow(
+      'SessionStateDto.status: expected one of LOBBY, IN_PROGRESS, COMPLETED, ABANDONED',
+    );
+  });
+
+  it('drops a field the server sends but no parser reads', async () => {
+    // Documents the hazard ADR-045 records as review-enforced: parsers reconstruct,
+    // so an unread field is silently absent rather than passed through.
+    stubOkJson({ ...session, serverOnlyExtra: 'ignored' });
+
+    const parsed = await getSession('s-1', 'token');
+
+    expect(parsed).toEqual(session);
+    expect(parsed).not.toHaveProperty('serverOnlyExtra');
+  });
+
+  it('rejects a body that is not a JSON object', async () => {
+    stubOkJson([session]);
+
+    await expect(getSession('s-1', 'token')).rejects.toThrow('SessionStateDto: expected a JSON object');
+  });
+
+  it('rejects a missing required string', async () => {
+    const withoutJoinCode: Record<string, unknown> = { ...session };
+    delete withoutJoinCode['joinCode'];
+    stubOkJson(withoutJoinCode);
+
+    await expect(getSession('s-1', 'token')).rejects.toThrow('SessionStateDto.joinCode: expected a string');
+  });
+
+  it('rejects a required number sent as a numeric string', async () => {
+    stubOkJson({ ...hand, cardCount: '1' });
+
+    await expect(fetchHand('s-1', 'token')).rejects.toThrow('HandDto.cardCount: expected a finite number');
+  });
+
+  it('rejects NaN, which is a number but not a finite one', async () => {
+    // JSON cannot carry NaN, but a hand-rolled body or a proxy can.
+    stubOkJson({ ...hand, cardCount: Number.NaN });
+
+    await expect(fetchHand('s-1', 'token')).rejects.toThrow('HandDto.cardCount: expected a finite number');
+  });
+
+  it('rejects a required array sent as an object', async () => {
+    stubOkJson({ ...session, players: { 0: player } });
+
+    await expect(getSession('s-1', 'token')).rejects.toThrow('SessionStateDto.players: expected an array');
+  });
+
+  it('rejects a non-string element inside a string array, naming its index', async () => {
+    const corrupt = withCorruptEnum(trick, (c) => {
+      const play = (c['plays'] as Record<string, unknown>[])[0]!;
+      play['components'] = ['auth-service', 42];
+    });
+    stubOkJson(corrupt);
+
+    await expect(resolveTrick('s-1', 'token')).rejects.toThrow(
+      'TrickDto.plays[0].components[1]: expected a string',
+    );
+  });
+
+  it('rejects a non-numeric value inside the capturedBySuit record', async () => {
+    const corrupt = withCorruptEnum(leaderboard, (c) => {
+      const row = (c['rows'] as Record<string, unknown>[])[0]!;
+      row['capturedBySuit'] = { SPOOFING: 'two' };
+    });
+    stubOkJson(corrupt);
+
+    await expect(getLeaderboard('s-1', 'token')).rejects.toThrow(
+      'LeaderboardDto.rows[0].capturedBySuit: expected every value to be a finite number',
+    );
+  });
+
+  /**
+   * The keys of `capturedBySuit` are chosen by the server, so they are payload.
+   * Naming the offending key would reflect an attacker-influenced string into
+   * the GOV.UK error summary, which `.opencode/rules/error-handling.md` forbids.
+   * The distinctive key below would be unmistakable in the message if the
+   * parser ever regressed to interpolating it.
+   */
+  it('never reflects a capturedBySuit key into the violation message', async () => {
+    const corrupt = withCorruptEnum(leaderboard, (c) => {
+      const row = (c['rows'] as Record<string, unknown>[])[0]!;
+      row['capturedBySuit'] = { '<img src=x onerror=alert(1)>': 'two' };
+    });
+    stubOkJson(corrupt);
+
+    let thrown: unknown;
+    try {
+      await getLeaderboard('s-1', 'token');
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect((thrown as ContractViolationError).message).toBe(
+      'LeaderboardDto.rows[0].capturedBySuit: expected every value to be a finite number',
+    );
+    expect((thrown as ContractViolationError).message).not.toContain('img');
+    expect((thrown as ContractViolationError).message).not.toContain('onerror');
+  });
+
+  /**
+   * `requireNumberRecord` builds its result with `Object.create(null)`, so a
+   * `__proto__` key cannot shadow an `Object.prototype` member and leave the
+   * record non-coercible for a future consumer. A number-valued `__proto__`
+   * would be dropped silently by a plain `{}`; here it is an own property of a
+   * prototype-less object, and the global prototype is untouched either way.
+   */
+  it('does not let a capturedBySuit key pollute Object.prototype', async () => {
+    const corrupt = withCorruptEnum(leaderboard, (c) => {
+      const row = (c['rows'] as Record<string, unknown>[])[0]!;
+      row['capturedBySuit'] = JSON.parse('{"__proto__":5,"toString":6,"SPOOFING":1}') as Record<string, number>;
+    });
+    stubOkJson(corrupt);
+
+    const result = await getLeaderboard('s-1', 'token');
+
+    expect(result.rows[0]!.capturedBySuit['SPOOFING']).toBe(1);
+    expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+    expect(Object.getPrototypeOf(result.rows[0]!.capturedBySuit)).toBeNull();
+  });
+
+  it('accepts an optional field that is absent, and one sent as explicit null', async () => {
+    stubOkJson({ complete: true, handComplete: false });
+    await expect(getTrickState('s-1', 'token')).resolves.toEqual({ complete: true, handComplete: false });
+
+    stubOkJson({ complete: true, handComplete: false, trick: null, seatToPlay: null, nextLeaderSeat: null });
+    const parsed = await getTrickState('s-1', 'token');
+
+    expect(parsed).toEqual({ complete: true, handComplete: false });
+    expect(parsed).not.toHaveProperty('trick');
+    expect(parsed).not.toHaveProperty('seatToPlay');
+  });
+
+  it('still rejects an optional field that is present but of the wrong type', async () => {
+    stubOkJson({ complete: true, handComplete: false, seatToPlay: 'two' });
+
+    await expect(getTrickState('s-1', 'token')).rejects.toThrow('TrickStateDto.seatToPlay: expected a finite number');
+  });
+
+  /**
+   * The `exactOptionalPropertyTypes` conditional-spread idiom has two arms, and
+   * the fixtures above always populate the optional fields, so only the present
+   * arm was exercised. Without these three cases a mutation replacing
+   * `...(x === undefined ? {} : { x })` with a plain `{ x }` survives the whole
+   * suite: the property would be present-and-`undefined` rather than absent, and
+   * `toEqual` treats those alike. `not.toHaveProperty` is the assertion that
+   * distinguishes them, so it is the one that kills the mutant.
+   */
+  it('omits an absent optional notes rather than setting it undefined', async () => {
+    const play: Record<string, unknown> = { ...trickPlay };
+    delete play['notes'];
+    stubOkJson({ ...trick, plays: [play] });
+
+    const parsed = await playCard('s-1', 'token', { cardId: 'c-1', threatLinked: false, components: [] });
+
+    expect(parsed.plays[0]).not.toHaveProperty('notes');
+    expect(Object.hasOwn(parsed.plays[0]!, 'notes')).toBe(false);
+  });
+
+  it('omits an absent optional ledSuit and winningSeat rather than setting them undefined', async () => {
+    const bare: Record<string, unknown> = { ...trick };
+    delete bare['ledSuit'];
+    delete bare['winningSeat'];
+    stubOkJson(bare);
+
+    const parsed = await resolveTrick('s-1', 'token');
+
+    expect(Object.hasOwn(parsed, 'ledSuit')).toBe(false);
+    expect(Object.hasOwn(parsed, 'winningSeat')).toBe(false);
+  });
+
+  it('omits absent optional trick, seatToPlay and nextLeaderSeat rather than setting them undefined', async () => {
+    stubOkJson({ complete: false, handComplete: false });
+
+    const parsed = await getTrickState('s-1', 'token');
+
+    expect(Object.hasOwn(parsed, 'trick')).toBe(false);
+    expect(Object.hasOwn(parsed, 'seatToPlay')).toBe(false);
+    expect(Object.hasOwn(parsed, 'nextLeaderSeat')).toBe(false);
+  });
+
+  it('rejects a null response body, not only a non-object one', async () => {
+    stubOkJson(null);
+
+    await expect(getSession('s-1', 'token')).rejects.toThrow('SessionStateDto: expected a JSON object');
+  });
+
+  it('rejects a capturedBySuit that is null or an array rather than an object', async () => {
+    const withNull = withCorruptEnum(leaderboard, (c) => {
+      (c['rows'] as Record<string, unknown>[])[0]!['capturedBySuit'] = null;
+    });
+    stubOkJson(withNull);
+    await expect(getLeaderboard('s-1', 'token')).rejects.toThrow(
+      'LeaderboardDto.rows[0].capturedBySuit: expected a JSON object',
+    );
+
+    const withArray = withCorruptEnum(leaderboard, (c) => {
+      (c['rows'] as Record<string, unknown>[])[0]!['capturedBySuit'] = [1, 2];
+    });
+    stubOkJson(withArray);
+    await expect(getLeaderboard('s-1', 'token')).rejects.toThrow(
+      'LeaderboardDto.rows[0].capturedBySuit: expected a JSON object',
+    );
+  });
+
+  it('rejects Infinity as well as NaN for a required number', async () => {
+    stubOkJson({ ...session, players: [{ ...player, seatOrder: Number.POSITIVE_INFINITY }] });
+
+    await expect(getSession('s-1', 'token')).rejects.toThrow(
+      'SessionStateDto.players[0].seatOrder: expected a finite number',
+    );
+  });
+
+  it('rejects a required boolean sent as a string', async () => {
+    stubOkJson({ ...trickState, complete: 'false' });
+
+    await expect(getTrickState('s-1', 'token')).rejects.toThrow('TrickStateDto.complete: expected a boolean');
+  });
+
+  it('leaves a transport error as a plain ApiError, not a contract violation', async () => {
+    // A 409 is the server rejecting the request, not a broken contract; the parse
+    // must not run at all, and the useful status must survive.
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 409,
+        statusText: 'Conflict',
+        json: () => Promise.resolve({ detail: 'Game already started.' }),
+        headers: new Headers(),
+      } as unknown as Response)
+    ));
+
+    try {
+      await startGame('s-1', 'token');
+      expect.unreachable('expected startGame to reject');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect(e).not.toBeInstanceOf(ContractViolationError);
+      expect((e as ApiError).status).toBe(409);
+      expect((e as ApiError).message).toBe('Game already started.');
+    }
+  });
+
+  it('degrades a non-string problem detail to the status text instead of rendering an object', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        json: () => Promise.resolve({ detail: { nested: 'not a string' } }),
+        headers: new Headers(),
+      } as unknown as Response)
+    ));
+
+    try {
+      await getSession('s-1', 'token');
+      expect.unreachable('expected getSession to reject');
+    } catch (e) {
+      expect((e as ApiError).message).toBe('Bad Request');
+      expect((e as ApiError).status).toBe(400);
+    }
   });
 });
