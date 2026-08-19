@@ -94,7 +94,7 @@ See Blueprint §3.4 for the model allocation and endpoints.
 
 ### Development (H2)
 
-The default profile (`application.yml`) uses an **H2 in-memory database** with zero setup required. Liquibase runs automatically on application startup — changelogs are applied in order.
+The default profile (`application.yml`) uses an **H2 in-memory database** with zero setup required. Liquibase runs automatically on application startup — changelogs are applied in **alphabetical filename order**, which is why the naming convention below is an ordering constraint rather than a matter of taste (ADR-044).
 
 - **There is no H2 console** (EOP-27). This page promised one at `http://localhost:8080/h2-console` until 2026-08-10; it never existed. `spring.h2.console.enabled` is now pinned to `false` with the reasoning attached, and on Spring Boot 4 the console's autoconfiguration lives in a separate `spring-boot-h2console` module that this project deliberately does not depend on — it is unauthenticated arbitrary SQL, it accepts a caller-supplied JDBC URL, and there is no Spring Security dependency here to stand in front of it. See the ADR-008 amendment.
 - To inspect the schema or the data instead: `./mvnw liquibase:updateSQL` prints the DDL, `spring.jpa.show-sql=true` logs the statements, and an integration test can query the database directly. An in-memory H2 instance is only reachable from inside the JVM that owns it unless an H2 TCP server is explicitly started, which nothing here does, so there is nothing to attach an external client to.
@@ -112,7 +112,7 @@ PostgreSQL connection details are read from `DATASOURCE_URL`, `DATASOURCE_USER`,
 
 ### Adding a migration
 
-1. Create a new file in `src/main/resources/db/changelog/changes/YYYY-MM-DD--<description>.xml`
+1. Create a new file in `src/main/resources/db/changelog/changes/YYYY-MM-DD--<description>.xml`, using the date of authorship. **Never add a `007-` file** — the legacy `NNN-` sequence is frozen at `006-`, because `<includeAll>` orders by filename and a `007-` name would execute ahead of every dated migration. See [ADR-044](../adr/ADR-044-changelog-file-naming-is-dated.md).
 2. Add one or more `<changeSet>` blocks with `<rollback>` instructions
 3. Run `./mvnw spring-boot:run` — Liquibase applies the new changeset automatically
 4. To preview the SQL: `./mvnw liquibase:updateSQL`
