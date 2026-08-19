@@ -329,16 +329,22 @@ class DeckArithmeticClaimsTest {
     }
 
     /**
-     * Proves the third invariant fires on the five sentences EOP-96 actually found on main, and stays silent on the
-     * wording that replaced them. Without this the invariant could be quietly defeated by a change to
-     * {@link #READ_COST} or {@link #statesTheNumberStrictly} and would still pass, having stopped looking.
+     * Proves the third invariant fires on the wordings EOP-96 actually found on main, and stays silent on the wording
+     * that replaced them. Without this the invariant could be quietly defeated by a change to {@link #READ_COST} or
+     * {@link #statesTheNumberStrictly} and would still pass, having stopped looking.
+     *
+     * <p>Four of the six flagged literals are the real pre-fix sentences from ADR-031 section six, the ADR index row,
+     * the runtime-view note and the {@code findTricks} javadoc. The other two cover what no real site happened to
+     * exercise: the figure in digits, and the 74-card figure, so the guard is not left knowing about one trim only.
+     * Each literal is asserted on its own rather than through {@code allMatch}, so a failure names the wording that
+     * stopped being recognised instead of the whole list.
      *
      * <p>These are the only copies of the stale figures left in the repository. Quoting them is safe here and
      * nowhere else, because this file is listed in {@link #EXEMPT_FILES} and the invariant honours it — the note
      * added to ADR-031 deliberately describes the stale figures instead of reprinting them.
      */
     @Test
-    @DisplayName("still recognises the five stale round-trip counts EOP-96 removed")
+    @DisplayName("still recognises the stale round-trip counts EOP-96 removed")
     void shouldRecogniseTheStaleRoundTripCountsItGuardsAgainst() {
         final String adrSectionSix = "A three-player game reaches twenty-six tricks, so mapping it over the history "
                 + "would cost seventy-nine round trips - one for the trick rows and three for each trick.";
@@ -351,24 +357,53 @@ class DeckArithmeticClaimsTest {
         final String inDigits = "Mapping the assembler over the history would cost 79 round trips.";
         final String previousDeck = "Assembling each trick on its own would cost seventy-six round trips.";
 
-        assertThat(List.of(adrSectionSix, adrIndexRow, mermaidNote, adapterJavadoc, inDigits, previousDeck))
-                .as("every wording EOP-96 removed must still be recognised, spelled out or in digits, and for both "
-                        + "superseded decks - the runtime-view note never said 'round trip' at all")
-                .allMatch(DeckArithmeticClaimsTest::statesASupersededRoundTripCount);
+        assertThat(statesASupersededRoundTripCount(adrSectionSix))
+                .as("ADR-031 section six's wording must still be caught, or this guard has rotted into a no-op")
+                .isTrue();
+        assertThat(statesASupersededRoundTripCount(adrIndexRow))
+                .as("the ADR index row must still be caught — the figure trails the sentence as a bare comparison")
+                .isTrue();
+        assertThat(statesASupersededRoundTripCount(mermaidNote))
+                .as("the runtime-view note must still be caught, and it is the only site that never said 'round "
+                        + "trip' — it is why READ_COST carries a second alternative")
+                .isTrue();
+        assertThat(statesASupersededRoundTripCount(adapterJavadoc))
+                .as("the production javadoc must still be caught — a stale cost for the design that was not chosen, "
+                        + "sitting in the code implementing the one that was")
+                .isTrue();
+        assertThat(statesASupersededRoundTripCount(inDigits))
+                .as("the figure must be caught in digits as well as spelled out")
+                .isTrue();
+        assertThat(statesASupersededRoundTripCount(previousDeck))
+                .as("the 74-card figure must be caught too, or the guard only ever knew about one trim")
+                .isTrue();
 
         final String correctedAdr = "A three-player hand runs to twenty-three tricks, so mapping it over the history "
                 + "would cost 1 + 3 x 23 = seventy round trips for one score read.";
         final String correctedNote = "Mapping the single-trick assembler over every row would have cost three reads "
                 + "per trick: 1 + 3 x 23 = seventy in a twenty-three-trick hand.";
-        final String unrelatedQuery = "While the 26 descriptions existed, graph.json held them but neither "
+        final String unrelatedQuery = "While the 79 descriptions existed, graph.json held them but neither "
                 + "graphify_get_node nor graphify_query_graph rendered them.";
         final String jiraKeyOnly = "EOP-79 and EOP-76 both touched the round trip count.";
         final String cidrSuffix = "Route 10.0.0.79/25 costs one round trip, and ADR-079 records why.";
 
-        assertThat(List.of(correctedAdr, correctedNote, unrelatedQuery, jiraKeyOnly, cidrSuffix))
-                .as("the corrected wording must not be flagged, or the guard would forbid its own fix; nor may a "
-                        + "figure that is part of an identifier, a Jira key or a CIDR suffix be read as a read count")
-                .noneMatch(DeckArithmeticClaimsTest::statesASupersededRoundTripCount);
+        assertThat(statesASupersededRoundTripCount(correctedAdr))
+                .as("the corrected ADR wording must not be flagged, or the guard would forbid its own fix")
+                .isFalse();
+        assertThat(statesASupersededRoundTripCount(correctedNote))
+                .as("the corrected note must not be flagged either, and it still says 'reads per trick'")
+                .isFalse();
+        assertThat(statesASupersededRoundTripCount(unrelatedQuery))
+                .as("a count beside the word 'query' must not be flagged: ADR-011 line 44 is a real line of this "
+                        + "shape, and this literal carries 79 rather than its true 26 so that READ_COST is the only "
+                        + "thing that can acquit it — with 26 it would pass whether READ_COST were right or not")
+                .isFalse();
+        assertThat(statesASupersededRoundTripCount(jiraKeyOnly))
+                .as("a Jira key is not a read count, and both keys here would otherwise match")
+                .isFalse();
+        assertThat(statesASupersededRoundTripCount(cidrSuffix))
+                .as("a figure inside a CIDR suffix or an ADR identifier is not a read count")
+                .isFalse();
     }
 
     /**
