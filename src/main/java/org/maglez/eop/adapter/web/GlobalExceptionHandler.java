@@ -838,6 +838,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * seats ran out, and they differ only in whether the domain saw the lobby full
      * before the write or the unique constraint said so during it.
      *
+     * <p>Reaching here at all takes concurrency, because the attempt budget is larger
+     * than the table: the use case allows two more attempts than a lobby has seats, so
+     * a joiner losing races at an otherwise quiet lobby runs out of seats before it
+     * runs out of attempts and leaves through {@link #handleSessionFull} instead. What
+     * defeats that arithmetic is a stale read — the domain fullness check runs against
+     * the snapshot fetched at the top of each attempt, so simultaneous joins can each
+     * pass a check that was already out of date and lose on the constraint. The two
+     * accounts are consistent rather than contradictory: unreachable by arithmetic at
+     * a quiet lobby, and provokable on purpose under load.
+     *
      * <p>Logged at debug level and without the throwable. A caller holding a valid
      * join code can provoke this at will by firing concurrent joins at one lobby, so
      * a warning with a stack trace per occurrence would hand that caller a

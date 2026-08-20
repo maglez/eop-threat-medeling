@@ -43,7 +43,9 @@ class JoinSessionUseCaseTest {
 
     /**
      * Mirrors the private attempt budget in the use case. Pinning it here is the
-     * point: raising the budget should force a deliberate change to this test.
+     * point: raising the budget should force a deliberate change to this test. The
+     * relationship this value has to {@link GameSession#MAXIMUM_PLAYERS} is asserted
+     * separately, because it is an invariant rather than a tuning choice.
      */
     private static final int SEAT_ATTEMPTS = 8;
 
@@ -325,6 +327,21 @@ class JoinSessionUseCaseTest {
 
             assertThat(repository.seatPlayerCalls()).isEqualTo(SEAT_ATTEMPTS);
             assertThat(publisher.published()).isEmpty();
+        }
+
+        /**
+         * The budget exceeding the table size is what keeps this refusal off the path a
+         * caller normally travels: a joiner losing races at an otherwise quiet lobby
+         * runs out of seats, and is refused as full, before it runs out of attempts.
+         * Only a stale fullness check under concurrent joins defeats that arithmetic.
+         * Lowering the budget below the table size, or adding a way to vacate a seat,
+         * would make the refusal routine — so the relationship is asserted rather than
+         * left as a coincidence between two constants.
+         */
+        @Test
+        @DisplayName("budgets more attempts than the table has seats, so a quiet lobby fills before the budget runs out")
+        void shouldBudgetMoreAttemptsThanTheTableHasSeats() {
+            assertThat(SEAT_ATTEMPTS).isGreaterThan(GameSession.MAXIMUM_PLAYERS);
         }
 
         @Test

@@ -533,7 +533,7 @@ sequenceDiagram
             JU->>PUB: publish(player-joined)
             PUB->>F: event player-joined
             JU-->>SC: SessionAdmission
-            SC-->>P2: 201 sessionId, identityToken, seatOrder
+            SC-->>P2: 200 sessionId, identityToken, seatOrder
         end
     end
 

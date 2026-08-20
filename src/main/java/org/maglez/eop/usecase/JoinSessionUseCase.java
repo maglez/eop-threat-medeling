@@ -31,12 +31,27 @@ public class JoinSessionUseCase {
     /**
      * How many times a contested seat is re-claimed before giving up.
      *
-     * <p>A table holds six players, so a single joiner can lose the race for a seat
-     * at most five times before the table is full and the attempt fails for a
-     * different and more informative reason. Eight leaves room for that without
-     * being unbounded.
+     * <p>Derived from the table size rather than written as a literal, because the
+     * relationship is the invariant that matters: the budget must stay <em>above</em>
+     * {@link GameSession#MAXIMUM_PLAYERS}. A joiner at an otherwise quiet lobby can
+     * lose the race for a seat at most five times before the table is full and the
+     * attempt fails for a different and more informative reason, so keeping the budget
+     * above six is what makes a contested seat something the caller normally never
+     * hears about. Two spare attempts leave room for that without being unbounded.
+     * Lowering the budget below the table size, or adding a way to vacate a seat —
+     * which {@code SessionRepository} deliberately offers no method for — would make
+     * that path routine over HTTP. Both are deliberate design changes rather than
+     * tuning, and {@code JoinSessionUseCaseTest} pins the relationship so neither can
+     * happen silently.
+     *
+     * <p>Normally, not never. The fullness check in {@code GameSession.join} reads the
+     * snapshot taken at the top of the attempt, so heavy concurrency defeats it: a
+     * caller firing simultaneous joins at one lobby can have every attempt pass a
+     * check that was already stale and then lose on the constraint, exhausting the
+     * budget. That is the case {@code GlobalExceptionHandler.handleSeatAlreadyTaken}
+     * describes as provokable at will, and it is why this budget is bounded at all.
      */
-    private static final int MAXIMUM_SEAT_ATTEMPTS = 8;
+    private static final int MAXIMUM_SEAT_ATTEMPTS = GameSession.MAXIMUM_PLAYERS + 2;
 
     private final SessionRepository sessionRepository;
     private final IdentifierGenerator identifierGenerator;
