@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "Accepted high/critical npm advisories for the OpenCode plugin roster.",
+    "Read by tools/supply-chain/audit-plugins.sh. Measured 2026-08-20.",
+    "",
+    "SCOPE. This file governs high and critical advisories only, because those are",
+    "the only severities that fail the audit. Low and moderate findings are reported",
+    "and not gated, so they must NEVER be listed here -- an entry for one would be",
+    "unfireable and would rot into a claim nobody checks.",
+    "",
+    "WHAT AN ENTRY MEANS. Exactly one thing: a human read the advisory, traced the",
+    "vulnerable code path through this repository's actual runtime, and established",
+    "that it is not reached. It does not mean the advisory is wrong, that the",
+    "dependency is trustworthy, or that the finding may be ignored next time. Write",
+    "the trace into `reachability` in enough detail that a reviewer can falsify it",
+    "without repeating the investigation -- name the file, the symbol and the guard.",
+    "",
+    "AN ENTRY IS A LIABILITY, NOT A DISMISSAL. The script fails when an allowlisted",
+    "advisory is NO LONGER reported, and fails when its severity or module stops",
+    "matching. That is deliberate: the usual failure mode of a suppression list is",
+    "that it outlives the thing it suppressed and silently starts hiding something",
+    "else. Here, an advisory that gets fixed upstream turns the job red until the",
+    "entry is deleted. Deleting a stale entry is routine; adding one is not.",
+    "",
+    "WHAT IT CANNOT DO. Unreachable today is not unreachable tomorrow. Every entry",
+    "here rests on a runtime fact (which JavaScript engine loads the plugin, which",
+    "branch a lazy `require` sits behind) that no test in this repository pins. A",
+    "dependency bump that starts calling the vulnerable API would not fail this",
+    "audit -- the advisory would still be reported, still be allowlisted, still",
+    "match. Re-verify the trace when a pin moves, and prefer moving off the",
+    "dependency to carrying an entry indefinitely."
+  ],
+  "advisories": {
+    "GHSA-vrm6-8vpv-qv8q": {
+      "module": "undici",
+      "severity": "high",
+      "reported_range": "<6.24.0",
+      "installed": "5.29.0",
+      "title": "Undici has Unbounded Memory Consumption in WebSocket permessage-deflate Decompression",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.32 -> undici@^5.29.0",
+      "reachability": "Not reached, on two independent grounds. (1) The defect is in undici's WebSocket client. The only package in the tree that requires undici is @ai-sdk/provider-utils, whose sole use is createSafeNodeFetch() in dist/index.js -- a createRequire(...)(\"undici\") that destructures { Agent, fetch } and nothing else. WebSocket is never imported, so the vulnerable class is never constructed. (2) That require sits behind isNodeRuntime(), which is `process.release.name === \"node\" && process.versions.bun == null`. OpenCode loads plugins under Bun, so it is false, getDefaultDownloadFetch() falls back to globalThis.fetch, and the undici module is never loaded at all.",
+      "no_fix_available": "There is no in-range upgrade. @ai-sdk/provider-utils@3.0.32 is the newest 3.x and depends on undici ^5.29.0; @ai-sdk/gateway@2.0.137 pins provider-utils to that exact version, so npm cannot lift it; and the `ai@^5.0.98` range that pulls the gateway in is declared by the plugin's own package.json, not by us. `npm audit fix` changes nothing and `--force` would require a breaking major we do not control.",
+      "reviewed": "2026-08-20",
+      "reviewed_under": "EOP-000"
+    },
+    "GHSA-v9p9-hfj2-hcw8": {
+      "module": "undici",
+      "severity": "high",
+      "reported_range": "<6.24.0",
+      "installed": "5.29.0",
+      "title": "Undici has Unhandled Exception in WebSocket Client Due to Invalid server_max_window_bits Validation",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.32 -> undici@^5.29.0",
+      "reachability": "Same trace as GHSA-vrm6-8vpv-qv8q: a WebSocket-client defect in a module whose only consumer imports { Agent, fetch }, behind an isNodeRuntime() guard that is false under Bun.",
+      "no_fix_available": "See GHSA-vrm6-8vpv-qv8q -- the version is pinned exactly two levels up and the range is declared by the plugin.",
+      "reviewed": "2026-08-20",
+      "reviewed_under": "EOP-000"
+    },
+    "GHSA-vxpw-j846-p89q": {
+      "module": "undici",
+      "severity": "high",
+      "reported_range": "<6.27.0",
+      "installed": "5.29.0",
+      "title": "undici WebSocket client vulnerable to denial of service via fragment count bypass",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.32 -> undici@^5.29.0",
+      "reachability": "Same trace as GHSA-vrm6-8vpv-qv8q: a WebSocket-client defect in a module whose only consumer imports { Agent, fetch }, behind an isNodeRuntime() guard that is false under Bun.",
+      "no_fix_available": "See GHSA-vrm6-8vpv-qv8q -- the version is pinned exactly two levels up and the range is declared by the plugin.",
+      "reviewed": "2026-08-20",
+      "reviewed_under": "EOP-000"
+    }
+  }
+}
