@@ -156,13 +156,22 @@
               already do. The version above is therefore pinned exactly, never a range.
               Accepted knowingly; moving the pin is a supply-chain change.
 
-              Incremental runs: on a warm target/ this goal can log "Skipping javadoc
-              generation, everything is up to date." That is correct incremental behaviour and
-              not a hole in the gate. A failing run does not write the stale-data file, so a
-              build that has once failed here cannot go stale-green: injecting a broken {@link}
-              on a warm target/ was measured to fail twice in a row with identical flags. Read
-              the "Skipping" line as "nothing has changed since a SUCCESSFUL run", and do not
-              read the goal's mere presence in a warm log as proof that it re-analysed.
+              Incremental runs, stated as what has actually been verified and no further.
+              CI is always the cold path: .github/workflows/ci.yml checks out a fresh runner
+              with no target/, so every merge is gated on a full analysis. Locally the goal is
+              incremental and can log "Skipping javadoc generation, everything is up to date."
+              Do NOT read that line, or the goal's mere presence in a warm log, as proof it
+              re-analysed your edit. The plugin's staleness record
+              (target/maven-javadoc-plugin-stale-data.txt) lists jars and the top-level files of
+              the output directory and contains no .java path at all, so editing a Javadoc
+              comment inside a source file need not invalidate it. If you have changed only
+              comments, run "./mvnw clean verify" before pushing.
+
+              debug=true below is load-bearing, not a leftover. Without it the plugin deletes
+              the options, packages and argfile files after generating, while its own staleness
+              check still tries to stat options; that made a warm "./mvnw verify" fail with
+              "Unable to compute stale date: .../target/reports/apidocs/options" on a tree whose
+              Java and Javadoc were both correct. Keeping those files makes the check stateable.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -175,6 +184,7 @@
                     <failOnWarnings>true</failOnWarnings>
                     <quiet>true</quiet>
                     <notimestamp>true</notimestamp>
+                    <debug>true</debug>
                 </configuration>
                 <executions>
                     <execution>

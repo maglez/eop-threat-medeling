@@ -135,6 +135,74 @@ unrelated players. Consistent with the PRD's exclusion of cross-session history.
 
 ## Amendments
 
+**2026-08-20 — the token digest is compared in constant time, and a standing
+prohibition now has somewhere durable to live (EOP-120).**
+
+This ADR said nothing about *how* a presented token is matched against a stored
+digest, and a comment on `IdentityTokenHash` filled the silence with something
+untrue: that comparison happened as an indexed database lookup rather than in
+Java, "so there is no meaningful timing side channel in this type". The real path
+is `ResolvePlayerUseCase` → `GameSession#playerByTokenHash` →
+`Player#isIdentifiedBy` → the record-generated `equals` → `String.equals`: a
+short-circuiting byte-wise comparison, in Java, in memory, over at most six
+players. The `uq_player_identity_token_hash` constraint exists and is never a
+lookup path — `PlayerJpaRepository` declares exactly one query method, and it
+selects by session id.
+
+**What changed, and why the fix was not simply to delete the sentence.**
+`IdentityTokenHash` now overrides `equals` to compare with
+`MessageDigest#isEqual` over the digests' US-ASCII bytes, so the claim is *true*
+rather than retracted. `hashCode` is overridden alongside it (returning
+`value.hashCode()`, consistent because equal digests hold identical strings, and
+required by Checkstyle's `EqualsHashCode`). Verified against this JDK's own
+source rather than its documentation: `MessageDigest.isEqual` has no early
+return on a length mismatch — length is folded into the accumulator and the loop
+always runs — and its only short-circuit, `lenB == 0`, is unreachable because the
+compact constructor rejects any length but 64.
+
+**No exploit is closed by this, and the record should not pretend otherwise.**
+The token is 256 bits of `SecureRandom` output
+(`SecureRandomIdentityTokenGenerator`), the attacker submits a *plaintext* while
+the compared bytes are its SHA-256 image, and steering those bytes needs preimage
+work. What was closed is a **documentary** defect: a written guarantee that was
+never true, sitting on the type any future credential would reuse. That is the
+point of the change. The KDF argument at the top of the Decision section — "there
+is no low-entropy secret to slow an attacker down against" — is scoped to today's
+256-bit token, and a rejoin PIN or a short reconnect code would sit *outside* that
+premise. A reader who finds that sentence and not this amendment is misled by a
+correct sentence read past its scope.
+
+**The standing prohibition, which is the part that needs a home outside a
+comment.** `hashCode` is a plain string hash and is not constant time.
+**Therefore no hash-based collection in this application is keyed on
+`IdentityTokenHash` or on `Player`, and none may be introduced.** A `HashMap` or
+`HashSet` compares the cached `int` before it calls `equals`, so keying a lookup
+on a digest would make its cost depend on the digest again and quietly bypass the
+constant-time comparison — undoing this change without touching the line that
+implements it. This is recorded here because ADR-020 and ADR-027 both ruled that a
+prohibition on future code cannot live only in a Javadoc comment.
+
+**What is not defended, stated so the boundary is visible.** `GameSession`'s
+`findFirst` short-circuits on the first *matching* player, so an accepted token
+costs fewer comparisons than a rejected one. That leaks the seat ordinal of a
+credential the caller already holds, which the same API returns in its response
+body, so it is not a privilege boundary and was deliberately left alone. And the
+genuinely low-entropy credential in this system today is the **join code**, which
+does not pass through this type at all: it is defended by rate limiting
+(`InMemoryJoinAttemptLimiter`, ADR-033), not by constant-time comparison.
+
+**Enforcement is weaker than this repository's own practice, knowingly.**
+`IdentityTokenHashTest.shouldCompareInConstantTime` reads the source file as text
+and asserts the `MessageDigest.isEqual` call is present, so a silent revert to the
+generated `equals` fails the build; timing itself is not unit-assertable. But
+nothing forbids the hash-collection misuse above — that is enforced by this
+amendment and a reviewer. A sibling source-text guard asserting no `Map`/`Set`
+type parameter names `IdentityTokenHash` or `Player` would convert it into a build
+failure, and is the obvious follow-up.
+
+**Related:** [ADR-006](ADR-006-build-quality-gates.md)'s EOP-120 amendment, which
+records the Javadoc gate the same story added.
+
 **2026-08-20 — re-examined against the XSS exposure and upheld; what is being
 accepted is now stated in those terms (EOP-107).**
 
