@@ -202,6 +202,24 @@ function optionalNumber(source: Record<string, unknown>, key: string, path: stri
   return isAbsent(source[key]) ? undefined : requireNumber(source, key, path);
 }
 
+/**
+ * The optional counterpart to `requireEnum`, for a contract enum that is genuinely
+ * absent some of the time rather than merely nullable.
+ *
+ * It delegates to `requireEnum` once the field is known to be present, so a value
+ * that *is* supplied is held to exactly the same membership check — "optional" here
+ * means "may be absent", never "may be anything". Absence is the only concession.
+ */
+function optionalEnum<T extends string>(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  guard: (value: unknown) => value is T,
+  members: readonly string[],
+): T | undefined {
+  return isAbsent(source[key]) ? undefined : requireEnum(source, key, path, guard, members);
+}
+
 function requireStringArray(source: Record<string, unknown>, key: string, path: string): readonly string[] {
   return requireArray(source, key, path).map((element, index) => {
     if (typeof element !== "string") {
@@ -666,8 +684,18 @@ export interface CardDto {
   /**
    * Narrowed from a bare `string` to `StrideCategory` by EOP-108: `isStrideCategory`
    * already existed and `parseCardDto` below checks membership, so leaving the type
-   * wide would have described the field as less certain than it now is. `TrickDto.ledSuit`
-   * is deliberately still a bare `string` — see EOP-109.
+   * wide would have described the field as less certain than it now is. EOP-109 did
+   * the same for `TrickDto.ledSuit`, the last field typed `string` against a
+   * *mirrored* enum schema.
+   *
+   * `rank` below stays a bare `string`, and that is an accepted drift rather than
+   * fidelity: the contract does `$ref` the `Rank` enum here, so the wide type is
+   * genuinely less specific than the contract. It is accepted because the client
+   * never compares or orders a rank — `rankValue` exists for comparison and the card
+   * face is rendered from `rankSymbol` — leaving `rank` with exactly one consumer,
+   * `cardImagePath(suit, rank)`, which returns `null` for anything it does not
+   * recognise and whose every call site null-checks. EOP-109 rejected adding a `Rank`
+   * mirror on those grounds; see ADR-009.
    */
   readonly suit: StrideCategory;
   readonly rank: string;
@@ -698,7 +726,16 @@ export interface TrickDto {
   readonly trickId: string;
   readonly sequence: number;
   readonly leaderSeat: number;
-  readonly ledSuit?: string;
+  /**
+   * Narrowed from a bare `string` to `StrideCategory` by EOP-109, matching the
+   * contract, which declares it `allOf: [$ref: StrideCategory]`.
+   *
+   * It stays optional because the server genuinely omits it: `TrickDto` is
+   * `@JsonInclude(NON_NULL)` and `ledSuit` is unset until the first card of a
+   * trick is played. So the field is parsed with `optionalEnum`, not `requireEnum`
+   * — absent is legal, an out-of-contract suit is not.
+   */
+  readonly ledSuit?: StrideCategory;
   readonly plays: readonly TrickPlayDto[];
   readonly winningSeat?: number;
 }
@@ -764,9 +801,7 @@ function parseTrickPlayDto(value: unknown, path = 'TrickPlayDto'): TrickPlayDto 
 
 function parseTrickDto(value: unknown, path = 'TrickDto'): TrickDto {
   const source = asObject(value, path);
-  // `ledSuit` stays a bare string: the contract declares it as a STRIDE suit, but
-  // narrowing it is EOP-109's scope, not this story's.
-  const ledSuit = optionalString(source, 'ledSuit', path);
+  const ledSuit = optionalEnum(source, 'ledSuit', path, isStrideCategory, STRIDE_CATEGORIES);
   const winningSeat = optionalNumber(source, 'winningSeat', path);
   return {
     trickId: requireString(source, 'trickId', path),

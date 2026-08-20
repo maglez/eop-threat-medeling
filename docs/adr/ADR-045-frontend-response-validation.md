@@ -1,6 +1,6 @@
 # ADR-045: Response DTOs are parsed at the browser boundary by hand-written parsers, and a contract violation is a 502 `ContractViolationError`
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-08-19 by EOP-109 — §4 gained a follow-up note whose substance is that `TrickDto.ledSuit` was narrowed to `StrideCategory` and parsed through an `optionalEnum` helper, together with two scope calls that were **declined**: a `Rank` mirror, and a `capturedBySuit` key-type tightening — the latter because §2 bounds the violation *message* rather than forbidding a key check, so a narrowed index type would be unenforced rather than unenforceable)
 **Date:** 2026-08-19
 **Deciders:** @tech-lead, @architecture-guardian, @security-auditor, @ui-builder
 
@@ -138,6 +138,27 @@ consumer that does not exist yet rather than a fix for a live defect.
   `isStrideCategory`. Parsing every enum around it while leaving this one asserted would be
   incoherent, and the guard already existed. This closes the first of EOP-109's three items;
   that ticket shrinks to its remaining two bare-`string` fields.
+  > **Follow-up, EOP-109 (2026-08-19): those remaining items are now resolved, and only one of
+  > them was a narrowing.** `TrickDto.ledSuit` was the last field whose contract schema `$ref`s a
+  > mirrored enum while its type was bare `string`; it is now `StrideCategory`, parsed through a
+  > new `optionalEnum` helper that delegates to `requireEnum` once a value is present, so
+  > optionality weakens presence but never membership. The field is genuinely optional on the wire
+  > (`TrickDto` is `@JsonInclude(NON_NULL)`; `ledSuit` is unset until the first card of a trick is
+  > played), which is why `requireEnum` alone would have been wrong. `CardDto.rank` was **not**
+  > narrowed, and that is an accepted drift rather than fidelity: the contract *does* `$ref` `Rank`
+  > there, so the wide type is genuinely less specific than the contract. It is left wide because the
+  > client never compares or orders a rank — the contract supplies `rankValue: integer` "used for
+  > comparison", the card face renders from `rankSymbol`, and `card.rank` reaches exactly one
+  > consumer, `cardImagePath(suit, rank)`, which returns `null` for anything it does not recognise
+  > and whose every call site null-checks. An out-of-contract rank therefore degrades to a missing
+  > image, not a wrong comparison. ADR-009's EOP-109 amendment records the matching rejection of a
+  > `Rank` mirror and the evidence behind it. A tightening of `LeaderboardRowDto.capturedBySuit` to
+  > `Readonly<Record<StrideCategory, number>>` was considered and declined, because
+  > `requireNumberRecord` deliberately never inspects keys (§2's key-secrecy rule), so the narrower
+  > index type would be an unenforced compile-time claim — the very thing this ADR exists to
+  > remove. Every field whose contract schema is a *mirrored* enum is now both typed against that
+  > mirror and membership-checked by a parser; `rank` sits outside that claim because `Rank` has no
+  > mirror, not because `rank` is narrow.
 - **`startNewGame` and `dealCards` gain no parser.** Neither reads a body — `dealCards`
   returns `204 No Content`. Adding a parser to a void helper would be theatre.
 - **`subscribeToSession` gains no parser.** The SSE stream is a *doorbell*: a `data:` frame
@@ -212,5 +233,11 @@ consumer that does not exist yet rather than a fix for a live defect.
 - [`docs/architecture/runtime-view.md`](../architecture/runtime-view.md) — the `refreshSession`
   exit enumeration; this change adds a fourth *outcome* without adding a fourth
   `onSessionEnd()` trigger
-- EOP-105 (enum mirror parity), EOP-108 (this change), EOP-109 (remaining bare-`string`
-  contract enums), EOP-110 (`ui/` dev-toolchain CVEs)
+- EOP-105 (enum mirror parity), EOP-108 (this change), EOP-109 (closed the last field typed bare
+  `string` against a *mirrored* enum schema, `TrickDto.ledSuit`, and declined both a `Rank` mirror
+  and a `capturedBySuit` tightening — see the follow-up note in §4), EOP-110 (`ui/` dev-toolchain
+  CVEs). Read EOP-109's scope with its qualifier: `Card.rank` is still typed bare `string` against a
+  `$ref` to `Rank`, deliberately, because `Rank` has no mirror **in `ui/src/api.ts`** — no `as const`
+  array, no derived union, no `is*` guard, which is the only sense of "mirror" the gate recognises,
+  and not a claim that no rank list exists anywhere in `ui/` — so that bullet does not mean "no
+  contract enum is left wide"
