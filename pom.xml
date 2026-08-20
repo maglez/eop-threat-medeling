@@ -155,13 +155,23 @@
               at the Maven layer. Maven's default policy compares a .sha1 and only warns, there
               is no maven.config so no strict-checksums, and maven-wrapper.properties carries
               no distributionSha256Sum, so a Maven plugin runs arbitrary code in the build JVM.
-              The build declares SIX plugins and this is the sixth: spring-boot, checkstyle,
-              javadoc, spotbugs, jacoco, enforcer. Liquibase is NOT among them; it runs in the
-              build JVM during tests as an application dependency, which is a different thing,
-              so do not cite it as a peer plugin. Exposure across the six is NOT identical: the
-              other five carry an exact version and so does this one, never a range. Accepted
-              knowingly; moving a pin is a supply-chain change. Extending tools/supply-chain/ to
-              the Maven layer means all six plus the wrapper, and belongs behind its own ADR.
+              The figures below come from parsing the effective pom, not from reading this file.
+              We DECLARE six plugins and this is one of them: spring-boot, checkstyle, javadoc,
+              spotbugs, jacoco, enforcer. Only FIVE of the six carry a version element here;
+              spring-boot-maven-plugin carries none and takes 4.1.0 from the Boot parent, so do
+              not write that all six are pinned in this file. Liquibase is not one of the six and
+              never executes, but do not say it is unmanaged either: liquibase-maven-plugin sits
+              in the effective pluginManagement at 5.0.3, parent-managed with no lifecycle
+              binding, and liquibase-core runs during tests as an application dependency, which
+              is a different thing again. The layer is also much larger than the six: the
+              effective build/plugins binds FOURTEEN entries, among them maven-compiler-plugin
+              3.15.0 and maven-surefire-plugin 3.5.6, which execute in the build JVM on exactly
+              these terms, and the effective pluginManagement carries THIRTY-ONE entries, almost
+              all from the Boot parent. So bumping the parent coordinates near the top of this
+              file moves about thirty plugin versions in one line, and that, rather than the six
+              declarations, is the real uncovered surface. Accepted knowingly; moving a pin is a
+              supply-chain change. Extending tools/supply-chain/ to the Maven layer means the
+              fourteen bound entries plus the wrapper, and belongs behind its own ADR.
 
               Incremental runs, stated as what has actually been verified and no further.
               CI is always the cold path: .github/workflows/ci.yml checks out a fresh runner
@@ -169,8 +179,9 @@
               incremental and can log "Skipping javadoc generation, everything is up to date."
               Do NOT read that line, or the goal's mere presence in a warm log, as proof it
               re-analysed your edit. The plugin's staleness record
-              (target/maven-javadoc-plugin-stale-data.txt) lists jars and the top-level files of
-              the output directory and contains no .java path at all, so editing a Javadoc
+              (target/maven-javadoc-plugin-stale-data.txt) lists jars and SOME of the output
+              directory's top-level files (23 of 29 when measured, and options and packages are
+              specifically NOT among them) and contains no .java path at all, so editing a Javadoc
               comment inside a source file need not invalidate it. If you have changed only
               comments, run "./mvnw clean verify" before pushing.
 
@@ -183,13 +194,20 @@
               .../target/reports/apidocs/options" on a correct tree, but a later controlled
               experiment with debug removed could not reproduce it in five attempts, including
               the exact recipe originally cited, so the earlier claim that removing this
-              reinstates the failure was WRONG and is retracted. The staleness check READS
-              @-prefixed argument files with Files.readAllLines rather than stating them, and
-              the plugin rewrites options at the START of each invocation, before the
+              reinstates the failure was WRONG and is retracted. The staleness check both states and reads
+              the @-prefixed argument files: @options and @packages appear as bare argument
+              lines in the record AND their expanded contents follow, via Files.readAllLines.
+              It does not stat them. The plugin also rewrites options at the START of each
+              invocation, before the
               comparison, so a previous run having deleted it cannot break the next one. The
               original failure is recorded as observed and unexplained. One caveat if anyone
-              ever publishes target/reports/apidocs: options carries absolute local paths and a
-              full transitive dependency inventory. Nothing publishes it today.
+              ever publishes target/reports/apidocs: options and javadoc.sh are the only two files
+              there carrying absolute local paths. options holds a full transitive dependency
+              inventory with versions; javadoc.sh holds the JDK patch level, vendor and install
+              prefix, which the generated HTML does not (it says only "Generated by javadoc
+              (21)"). packages adds nothing the HTML already exposes. Nothing publishes any of
+              it today: target/ is gitignored, CI uploads target/*.jar only, and the image
+              copies the jar alone.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
