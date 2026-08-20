@@ -124,6 +124,14 @@ begins when there is a deployed surface to protect.
 **Positive:** cross-origin configuration never enters the codebase, because the browser only ever
 sees one origin.
 
+(Made precise by the 2026-08-20 amendment: since EOP-107 the site answers on three origins —
+`https://localhost`, `https://127.0.0.1` and `https://[::1]` — because RFC 6454 defines an origin as
+the (scheme, host, port) tuple and does not canonicalise a name to an address. The claim above holds
+under each of them separately rather than globally: whichever the user types, the bundle and the API
+it calls are served from that same origin, so a browser session still only ever sees one origin and
+cross-origin configuration still never enters the codebase. See the amendment for the one
+consequence this does have — `sessionStorage` is partitioned per origin.)
+
 **Positive:** the transport chosen in ADR-014 works through the proxy with no configuration,
 because Caddy does not buffer by default.
 
