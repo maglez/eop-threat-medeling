@@ -330,7 +330,7 @@ sequenceDiagram
                 Note over POOL: subscriber still alive
             else write throws
                 POOL->>PUB: forgetOne(emitter)
-                Note over PUB: Two ways a dead subscriber is ever discovered:<br/>(1) heartbeat sweep — a write fails with<br/>IOException/IllegalStateException, triggering forgetOne;<br/>(2) 10-minute emitter timeout — onTimeout fires forgetOne directly.
+                Note over PUB: Two ways a dead subscriber is ever discovered:<br/>(1) heartbeat sweep — a write fails with<br/>IOException/IllegalStateException, triggering forgetOne<br/>(2) 10-minute emitter timeout — onTimeout fires forgetOne directly.
             end
         end
     end
@@ -849,7 +849,7 @@ sequenceDiagram
         RT->>RT: trick.resolved() — highest card of the led suit takes it
         RT->>RT: the winning play must be one of this trick's plays,<br/>or 422 WinningPlayNotInTrickException (ResolveTrickUseCase.java:151-157)
         RT->>RT: nextLeaderSeat = OptionalInt — the next seat still holding<br/>cards, or empty when the hand is played out
-        Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:159:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
+        Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:159:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards)<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
         RT->>TPRA: recordResolution(sessionId, resolved, leaderSeat, nextLeaderSeat, now)
         TPRA->>DB: UPDATE game_session SET current_leader_seat = next, or NULL<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
         Note over TPRA,DB: NULL is the end of the hand, recorded rather than<br/>released or scored at this point: the status transitions to<br/>COMPLETED in the next step when nextLeaderSeat is empty<br/>(EOP-15 Slice C, ADR-032). Changeset 005's CHECK<br/>already permitted NULL, so no migration was needed.
@@ -927,7 +927,7 @@ sequenceDiagram
     TPRA->>DB: SELECT * FROM card WHERE id IN (…)
     TPRA->>DB: SELECT * FROM trick_play_component WHERE trick_play_id IN (…) ORDER BY trick_play_id, ordinal
     Note over TPRA,DB: Four reads for the whole session — the tricks, then their<br/>plays, cards and components one batch each. Mapping the<br/>single-trick assembler over every row would have cost three<br/>reads per trick: 1 + 3 × 23 = seventy in a twenty-three-trick<br/>hand, which is what a three-player 68-card deal runs to.<br/>No predicate on winner_play_id — whether a trick is finished<br/>is a question the trick answers about itself, and a second<br/>authority in SQL would disagree the moment that changed.
-    TPRA-->>GS: List&lt;Trick&gt;, the whole history, unresolved tricks included
+    TPRA-->>GS: List<Trick>, the whole history, unresolved tricks included
 
     GS->>SS: ScoreSheet.of(session.players(), tricks)
 
@@ -935,8 +935,8 @@ sequenceDiagram
         SS-->>GS: ScoreNotDerivableException, carrying a typed Reason
         GS-->>CL: 500 — the reason and the identifiers are logged,<br/>the body says only that the request could not be completed
     else the game is consistent
-        SS->>SS: one point for a linked threat, one for taking the trick;<br/>an unresolved trick contributes threat points but no trick point
-        SS->>SS: competition ranking — 7, 5, 5, 2 hold positions 1, 2, 2, 4;<br/>a shared first place is shown as a tie, never broken
+        SS->>SS: one point for a linked threat, one for taking the trick<br/>an unresolved trick contributes threat points but no trick point
+        SS->>SS: competition ranking — 7, 5, 5, 2 hold positions 1, 2, 2, 4<br/>a shared first place is shown as a tie, never broken
         SS-->>GS: ScoreSheet — rows and standings
         GS-->>CL: the sheet, rendered as ScoreSheetDto
     end
@@ -1085,13 +1085,13 @@ sequenceDiagram
     Note over UC: Instant.now(clock) — uses injected Clock,<br/>not a direct Instant.now() call
 
     UC->>SRA: findExpiredSessionIds(now)
-    SRA->>DB: SELECT s.id FROM game_session s<br/>WHERE s.expires_at &lt; :before<br/>AND s.status &lt;&gt; 'ABANDONED'
+    SRA->>DB: SELECT s.id FROM game_session s<br/>WHERE s.expires_at < :before<br/>AND s.status <> 'ABANDONED'
     DB-->>SRA: [id1, id2, ...]
-    SRA-->>UC: List&lt;UUID&gt;
+    SRA-->>UC: List<UUID>
 
     loop for each expired session id
         UC->>SRA: abandonAndDelete(id)
-        Note over SRA: Single @Transactional — mark then delete<br/>in one commit; no ABANDONED row survives
+        Note over SRA: Single @Transactional — mark then delete<br/>in one commit — no ABANDONED row survives
         SRA->>DB: UPDATE game_session SET status = 'ABANDONED',<br/>version = version + 1 WHERE id = :id
         SRA->>DB: DELETE FROM game_session WHERE id = :id<br/>(cascades to player, hand, trick, trick_play, trick_play_component)
         DB-->>SRA: void

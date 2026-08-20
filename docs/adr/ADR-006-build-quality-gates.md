@@ -1,6 +1,6 @@
 # ADR-006: Build Quality Gates
 
-**Status:** Accepted (amended 2026-08-18 and 2026-08-19)
+**Status:** Accepted (amended 2026-08-18, 2026-08-19 and 2026-08-20)
 **Date:** 2026-07-26
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -74,6 +74,26 @@ Plugins pinned to specific versions for reproducible builds.
 > **Anti-vacuity.** Its helpers throw rather than pass vacuously — a missing enum, a missing schema, an empty `enum:` list, a missing or empty `as const` array all raise, so two empty sets can never satisfy each other. Verified by mutation: reintroducing the original defect (`['FACILITATOR', 'PLAYER']` in `api.ts`) failed exactly one case with the intended diagnostic, and only that one — the guard discriminates rather than failing broadly.
 >
 > **Related:** [ADR-009](ADR-009-frontend-react-typescript.md) (the mirror and the codegen rejection), [ADR-004](ADR-004-api-contract-first.md) (the contract this parity is measured against), `.opencode/rules/build-quality.md`, which lists the documentation-integrity tests and carries the same fourth entry.
+
+> **Amendment, 2026-08-20 (EOP-000): a fifth documentation-integrity test — the first that guards a diagram instead of prose.**
+>
+> **Decision.** `MermaidSequenceTextTest` (`org.maglez.eop.docs`, EOP-000) joins the tests tabulated in the EOP-93 amendment above, whose count of three was correct on 2026-08-18, became four on 2026-08-19, and is now **five**. Over every ```mermaid fence in `docs/**/*.md` whose first directive is `sequenceDiagram`, it forbids two characters in any label: `;` and `#`. It reports `file:line` and the offending line.
+>
+> **Why this amendment exists.** Four of the twelve sequence diagrams in `docs/architecture/runtime-view.md` — sections 2, 6, 7 and 9 — did not render at all, and had not for as long as they had existed. Every build was green throughout, because nothing in this repository has ever parsed or rendered a Mermaid diagram; CI does not either. The defect was reported by a human reading the page on GitHub, which is the only detector the project had. That is the same argument EOP-93 made for prose, arriving at a different artefact: a diagram is documentation whose correctness no compiler was checking.
+>
+> **The mechanism, because it is not guessable.** Mermaid's sequence grammar tokenises label text as `[^#\n;]*` (`packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison`). A `;` therefore ends the token, the rest of the line is parsed as a fresh statement, and the diagram fails outright. Measured against mermaid 11.17.0, that breaks **thirteen** distinct text-carrying constructs, not just messages and notes: message text, note text, `alt`, `else`, `opt`, `loop`, `par`, `and`, `critical`, `break`, `title`, `participant … as …` and `box`. Two consequences follow. First, an HTML entity is itself a `;`-terminated string, so `&lt;` inside a label breaks a diagram exactly as a bare semicolon does — three of the eight repaired lines failed that way. Second, Mermaid's own documented escape, `#59;`, **cannot work in sequence labels**, because the token excludes `#` as well. There is no escape hatch; the characters have to be absent.
+>
+> **`#` is the worse of the two, and is why the gate has a second rule.** A label containing `#` parses cleanly and then loses everything from the `#` onwards when rendered — verified at `securityLevel` `strict` and `loose`, `htmlLabels` on: `issue #42` renders as `issue`, and the full string is absent from the SVG. A `;` fails loudly; a `#` deletes prose while the build, the parser and the rendered page all look fine.
+>
+> **Consequences — negative. Three, and the third is a correction to this ADR's own drafting history:**
+>
+> - **It proves the absence of two characters, nothing more.** This gate is structural rather than a phrase list, so unlike the other four it holds for diagrams nobody has written yet — but a green run is not evidence that a diagram renders, is well-formed, or describes the system truthfully. Unbalanced `end` keywords, a misspelled arrow, a participant that no longer exists in the code: all still pass.
+> - **Its coverage is a floor someone maintains.** `MINIMUM_SEQUENCE_DIAGRAMS` exists solely so the guard cannot silently stop matching and pass forever, which is the failure mode the branch-coverage note at the top of this ADR warns about. It is a hand-written number, so it protects against the extractor breaking, not against a diagram living somewhere the walker does not look. Only `docs/**/*.md` is scanned; a sequence diagram in a Java comment, in `ui/`, or in a file outside `docs/` is unguarded.
+> - **An invariant was drafted, tested and withdrawn, and the reason must not be lost.** A third rule was very nearly shipped: reject `<` followed by a letter, on the theory that because `<br/>` is honoured in labels, `List<Trick>` would be swallowed as an unknown HTML tag. Direct rendering at both security levels disproved it — Mermaid's sequence renderer escapes angle brackets itself, and `List<Trick>` is displayed verbatim. The rule was dropped, and the one documentation line already "fixed" on the strength of it was reverted. Do not re-add it from first principles; it was wrong when it was plausible.
+>
+> **Anti-vacuity.** Both rules were mutation-tested against real repository content, not synthetic input: reinstating the `;` in the section-2 note failed exactly `shouldNotCarryASemicolon` naming `runtime-view.md:333`, and appending `for issue #22` to the section-9 reply failed exactly `shouldNotCarryAHash` naming `runtime-view.md:1090`. Each fired alone, and the file passed again once restored. A separate case asserts the extractor still finds its input and that fences which are not `sequenceDiagram` are ignored — the latter is load-bearing rather than decorative, because `docs/architecture/C4-Diagrams.md` carries a **flowchart** node label containing `&lt;` inside a quoted string, which is a different lexer context, renders correctly, and must not be failed.
+>
+> **Related:** `docs/architecture/runtime-view.md`, the document whose four broken diagrams prompted this, and the decisions those four illustrate — [ADR-014](ADR-014-realtime-transport.md) (the SSE stream), [ADR-024](ADR-024-trick-play-persistence-boundary.md) (resolving a trick), [ADR-030](ADR-030-scoring-is-derived-not-accumulated.md) (reading the score) and [ADR-036](ADR-036-session-expiry-and-sweep.md) (the expired-session sweep). Also `.opencode/rules/build-quality.md`, which lists the documentation-integrity tests and carries the same fifth entry.
 
 ## Consequences
 
