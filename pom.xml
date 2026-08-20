@@ -145,6 +145,24 @@
               doclint=all/protected either: javadoc rejects access qualifiers on -Xdoclint
               outright ("Access qualifiers not permitted for -Xdoclint arguments"), because
               visibility is already set by its own -public/-protected flag.
+
+              Two things a reader should know about this plugin, both established by
+              measurement during EOP-120 rather than assumed.
+
+              Supply chain: this plugin is NOT covered by tools/supply-chain/. That tooling
+              audits the seven OpenCode npm plugins only, and there is no checksum or GPG
+              verification at the Maven layer, so a Maven plugin runs arbitrary code in the
+              build JVM on the same terms as checkstyle, spotbugs, jacoco and liquibase
+              already do. The version above is therefore pinned exactly, never a range.
+              Accepted knowingly; moving the pin is a supply-chain change.
+
+              Incremental runs: on a warm target/ this goal can log "Skipping javadoc
+              generation, everything is up to date." That is correct incremental behaviour and
+              not a hole in the gate. A failing run does not write the stale-data file, so a
+              build that has once failed here cannot go stale-green: injecting a broken {@link}
+              on a warm target/ was measured to fail twice in a row with identical flags. Read
+              the "Skipping" line as "nothing has changed since a SUCCESSFUL run", and do not
+              read the goal's mere presence in a warm log as proof that it re-analysed.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

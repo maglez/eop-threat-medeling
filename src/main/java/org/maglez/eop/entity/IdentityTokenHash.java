@@ -138,6 +138,13 @@ public record IdentityTokenHash(String value) {
     /**
      * Consistent with {@link #equals(Object)}: digests that compare equal are the same text.
      *
+     * <p>This is a plain string hash and is not constant time, which is why no
+     * hash-based collection in this application is keyed on this type or on
+     * {@link Player}. Do not introduce one. A {@code HashMap} or {@code HashSet}
+     * compares the cached {@code int} before it calls {@link #equals(Object)}, so
+     * keying a lookup on a digest would make its cost depend on the digest again
+     * and quietly bypass the constant-time comparison above.
+     *
      * @return the hash of the digest text
      */
     @Override

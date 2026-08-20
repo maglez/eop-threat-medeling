@@ -126,6 +126,17 @@ class IdentityTokenHashTest {
         }
 
         @Test
+        @DisplayName("equals the very same instance without consulting the digest")
+        void shouldEqualItself() {
+            final IdentityTokenHash hash = new IdentityTokenHash(SHA256_OF_ABC);
+
+            assertThat(hash.equals(hash))
+                    .as("the identity fast path in equals must be exercised, so that deleting it is a "
+                            + "detectable change rather than a silently surviving mutation")
+                    .isTrue();
+        }
+
+        @Test
         @DisplayName("treats a digest differing in the first character as unequal")
         void shouldRejectADigestDifferingAtTheStart() {
             final IdentityTokenHash hash = new IdentityTokenHash(SHA256_OF_ABC);
