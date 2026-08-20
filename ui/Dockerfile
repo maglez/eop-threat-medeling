@@ -2,8 +2,13 @@
 
 # Front-end image: build the static bundle with Node, serve it with Caddy.
 #
-# Two stages so that Node, npm and 281 development dependencies never reach
-# the runtime image. What ships is a web server and a directory of files.
+# Two stages so that Node, npm and ~280 development dependencies never reach
+# the runtime image. Exactly 6 packages are production dependencies — verify
+# with `npm ls --all --omit=dev` against the full `npm ls --all` tree. Treat the
+# dev figure as indicative, not pinned: it moves with every toolchain bump and
+# with the build platform's optional binaries, so the number installed inside
+# this linux image differs from the number on a developer's machine.
+# What ships is a web server and a directory of files.
 
 FROM node:22-alpine AS build
 
