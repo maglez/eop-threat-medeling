@@ -1,7 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json",
   "enabled": true,
-  "autoUpdate": true,
+  // Deliberately false. DCP's own README says a version-locked plugin spec is never
+  // auto-updated, and ours is locked (`@tarquinen/opencode-dcp@3.1.15` in opencode.json),
+  // so `true` was inert -- it could only ever be a no-op or a supply-chain hazard, never a
+  // benefit. Left at `true` it would silently become live the moment someone wrote the DCP
+  // spec without a version, pulling whatever npm `latest` happened to be. The pins in the
+  // `plugin` array of opencode.json are the single source of truth for what loads; nothing
+  // is permitted to move them without a reviewed commit. See SETUP.md and Blueprint 12.3.
+  "autoUpdate": false,
   "debug": false,
   "experimental": {
     "allowSubAgents": true,

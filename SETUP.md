@@ -128,7 +128,7 @@ docker-compose up -d
 4. Changing the password in the UI afterwards is fine — it lives in
    Grafana's internal DB from then on (`.env` is only the first-boot seed).
 
-## Security Notes — Accepted Risks (2026-07-27 audit)
+## Security Notes — Accepted Risks (reviewed 2026-08-20)
 
 The following items were reviewed and **accepted**; do not re-flag them in
 future audits without new evidence.
@@ -148,52 +148,73 @@ future audits without new evidence.
   custom provider block in `.opencode/opencode.json`. That block was deleted
   when the project moved to OpenCode Zen, which is a built-in provider
   (id `opencode`) requiring no SDK dependency and no endpoint env var.
-- **`npm audit` residual: 5 high / 4 low** — *historical snapshot, taken
-  2026-07-27 against the plugin versions current on that date.* ReDoS/DoS-class
-  in `glob`/`minimatch`/`brace-expansion` via `@opentui/solid` →
-  `babel-plugin-module-resolver`, plus advisories against
-  `@opencode-ai/plugin`, `@tarquinen/opencode-dcp`, `@babel/core`,
-  `opencode-goal-plugin`. Accepted because:
-  1. No patched versions exist for the flagged packages — npm's only
-     automated fix downgrades `@opencode-ai/plugin` 1.18.5 → 1.3.3 and
-     peers, breaking every local plugin (Graphify, DCP, goal).
-  2. Surgical `overrides` would require forcing 3–4 major-version jumps
-     (`glob` 9→13) deep in the TUI build chain — same breakage risk.
-  3. Exploitation requires crafted glob patterns; all patterns here come
-     from plugin source code, never untrusted input.
+- **`npm audit` residual: 0 critical / 0 high / 0 moderate / 4 low** —
+  *measured 2026-08-20 against the six exact pins then current, and it
+  supersedes a 2026-07-27 snapshot of 5 high / 4 low.* Read the direction of
+  that change before reading the numbers: the highs were retired **by** the
+  plugin upgrade, not in spite of it, so on this evidence holding the old pins
+  was the more exposed position. All four remaining lows are one chain —
+  `@babel/core` "Arbitrary File Read via `sourceMappingURL` Comment", reached
+  through `@tarquinen/opencode-dcp` → `@opentui/solid` →
+  `@opencode-ai/plugin`. Accepted because:
+  1. There is no forward fix. npm's only `fixAvailable` is a **downgrade** to
+     `@tarquinen/opencode-dcp@3.1.12`, flagged `isSemVerMajor`, which means
+     the sole automated remedy is to give up DCP and its OpenTUI runtime.
+  2. Exploitation requires a crafted `sourceMappingURL` comment in source
+     Babel is asked to transform. Nothing here feeds untrusted input to that
+     chain: it exists to build the DCP TUI from plugin source.
+  3. It is a *build-time* dependency of a dev tool, not a runtime dependency
+     of the shipped Java application, which has no npm dependencies at all.
 
-> **The `npm audit` figures above are a 2026-07-27 snapshot and must not be
-> treated as current.** They were unverifiable for a period because no JavaScript
-> runtime was on `PATH` — OpenCode ships as a standalone binary with bun embedded
-> privately and does not expose it. **That is no longer true:** Node is now a
-> prerequisite of this project (Graphify's CLI needs it), so `node` and `npm` are
-> on `PATH` and the re-check is once again runnable. The trigger has now fired
-> **three times** without being honoured: twice while the runtime was missing,
-> when `opencode-supermemory` went 2.0.10 → 2.0.11 and `opencode-goal-plugin`
-> went 0.6.5 → 0.6.7, and once with no such excuse, when the same two went
-> 2.0.11 → 2.0.12 and 0.6.7 → 0.8.1 alongside `@tarquinen/opencode-dcp`
-> 3.1.14 → 3.1.15. Read that as evidence about the trigger rather than about the
-> risk: a re-check conditioned on "whenever a pin moves" has never once survived
-> a pin moving, so if this audit matters it needs an owner or a CI job, not
-> another sentence here.
+> **The figures above were honoured on the fourth firing of the trigger, and
+> only because a human asked.** That is the fact worth keeping. A re-check
+> conditioned on "whenever a pin moves" failed to survive a pin moving three
+> times: twice while no JavaScript runtime was on `PATH` (`opencode-supermemory`
+> 2.0.10 → 2.0.11 and `opencode-goal-plugin` 0.6.5 → 0.6.7), and once with no
+> such excuse, when those two went 2.0.11 → 2.0.12 and 0.6.7 → 0.8.1 alongside
+> `@tarquinen/opencode-dcp` 3.1.14 → 3.1.15 — an upgrade that *edited this very
+> paragraph to record the trigger being unhonoured* without honouring it. The
+> runtime excuse is gone for good: Node is a prerequisite of this project
+> (Graphify's CLI needs it), so `node` and `npm` are on `PATH`. Read the history
+> as evidence about the trigger, not about the risk. **If this audit matters it
+> needs a CI job, not another sentence here** — the one thing four firings have
+> established is that prose does not run.
 >
-> What blocks a re-run is the **manifests**, and the shape of that obstacle has
-> changed. The original problem was absence: `.opencode/package.json` and
-> `.opencode/package-lock.json` were untracked by `git rm --cached` (the intent
-> was already recorded in `.opencode/.gitignore`, but never took effect because
-> `.gitignore` does not apply to already-tracked files), and because they had
-> been committed, git also deleted the working-tree copies on the next checkout
-> past that deletion. A `.opencode/package.json` now exists again on disk —
-> untracked and gitignored — but it is **not** a manifest of the plugin roster:
-> it declares exactly one dependency, `@opencode-ai/plugin`, the typings package
-> used to author `.opencode/plugins/graphify.js`. Auditing `.opencode/` today
-> therefore audits the local authoring toolchain, not the plugins that actually
-> load, and the same is true of the 61 MB `.opencode/node_modules` tree beside
-> it, which contains no plugin packages at all. OpenCode resolves plugins through
-> `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, so **the authoritative
-> plugin versions are the exact pins in the `plugin` array of
-> `.opencode/opencode.json`, and nowhere else.** To reinstate this audit:
-> generate a *separate* throwaway manifest from those exact pinned specs — do not
-> repurpose `.opencode/package.json`, whose one dependency serves a different
-> purpose — run `npm audit` against it, and replace this warning with the fresh
-> findings. Drop the entry entirely once upstream patches land.
+> **To reproduce the measurement**, generate a *separate throwaway* manifest
+> whose `dependencies` are the six exact specs from the `plugin` array of
+> `.opencode/opencode.json`, install it under `.tmp/` with `--ignore-scripts`,
+> then run `npm audit` and `npm audit signatures` against it. Do **not**
+> repurpose `.opencode/package.json`: it exists again on disk (untracked and
+> gitignored) but declares exactly one dependency, `@opencode-ai/plugin`, the
+> typings package used to author `.opencode/plugins/graphify.js`. Auditing
+> `.opencode/` therefore audits the local authoring toolchain rather than the
+> plugins that load, and the same goes for the 61 MB `.opencode/node_modules`
+> tree beside it, which vendors no plugin packages at all. OpenCode resolves
+> plugins through `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, so
+> **the authoritative plugin versions are the exact pins in the `plugin` array
+> of `.opencode/opencode.json`, and nowhere else.** `npm audit signatures`
+> needs a real install — with only a lockfile it exits "found no dependencies
+> to audit that were installed from a supported registry".
+>
+> **What that measurement does and does not cover.** `npm audit` answers "are
+> there *published advisories* against these versions". It does not answer "has
+> one of these releases been backdoored", which is the failure mode that
+> actually matters for plugins running unsandboxed inside OpenCode with sight of
+> every message and file. Three checks were run alongside it on 2026-08-20 and
+> are the ones to repeat on any future bump: **maintainer continuity** — the
+> same npm account published the old and new version of all three bumped
+> packages (`tarquinen`, `dhravya`, `williamricchiuti`), an account handoff
+> being the loudest single compromise signal; **registry signatures** — 152 of
+> 152 verified; and **SLSA provenance attestations** — 51 packages carry them,
+> including `@tarquinen/opencode-dcp@3.1.15` and `opencode-supermemory@2.0.12`,
+> but **`opencode-goal-plugin@0.8.1` carries none**. That last one is the
+> weakest link in the roster and deserves naming: hand-published by a single
+> maintainer, six releases in ten days, and the most privileged plugin we load
+> (it spawns agents, writes state and reads whole sessions). Nothing suspicious
+> was found in it; there is simply less to verify against. And provenance only
+> ever proves a tarball came from the named repository's CI — never that the
+> repository's code is benign. One gap is unmeasured: the audit installs with
+> `--ignore-scripts`, and whether OpenCode's own `Npm.add()` path runs lifecycle
+> scripts has not been verified.
+>
+> Drop the residual entry entirely once upstream patches land.
