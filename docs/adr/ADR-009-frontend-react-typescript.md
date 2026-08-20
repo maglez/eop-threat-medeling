@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended four times on 2026-08-19 — five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant is now a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; see Amendments)
+- **Status:** Accepted (amended five times — four on 2026-08-19, when five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant became a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; and once on 2026-08-20, when the `ui/` dev toolchain moved to vite 7 + vitest 3 to clear six CVEs, npm's suggested vite 8 + vitest 4 majors were declined, and the Node floor rose to 22.12; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -158,7 +158,7 @@ intact as the historical record, per the house convention; this section is what 
 ```
 ui/
   index.html            # entry document (no public/)
-  package.json          # react 18, typescript 5.6, vite 5.4, govuk-frontend 5.7, engines.node >=22
+  package.json          # react 18, typescript 5.6, vite 7.3, govuk-frontend 5.7, engines.node >=22.12
   package-lock.json
   tsconfig.json         # strict: true
   vite.config.ts        # dev server :5371, proxies /api + /health to :8080, build → dist/
@@ -177,6 +177,19 @@ ui/
     setupTests.ts
     vite-env.d.ts
 ```
+
+> **The `package.json` line was corrected in place on 2026-08-20 by EOP-110.** As EOP-40 wrote it,
+> and as it still read on 2026-08-19, it said `vite 5.4, … engines.node >=22`. EOP-110 moved those
+> declared ranges to `vite ^7.3.6` and `"node": ">=22.12"`, so the inventory was edited rather than
+> annotated-and-left-wrong: this line exists to be read for a version, and a reader who takes the
+> first value they find would otherwise install a vite that `ui/package.json` no longer allows. What
+> EOP-40 asserted is preserved by this note, not by leaving the stale figure in place. See the
+> EOP-110 amendment below.
+>
+> **These are the *declared* minima in `ui/package.json`, not installed versions**, and the
+> distinction is load-bearing for anyone maintaining the line: under the same carets `npm ls`
+> currently resolves `typescript` to 5.9.3 and `govuk-frontend` to 5.14.0. Do not "correct"
+> `typescript 5.6` or `govuk-frontend 5.7` against a lockfile — they are not wrong.
 
 ### What did not change
 
@@ -591,6 +604,160 @@ registered — so EOP-109's third acceptance criterion is satisfied *vacuously*.
 explicitly, because "no row was needed" and "a row was forgotten" look identical in a diff, and the
 unregistered-`StrideCategory` hole found during EOP-105 is exactly what that looks like when it goes
 wrong.
+
+### Amendment — EOP-110 (2026-08-20): the `ui/` dev toolchain moves to vite 7 + vitest 3, and the majors npm asked for are declined
+
+@security-auditor found six advisories in the `ui/` dev toolchain during EOP-105's gate round. They
+were filed as EOP-110 rather than charged to that story, because EOP-105 touched no
+`ui/package.json` — the advisories predated it and were merely surfaced by an audit run against a
+branch that did not cause them.
+
+**Nothing shipped was ever vulnerable.** `npm audit --omit=dev` reported `found 0 vulnerabilities`
+both before and after the change. Every affected package is a build- or test-time dependency, so the
+exposure was developer machines and CI runners — the latter real rather than theoretical, because
+`.github/workflows/ci.yml` runs `npm run verify` in `ui/` on every push.
+
+| severity | package | vulnerable range | cleared by |
+|---|---|---|---|
+| CRITICAL | `vitest` | `<=3.2.5` | `vitest@3.2.7` |
+| HIGH | `vite` | `<=6.4.2` | `vite@7.3.6` |
+| HIGH | `nanoid` | `<3.3.18` | fresh lock resolution → `nanoid@3.3.18` via `postcss ^8.5.6` |
+| MODERATE | `esbuild` | `<=0.24.2` | vite 7 depends on `esbuild ^0.27 \|\| ^0.28` → `0.28.2` |
+| MODERATE | `@vitest/mocker` | `<=3.0.0-beta.4` | `3.2.7` |
+| MODERATE | `vite-node` | `<=2.2.0-beta.2` | `3.2.4` |
+
+Four declared ranges in `ui/package.json` moved — `@vitejs/plugin-react` `^4.3.2` → `^4.7.0`, `vite`
+`^5.4.9` → `^7.3.6`, `vitest` `^2.1.3` → `^3.2.7`, and `engines.node` `>=22` → `>=22.12` — plus one
+import line in `ui/vite.config.ts` and a regenerated `ui/package-lock.json`. **No file under
+`ui/src/` was modified**, which is the strongest single statement about the blast radius of this
+change: no component, no DTO, no parser and no test was touched, so the 223 assertions that pass
+afterwards are the same 223 assertions, not adjusted ones.
+
+**1. vite 7 + vitest 3, not the vite 8 + vitest 4 that `npm audit fix` proposed.** npm's own
+suggestion was the majors. They were declined, and the reason is scope rather than caution: vite
+7.3.6 + vitest 3.2.7 clears all six advisories on its own, so the majors buy nothing security-wise
+while carrying a test-suite rework. vitest 4's stricter ES-module runner does not support spying on
+another module's exports, and this suite leans on that pattern hard —
+`ui/src/components/GameScreen.test.tsx` contains **91** `vi.spyOn(api, …)` call sites across five
+helpers (`getSession`, `fetchHand`, `getTrickState`, `subscribeToSession` at 22 each, plus
+`playCard` at 3), and it is the only file with any. `ui/src/api.ts:102` carries a comment that
+depends on the same pattern existing. Bundling a 91-site test refactor into a CVE remediation would
+have made the security fix un-reviewable as a security fix.
+
+One honesty note for whoever picks the refactor up: the *exposure* figure is checkable today
+(`grep -c 'vi\.spyOn(api' ui/src/components/GameScreen.test.tsx`), but the *breakage* is upstream
+behaviour taken from vitest's own migration guidance and was **not** reproduced here — no vitest 4
+install was attempted. Confirm it against a real vitest 4 run before sizing the work, and if it turns
+out the pattern survives, this constraint dissolves and should be struck from this ADR.
+
+**2. `@vitejs/plugin-react` stays on major 4; only its declared floor rose.** The installed `4.7.0`
+already peers `vite ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0`, so vite 7 needs no plugin major. The edit
+was still necessary, because the *old declared floor* `^4.3.2` peers only `vite ^4.2 || ^5` — it had
+become a false statement about a tree that runs vite 7, and a fresh `npm install` resolving to the
+bottom of that caret would have failed peer resolution. `@vitejs/plugin-react@6.1.0` was rejected
+outright: it peers `vite ^8` and additionally requires `oxc-transform-react`,
+`@rolldown/plugin-babel` and `babel-plugin-react-compiler`, i.e. a rolldown and React-Compiler
+migration. That is an architectural change to the build pipeline, and it would need its own ADR, not
+a line in a CVE fix.
+
+**3. `engines.node` `>=22` → `>=22.12`, and the patch level is load-bearing rather than pedantic.**
+vite 7 requires `^20.19.0 || >=22.12.0`. A bare `>=22` would have let Node 22.0–22.11 satisfy this
+project's *own* declared engines while violating vite's — a floor that reads as authoritative and is
+not. **The declaration is advisory, not a gate**, and this paragraph originally over-claimed it as a
+hard `npm install` failure — the same over-claim @security-auditor caught in `AGENTS.md`, `SETUP.md`,
+`docs/devops/local-development.md` and the CHANGELOG entry, corrected here for the same reason:
+`engine-strict` is unset (`npm config get engine-strict` → `false`) and there is no `.npmrc` at the
+repository root or in `ui/`, so npm prints an `EBADENGINE` **warning** and installs anyway, leaving
+the mismatch to surface later as a confusing Vite failure rather than at install time. Turning it
+into a real gate would take `engine-strict=true` in `ui/.npmrc`, deliberately **not** added here:
+engine-strict evaluates *every* package's `engines` field rather than only this project's, so it
+could hard-fail an install over an unrelated transitive declaration — a behaviour change that
+deserves its own ticket rather than a rider on a CVE remediation. Node 20 is out of scope for the
+same reason it always
+was: it reached end of life on 2026-04-30, so the `^20.19.0` half of vite's range is not a fallback
+this project may use. No CI or container change was needed, and that is a fact about resolution
+rather than luck: `.github/workflows/ci.yml:72` pins `node-version: 22` under
+`actions/setup-node@v4`, which resolves to the latest 22.x, and `ui/Dockerfile:13` uses
+`node:22-alpine`, likewise — both therefore clear 22.12 today. Neither pin *guarantees* it in the
+way `engines` does, which is precisely why the guarantee belongs in `engines`.
+
+**4. `vite.config.ts` now imports `defineConfig` from `vitest/config`.** Under vite 7 the previous
+`/// <reference types="vitest" />` plus `defineConfig` from `"vite"` combination no longer types the
+`test` block, and vitest's supported route is its own `defineConfig`. Two header lines became one.
+This is type-checked rather than assumed: `ui/tsconfig.json` includes `vite.config.ts`, so
+`npm run typecheck` — the first link in `npm run verify` — covers it.
+
+#### Known limitation — one new build warning, cosmetic and deliberately unsuppressed
+
+`npm run build` now emits a single `[esbuild css minify]` `css-syntax-error` **warning** about
+`@media screen\0 and (min-width:40.0625em)`. Build exits 0.
+
+The construct is third-party and intentional. `screen\0` is a GOV.UK Frontend hack whose own source
+comment at `node_modules/govuk-frontend/dist/govuk/components/details/_index.scss:44-46` reads
+`Hack to target IE8 - IE11 (and REALLY old Firefox)` — those browsers do not support the `details`
+element, so the rule falls back to inset-text styling. It appears nowhere in `ui/src/`; esbuild 0.28
+simply parses minified CSS more strictly than 0.21 did.
+
+Two claims here were verified rather than assumed, and both matter because "new warning" and
+"cosmetic warning" are independent questions:
+
+- **It is new.** `main` was built in an isolated worktree on `vite@5.4.21` / `esbuild@0.21.5`: zero
+  occurrences. It is not a pre-existing warning that nobody had noticed
+- **It is cosmetic.** Both emitted CSS bundles were compared: identical 140 GOV.UK selector sets,
+  identical 452 `@media` at-rule count, identical 15 `screen` media queries. The warned rule is
+  **preserved, not dropped**. The only textual delta is `@media (x)` → `@media(x)` whitespace
+  removal, which accounts exactly for the 620-byte size reduction
+
+No suppression was added. Configuring esbuild around a warning about a third party's minified CSS
+would trade a visible, accurate, harmless message for a silent config exception that outlives the
+condition it was written for — and it would suppress the *class*, hiding a future CSS error that is
+genuinely ours. The cost is one line of build noise per build; the correct fix is upstream, or the
+eventual removal of the IE hack from `govuk-frontend`.
+
+#### The standing constraint this creates, and why it is not a separate ADR
+
+This change leaves a real ceiling behind: **`ui/` stays on vitest 3 until the `vi.spyOn(api, …)`
+pattern in `GameScreen.test.tsx` is refactored.** A dependency bump does not normally warrant an
+architectural record, and this one adds no component, no boundary and no data flow — but a *declined*
+upgrade with a named exit condition is a decision with consequences, and the point of writing it here
+is that the next agent to run `npm audit fix` will be told to go to vitest 4 and must find the reason
+it was refused.
+
+It is recorded as an amendment rather than a new ADR because it constrains a choice this ADR already
+owns — ADR-009 chose Vitest in the first place ("Testing: Vitest + React Testing Library"), so the
+version ceiling on that choice belongs with it, not in a document that would have to cross-reference
+it to make sense. Three things carry the constraint besides this paragraph, which is what makes it
+safe not to give it its own file:
+
+- **Mechanically**, the `^3.2.7` caret in `ui/package.json` cannot resolve to 4.x, so the ceiling is
+  enforced by the package manager on every install rather than by anyone remembering it
+- **At the point of temptation**, `ui/src/api.ts:102` already documents that a `vi.spyOn(api, …)`
+  test replaces a helper wholesale and never reaches a parser
+- **In the rules**, `.opencode/rules/error-handling.md` already warns that a `vi.spyOn` test is not
+  evidence the parsers work — so the refactor this constraint defers is one the rules independently
+  want, and vitest 4 is an argument *for* it rather than a cost of it
+
+#### What this closes — and one ground for rejecting codegen that is now spent
+
+Six advisories cleared, zero residual. `npm audit` reports `found 0 vulnerabilities` at exit 0 with
+and without `--omit=dev`, so the story's "record any residual moderate" clause is satisfied
+*vacuously* — there is no residual advisory at any severity. That is worth stating in those words,
+because "none remain" and "none were checked" look identical in a diff.
+
+`npm run verify` in `ui/` exits 0 with `Test Files 9 passed (9)` and `Tests 223 passed (223)`, 0
+skipped and 0 todo. All nine known test files were collected, which is the specific evidence that
+the vitest 2 → 3 move silently dropped no file — a passing run over eight files would also have said
+"passed". `./mvnw verify` exits 0 across 95 test classes and 1244 tests with 0 failures, including
+all four documentation-integrity gates.
+
+Finally, a bookkeeping consequence for a *different* decision. The EOP-108 amendment above rejected
+OpenAPI codegen on four grounds, the third being that "EOP-110 is open against the `ui/` dev
+toolchain (six CVEs, one critical). Adding a generator to that toolchain while its existing supply
+chain is under remediation is the wrong order." **That ground is now discharged** — the remediation
+is complete and the audit is clean, so it must not be cited again. EOP-108 had already ruled its own
+fourth ground ("the work is already done") inadmissible a second time as self-reinforcing. A future
+codegen re-evaluation therefore inherits **two** live grounds, not four, and should say so rather
+than counting the spent ones.
 
 ## Related
 
