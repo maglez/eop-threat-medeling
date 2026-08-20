@@ -777,11 +777,12 @@ than counting the spent ones.
 ### Amendment — EOP-106 (2026-08-20): the dev server port is `:5173` again, and the deviation is deleted rather than explained
 
 The EOP-40 amendment above corrected four documentation sites to say the Vite dev server listens on
-`:5371`, which was true of the code. It also added a `### Why the front-end port is `:5371`` section
+`:5371`, which was true of the code. It also added a `### Why the front-end port is :5371` section
 that guessed at a cause. The guess was wrong, and the port has now been reverted to Vite's default
 `:5173`.
 
-**What the history actually shows.** `git log -- ui/vite.config.ts` returns three commits:
+**What the history actually shows.** `git log -- ui/vite.config.ts` returned three commits before
+this one:
 
 | Commit | Subject | Effect on the port |
 |---|---|---|
@@ -799,11 +800,13 @@ documentation sites each had to explain a deviation whose only explanation was a
 future reader had to be told the port is not the one their tooling defaults to. Reverting removes
 the exception instead of documenting it.
 
-This is also the disposition @architecture-guardian asked for while reviewing EOP-40. Its objection
-there was to recording `:5371` as a deliberate decision — an ADR asserting intent behind a probable
-typo manufactures false-but-authoritative prose that later becomes load-bearing, which is exactly
-what the superseded section did. Recording an author-confirmed mistake is the honest alternative,
-and it leaves this ADR with no "why the port is unusual" section to maintain at all.
+This also satisfies the objection @architecture-guardian raised while reviewing EOP-40 — though the
+choice between reverting and recording was not one it expressed a preference on, and the reasoning
+above is this story's own. Its objection there was to recording `:5371` as a deliberate decision — an
+ADR asserting intent behind a probable typo manufactures false-but-authoritative prose that later
+becomes load-bearing, which is exactly what the superseded section did. Recording an
+author-confirmed mistake is the honest alternative, and it leaves this ADR with no "why the port is
+unusual" section to maintain at all.
 
 **What changed, all in one commit.**
 
@@ -812,7 +815,7 @@ and it leaves this ADR with no "why the port is unusual" section to maintain at 
 | `ui/vite.config.ts` | `port: 5371,` | `port: 5173,`, with a comment naming this line as the port's single source of truth and warning that the docs cite it |
 | `AGENTS.md` (Front-end bullet, Build clause) | ``:5371`` (not Vite's default ``:5173``) | ``:5173`` (Vite's default) |
 | `docs/devops/local-development.md` | three live sites — the Front-End paragraph, the quick-start comment, the two-terminal workflow line | all `:5173` |
-| This ADR | the EOP-40 Development-workflow amendment, the amendment-table port row, the shipped-layout tree comment, and `### Why the front-end port is `:5371`` | each superseded in place by a dated note; none removed |
+| This ADR | the EOP-40 Development-workflow amendment, the amendment-table port row, the shipped-layout tree comment, and `### Why the front-end port is :5371` | each superseded in place by a dated note; none removed |
 
 **What deliberately did not change.**
 
@@ -837,7 +840,9 @@ bound `:5173`, and `/health` and `/api/v1/cards` through it returned the Spring 
 EoP card images to `docs/EoP_Microsoft_Docs/cards/`" — an unrelated ticket. That violates
 `.opencode/rules/git-commits.md`, and it is the mechanical reason no rationale was ever captured:
 there was no port ticket for the change to be recorded against, so the only trace it left was a
-value nobody could account for three days later. Filed as its own ticket.
+value nobody could account for three days later. Filed as EOP-111, which asks whether the convention
+should be enforced by a hook or by CI rather than only by review, given that documenting it did not
+prevent this instance.
 
 ## Related
 
