@@ -135,6 +135,66 @@ unrelated players. Consistent with the PRD's exclusion of cross-session history.
 
 ## Amendments
 
+**2026-08-20 — re-examined against the XSS exposure and upheld; what is being
+accepted is now stated in those terms (EOP-107).**
+
+A security review asked the right question about this decision: a token in
+`sessionStorage` and replayed from JavaScript is readable by any script that
+achieves execution, and an `HttpOnly; Secure; SameSite=Strict` cookie would remove
+that exposure outright — the browser would hold the credential somewhere no script
+can reach. The finding was correct and is not disputed. This amendment records
+that the decision stands anyway, and why, so that the next reviewer inherits a
+judgement instead of rediscovering the question.
+
+**The exposure being accepted, stated plainly.** If an attacker ever executes
+script in this origin, they read `eop_session` from `sessionStorage` and possess a
+player's full authority for the life of that tab — this token is the entire
+control, as the Consequences below already say. An `HttpOnly` cookie would not
+make XSS harmless, but it would take the credential itself off the table: the
+attacker would be reduced to acting through the victim's browser rather than
+walking away with a bearer token. That is a real difference and it is what is
+being given up.
+
+**Three reasons it is still the right trade for this application.**
+
+*Per-tab scope is the demo mechanism, not a side effect.* Two players in one
+browser is how this application is shown — Chrome, Safari, Chrome Incognito, three
+seats. Cookies are per-origin, not per-tab, so a cookie-borne token means one
+player per browser profile and the demo needs three browsers instead of three
+tabs. `localStorage` fails the same test in the opposite direction and remains
+prohibited (see the 2026-08-15 amendment below).
+
+*The custom header is what keeps CSRF out of the threat model.* A cookie is
+attached by the browser automatically, to every request, including ones an
+attacker's page causes. `SameSite=Strict` mitigates that but does not delete the
+category, and the moment a cookie exists, so does the obligation to reason about
+it — origin checks, a token pattern, or trusting a `SameSite` implementation.
+`X-EoP-Player-Token` is never sent automatically, so as recorded below, CSRF is
+not a category of bug this application can have. Moving to a cookie trades one
+class of vulnerability for another rather than removing one.
+
+*The SSE transport is built on this choice.* The lobby stream is read with `fetch`
+plus `ReadableStream` and an `AbortController` specifically because `EventSource`
+cannot set a request header ([ADR-014](ADR-014-realtime-transport.md)). If the
+token moved to a cookie, that reason disappears and the honest thing would be to
+revert to `EventSource` — so this is not a one-line storage change but a change of
+real-time transport, in an application whose reason for existing is a
+threat-modelling card game rather than a credential store.
+
+**What the exposure is bounded by.** The CSP is origin-based with
+`object-src 'none'`, `base-uri 'none'` and `form-action 'none'`, so an injected
+form cannot post the token out; `Referrer-Policy: no-referrer` keeps it out of
+`Referer`; it is never in a URL, so nothing leaks through history, logs or a
+shared screen; and the tab closing ends the exposure, which a cookie's lifetime
+would not. None of that prevents exfiltration by a script that already runs — it
+narrows the routes.
+
+**Revisit this if any of the three reasons stops holding**: if the demo stops
+needing several seats in one browser, if the real-time transport moves off `fetch`
+for an unrelated reason, or if this application ever holds anything worth stealing
+beyond a seat at a card table. Any of those turns the cookie into the better
+answer, and the migration is then a deliberate story, not a patch.
+
 **2026-08-15 — TLS is now live; the `localStorage` prohibition is formalised.**
 
 [ADR-035](ADR-035-tls-and-security-response-headers.md) enables `tls internal` at
