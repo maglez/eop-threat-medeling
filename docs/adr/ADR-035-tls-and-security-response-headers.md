@@ -56,6 +56,10 @@ Caddy needs a hostname as the certificate subject. A bare port gives Caddy no
 subject to issue for, so `tls internal` on `:8080` creates a TLS connection
 policy with no leaf certificate — every handshake aborts with `tlsv1 alert
 internal error`. The hostname `localhost` is the subject the local CA issues for.
+(Narrowed by the 2026-08-20 amendment: the address is now
+`localhost:8080, 127.0.0.1:8080, [::1]:8080`, so `localhost` is no longer the
+only matched host and no longer the only subject the local CA has issued for.
+The prohibition on a bare `:8080` is untouched and still fatal.)
 
 The global block also sets `default_sni localhost`. This handles the case where a
 connection arrives with **no SNI at all** — for example, a CLI tool that connects
@@ -77,6 +81,13 @@ security headers** — the site is not served. The EC2 deployment is therefore
 localhost-only with `tls internal`. Deploying to a public hostname requires
 replacing `tls internal` with a real certificate (ACME or otherwise), at which
 point `default_sni` can be removed.
+
+(Narrowed by the 2026-08-20 amendment for the **loopback** literals only. HTTP
+routing is now gated on `host: localhost`, `127.0.0.1` **or** `[::1]`, so
+`https://127.0.0.1/` and `https://[::1]/` are served with the full header set.
+The paragraph above still holds verbatim for any *other* host — an arbitrary
+public IP or an unmatched `Host` still gets the empty 200. The EC2 conclusion is
+unchanged.)
 
 The global directive is `auto_https disable_redirects` (not `auto_https off`).
 `auto_https off` disables certificate management entirely, which would prevent
@@ -104,7 +115,10 @@ responses (502, 404, 413, etc.), which the main `header` block does not cover.
 | `Referrer-Policy` | `no-referrer` | Prevents the token-bearing URL from leaking in the `Referer` header to any third-party resource. |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | Tells browsers to use HTTPS for this origin for the next two years. Safe to set because TLS is now live. See HSTS blast-radius note in Consequences. |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | Disables browser features this application does not use. Reduces the attack surface if a future dependency tries to use them. |
-| `-Server` | (removed) | Removes the `Server: Caddy` header to avoid disclosing the web server product on `host: localhost` responses. Caddy sends no version string, but the product name itself is useful to an attacker scanning for known vulnerabilities. Note: on the unmatched-host path (e.g. an IP-literal URL) the header is not removed — see the EC2 limitation in Consequences. |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Added 2026-08-20 (EOP-107). Severs the `window.opener` reference when another origin opens this document, so an opener cannot reach into this page's window object. Nothing here opens a cross-origin window, so this closes an inherited default rather than a live defect. |
+| `Cross-Origin-Resource-Policy` | `same-origin` | Added 2026-08-20 (EOP-107). Instructs browsers to refuse to embed this origin's responses from another origin, blocking cross-origin read attacks such as Spectre-style side channels. |
+| `Cross-Origin-Embedder-Policy` | `require-corp` | Added 2026-08-20 (EOP-107). Refuses to load any cross-origin subresource that has not opted in. Safe here precisely because there are none: the GOV.UK CSS and fonts are copied into the bundle and served from `/assets`, and the only external URL in the front end is a footer navigation link, which is not a subresource. |
+| `-Server` | (removed) | Removes the `Server: Caddy` header to avoid disclosing the web server product on `host: localhost` responses. Caddy sends no version string, but the product name itself is useful to an attacker scanning for known vulnerabilities. Note: on the unmatched-host path the header is not removed — see the EC2 limitation in Consequences, as narrowed by the 2026-08-20 amendment, which brings the loopback IP literals onto the matched path. |
 
 The `Strict-Transport-Security` header is included because TLS is confirmed live
 in this same change. Setting HSTS on a plain-HTTP site would lock browsers out;
@@ -158,6 +172,9 @@ and none of the security headers** — the site is not served. A non-empty
 mismatched SNI (e.g. `openssl s_client -servername evil.example`) still aborts
 with `tlsv1 alert internal error`. Deploying to a public hostname requires
 replacing `tls internal` with a real certificate (ACME or otherwise).
+Narrowed by the 2026-08-20 amendment: the loopback IP literals are now matched
+hosts and are served with the full header set. Every other unmatched `Host`,
+including a public IP, still behaves exactly as described above.
 
 **Negative:** Browsers will show a certificate warning on first visit to
 `https://localhost/`. This is expected and acceptable for a local demo. A real
@@ -191,6 +208,91 @@ either trust the Caddy CA or disable certificate verification.
 React front end (EOP-11) must not rely on inline scripts or styles, because the
 CSP's `default-src 'self'` would block them. This is the correct constraint for a
 React application built with Vite, which emits content-hashed external files.
+
+## Amendments
+
+**2026-08-20 — cross-origin isolation headers added; the IP-literal bypass is
+closed for the loopback addresses and narrowed, not eliminated; source maps are
+refused at the edge (EOP-107).**
+
+Three headers join the list above — `Cross-Origin-Opener-Policy: same-origin`,
+`Cross-Origin-Resource-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+require-corp` — set in both the site `header` block and the `handle_errors`
+header block. The two lists must stay header-for-header identical: an error
+response served under a weaker policy than a success response is a gap, and the
+duplication is the price Caddy charges for closing it.
+
+None of the three fixes a live defect. There is no cross-origin subresource in
+the front end to isolate — the GOV.UK CSS and fonts are copied into the bundle
+by `ui/scripts/copy-govuk-assets.mjs` and served from `/assets`, and the only
+external URL anywhere in `ui/` is a footer link to the Creative Commons licence,
+which is a navigation target and not a subresource. That absence is exactly what
+makes `require-corp` safe to assert rather than a change that has to be tested
+against a working page: there is nothing for it to refuse.
+
+**The IP-literal bypass this ADR documented is now closed for every address a
+local browser can use, and no further.** The site address is
+`localhost:8080, 127.0.0.1:8080, [::1]:8080`, so a visit to `https://127.0.0.1/`
+matches a site block and receives the full header set. Verified against the
+running stack rather than read off the config: before the change that URL
+returned an empty `200` with `Server: Caddy` and none of the headers; after it,
+`curl -sk -D- https://127.0.0.1/` returns `200` with all eight security headers
+and no `Server` header.
+
+Be precise about *why* that works, because the obvious explanation is the wrong
+one. Caddy's internal CA did mint leaves for the new subjects — `ls
+/data/caddy/certificates/local/` in the container shows `localhost`, `127.0.0.1`
+and `--1` — but none of the IP leaves is ever *presented*. RFC 6066 forbids an IP
+literal in SNI, so a request to `https://127.0.0.1/` still arrives with no SNI at
+all, still falls to `default_sni localhost`, and is still answered with the
+`localhost` leaf; a browser there still gets a name-mismatch warning, and `curl
+-k` is what hides it. What actually closed the defect is **HTTP `Host` routing**:
+Caddy matches a request to a site block on the `Host` header, not on SNI, and
+`127.0.0.1` and `[::1]` are now in that list. Certificate issuance was neither
+the problem nor the fix. Nobody should read this amendment and expect the TLS
+warning to have gone away.
+
+What is *not* closed: an arbitrary unmatched `Host` still takes the default path
+and still gets an empty `200` with `Server: Caddy`. Naming every possible host is
+not a strategy, and the two ways out are both out of proportion to a
+localhost-only demo — a real certificate for a real name, or on-demand internal
+TLS, which Caddy will only enable behind an `ask` endpoint that has to authorise
+each name. The Decision's ruling on the site address stands unchanged and should
+not be re-litigated: a bare `:8080` gives the internal issuer no subject, and
+every handshake aborts with `tlsv1 alert internal error`. That has been tried.
+
+**Two hardening options were considered and declined, with reasons, so that
+declining them is a decision on the record rather than an omission.** Trusted
+Types (`require-trusted-types-for 'script'`) needs a policy created in
+application code, and its failure mode is a runtime refusal visible only in a
+real browser — nothing in this pipeline runs one, so enforcing it blind would
+ship an untested failure mode in exchange for a defence against DOM sinks the
+code does not use. A nonce-based CSP is not available to this topology at all: a
+static `file_server` cannot rewrite `index.html` per request to inject a fresh
+nonce, and Vite emits only external content-hashed files, so `default-src 'self'`
+already refuses every inline script. Revisit the first if the front end ever
+assigns to a DOM sink, and the second if `index.html` ever becomes templated.
+
+**Source maps are refused at the edge.** `ui/vite.config.ts` sets
+`sourcemap: false`, so the production build emits none — verified in the image
+itself (`find /srv -name '*.map'` returns nothing). A `@sourcemap path *.map`
+matcher in `ui/Caddyfile` nevertheless answers `error 404`, and it is not
+redundant: the SPA `try_files` fallback would otherwise serve `index.html` with a
+`200` for a `.map` request, which turns a regression into something that looks
+like it works. `error` rather than `respond` so `handle_errors` re-applies the
+security headers and the response is byte-identical to any other 404 — verified:
+`https://localhost/assets/index-abc.js.map` returns `404` with all eight headers.
+
+One consequence of that matcher is not obvious from reading the file, and both
+review gates found it independently, so it belongs on the record: Caddy's
+Caddyfile adapter orders sibling `handle` blocks by matcher *specificity*, not by
+source position, so `*.map` outranks `handle /api/*` even though it is written
+after it. `GET /api/v1/sessions/x.map` is therefore refused at the edge with
+Caddy's own `404` instead of reaching the application. It fails closed, nothing
+can currently be shadowed (every path parameter in this API is a UUID), and a
+blanket refusal is the safer default — so the matcher was left broad and the
+comment in `ui/Caddyfile` corrected instead. Narrow it to `path /assets/*.map` if
+an API route ever legitimately needs that suffix.
 
 ## Related
 

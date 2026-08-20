@@ -53,10 +53,26 @@
 	default_sni localhost
 }
 
-localhost:8080 {
+# The site address enumerates every name this stack can legitimately be
+# reached by, because the header block below only fires for a request whose
+# Host matches one of them (EOP-107, ADR-035 amendment 2026-08-20).
+#
+# Before EOP-107 the only address was localhost:8080, so visiting
+# https://127.0.0.1/ returned an empty 200 with Server: Caddy and none of the
+# security headers: RFC 6066 forbids IP literals in SNI, so the handshake
+# completes via default_sni above, and then no site block matches the Host.
+# Naming the loopback literals closes that for every address a local browser
+# can actually use. It does NOT close the general case — a request with an
+# arbitrary Host still matches nothing — and a bare `:8080` cannot be used
+# instead, because Caddy would then have no subject to issue a certificate
+# for and every handshake would abort (proven in ADR-035; do not re-try it).
+localhost:8080, 127.0.0.1:8080, [::1]:8080 {
 	# TLS (EOP-21): self-signed certificate from Caddy's local CA.
-	# The site address must be a hostname (not a bare port) so that Caddy has a
-	# subject to issue the certificate for. `tls internal` instructs Caddy to
+	# The site address must include at least one hostname (a bare port will not
+	# do) so that Caddy has a subject to issue the certificate for; the two IP
+	# literals added in EOP-107 are matched for HTTP routing, but the leaf
+	# actually presented is always `localhost`'s, because an IP literal cannot
+	# appear in SNI. `tls internal` instructs Caddy to
 	# use its built-in CA rather than ACME — correct for a closed demo with no
 	# public domain. Browsers will show a certificate warning on first visit;
 	# this is expected. To use a real certificate, replace `tls internal` with
@@ -94,12 +110,47 @@ localhost:8080 {
 	#
 	# Permissions-Policy: disables browser features this application does not
 	# use. Reduces the attack surface if a future dependency tries to use them.
+	#
+	# Cross-origin isolation (EOP-107): the three Cross-Origin-* headers below
+	# are defence in depth, not fixes for a live defect. Nothing in this
+	# application loads a cross-origin subresource — the only external URL in
+	# the whole front end is a Creative Commons licence link in the footer,
+	# which is a navigation, not a load — and the GOV.UK CSS and fonts are
+	# copied into the bundle and served from this origin under /assets.
+	#
+	# Cross-Origin-Opener-Policy: same-origin severs the window.opener
+	# relationship with any cross-origin page that opens this one, so such a
+	# page cannot reach into this window's browsing context.
+	#
+	# Cross-Origin-Resource-Policy: same-origin refuses to let another origin
+	# embed these responses as a subresource, which is what blunts a
+	# cross-site leak of a response body via a side channel.
+	#
+	# Cross-Origin-Embedder-Policy: require-corp refuses to load any
+	# cross-origin subresource that has not opted in. Safe to set precisely
+	# because there are none; if one is ever needed it will fail loudly rather
+	# than silently, which is the correct direction for this trade.
+	#
+	# Two hardenings the auditor raised were deliberately NOT taken, and the
+	# reasons belong next to the config rather than only in the ADR:
+	#
+	#   * Trusted Types (require-trusted-types-for 'script') needs a policy
+	#     created in application code and can only be verified in a real
+	#     browser, which nothing in this pipeline runs. Enforcing it blind
+	#     would ship an untested failure mode.
+	#   * A nonce-based CSP would require rewriting index.html per request to
+	#     inject the nonce. This is a static file_server, which cannot. It
+	#     buys nothing here anyway: Vite emits only external content-hashed
+	#     files, so default-src 'self' already refuses inline script.
 	header {
 		Content-Security-Policy "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "require-corp"
 		# Remove the Server header to avoid disclosing the web server product.
 		# Caddy sends "Server: Caddy" with no version, but the product name
 		# itself is useful to an attacker scanning for known vulnerabilities.
@@ -109,6 +160,8 @@ localhost:8080 {
 	# Re-apply security headers to Caddy-generated error responses (502, 404,
 	# 413, etc.). Without this block the header directive above does not fire
 	# on error paths, and Caddy's own error responses leak "Server: Caddy".
+	# The list must stay identical to the one above, header for header —
+	# an error response with a weaker policy than a success response is a gap.
 	handle_errors {
 		header {
 			Content-Security-Policy "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
@@ -116,6 +169,9 @@ localhost:8080 {
 			Referrer-Policy "no-referrer"
 			Strict-Transport-Security "max-age=63072000; includeSubDomains"
 			Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+			Cross-Origin-Opener-Policy "same-origin"
+			Cross-Origin-Resource-Policy "same-origin"
+			Cross-Origin-Embedder-Policy "require-corp"
 			-Server
 		}
 		respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
@@ -155,6 +211,32 @@ localhost:8080 {
 		reverse_proxy app:8080 {
 			header_up X-Forwarded-For {remote_host}
 		}
+	}
+
+	# Source maps are never served (EOP-107). ui/vite.config.ts sets
+	# sourcemap: false, so the build emits none and this matcher normally
+	# matches nothing. It is not redundant: without it the SPA fallback below
+	# answers a request for any missing path — including /assets/index-*.js.map
+	# — with index.html and a 200, so a build that started emitting maps again
+	# would be indistinguishable from one that did not. This turns that into a
+	# flat refusal at the edge regardless of what is on disk.
+	#
+	# `error` rather than `respond` so handle_errors above re-applies the
+	# security headers and the response is byte-identical to any other 404.
+	#
+	# Precedence, which is NOT the source order you see here: Caddy's Caddyfile
+	# adapter sorts sibling handle blocks by matcher specificity, not by
+	# position, so the compiled route table is /health, then *.map, then
+	# /api/*, then the catch-all. This rule therefore outranks the reverse
+	# proxy as well as the static handler, and a request for
+	# /api/v1/anything.map is refused here instead of reaching the API. That is
+	# deliberate and it fails closed: no route in this application can end in
+	# .map (every path parameter is a UUID), and a blanket refusal is the safer
+	# default. If an API path ever legitimately needs that suffix, narrow the
+	# matcher to `path /assets/*.map` — do not delete the block.
+	@sourcemap path *.map
+	handle @sourcemap {
+		error 404
 	}
 
 	handle {

@@ -168,6 +168,61 @@ heredoc buried in a bootstrap script.
 machine, reachable only by its operator. The proxy is a step towards public access, not public
 access itself.
 
+## Amendments
+
+**2026-08-20 — the static handler gained cross-origin isolation headers and a
+source-map refusal; the single origin is unchanged (EOP-107).**
+
+Three headers were added at Caddy — `Cross-Origin-Opener-Policy: same-origin`,
+`Cross-Origin-Resource-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+require-corp`. They are recorded in full in
+[ADR-035](ADR-035-tls-and-security-response-headers.md); this note exists because
+they sit in the delivery topology this ADR chose, and because a reader arriving
+here to ask "what does Caddy do to a response" should not have to find that out
+elsewhere.
+
+**The `Content-Security-Policy` itself did not change.** No directive was added,
+removed or relaxed, so every statement this ADR makes about it stands. That is
+worth saying plainly, because the obvious way to make an injected `<form action>`
+or a third-party script work is to loosen a directive, and doing so would trade a
+visible availability bug for an invisible weakening of an exfiltration control.
+The constraint is now written down where the agent that would hit it will read it:
+`.opencode/agents/ui-builder.md` has a Security section covering
+`form-action 'none'` and the `onSubmit` + `preventDefault()` convention it
+implies.
+
+**The single origin remains the point.** These headers are cheap here for exactly
+the reason this ADR gave for choosing one origin: there is no cross-origin
+subresource for `require-corp` to refuse, because the bundle, the GOV.UK assets
+and the API all answer on the same origin. Nothing about CORS enters the system —
+still no `@CrossOrigin`, no preflight, no allow-list. The site address now names
+the loopback IP literals (`localhost:8080, 127.0.0.1:8080, [::1]:8080`) so that a
+visit by IP is not served outside the header block. Be accurate about what that
+means, in the one ADR that cannot afford to be loose about origins: RFC 6454
+defines an origin as the (scheme, host, port) tuple and does not canonicalise a
+name to an address, so `https://localhost`, `https://127.0.0.1` and
+`https://[::1]` are **three distinct origins**, not three names for one. What this
+ADR claims is preserved under each of them separately: whichever of the three the
+user types, the bundle and the API it calls are served from that same origin, so
+no cross-origin request is ever made and CORS still never enters the system. One
+server, three origins, each internally single-origin.
+
+That distinction has a consequence worth writing down, because widening the site
+address is what made it reachable: `sessionStorage` is partitioned per origin. A
+player admitted at `https://localhost/` who reopens the app at
+`https://127.0.0.1/` finds no `eop_session` there and is silently back at the
+lobby — the seat still exists server-side, but the browser will not hand the
+token across. That is correct behaviour for a per-origin store rather than a bug
+to fix, and it is the same mechanism ADR-015 relies on for per-tab custody; it is
+recorded here so that the next person to debug a "lost" session at one address
+while it works at another knows where to look.
+
+The static-serving handler this ADR introduced also now refuses `*.map` with a
+404, because `try_files … /index.html` would otherwise answer a source-map request
+with `index.html` and a `200`. `ui/vite.config.ts` emits no maps in the first
+place; the edge rule is there so a regression fails closed instead of quietly
+publishing the original TypeScript.
+
 ## Related
 
 - [ADR-009: Front-End Technology Stack](ADR-009-frontend-react-typescript.md) — chose React,

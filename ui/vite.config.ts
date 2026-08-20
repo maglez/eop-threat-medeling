@@ -31,7 +31,13 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    // No source maps (EOP-107). ui/Dockerfile copies this whole directory to
+    // Caddy's web root, so an emitted .map is a served file and anyone can
+    // read the original TypeScript. There is no error-reporting service that
+    // needs them, and `npm run dev` is unaffected — Vite serves maps from
+    // memory in dev regardless of this setting. ui/Caddyfile refuses *.map at
+    // the edge as well, so a regression here fails closed rather than quietly.
+    sourcemap: false,
   },
   test: {
     environment: "jsdom",
