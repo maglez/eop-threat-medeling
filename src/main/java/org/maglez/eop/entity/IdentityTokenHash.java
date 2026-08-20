@@ -77,7 +77,7 @@ public record IdentityTokenHash(String value) {
      * Digests a plaintext identity token.
      *
      * @param plaintextToken the token as issued to the client
-     * @return the digest to store and to look up by
+     * @return the digest to store and to compare against
      */
     public static IdentityTokenHash of(final String plaintextToken) {
         Objects.requireNonNull(plaintextToken, "plaintextToken is required");

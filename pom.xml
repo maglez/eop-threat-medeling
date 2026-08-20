@@ -20,6 +20,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
         <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
+        <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
         <commons-text.version>1.15.0</commons-text.version>
 
         <spotbugs.version>4.9.3.0</spotbugs.version>
@@ -150,11 +151,17 @@
               measurement during EOP-120 rather than assumed.
 
               Supply chain: this plugin is NOT covered by tools/supply-chain/. That tooling
-              audits the seven OpenCode npm plugins only, and there is no checksum or GPG
-              verification at the Maven layer, so a Maven plugin runs arbitrary code in the
-              build JVM on the same terms as checkstyle, spotbugs, jacoco and liquibase
-              already do. The version above is therefore pinned exactly, never a range.
-              Accepted knowingly; moving the pin is a supply-chain change.
+              audits the seven OpenCode npm plugins only, and there is no ENFORCED verification
+              at the Maven layer. Maven's default policy compares a .sha1 and only warns, there
+              is no maven.config so no strict-checksums, and maven-wrapper.properties carries
+              no distributionSha256Sum, so a Maven plugin runs arbitrary code in the build JVM.
+              The build declares SIX plugins and this is the sixth: spring-boot, checkstyle,
+              javadoc, spotbugs, jacoco, enforcer. Liquibase is NOT among them; it runs in the
+              build JVM during tests as an application dependency, which is a different thing,
+              so do not cite it as a peer plugin. Exposure across the six is NOT identical: the
+              other five carry an exact version and so does this one, never a range. Accepted
+              knowingly; moving a pin is a supply-chain change. Extending tools/supply-chain/ to
+              the Maven layer means all six plus the wrapper, and belongs behind its own ADR.
 
               Incremental runs, stated as what has actually been verified and no further.
               CI is always the cold path: .github/workflows/ci.yml checks out a fresh runner
@@ -167,11 +174,22 @@
               comment inside a source file need not invalidate it. If you have changed only
               comments, run "./mvnw clean verify" before pushing.
 
-              debug=true below is load-bearing, not a leftover. Without it the plugin deletes
-              the options, packages and argfile files after generating, while its own staleness
-              check still tries to stat options; that made a warm "./mvnw verify" fail with
-              "Unable to compute stale date: .../target/reports/apidocs/options" on a tree whose
-              Java and Javadoc were both correct. Keeping those files makes the check stateable.
+              debug=true below is kept deliberately, on grounds narrower than it once claimed
+              here. What it does is retain the invocation files javadoc.sh, options and packages
+              instead of deleting them after generating, which makes the flags that actually
+              reached the tool auditable and a failure diagnosable. That is the whole
+              justification. It is NOT a fix for a known failure: a warm "./mvnw verify" was
+              once observed failing with "Unable to compute stale date:
+              .../target/reports/apidocs/options" on a correct tree, but a later controlled
+              experiment with debug removed could not reproduce it in five attempts, including
+              the exact recipe originally cited, so the earlier claim that removing this
+              reinstates the failure was WRONG and is retracted. The staleness check READS
+              @-prefixed argument files with Files.readAllLines rather than stating them, and
+              the plugin rewrites options at the START of each invocation, before the
+              comparison, so a previous run having deleted it cannot break the next one. The
+              original failure is recorded as observed and unexplained. One caveat if anyone
+              ever publishes target/reports/apidocs: options carries absolute local paths and a
+              full transitive dependency inventory. Nothing publishes it today.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -266,6 +284,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven-enforcer-plugin.version}</version>
                 <executions>
                     <execution>
                         <id>enforce-rules</id>

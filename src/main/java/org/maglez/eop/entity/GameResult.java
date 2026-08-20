@@ -21,7 +21,9 @@ import java.util.UUID;
  * that visible without requiring the client to compare totals.
  *
  * <p>The STRIDE breakdown per player is <em>not</em> stored here. It is derived on demand from
- * the trick history by {@link org.maglez.eop.usecase.GetLeaderboardUseCase}, per ADR-030.
+ * the trick history by {@code GetLeaderboardUseCase}, per ADR-030. That type is named in prose
+ * rather than linked because it lives in the use-case layer, and an entity may not import
+ * outwards; see .opencode/rules/clean-architecture.md.
  *
  * <p>Pure domain type: no Spring, no Jakarta, no persistence annotations.
  *
