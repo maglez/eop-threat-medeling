@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -105,5 +109,61 @@ class IdentityTokenHashTest {
 
         assertThat(hash).hasToString("IdentityTokenHash[redacted]");
         assertThat(hash.toString()).doesNotContain(SHA256_OF_ABC);
+    }
+
+    @Nested
+    @DisplayName("comparing two digests")
+    class Comparison {
+
+        @Test
+        @DisplayName("treats the same digest as equal, whichever instance holds it")
+        void shouldEqualAnIdenticalDigest() {
+            final IdentityTokenHash left = IdentityTokenHash.of("abc");
+            final IdentityTokenHash right = new IdentityTokenHash(SHA256_OF_ABC);
+
+            assertThat(left).isEqualTo(right);
+            assertThat(left).hasSameHashCodeAs(right);
+        }
+
+        @Test
+        @DisplayName("treats a digest differing in the first character as unequal")
+        void shouldRejectADigestDifferingAtTheStart() {
+            final IdentityTokenHash hash = new IdentityTokenHash(SHA256_OF_ABC);
+            final IdentityTokenHash differsFirst = new IdentityTokenHash("c" + SHA256_OF_ABC.substring(1));
+
+            assertThat(hash).isNotEqualTo(differsFirst);
+        }
+
+        @Test
+        @DisplayName("treats a digest differing in the last character as unequal")
+        void shouldRejectADigestDifferingAtTheEnd() {
+            final IdentityTokenHash hash = new IdentityTokenHash(SHA256_OF_ABC);
+            final String body = SHA256_OF_ABC.substring(0, IdentityTokenHash.HEX_LENGTH - 1);
+            final IdentityTokenHash differsLast = new IdentityTokenHash(body + "c");
+
+            assertThat(hash).isNotEqualTo(differsLast);
+        }
+
+        @Test
+        @DisplayName("is not equal to null or to another type")
+        void shouldRejectForeignValues() {
+            final IdentityTokenHash hash = new IdentityTokenHash(SHA256_OF_ABC);
+
+            assertThat(hash).isNotEqualTo(null);
+            assertThat(hash).isNotEqualTo(SHA256_OF_ABC);
+        }
+
+        @Test
+        @DisplayName("compares with MessageDigest.isEqual, not the String.equals a record would generate")
+        void shouldCompareInConstantTime() throws IOException {
+            final Path source = Path.of("src/main/java/org/maglez/eop/entity/IdentityTokenHash.java");
+            final String text = Files.readString(source, StandardCharsets.UTF_8);
+
+            assertThat(text)
+                    .as("A record's generated equals compares the digest with String.equals, which returns on the "
+                            + "first differing byte. The override exists to remove that timing signal, so losing it "
+                            + "would silently reinstate the behaviour ADR-015's successor credentials must not inherit.")
+                    .contains("MessageDigest.isEqual(asciiBytes(), candidate.asciiBytes())");
+        }
     }
 }
