@@ -64,9 +64,18 @@ class PlayerJpaEntity {
     /**
      * The SHA-256 digest of the player's identity credential, in lower-case hex.
      *
-     * <p>The credential itself is never stored and never logged. This column is
-     * the whole of what the application keeps, and it is unique so that a lookup
-     * by credential is an index hit rather than a scan (ADR-015).
+     * <p>The credential itself is never stored and never logged. This column is the whole of
+     * what the application keeps (ADR-015).
+     *
+     * <p>The {@code uq_player_identity_token_hash} constraint on this column exists to enforce
+     * uniqueness, and it is never used as a lookup path: no query in
+     * {@link PlayerJpaRepository} selects by this column, so a digest is never resolved by an
+     * index hit. Matching happens in memory instead, in
+     * {@link org.maglez.eop.entity.Player#isIdentifiedBy}, which is why
+     * {@link IdentityTokenHash} compares digests in constant time rather than relying on the
+     * database to do the comparison. Do not describe this constraint as serving a credential
+     * lookup — an earlier version of this comment did, and EOP-120 removed that claim because
+     * it named a mechanism the code does not contain.
      */
     @Column(name = "identity_token_hash", nullable = false, updatable = false, length = IdentityTokenHash.HEX_LENGTH)
     private String identityTokenHash;

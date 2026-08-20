@@ -13,6 +13,9 @@ import org.maglez.eop.entity.ScoreSheet;
  * controller free of {@link GetScoreUseCase} as a dependency.
  *
  * <p>Pure value type: no Spring, no Jakarta imports.
+ *
+ * @param gameResult the persisted game result, holding the standings and the session metadata
+ * @param scoreSheet the derived score sheet for that same session, holding the per-suit STRIDE breakdown
  */
 public record LeaderboardResult(GameResult gameResult, ScoreSheet scoreSheet) {
 

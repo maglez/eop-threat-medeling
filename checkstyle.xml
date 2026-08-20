@@ -68,19 +68,32 @@
         <module name="UnnecessarySemicolonInTryWithResources"/>
         <module name="UpperEll"/>
 
+        <!--
+            Javadoc: this block is one HALF of a deliberate two-tool split, and it is the
+            half that is easiest to weaken by accident. Checkstyle owns MISSING Javadoc
+            because its scope can be pinned to public members; maven-javadoc-plugin in
+            pom.xml owns MALFORMED Javadoc (doclint accessibility/html/reference/syntax)
+            and runs with doclint=all,-missing precisely because this block covers missing.
+            So relaxing minLineCount or any allowMissing* below does not merely loosen a
+            style rule, it opens a hole no other tool closes. Do not do it to silence a
+            complaint about a one-line getter. See ADR-006 as amended 2026-08-20 (EOP-120).
+        -->
         <module name="JavadocStyle">
             <property name="checkFirstSentence" value="false"/>
             <property name="checkEmptyJavadoc" value="true"/>
         </module>
         <module name="MissingJavadocMethod">
             <property name="scope" value="public"/>
-            <property name="minLineCount" value="10"/>
-            <property name="allowMissingPropertyJavadoc" value="true"/>
+            <property name="minLineCount" value="-1"/>
+            <property name="allowMissingPropertyJavadoc" value="false"/>
         </module>
         <module name="JavadocMethod">
             <property name="accessModifiers" value="public"/>
-            <property name="allowMissingParamTags" value="true"/>
-            <property name="allowMissingReturnTag" value="true"/>
+            <property name="allowMissingParamTags" value="false"/>
+            <property name="allowMissingReturnTag" value="false"/>
+        </module>
+        <module name="MissingJavadocType">
+            <property name="scope" value="public"/>
         </module>
     </module>
 

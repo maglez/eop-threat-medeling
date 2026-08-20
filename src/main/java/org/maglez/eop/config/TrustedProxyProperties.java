@@ -41,6 +41,16 @@ public record TrustedProxyProperties(
         @DefaultValue List<String> trustedProxies,
         @DefaultValue("5") @Min(1) int sessionCreationLimit) {
 
+    /**
+     * Defensively copies the trusted-proxy list so the record is genuinely immutable.
+     *
+     * <p>A {@code null} list becomes empty rather than being rejected, because an absent {@code eop.web.trusted-proxies}
+     * key and an explicitly empty one mean the same thing here: trust no peer. {@link List#copyOf} then prevents the
+     * caller retaining a handle it could later add an address to.
+     *
+     * @param trustedProxies      addresses or CIDR blocks whose forwarding headers are believed; may be {@code null}
+     * @param sessionCreationLimit maximum creations per address per 60-second window
+     */
     public TrustedProxyProperties {
         trustedProxies = trustedProxies == null ? List.of() : List.copyOf(trustedProxies);
     }

@@ -148,8 +148,14 @@
       columnNames="game_session_id, seat_order"
       constraintName="uq_player_session_seat"/>
 
-    <!-- A token identifies exactly one player. Also the lookup path for every
-         authenticated request, so it needs the index either way. -->
+    <!-- A token digest identifies exactly one player, and this constraint is the
+         only thing enforcing that. It is NOT a lookup path: no query selects a
+         player by this column, so a digest is never resolved by an index hit.
+         Matching happens in memory in Player#isIdentifiedBy, which is why
+         IdentityTokenHash compares digests in constant time. Do not describe this
+         constraint as serving a credential lookup. An earlier version of this
+         comment did, and EOP-120 removed that claim because it named a mechanism
+         the code does not contain. -->
     <addUniqueConstraint
       tableName="player"
       columnNames="identity_token_hash"

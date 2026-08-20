@@ -48,6 +48,17 @@ import org.springframework.context.annotation.Configuration;
 public class UseCaseConfiguration {
 
     /**
+     * Creates the configuration class Spring instantiates reflectively while building the context.
+     *
+     * <p>Written out rather than left implicit only so that it can be documented. The class holds no
+     * state of its own: every use case it declares is built inside a {@code @Bean} method from the
+     * ports Spring hands in, so there is nothing for a constructor to initialise.
+     */
+    public UseCaseConfiguration() {
+        // No state: the beans below are assembled from injected ports.
+    }
+
+    /**
      * Declares the clock the session use cases read the current instant from.
      *
      * <p>A clock is a dependency rather than a call to {@code Instant.now()} so that
@@ -334,6 +345,8 @@ public class UseCaseConfiguration {
      * @param sessionRepository the port the session status is advanced through on auto-complete
      * @param sessionEventPublisher the transport that announces the resolution to connected clients
      * @param clock the clock the resolved timestamp is read from
+     * @param persistGameResultUseCase the use case that writes the final standings, empty when the
+     *     leaderboard feature is off — the resolution still completes, it is simply not recorded
      * @return the resolve-trick use case
      */
     @Bean

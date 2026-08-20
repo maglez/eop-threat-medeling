@@ -55,6 +55,11 @@ public record Player(
     /**
      * Whether this player holds the token with the given digest.
      *
+     * <p>Delegates to {@link IdentityTokenHash#equals(Object)}, which compares in
+     * constant time. Do not replace this with a comparison on
+     * {@link IdentityTokenHash#value()} — that is a plain {@link String#equals}
+     * and returns on the first differing byte.
+     *
      * @param candidate the digest of a presented token
      * @return true if this is the player that token belongs to
      */
