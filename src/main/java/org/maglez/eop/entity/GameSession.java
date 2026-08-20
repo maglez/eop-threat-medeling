@@ -120,6 +120,7 @@ public final class GameSession {
      * @param players   the stored players, in any order
      * @param createdAt when the session was created
      * @param updatedAt when the session last changed
+     * @param expiresAt when the session becomes eligible for sweeping
      * @return the session as stored
      */
     public static GameSession reconstitute(
@@ -213,9 +214,11 @@ public final class GameSession {
      * Ends the session early at the facilitator's request.
      *
      * <p>The automatic path — all tricks played — does not call this method;
-     * it goes directly to {@link SessionRepository#recordCompleted} after the
+     * it goes directly to {@code SessionRepository#recordCompleted} after the
      * last trick resolves. This method is for the facilitator's explicit
      * end-session action, which may arrive before every card has been played.
+     * That type is named in prose rather than linked because it lives in the
+     * use-case layer, and an entity may not import outwards.
      *
      * @param requestedBy the player asking to end the session
      * @param now         the instant of the transition

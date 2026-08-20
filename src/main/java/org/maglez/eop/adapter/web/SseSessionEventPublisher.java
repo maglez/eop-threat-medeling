@@ -124,6 +124,17 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
 
     private final int maxTotalSubscribers;
 
+    /**
+     * Creates the publisher Spring uses, with the production subscriber ceilings.
+     *
+     * <p>Delegates to the three-argument constructor with
+     * {@value #MAX_SUBSCRIBERS_PER_SESSION} as the per-session cap and
+     * {@value #MAX_TOTAL_SUBSCRIBERS} as the global cap. Tests that need lower
+     * ceilings use the package-private constructors below rather than lowering
+     * these constants.
+     *
+     * @param properties heartbeat configuration
+     */
     @Autowired
     public SseSessionEventPublisher(final RealtimeProperties properties) {
         this(properties, MAX_SUBSCRIBERS_PER_SESSION, MAX_TOTAL_SUBSCRIBERS);
@@ -180,9 +191,11 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
      * {@value #MAX_TOTAL_SUBSCRIBERS} are checked before the emitter is created. If either
      * is exceeded, {@link TooManySubscribersException} is thrown and no emitter is allocated.
      *
-     * <p>The emitter uses a timeout of {@value #EMITTER_TIMEOUT_MILLIS} ms (10 minutes), matching
-     * {@code spring.mvc.async.request-timeout}. A non-zero timeout means the container will clean
-     * up a stale connection even if the heartbeat sweep has not yet written to it.
+     * <p>The emitter uses a timeout of ten minutes, held in {@code EMITTER_TIMEOUT_MILLIS} and
+     * matching {@code spring.mvc.async.request-timeout}. A non-zero timeout means the container
+     * will clean up a stale connection even if the heartbeat sweep has not yet written to it.
+     * That constant is computed by a method call rather than written as a literal, so it is not
+     * a compile-time constant and cannot be inlined here with {@code @value}.
      *
      * @param sessionId the session whose changes should be delivered
      * @return the stream to return from a controller method

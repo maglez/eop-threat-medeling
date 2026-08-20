@@ -23,6 +23,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class HibernateUuidV7IdentifierGenerator implements IdentifierGenerator {
 
+    /**
+     * Creates the generator Spring registers as the sole {@link IdentifierGenerator} bean.
+     *
+     * <p>Written out only so that it can be documented. The generator holds no state — every
+     * identifier is drawn from {@link UuidVersion7Strategy#INSTANCE}, which owns the
+     * sub-millisecond counter, so a single instance is safe to share across request threads.
+     */
+    public HibernateUuidV7IdentifierGenerator() {
+        // No state: monotonicity is maintained inside Hibernate's shared strategy.
+    }
+
     @Override
     public UUID nextIdentifier() {
         // The version 7 strategy ignores the session argument. Passing null is

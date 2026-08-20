@@ -80,6 +80,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final int JOIN_CODE_RETRY_AFTER_SECONDS = 5;
 
     /**
+     * Creates the advice Spring registers for the whole application.
+     *
+     * <p>Written out only so that it can be documented. The handler holds no state: each method
+     * below builds a fresh {@link ProblemDetail} from the exception it is handed, so the single
+     * instance Spring keeps is safe to share across request threads.
+     */
+    public GlobalExceptionHandler() {
+        // No state: every response is built from the exception passed in.
+    }
+
+    /**
      * A named card does not exist.
      *
      * @param exception the domain exception

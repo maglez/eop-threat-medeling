@@ -77,6 +77,14 @@ public record ScoredPlay(UUID playerId, int seatOrder, DisplayName displayName, 
                 play.notesIfGiven(), play.threatLinked(), tookTrick);
     }
 
+    /**
+     * The STRIDE components this play was linked to.
+     *
+     * <p>The record's generated accessor is overridden so that the returned list cannot be used to reach the
+     * instance's own state, keeping the row immutable however it was constructed.</p>
+     *
+     * @return an unmodifiable copy of the linked components, empty when the play linked none
+     */
     @Override
     public List<String> components() {
         return List.copyOf(components);

@@ -92,6 +92,8 @@ public interface TrickRepository {
      * @param sessionId the session the trick belongs to
      * @param trick a freshly opened trick, holding no plays
      * @param expectedLeaderSeat the leader seat the caller's snapshot showed
+     * @param occurredAt the instant the trick was opened, recorded against the session so that
+     *     expiry sweeping sees the session as active
      * @throws SessionNotFoundException if the session no longer exists
      * @throws SessionNotJoinableException if the session is not in play
      * @throws HandNotDealtException if no deal has established a leader seat yet, so there is

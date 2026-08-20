@@ -74,13 +74,16 @@
         </module>
         <module name="MissingJavadocMethod">
             <property name="scope" value="public"/>
-            <property name="minLineCount" value="10"/>
-            <property name="allowMissingPropertyJavadoc" value="true"/>
+            <property name="minLineCount" value="-1"/>
+            <property name="allowMissingPropertyJavadoc" value="false"/>
         </module>
         <module name="JavadocMethod">
             <property name="accessModifiers" value="public"/>
-            <property name="allowMissingParamTags" value="true"/>
-            <property name="allowMissingReturnTag" value="true"/>
+            <property name="allowMissingParamTags" value="false"/>
+            <property name="allowMissingReturnTag" value="false"/>
+        </module>
+        <module name="MissingJavadocType">
+            <property name="scope" value="public"/>
         </module>
     </module>
 

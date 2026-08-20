@@ -33,18 +33,54 @@ public class SweepProperties {
     @Min(value = 0, message = "sweep initial delay must be non-negative")
     private long initialDelayMs = 300_000L;
 
+    /**
+     * Creates the properties holder with the default interval and delay above.
+     *
+     * <p>Spring instantiates this reflectively and then applies any {@code eop.sweep.*} values it finds, so the field
+     * initialisers are the effective defaults when the namespace is absent entirely.
+     */
+    public SweepProperties() {
+        // Defaults are the field initialisers; Spring overwrites them through the setters where configured.
+    }
+
+    /**
+     * Returns the interval between sweep runs.
+     *
+     * @return the interval in milliseconds, never below 1000
+     */
     public long getIntervalMs() {
         return intervalMs;
     }
 
+    /**
+     * Sets the interval between sweep runs.
+     *
+     * <p>Called by Spring during binding. The value is validated after binding, so an out-of-range figure fails
+     * startup rather than being silently clamped.
+     *
+     * @param intervalMs the interval in milliseconds; must be at least 1000
+     */
     public void setIntervalMs(final long intervalMs) {
         this.intervalMs = intervalMs;
     }
 
+    /**
+     * Returns the delay before the first sweep run after startup.
+     *
+     * @return the delay in milliseconds, never negative
+     */
     public long getInitialDelayMs() {
         return initialDelayMs;
     }
 
+    /**
+     * Sets the delay before the first sweep run after startup.
+     *
+     * <p>Called by Spring during binding. A delay exists so that a freshly started instance finishes wiring and
+     * serving before it begins deleting rows.
+     *
+     * @param initialDelayMs the delay in milliseconds; must not be negative
+     */
     public void setInitialDelayMs(final long initialDelayMs) {
         this.initialDelayMs = initialDelayMs;
     }

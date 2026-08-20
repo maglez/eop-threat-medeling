@@ -19,6 +19,7 @@
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
+        <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
         <commons-text.version>1.15.0</commons-text.version>
 
         <spotbugs.version>4.9.3.0</spotbugs.version>
@@ -122,6 +123,47 @@
                         <phase>validate</phase>
                         <goals>
                             <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+              Javadoc gate (EOP-120). The two halves of "missing + malformed" are enforced by
+              two different tools on purpose.
+
+              This plugin owns MALFORMED only: doclint's accessibility, html, reference and
+              syntax groups catch broken {@link} targets, bad markup and mis-written tags,
+              which Checkstyle cannot see.
+
+              The `missing` group is switched OFF here and owned by Checkstyle instead
+              (MissingJavadocType / MissingJavadocMethod / JavadocMethod in checkstyle.xml,
+              all pinned to scope=public). Reason: doclint ignores the -public visibility
+              flag when looking for absent comments and demands one on every private field,
+              which would mean documenting ~50 private fields on the domain exception classes
+              that are not public API. Checkstyle can be scoped to public members; doclint
+              cannot. Do NOT "fix" this by writing doclint=all. And do not try
+              doclint=all/protected either: javadoc rejects access qualifiers on -Xdoclint
+              outright ("Access qualifiers not permitted for -Xdoclint arguments"), because
+              visibility is already set by its own -public/-protected flag.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${maven-javadoc-plugin.version}</version>
+                <configuration>
+                    <show>public</show>
+                    <doclint>all,-missing</doclint>
+                    <failOnError>true</failOnError>
+                    <failOnWarnings>true</failOnWarnings>
+                    <quiet>true</quiet>
+                    <notimestamp>true</notimestamp>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>verify-javadoc</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>javadoc-no-fork</goal>
                         </goals>
                     </execution>
                 </executions>
