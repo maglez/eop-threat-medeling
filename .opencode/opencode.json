@@ -111,7 +111,8 @@
         "timeoutMs": 120000,
         "failurePolicy": "reject"
       }
-    }]
+    }],
+    "@tarquinen/opencode-smart-title@0.1.7"
   ],
   "command": {
     "goal": {

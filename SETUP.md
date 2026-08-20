@@ -148,37 +148,73 @@ future audits without new evidence.
   custom provider block in `.opencode/opencode.json`. That block was deleted
   when the project moved to OpenCode Zen, which is a built-in provider
   (id `opencode`) requiring no SDK dependency and no endpoint env var.
-- **`npm audit` residual: 0 critical / 0 high / 0 moderate / 4 low** —
-  *measured 2026-08-20 against the six exact pins then current, and it
-  supersedes a 2026-07-27 snapshot of 5 high / 4 low.* Read the direction of
-  that change before reading the numbers: the highs were retired **by** the
-  plugin upgrade, not in spite of it, so on this evidence holding the old pins
-  was the more exposed position. All four remaining lows are one chain —
-  `@babel/core` "Arbitrary File Read via `sourceMappingURL` Comment", reached
-  through `@tarquinen/opencode-dcp` → `@opentui/solid` →
-  `@opencode-ai/plugin`. Accepted because:
-  1. There is no forward fix. npm's only `fixAvailable` is a **downgrade** to
-     `@tarquinen/opencode-dcp@3.1.12`, flagged `isSemVerMajor`, which means
-     the sole automated remedy is to give up DCP and its OpenTUI runtime.
-  2. Exploitation requires a crafted `sourceMappingURL` comment in source
-     Babel is asked to transform. Nothing here feeds untrusted input to that
-     chain: it exists to build the DCP TUI from plugin source.
-  3. It is a *build-time* dependency of a dev tool, not a runtime dependency
-     of the shipped Java application, which has no npm dependencies at all.
+- **`npm audit` residual: 0 critical / 1 high / 1 moderate / 7 low, carrying
+  14 distinct advisories** — *measured 2026-08-20 against the seven exact pins
+  now current. It supersedes a same-day snapshot of 0/0/0/4 taken against the
+  six pins that preceded `@tarquinen/opencode-smart-title`, which in turn
+  superseded a 2026-07-27 snapshot of 5 high / 4 low.* Read the counts for what
+  they are before drawing a conclusion: npm's `metadata.vulnerabilities` counts
+  **packages at their worst severity**, not advisories, which is why one "high"
+  package carries three high advisories and why 9 packages carry 14 findings.
+  The residual splits into two groups, and only the first is gated.
+  1. **Three high advisories against `undici@5.29.0`, allowlisted by ID.**
+     [GHSA-vrm6-8vpv-qv8q](https://github.com/advisories/GHSA-vrm6-8vpv-qv8q),
+     [GHSA-v9p9-hfj2-hcw8](https://github.com/advisories/GHSA-v9p9-hfj2-hcw8)
+     and [GHSA-vxpw-j846-p89q](https://github.com/advisories/GHSA-vxpw-j846-p89q)
+     arrived with smart-title, through `ai@^5.0.98` →
+     `@ai-sdk/gateway@2.0.137` → `@ai-sdk/provider-utils@3.0.32` →
+     `undici ^5.29.0`. **There is no in-range fix**: `3.0.32` is the newest
+     `3.x` and wants that undici range, the gateway pin on it is *exact* so npm
+     cannot lift it, and the `ai` range belongs to the plugin's own
+     `package.json` rather than to us. All three defects are in undici's
+     **WebSocket client**, which is unreachable here on two independent
+     grounds — the only consumer destructures `{ Agent, fetch }` and never
+     `WebSocket`, and the `createRequire(…)("undici")` that would load it sits
+     behind an `isNodeRuntime()` test of `process.versions.bun == null`, false
+     because OpenCode runs plugins under Bun. Recorded with that trace in
+     `tools/supply-chain/accepted-advisories.json` and gated against it; see
+     Blueprint §12.9.
+  2. **The moderate and the sevens lows are ungated and unchanged in kind.**
+     They are the pre-existing `@babel/core` "Arbitrary File Read via
+     `sourceMappingURL` Comment" chain — reached through
+     `@tarquinen/opencode-dcp` → `@opentui/solid` → `@opencode-ai/plugin`,
+     whose only `fixAvailable` is a **downgrade** to
+     `@tarquinen/opencode-dcp@3.1.12` flagged `isSemVerMajor`, i.e. giving up
+     DCP and its OpenTUI runtime — plus undici's own HTTP-layer findings
+     (request smuggling, CRLF injection, `Set-Cookie` and keep-alive) and one
+     `@ai-sdk/provider-utils` resource-consumption advisory. Accepted on the
+     same three grounds as before: no forward fix; exploitation needs
+     untrusted input that these build-time paths never see; and none of it is
+     a runtime dependency of the shipped Java application, which has no npm
+     dependencies at all.
 
 > **This check now runs itself: `tools/supply-chain/audit-plugins.sh`, wired
 > into CI as the non-required `supply-chain` job.** Reproduce the figures above
 > by running that script; it needs `node`, `npm` and `python3` and works inside
-> `.tmp/supply-chain`. It fails on four conditions — a maintainer account
+> `.tmp/supply-chain`. It fails on five conditions — a maintainer account
 > change, a provenance change in *either* direction, a plugin spec that has
-> lost its exact version, or a high/critical advisory. Low and moderate
-> findings deliberately do not fail it, because the residual accepted above is
-> exactly four lows and a job that goes red on a known accepted finding gets
-> ignored. The baseline it compares against is
-> `tools/supply-chain/expected-plugins.json`, which is a **tripwire, not a
-> policy**: it records what was true when a human last looked, so that a
-> *change* becomes loud. Update it deliberately, in the same commit that moves
-> a pin, and never to make a red job green.
+> lost its exact version, a high/critical advisory that is **not** on the
+> allowlist, or an allowlisted advisory that is **no longer reported**. Low and
+> moderate findings deliberately do not fail it, because the residual accepted
+> above includes them and a job that goes red on a known accepted finding gets
+> ignored. It compares against two baselines.
+> `tools/supply-chain/expected-plugins.json` holds the roster, and
+> `tools/supply-chain/accepted-advisories.json` holds the high/critical
+> allowlist. Both are a **tripwire, not a policy**: they record what was true
+> when a human last looked, so that a *change* becomes loud. Update them
+> deliberately, in the same commit that moves a pin, and never to make a red
+> job green.
+>
+> **The allowlist is a liability rather than a dismissal, which is why it fails
+> in both directions.** An entry whose advisory has stopped being reported is a
+> hard failure telling you to delete it, so exemptions cannot silently
+> accumulate past their usefulness. What an entry records is only that a human
+> traced a call path on a stated date — it cannot detect a later version bump
+> that starts actually *calling* the vulnerable API, so re-verify reachability
+> whenever one of the pins in the chain moves. Its scope is high and critical
+> only, because those are the sole gated severities and a low or moderate entry
+> could never fire.
+
 >
 > **Automating it was the actual finding of this exercise.** The trigger that
 > preceded the script was a sentence saying "re-check whenever a pin moves",
@@ -206,20 +242,32 @@ future audits without new evidence.
 > message and file. Three further checks address that as far as anything can,
 > and all three are in the script: **maintainer continuity** — the loudest
 > single compromise signal is an account handoff, and every pinned package's
-> maintainer set is unchanged; **registry signatures** — 152 of 152 verified;
-> and **SLSA provenance attestations** — 51 packages carry them, but only
-> **three of the six plugins** do (`@tarquinen/opencode-dcp`,
-> `opencode-supermemory`, `@nick-vi/opencode-type-inject`). The three without
-> are `opencode-vibeguard`, `opencode-scheduler` and `opencode-goal-plugin`.
+> maintainer set is unchanged; **registry signatures** — 210 of 210 verified;
+> and **SLSA provenance attestations** — 76 packages carry them, but only
+> **three of the seven plugins** do (`@tarquinen/opencode-dcp`,
+> `opencode-supermemory`, `@nick-vi/opencode-type-inject`). The four without
+> are `opencode-vibeguard`, `opencode-scheduler`, `opencode-goal-plugin` and
+> `@tarquinen/opencode-smart-title`.
 > Correcting an earlier version of this note: goal-plugin is **not** uniquely
-> unattested, and the two it shares that with are uncomfortable company —
+> unattested, and the three it shares that with are uncomfortable company —
 > `opencode-vibeguard` is the secret-redaction plugin, so the component asked
-> to keep credentials out of prompts is itself among the least verifiable, and
+> to keep credentials out of prompts is itself among the least verifiable,
 > `opencode-scheduler` writes launchd/systemd units and therefore has the most
-> persistent reach outside the editor process. State this as *less to verify
+> persistent reach outside the editor process, and
+> `@tarquinen/opencode-smart-title` reads every message of every session in
+> order to title it. State this as *less to verify
 > against*, never as evidence of a problem: nothing suspicious has been found
 > in any of them. And provenance only ever proves a tarball came from the named
 > repository's CI — never that the repository's code is benign.
+>
+> **Maintainer continuity is now a weaker signal than the package count
+> suggests, because one npm account holds two of the seven pins.**
+> `@tarquinen/opencode-dcp` and `@tarquinen/opencode-smart-title` are published
+> by the same account (`tarquinen <dannysmo@gmail.com>`), so a single handoff or
+> compromise reaches two plugins at once — and because the script checks
+> maintainers **per package**, it would report that as two independent findings
+> rather than as one event. Both baseline notes say so; read them together.
+
 >
 > **Plugin installation does not run npm lifecycle scripts. Verified, not
 > assumed.** This closes a gap an earlier version of this note left open.
@@ -241,4 +289,19 @@ future audits without new evidence.
 > above are about *who published this* rather than about install-time
 > execution.
 >
-> Drop the residual entry entirely once upstream patches land.
+> **One plugin can fetch an unpinned package at runtime, and none of the above
+> would see it.** `@tarquinen/opencode-smart-title` depends on
+> `@tarquinen/opencode-auth-provider@0.1.7`, which reaches Bedrock by
+> `import("@ai-sdk/amazon-bedrock")` — a package it does not declare — and on
+> failure falls through to `bun add --force --exact --cwd <cache> <pkg>@latest`.
+> So a package resolved at *whatever `latest` is that day* may be installed into
+> OpenCode's cache on a machine whose entire declared plugin roster is
+> exact-pinned. `audit-plugins.sh` reads the `plugin` array of
+> `.opencode/opencode.json` and cannot observe this, so it is the one hole in
+> the exact-pinning guarantee. It is reached only on the first Bedrock title
+> call and only if the bundled import fails; which way that import resolves is
+> unverified. Accepted deliberately rather than overlooked — Blueprint §12.9
+> holds the file and line citations.
+>
+> Drop each residual entry as its upstream fix lands, and delete an allowlisted
+> advisory ID the moment the script reports it as no longer present.

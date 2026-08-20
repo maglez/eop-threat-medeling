@@ -18,7 +18,12 @@
 #                         Absence is tolerated (half the roster lacks it); CHANGE is
 #                         not, in either direction, because the pins are exact and a
 #                         published version's attestation is immutable.
-#   4. Advisories      -- `npm audit` at --audit-level=high, plus registry signature
+#   4. Advisories      -- every high/critical `npm audit` finding must either be new
+#                         (fail) or carry a reachability trace in
+#                         tools/supply-chain/accepted-advisories.json. An allowlisted
+#                         advisory that is no longer reported ALSO fails, so the list
+#                         cannot outlive what it suppresses. Low and moderate findings
+#                         are printed and not gated. Plus registry signature
 #                         verification over the whole transitive tree.
 #
 # What it does NOT check, and must never be described as checking: whether a release
@@ -38,6 +43,7 @@ cd "$repo_root"
 
 config=".opencode/opencode.json"
 baseline="tools/supply-chain/expected-plugins.json"
+allowlist="tools/supply-chain/accepted-advisories.json"
 # Inside the worktree on purpose: .tmp/ is gitignored and needs no external_directory
 # grant, unlike /tmp. See AGENTS.md.
 workdir=".tmp/supply-chain"
@@ -46,6 +52,7 @@ command -v npm >/dev/null 2>&1 || { echo "FATAL: npm is not on PATH"; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "FATAL: python3 is not on PATH"; exit 2; }
 [[ -f "$config" ]] || { echo "FATAL: $config not found"; exit 2; }
 [[ -f "$baseline" ]] || { echo "FATAL: $baseline not found"; exit 2; }
+[[ -f "$allowlist" ]] || { echo "FATAL: $allowlist not found"; exit 2; }
 
 rm -rf "$workdir"
 mkdir -p "$workdir"
@@ -184,7 +191,104 @@ PY
 ( cd "$workdir" && npm install --ignore-scripts --no-fund --no-audit --loglevel=error )
 
 audit_status=0
-( cd "$workdir" && npm audit --audit-level=high ) || audit_status=$?
+# --json rather than the human-readable table because the gate is per-advisory now:
+# npm's own --audit-level only thresholds an exit code, and cannot express "this
+# specific GHSA is unreachable here". npm exits non-zero whenever anything is found,
+# so its status is not the signal -- the parse below is.
+( cd "$workdir" && npm audit --json > audit.json ) || audit_status=$?
+if [[ ! -s "$workdir/audit.json" ]]; then
+    echo "FATAL: npm audit produced no JSON (exit $audit_status). Network problem?"
+    exit 2
+fi
+
+audit_status=0
+python3 - "$workdir/audit.json" "$allowlist" <<'PY' || audit_status=$?
+import json, sys
+
+report = json.load(open(sys.argv[1]))
+allowlist_path = sys.argv[2]
+accepted = json.load(open(allowlist_path))["advisories"]
+
+# npm nests one advisory object per finding under vulnerabilities[pkg].via; entries
+# that are plain strings are just "this package is affected because of that one" and
+# carry no advisory of their own.
+found = {}
+for pkg in report.get("vulnerabilities", {}).values():
+    for via in pkg.get("via", []):
+        if not isinstance(via, dict):
+            continue
+        ghsa = via.get("url", "").rsplit("/", 1)[-1]
+        if ghsa:
+            found[ghsa] = via
+
+totals = report.get("metadata", {}).get("vulnerabilities", {})
+print(f"  npm totals: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
+print(f"  {len(found)} distinct advisories across the pinned tree")
+
+gating = {"high", "critical"}
+failures = []
+
+print("\n=== High and critical advisories ===")
+blocking = {g: v for g, v in found.items() if v.get("severity") in gating}
+if not blocking:
+    print("  none")
+for ghsa in sorted(blocking):
+    via = blocking[ghsa]
+    entry = accepted.get(ghsa)
+    label = "accepted" if entry else "NOT ACCEPTED"
+    print(f"  [{label}] {via['severity']:8} {ghsa}  {via['name']} {via.get('range')}")
+    print(f"            {via.get('title')}")
+    if not entry:
+        failures.append(
+            f"{ghsa} ({via['severity']}, {via['name']} {via.get('range')}): "
+            f"{via.get('title')}\n"
+            f"      No entry in {allowlist_path}. A high or critical finding needs a "
+            f"decision, not a baseline update: either move off the dependency, or "
+            f"trace the vulnerable code path and record why it is unreachable here. "
+            f"Do not add an entry to turn this red job green."
+        )
+        continue
+    # An entry describes one advisory against one module at one severity. If any of
+    # that has moved, the recorded reachability trace is no longer known to apply.
+    if entry.get("module") != via["name"]:
+        failures.append(
+            f"{ghsa}: allowlisted against module {entry.get('module')!r} but reported "
+            f"against {via['name']!r}. Re-verify the trace before touching the entry."
+        )
+    if entry.get("severity") != via["severity"]:
+        failures.append(
+            f"{ghsa}: allowlisted at severity {entry.get('severity')!r}, now reported "
+            f"as {via['severity']!r}. A re-scored advisory is a fresh decision -- "
+            f"re-read it rather than editing the severity field to match."
+        )
+
+# The anti-rot half. A suppression list whose entries are never checked for relevance
+# stops being a record of decisions and becomes a place findings go to disappear.
+for ghsa in sorted(set(accepted) - set(found)):
+    failures.append(
+        f"{ghsa}: allowlisted in {allowlist_path} but no longer reported by npm audit. "
+        f"Either it was fixed upstream or the dependency is gone -- in both cases "
+        f"DELETE the entry. Leaving it in place means the next advisory to reuse that "
+        f"reasoning inherits an approval nobody granted."
+    )
+
+# Printed, never gated. They are here so that a drift in the shape of the low/moderate
+# tail is visible in the job log instead of being summarised away to a count.
+print("\n=== Low and moderate advisories (not gated) ===")
+tail = {g: v for g, v in found.items() if v.get("severity") not in gating}
+if not tail:
+    print("  none")
+for ghsa in sorted(tail, key=lambda g: (tail[g].get("severity", ""), g)):
+    via = tail[ghsa]
+    print(f"  {via['severity']:8} {ghsa}  {via['name']} {via.get('range')}")
+
+if failures:
+    print("\n=== FAIL: advisory gate ===")
+    for f in failures:
+        print(f"  - {f}")
+    sys.exit(1)
+print("\n  no unaccepted high/critical advisory, no stale allowlist entry")
+PY
 
 echo
 echo "=== Registry signature verification ==="
@@ -194,12 +298,12 @@ echo "=== Registry signature verification ==="
 
 if [[ "$audit_status" -ne 0 ]]; then
     echo
-    echo "=== FAIL: npm audit reported a high or critical advisory ==="
+    echo "=== FAIL: the advisory gate above rejected this tree ==="
     echo "Low and moderate findings do not fail this job; SETUP.md records the"
     echo "accepted residual and the reasoning. A high or critical finding needs a"
-    echo "decision, not a baseline update."
+    echo "decision, and a stale allowlist entry needs deleting."
     exit 1
 fi
 
 echo
-echo "=== PASS: no roster drift, no maintainer change, no high/critical advisory ==="
+echo "=== PASS: no roster drift, no maintainer change, no unaccepted high/critical advisory ==="
