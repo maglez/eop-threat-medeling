@@ -13,7 +13,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [003](ADR-003-github-mcp-integration.md) | GitHub MCP integration | Accepted (amended 2026-07-28) | Yes |
 | [004](ADR-004-api-contract-first.md) | API contract-first with OpenAPI 3.1 | Accepted (amended 2026-08-19) | Yes — `docs/api/openapi.yml` hand-authored before the first controller |
 | [005](ADR-005-error-handling-strategy.md) | Error handling via RFC 9457 Problem Details | Accepted | Yes — `GlobalExceptionHandler` maps every 4xx and 5xx |
-| [006](ADR-006-build-quality-gates.md) | Build quality gates | Accepted (amended 2026-08-18, 2026-08-19) | Yes |
+| [006](ADR-006-build-quality-gates.md) | Build quality gates | Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20) | Yes |
 | [007](ADR-007-versioning-strategy.md) | Semantic Versioning | Accepted | Yes |
 | [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted (amended 2026-08-10, 2026-08-19) | Yes — autoconfiguration fixed and the first changeset applies; the H2 console consequence is withdrawn and the Context labels row is glossed by ADR-043 |
 | [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted (amended 2026-08-19, 2026-08-20) | Yes — `ui/` scaffolded, built and served |
