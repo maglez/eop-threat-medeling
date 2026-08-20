@@ -179,7 +179,7 @@ See `.opencode/rules/performance-testing.md` for full conventions and `test/k6/c
 CSS (ADR-009). The Vite dev server proxies `/api` and `/health` to Spring Boot on `:8080` so
 local development and the deployed Caddy stack (ADR-017) share a single origin.
 
-The dev server listens on **`:5371`**, not Vite's default `:5173` — `ui/vite.config.ts` sets
+The dev server listens on **`:5173`**, Vite's default — `ui/vite.config.ts` sets
 `server.port` explicitly, and that file is the only source of truth for the port.
 
 ### Quick start
@@ -188,14 +188,14 @@ The dev server listens on **`:5371`**, not Vite's default `:5173` — `ui/vite.c
 cd ui
 npm install
 npm run dev
-# Opens at http://localhost:5371 — /api and /health proxied to :8080
+# Opens at http://localhost:5173 — /api and /health proxied to :8080
 ```
 
 ### Development workflow
 
 ```
 Terminal 1: ./mvnw spring-boot:run     # API on :8080
-Terminal 2: cd ui && npm run dev        # Front-end on :5371
+Terminal 2: cd ui && npm run dev        # Front-end on :5173
 ```
 
 ### Available scripts

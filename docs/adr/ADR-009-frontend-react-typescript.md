@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended five times — four on 2026-08-19, when five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant became a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; and once on 2026-08-20, when the `ui/` dev toolchain moved to vite 7 + vitest 3 to clear six CVEs, npm's suggested vite 8 + vitest 4 majors were declined, and the Node floor rose to 22.12; see Amendments)
+- **Status:** Accepted (amended six times — four on 2026-08-19, when five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant became a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; and twice on 2026-08-20, when the `ui/` dev toolchain moved to vite 7 + vitest 3 to clear six CVEs, npm's suggested vite 8 + vitest 4 majors were declined, and the Node floor rose to 22.12, and when the dev server port reverted to Vite's default `:5173` after its author confirmed `:5371` was mistyped, superseding this ADR's guess at a reason for it; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -80,6 +80,12 @@ ui/
 > **Amendment, 2026-08-19 (EOP-40): the port is `:5371`, not `:5173`.** `ui/vite.config.ts` sets
 > `server.port` explicitly and is the only source of truth for it. The proxy covers `/api` **and**
 > `/health`. See Amendments.
+>
+> **Superseded by EOP-106 (2026-08-20): the port is `:5173` again.** `:5371` was a mistyped value,
+> confirmed as such by its author, and has been reverted to Vite's default. The rest of the
+> amendment above still holds: `ui/vite.config.ts` remains the only source of truth for the port,
+> and the proxy covers `/api` **and** `/health`. The line below is therefore correct again, but on
+> the port only. See Amendments.
 
 The Vite dev server proxies `/api/*` requests to Spring Boot on `:8080`, so the front-end runs on `:5173` and the back-end on `:8080` during development with no CORS issues.
 
@@ -149,7 +155,7 @@ intact as the historical record, per the house convention; this section is what 
 |---|---|---|
 | "React **19** with functional components and hooks" (Stack components) | React **18** | `ui/package.json` — `react ^18.3.1`, `react-dom ^18.3.1`, `@types/react ^18.3.11` |
 | `src/` has `components/`, `pages/`, `hooks/`, `services/`, `types/`, plus `public/` (Project layout) | Only `components/` was built. No `pages/`, `hooks/`, `services/`, `types/` or `public/`. The tree also has `assets/` and `utils/`, which the ADR does not list | `git ls-files ui/`; `ui/src/` |
-| "the front-end runs on `:5173`" (Development workflow) | `:5371`, and the proxy covers `/api` **and** `/health` | `ui/vite.config.ts` — `server.port: 5371`, `server.proxy` keys `/api` and `/health` |
+| "the front-end runs on `:5173`" (Development workflow) | `:5371`, and the proxy covers `/api` **and** `/health`. **Superseded by EOP-106 (2026-08-20):** `:5371` was a typo, so the claim is true again on the port; the proxy correction stands | `ui/vite.config.ts` — `server.port: 5173` (was `5371` between 2026-08-17 and 2026-08-20), `server.proxy` keys `/api` and `/health` |
 | "TypeScript interfaces in `ui/src/types/` mirror backend DTOs" (AI agent implications, and repeated as the third Mitigation) | The interfaces exist and do serve as the contract anchor, but they are in a single module, not a directory — and they are hand-maintained rather than generated from `docs/api/openapi.yml`, so the anchor holds only as long as someone keeps the two in step. **Superseded in part the same day by EOP-105:** the enum members are now held in step by `EnumMirrorParityTest` rather than by diligence; the rest of each DTO shape is still unguarded. **Superseded further the same day by EOP-108:** each shape is now checked at runtime by a hand-written parser (ADR-045) — object-ness, required-field presence and `typeof`, arrays, and enum membership via the `is*` guards — so "unguarded" is no longer accurate. What remains unguarded is *parser field coverage*: a field added to an interface but not to its parser is silently dropped, and only review catches it | `ui/src/api.ts` — `Card`, `PagedResponse<T>`, `SessionStateDto`, `HandDto`, `TrickStateDto`, … alongside the typed `fetch` wrappers |
 | "A base `GovUkPage` layout component will be created during bootstrapping" (second Mitigation) | No such component exists, and the five items the mitigation lists are split across **two** files rather than gathered into one — which is why no single component emerged. The `<head>` and the skip link are in the Vite entry document; the header, footer and main content area are inline in the root component. The consistency the mitigation aimed at is achieved without the named abstraction | `git ls-files ui/src/components/` lists no `GovUkPage`, and `grep -rn govuk-skip-link ui/src/` returns nothing; `ui/index.html:14` carries `govuk-skip-link`; `ui/src/App.tsx` carries `govuk-header` (:210), `govuk-footer` (:222) and `govuk-main-wrapper` / `id="main-content"` (:111, :127, :258) |
 
@@ -161,7 +167,7 @@ ui/
   package.json          # react 18, typescript 5.6, vite 7.3, govuk-frontend 5.7, engines.node >=22.12
   package-lock.json
   tsconfig.json         # strict: true
-  vite.config.ts        # dev server :5371, proxies /api + /health to :8080, build → dist/
+  vite.config.ts        # dev server :5173, proxies /api + /health to :8080, build → dist/
   eslint.config.js
   Dockerfile            # Node build stage → Caddy serve stage
   Caddyfile             # single origin: static assets + /api + /health (ADR-017)
@@ -205,6 +211,15 @@ ui/
   status line to appear in its index row
 
 ### Why the front-end port is `:5371`
+
+> **Superseded by EOP-106 (2026-08-20). The port is `:5173`, and both halves of the paragraph below
+> are wrong.** The original commit was *not* mistyped: `7efd900` (`[EOP-9]`) created
+> `ui/vite.config.ts` with `port: 5173`, Vite's default. `:5371` was introduced four weeks later by
+> `496d7b5`, a dedicated one-line commit whose subject names the new value — so it was a deliberate
+> edit, not a slip of the original keystroke. What it was *not* is a reasoned one: asked directly,
+> its author said "I got the port number wrong. I had no reason for changing the port number." The
+> port has been reverted to `5173` and the deviation deleted rather than documented. The paragraph
+> is left in place as the historical record, per the house convention.
 
 `5371` is a digit transposition of Vite's default `5173`, and is very likely a typo in the original
 commit. It is nonetheless what the code does, so every document now says `:5371`. Changing the port
@@ -758,6 +773,71 @@ is complete and the audit is clean, so it must not be cited again. EOP-108 had a
 fourth ground ("the work is already done") inadmissible a second time as self-reinforcing. A future
 codegen re-evaluation therefore inherits **two** live grounds, not four, and should say so rather
 than counting the spent ones.
+
+### Amendment — EOP-106 (2026-08-20): the dev server port is `:5173` again, and the deviation is deleted rather than explained
+
+The EOP-40 amendment above corrected four documentation sites to say the Vite dev server listens on
+`:5371`, which was true of the code. It also added a `### Why the front-end port is `:5371`` section
+that guessed at a cause. The guess was wrong, and the port has now been reverted to Vite's default
+`:5173`.
+
+**What the history actually shows.** `git log -- ui/vite.config.ts` returns three commits:
+
+| Commit | Subject | Effect on the port |
+|---|---|---|
+| `7efd900` | `[EOP-9] feat: serve a React front end behind Caddy on one origin` | created the file with `port: 5173` — Vite's default, correct |
+| `496d7b5` | `[EOP-63] chore: set Vite dev server port to 5371` | 2026-08-17, `+1/-1`, sole change `5173` → `5371` |
+| `aab329f` | `[EOP-110] chore: clear six CVEs … vite 7 + vitest 3` | touched only the import line |
+
+So the superseded section was wrong on both halves: the original commit was *not* mistyped, and the
+value arrived in a later, deliberate, single-purpose commit that names it in its subject line.
+
+**Why it is being reverted rather than justified.** The one question the code could not answer — why
+`5371` — was put to the commit's author, who answered that he got the number wrong and had no reason
+for the change. A non-default port that nobody chose on purpose is pure carrying cost: four
+documentation sites each had to explain a deviation whose only explanation was a mistake, and every
+future reader had to be told the port is not the one their tooling defaults to. Reverting removes
+the exception instead of documenting it.
+
+This is also the disposition @architecture-guardian asked for while reviewing EOP-40. Its objection
+there was to recording `:5371` as a deliberate decision — an ADR asserting intent behind a probable
+typo manufactures false-but-authoritative prose that later becomes load-bearing, which is exactly
+what the superseded section did. Recording an author-confirmed mistake is the honest alternative,
+and it leaves this ADR with no "why the port is unusual" section to maintain at all.
+
+**What changed, all in one commit.**
+
+| Site | Before | After |
+|---|---|---|
+| `ui/vite.config.ts` | `port: 5371,` | `port: 5173,`, with a comment naming this line as the port's single source of truth and warning that the docs cite it |
+| `AGENTS.md` (Front-end bullet, Build clause) | ``:5371`` (not Vite's default ``:5173``) | ``:5173`` (Vite's default) |
+| `docs/devops/local-development.md` | three live sites — the Front-End paragraph, the quick-start comment, the two-terminal workflow line | all `:5173` |
+| This ADR | the EOP-40 Development-workflow amendment, the amendment-table port row, the shipped-layout tree comment, and `### Why the front-end port is `:5371`` | each superseded in place by a dated note; none removed |
+
+**What deliberately did not change.**
+
+- The original Development workflow line ("the front-end runs on `:5173`") is untouched. It is
+  preserved historical text under the house convention, not a stale reference that slipped through
+  — and it happens to be accurate again, on the port
+- `ui/Caddyfile`, `ui/Dockerfile` and `compose.app.yml`, confirmed by inspection. None of them ever
+  referenced the dev port: Caddy serves the *built* bundle and the dev server does not run in a
+  container, which is why a dev-port change cannot affect the deployed topology (ADR-017)
+- `CHANGELOG.md`'s existing `:5371` mentions in the EOP-110 and EOP-40 entries. Those are records of
+  what those changes did, and rewriting them would falsify the changelog
+- `docs/adr/README.md`. `AdrIndexConsistencyTest` requires every ISO date in an ADR's status line to
+  appear in its index row; this amendment is dated 2026-08-20, which the row already carries from
+  EOP-110, so it introduces no new date
+
+**Verification.** `npm run dev` in `ui/` was actually run, not merely reasoned about: the dev server
+bound `:5173`, and `/health` and `/api/v1/cards` through it returned the Spring Boot responses from
+`:8080`, confirming the proxy still works on the reverted port. `npm run verify` in `ui/` and
+`./mvnw verify` both exit 0.
+
+**One loose end, raised separately.** Commit `496d7b5` is prefixed `[EOP-63]`, but EOP-63 is "Add
+EoP card images to `docs/EoP_Microsoft_Docs/cards/`" — an unrelated ticket. That violates
+`.opencode/rules/git-commits.md`, and it is the mechanical reason no rationale was ever captured:
+there was no port ticket for the change to be recorded against, so the only trace it left was a
+value nobody could account for three days later. Filed as its own ticket.
 
 ## Related
 

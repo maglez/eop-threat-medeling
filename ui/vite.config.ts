@@ -18,7 +18,12 @@ const API_TARGET = "http://localhost:8080";
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5371,
+    // Vite's own default, set explicitly because the documentation cites this line
+    // as the single source of truth for the port (ADR-009, EOP-106). It was 5371
+    // between 2026-08-17 and 2026-08-20 for no reason anyone could reconstruct, and
+    // four documentation sites had to explain the deviation. Changing it means
+    // changing them too, so do not adjust this value without a ticket.
+    port: 5173,
     proxy: {
       "/api": { target: API_TARGET, changeOrigin: true },
       "/health": { target: API_TARGET, changeOrigin: true },
