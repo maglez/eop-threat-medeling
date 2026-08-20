@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "Supply-chain baseline for the OpenCode plugin roster. Every entry was measured",
+    "from the npm registry on 2026-08-20 by tools/supply-chain/audit-plugins.sh, which",
+    "compares this file against the registry on every CI run and fails on any drift.",
+    "",
+    "This file is a TRIPWIRE, not a policy. It does not say these packages are safe --",
+    "it says they are the same publishers, with the same provenance posture, as when a",
+    "human last looked. A change here is not automatically an incident, but it must be",
+    "a decision: re-verify, then update this file in the same reviewed commit as the",
+    "pin bump that caused it. Never update it to silence a red build.",
+    "",
+    "'maintainers' is the loudest single compromise signal in the npm ecosystem: an",
+    "account handoff has preceded most of the well-known package takeovers. It is",
+    "checked per PACKAGE (registry-wide), not per version.",
+    "",
+    "'provenance' records whether the PINNED VERSION carries an SLSA provenance",
+    "attestation (dist.attestations), which ties the tarball to a CI build of the named",
+    "repository. False is not a failure -- half this roster lacks it, and a package",
+    "cannot retroactively gain provenance for a version already published. What IS a",
+    "failure is a package that HAD provenance losing it, because that means a release",
+    "stopped being built by the pipeline that built its predecessors.",
+    "",
+    "Provenance proves origin, never benignity. A signed, attested tarball built by CI",
+    "from a compromised repository is still compromised."
+  ],
+  "plugins": {
+    "opencode-vibeguard": {
+      "maintainers": ["inkdust2021 <inkdust2021@163.com>"],
+      "provenance": false,
+      "note": "No attestation, single maintainer, and it is the secret-redaction plugin -- so the component asked to keep credentials out of prompts is itself among the least verifiable. Pinned at 0.1.0, a pre-1.0 version untouched since. Weigh that against what it replaces, which is nothing."
+    },
+    "@tarquinen/opencode-dcp": {
+      "maintainers": ["tarquinen <dannysmo@gmail.com>"],
+      "provenance": true,
+      "note": "Attested. Upstream development has moved to Sleev, so treat an unfixed OpenCode-compatibility break as the trigger for an ADR on replacing it."
+    },
+    "opencode-supermemory": {
+      "maintainers": ["dhravya <dhravyashah@gmail.com>"],
+      "provenance": true,
+      "note": "Attested, and backed by a company rather than an individual. It also ships conversation content to a remote API by design, which is a data-exposure question this file does not answer."
+    },
+    "@nick-vi/opencode-type-inject": {
+      "maintainers": ["nick-vi <nickdashvi@proton.me>"],
+      "provenance": true,
+      "note": "Attested."
+    },
+    "opencode-scheduler": {
+      "maintainers": ["different-ai-xyz <ben@embedbase.xyz>"],
+      "provenance": false,
+      "note": "No attestation. It writes host scheduler units (launchd/systemd/Task Scheduler), so it is the plugin with the most persistent reach outside the editor process."
+    },
+    "opencode-goal-plugin": {
+      "maintainers": ["williamricchiuti <will.ricchiuti@gmail.com>"],
+      "provenance": false,
+      "note": "No attestation, hand-published by one maintainer at six releases in ten days, and the most privileged plugin loaded: it spawns agents, writes state under .opencode/goals/ and reads whole sessions. Blueprint 12.8 names it the least-verifiable, most-privileged entry in the roster."
+    }
+  }
+}

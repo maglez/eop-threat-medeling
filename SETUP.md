@@ -166,55 +166,79 @@ future audits without new evidence.
   3. It is a *build-time* dependency of a dev tool, not a runtime dependency
      of the shipped Java application, which has no npm dependencies at all.
 
-> **The figures above were honoured on the fourth firing of the trigger, and
-> only because a human asked.** That is the fact worth keeping. A re-check
-> conditioned on "whenever a pin moves" failed to survive a pin moving three
-> times: twice while no JavaScript runtime was on `PATH` (`opencode-supermemory`
-> 2.0.10 → 2.0.11 and `opencode-goal-plugin` 0.6.5 → 0.6.7), and once with no
-> such excuse, when those two went 2.0.11 → 2.0.12 and 0.6.7 → 0.8.1 alongside
-> `@tarquinen/opencode-dcp` 3.1.14 → 3.1.15 — an upgrade that *edited this very
-> paragraph to record the trigger being unhonoured* without honouring it. The
-> runtime excuse is gone for good: Node is a prerequisite of this project
-> (Graphify's CLI needs it), so `node` and `npm` are on `PATH`. Read the history
-> as evidence about the trigger, not about the risk. **If this audit matters it
-> needs a CI job, not another sentence here** — the one thing four firings have
-> established is that prose does not run.
+> **This check now runs itself: `tools/supply-chain/audit-plugins.sh`, wired
+> into CI as the non-required `supply-chain` job.** Reproduce the figures above
+> by running that script; it needs `node`, `npm` and `python3` and works inside
+> `.tmp/supply-chain`. It fails on four conditions — a maintainer account
+> change, a provenance change in *either* direction, a plugin spec that has
+> lost its exact version, or a high/critical advisory. Low and moderate
+> findings deliberately do not fail it, because the residual accepted above is
+> exactly four lows and a job that goes red on a known accepted finding gets
+> ignored. The baseline it compares against is
+> `tools/supply-chain/expected-plugins.json`, which is a **tripwire, not a
+> policy**: it records what was true when a human last looked, so that a
+> *change* becomes loud. Update it deliberately, in the same commit that moves
+> a pin, and never to make a red job green.
 >
-> **To reproduce the measurement**, generate a *separate throwaway* manifest
-> whose `dependencies` are the six exact specs from the `plugin` array of
-> `.opencode/opencode.json`, install it under `.tmp/` with `--ignore-scripts`,
-> then run `npm audit` and `npm audit signatures` against it. Do **not**
-> repurpose `.opencode/package.json`: it exists again on disk (untracked and
-> gitignored) but declares exactly one dependency, `@opencode-ai/plugin`, the
-> typings package used to author `.opencode/plugins/graphify.js`. Auditing
-> `.opencode/` therefore audits the local authoring toolchain rather than the
-> plugins that load, and the same goes for the 61 MB `.opencode/node_modules`
-> tree beside it, which vendors no plugin packages at all. OpenCode resolves
-> plugins through `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, so
-> **the authoritative plugin versions are the exact pins in the `plugin` array
-> of `.opencode/opencode.json`, and nowhere else.** `npm audit signatures`
-> needs a real install — with only a lockfile it exits "found no dependencies
-> to audit that were installed from a supported registry".
+> **Automating it was the actual finding of this exercise.** The trigger that
+> preceded the script was a sentence saying "re-check whenever a pin moves",
+> and it fired four times and was honoured once — the once being when a human
+> asked directly. Twice it was missed while no JavaScript runtime was on `PATH`
+> (`opencode-supermemory` 2.0.10 → 2.0.11 and `opencode-goal-plugin`
+> 0.6.5 → 0.6.7), and once with no such excuse, when those two went
+> 2.0.11 → 2.0.12 and 0.6.7 → 0.8.1 alongside `@tarquinen/opencode-dcp`
+> 3.1.14 → 3.1.15 — an upgrade that *edited this very paragraph to record the
+> trigger as unhonoured* without honouring it. Read that as evidence about
+> prose, not about the risk. Prose does not run.
 >
-> **What that measurement does and does not cover.** `npm audit` answers "are
-> there *published advisories* against these versions". It does not answer "has
-> one of these releases been backdoored", which is the failure mode that
-> actually matters for plugins running unsandboxed inside OpenCode with sight of
-> every message and file. Three checks were run alongside it on 2026-08-20 and
-> are the ones to repeat on any future bump: **maintainer continuity** — the
-> same npm account published the old and new version of all three bumped
-> packages (`tarquinen`, `dhravya`, `williamricchiuti`), an account handoff
-> being the loudest single compromise signal; **registry signatures** — 152 of
-> 152 verified; and **SLSA provenance attestations** — 51 packages carry them,
-> including `@tarquinen/opencode-dcp@3.1.15` and `opencode-supermemory@2.0.12`,
-> but **`opencode-goal-plugin@0.8.1` carries none**. That last one is the
-> weakest link in the roster and deserves naming: hand-published by a single
-> maintainer, six releases in ten days, and the most privileged plugin we load
-> (it spawns agents, writes state and reads whole sessions). Nothing suspicious
-> was found in it; there is simply less to verify against. And provenance only
-> ever proves a tarball came from the named repository's CI — never that the
-> repository's code is benign. One gap is unmeasured: the audit installs with
-> `--ignore-scripts`, and whether OpenCode's own `Npm.add()` path runs lifecycle
-> scripts has not been verified.
+> The `supply-chain` job carries a **weekly cron** as well as running on push
+> and pull request, and that is the point rather than a nicety: every other job
+> in the workflow is a function of a commit, but an advisory is published by
+> someone else against code that has not changed, so a check that only fires on
+> push cannot observe one arriving. It is deliberately **not** a required
+> status check — `build` stays about the code, and a fresh transitive advisory
+> is something to know about rather than a reason to block an unrelated merge.
+>
+> **What the measurement covers, and what it cannot.** `npm audit` answers "is
+> there a *published advisory* against these versions". It does not answer "was
+> one of these releases backdoored", which is the failure mode that actually
+> matters for plugins running in-process and unsandboxed with sight of every
+> message and file. Three further checks address that as far as anything can,
+> and all three are in the script: **maintainer continuity** — the loudest
+> single compromise signal is an account handoff, and every pinned package's
+> maintainer set is unchanged; **registry signatures** — 152 of 152 verified;
+> and **SLSA provenance attestations** — 51 packages carry them, but only
+> **three of the six plugins** do (`@tarquinen/opencode-dcp`,
+> `opencode-supermemory`, `@nick-vi/opencode-type-inject`). The three without
+> are `opencode-vibeguard`, `opencode-scheduler` and `opencode-goal-plugin`.
+> Correcting an earlier version of this note: goal-plugin is **not** uniquely
+> unattested, and the two it shares that with are uncomfortable company —
+> `opencode-vibeguard` is the secret-redaction plugin, so the component asked
+> to keep credentials out of prompts is itself among the least verifiable, and
+> `opencode-scheduler` writes launchd/systemd units and therefore has the most
+> persistent reach outside the editor process. State this as *less to verify
+> against*, never as evidence of a problem: nothing suspicious has been found
+> in any of them. And provenance only ever proves a tarball came from the named
+> repository's CI — never that the repository's code is benign.
+>
+> **Plugin installation does not run npm lifecycle scripts. Verified, not
+> assumed.** This closes a gap an earlier version of this note left open.
+> OpenCode does not shell out to a package manager at all: `Npm.add()` in
+> `packages/core/src/npm.ts` (read at tag `v1.18.19`, matching the installed
+> binary) imports `@npmcli/arborist` in-process and constructs it with
+> `ignoreScripts: true` placed *after* the spread of user npm config, so the
+> flag cannot be overridden by an `.npmrc`; arborist's `rebuild.js` gates
+> `preinstall`, `prepare`, `install` and `postinstall` on exactly that flag,
+> and it is the only path reaching `@npmcli/run-script`. Three caveats keep
+> this honest. `binLinks: true` is still passed, so `node_modules/.bin`
+> symlinks *are* created — "no scripts" is not "no executables placed". The
+> guarantee rests on `@npmcli/arborist` being pinned to exactly `9.4.0`, which
+> reads the flag from its constructor options rather than per-call ones; an
+> arborist that merged per-call options would silently re-admit the `.npmrc`
+> value that OpenCode already forwards. And the scope is the *install* step
+> only — the plugin's own module code executes at import time by design, which
+> is a far larger surface than any postinstall hook. That is why the checks
+> above are about *who published this* rather than about install-time
+> execution.
 >
 > Drop the residual entry entirely once upstream patches land.

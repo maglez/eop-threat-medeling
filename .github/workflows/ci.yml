@@ -5,6 +5,26 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # A weekly run, for the `supply-chain` job's sake. Everything else here
+  # is a function of a commit, so running it on a commit is sufficient - but
+  # an advisory is published by someone else, against code that has not
+  # changed, so a check that only ever fires when we push cannot see one
+  # arrive. This is the trigger that makes the supply-chain job an actual
+  # tripwire rather than a slower way of learning the same thing at merge
+  # time.
+  #
+  # The other three jobs run too. That is deliberate and not a side effect
+  # worth suppressing: a weekly green on `build`, `ui` and `image` is a
+  # canary for breakage that arrives from outside the repository - a base
+  # image moving, an action deprecating, a registry changing - which is
+  # otherwise discovered by whoever happens to push next. Nothing is
+  # published, because the GHCR step is gated on `github.event_name ==
+  # 'push'`.
+  schedule:
+    - cron: '0 6 * * 1'
+  # Manual trigger, so the audit can be run on demand after a pin moves
+  # without waiting for Monday or inventing a commit.
+  workflow_dispatch:
 
 # Least privilege, stated explicitly. The repository default is already
 # `read`, so this changes nothing today - but it means a job added later
@@ -261,3 +281,52 @@ jobs:
 
           echo "Published $repo:${{ github.sha }}"
           echo "Published $repo-ui:${{ github.sha }}"
+
+  # Supply-chain tripwire for the OpenCode plugin roster. This job exists
+  # because the prose version of it did not work: SETUP.md carried a
+  # "re-run `npm audit` whenever a pin moves" instruction that fired four
+  # times and was honoured once, and one of the firings it missed was a
+  # commit that edited the very paragraph recording the trigger as
+  # unhonoured. Prose does not run. This job does.
+  #
+  # What it guards is not the shipped Java application - that has no npm
+  # dependencies at all. It guards the six plugins pinned in the `plugin`
+  # array of `.opencode/opencode.json`, which load in-process inside
+  # OpenCode with sight of every message and file on a developer machine
+  # and no sandbox. That is a wider blast radius than anything in `pom.xml`,
+  # and until now it was the only dependency set with no automated check.
+  #
+  # Deliberately NOT a required status check. `build` is the single required
+  # gate on `main` and must stay about the code: a new advisory published
+  # against a transitive dependency of a developer tool is a thing to know
+  # about, not a reason to block a merge of unrelated application code. Let
+  # it run as an ordinary job, watch it, and promote it only if that
+  # judgement turns out to be wrong.
+  #
+  # Failure conditions are drift and severity, in that order of interest:
+  # a maintainer account change, a provenance-attestation change, a roster
+  # spec that lost its exact version, or a high/critical advisory. Low and
+  # moderate findings are reported and tolerated - SETUP.md holds the
+  # accepted residual and the reasons.
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-latest
+    # Reads the registry and the repository. Writes nothing anywhere.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `cache: npm` here, and that is deliberate rather than an
+      # oversight. The manifest this job audits is generated at run time
+      # from the pinned specs and there is no lockfile to key a cache on;
+      # more to the point, a cached dependency tree is exactly the wrong
+      # thing for an audit that is supposed to observe what the registry
+      # serves today.
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Audit pinned OpenCode plugins
+        run: tools/supply-chain/audit-plugins.sh
