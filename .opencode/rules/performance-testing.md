@@ -4,7 +4,7 @@
 
 Load testing uses **k6**, with results streamed to **InfluxDB** and visualised via **Grafana** (provisioned dashboard). Baseline tracking follows the performance engineer agent conventions in `agents/performance-engineer.md`.
 
-`test/k6/run.sh` streams metrics with `k6 run --out influxdb="$INFLUXDB_URL"`, defaulting to `http://localhost:8086/k6` — InfluxDB 1.8 listens on `127.0.0.1:8086` (bound to loopback in `docker-compose.yml`) with database `k6`. Grafana reads that database on `:3000`. Override either endpoint with the `INFLUXDB_URL` / `BASE_URL` environment variables.
+`test/k6/run.sh` streams metrics with `k6 run --out influxdb="$INFLUXDB_URL"`, defaulting to `http://localhost:8086/k6` — InfluxDB listens on `127.0.0.1:8086` (bound to loopback in `docker-compose.yml`, which is also where its version is pinned: `image: influxdb:1.8`) with database `k6`. Grafana reads that database on `:3000`. Override either endpoint with the `INFLUXDB_URL` / `BASE_URL` environment variables.
 
 ## Test Scripts
 
@@ -86,7 +86,7 @@ BASE_URL=http://staging.example.com test/k6/run.sh
 
 ## InfluxDB Schema
 
-k6 writes metrics to the `k6` database in InfluxDB 1.8:
+k6 writes metrics to the `k6` database in InfluxDB:
 
 | Measurement | Type | Key Fields |
 |---|---|---|
