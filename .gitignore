@@ -76,6 +76,15 @@ docs/EoP_Microsoft_Docs/EoP_Cards_Box_Native_files.zip
 # its .gitkeep.
 docs/performance/history/*.json
 
+### Agent scratch space ###
+# Throwaway working area for agents and humans: experiments, generated output,
+# and `git worktree add .tmp/scratch HEAD` checkouts. Inside the worktree on
+# purpose, so it needs no `external_directory` permission grant (blueprint §7.9).
+# It MUST stay at the repository root. A scratch copy under docs/ or src/ would
+# be walked by DeckArithmeticClaimsTest (Files.walk over docs/ and src/) and turn
+# `./mvnw verify` red on duplicated prose.
+.tmp/
+
 # Python bytecode caches. tools/*.py are developer scripts run ad hoc, so CPython
 # drops a __pycache__ beside them on any import or py_compile. The bytecode is
 # machine- and interpreter-version-specific and regenerates on demand, so it is
