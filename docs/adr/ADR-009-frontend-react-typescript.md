@@ -804,9 +804,11 @@ This also satisfies the objection @architecture-guardian raised while reviewing 
 choice between reverting and recording was not one it expressed a preference on, and the reasoning
 above is this story's own. Its objection there was to recording `:5371` as a deliberate decision — an
 ADR asserting intent behind a probable typo manufactures false-but-authoritative prose that later
-becomes load-bearing, which is exactly what the superseded section did. Recording an
-author-confirmed mistake is the honest alternative, and it leaves this ADR with no "why the port is
-unusual" section to maintain at all.
+becomes load-bearing. The superseded section erred in the opposite direction, asserting an accident
+rather than an intent, but it manufactured such prose just the same: its guess was wrong on both
+halves, and it went load-bearing across four documents and seeded this ticket's own premise before
+anyone checked it. Recording an author-confirmed mistake is the honest alternative, and it leaves
+this ADR with no "why the port is unusual" section to maintain at all.
 
 **What changed, all in one commit.**
 
