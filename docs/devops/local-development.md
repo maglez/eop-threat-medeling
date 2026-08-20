@@ -245,12 +245,21 @@ front-end section above for the full script reference.
 - **`BadResource: FileSystem.readFile (.../.opencode/agents/.opencode/opencode.json)`**
   — you launched OpenCode from inside `.opencode/agents/`. This is the sentinel
   guard working as intended. `cd` to the repository root and retry
-- **`ERROR goal persistence is already owned by pid <n>`** — a second OpenCode
-  instance was started from this directory and lost the race for the goal
-  plugin's persistence lease. Only one instance per `stateFilePath` may hold it.
-  Either close the other instance, or give this one its own state root:
-  `OPENCODE_GOAL_STATE_PATH=/tmp/goals-2/state.json opencode`. Fixed upstream in
-  goal-plugin `0.6.8`, which is not published to npm yet — see Blueprint §12.8
+- **A second OpenCode instance reports the goal as read-only ("passive goal mode")**
+  — expected on goal-plugin `0.6.8` and later. The persistence lease is still
+  single-holder: one instance per `stateFilePath` owns the goal and may mutate it,
+  and a second instance opening the same session now degrades to observing it
+  instead of failing plugin initialisation. Give the second instance its own state
+  root if it needs to *drive* a goal:
+  `OPENCODE_GOAL_STATE_PATH=.tmp/goals-2/state.json opencode` (inside the worktree,
+  so it needs no `external_directory` grant — see AGENTS.md). Two caveats: passive
+  mode is a degradation, not a second seat, so do not plan on running two driving
+  instances; and the handoff only holds if **every** participating process runs
+  `0.6.8`+, which an older instance left open from a previous session will not
+- **`ERROR goal persistence is already owned by pid <n>`** — the pre-`0.6.8`
+  form of the above: the losing instance hard-errored out of plugin init rather
+  than degrading. Seeing this on the current pin (`0.8.1`) means the other
+  instance is running an older release; restart it. See Blueprint §12.8
 - **`/goal <subcommand>` is ignored and no `*_goal` tools are listed** — the goal
   plugin is running a release older than `0.6.7`, whose tools never register on
   OpenCode 1.18.x. Check the pin in `.opencode/opencode.json` and restart

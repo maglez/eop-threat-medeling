@@ -167,21 +167,33 @@ future audits without new evidence.
 > runtime was on `PATH` — OpenCode ships as a standalone binary with bun embedded
 > privately and does not expose it. **That is no longer true:** Node is now a
 > prerequisite of this project (Graphify's CLI needs it), so `node` and `npm` are
-> on `PATH` and the re-check is once again runnable. The trigger fired twice
-> without being honoured while the runtime was missing, when
-> `opencode-supermemory` went 2.0.10 → 2.0.11 and `opencode-goal-plugin` went
-> 0.6.5 → 0.6.7. What still blocks a re-run is the **manifests**:
-> `.opencode/package.json` and `.opencode/package-lock.json` have been
-> **removed**. `git rm --cached` untracked them (the intent was already recorded
-> in `.opencode/.gitignore`, but never took effect because `.gitignore` does not
-> apply to already-tracked files), and because they had been committed, git also
-> deleted the working-tree copies on the next checkout past that deletion. They
-> were inert for plugin loading anyway, since OpenCode resolves plugins through
-> `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, and they had drifted —
-> declaring `^2.0.10` / `^0.6.5`, so even with npm installed an audit would have
-> reported on versions that are not loaded. **The authoritative plugin versions
-> are the exact pins in the `plugin` array of `.opencode/opencode.json`, and
-> nowhere else.** To reinstate this audit: generate a fresh
-> `.opencode/package.json` and `package-lock.json` from those exact pinned specs,
-> run `npm audit` in `.opencode/`, and replace this warning with the fresh
+> on `PATH` and the re-check is once again runnable. The trigger has now fired
+> **three times** without being honoured: twice while the runtime was missing,
+> when `opencode-supermemory` went 2.0.10 → 2.0.11 and `opencode-goal-plugin`
+> went 0.6.5 → 0.6.7, and once with no such excuse, when the same two went
+> 2.0.11 → 2.0.12 and 0.6.7 → 0.8.1 alongside `@tarquinen/opencode-dcp`
+> 3.1.14 → 3.1.15. Read that as evidence about the trigger rather than about the
+> risk: a re-check conditioned on "whenever a pin moves" has never once survived
+> a pin moving, so if this audit matters it needs an owner or a CI job, not
+> another sentence here.
+>
+> What blocks a re-run is the **manifests**, and the shape of that obstacle has
+> changed. The original problem was absence: `.opencode/package.json` and
+> `.opencode/package-lock.json` were untracked by `git rm --cached` (the intent
+> was already recorded in `.opencode/.gitignore`, but never took effect because
+> `.gitignore` does not apply to already-tracked files), and because they had
+> been committed, git also deleted the working-tree copies on the next checkout
+> past that deletion. A `.opencode/package.json` now exists again on disk —
+> untracked and gitignored — but it is **not** a manifest of the plugin roster:
+> it declares exactly one dependency, `@opencode-ai/plugin`, the typings package
+> used to author `.opencode/plugins/graphify.js`. Auditing `.opencode/` today
+> therefore audits the local authoring toolchain, not the plugins that actually
+> load, and the same is true of the 61 MB `.opencode/node_modules` tree beside
+> it, which contains no plugin packages at all. OpenCode resolves plugins through
+> `Npm.add()` into `~/.cache/opencode/packages/<spec>/`, so **the authoritative
+> plugin versions are the exact pins in the `plugin` array of
+> `.opencode/opencode.json`, and nowhere else.** To reinstate this audit:
+> generate a *separate* throwaway manifest from those exact pinned specs — do not
+> repurpose `.opencode/package.json`, whose one dependency serves a different
+> purpose — run `npm audit` against it, and replace this warning with the fresh
 > findings. Drop the entry entirely once upstream patches land.
