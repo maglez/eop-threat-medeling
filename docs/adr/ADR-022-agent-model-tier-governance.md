@@ -1,6 +1,6 @@
 # ADR-022: Model Tiers Are Allocated By Definition-of-Done Role, Not By Artefact Type
 
-**Status:** Accepted
+**Status:** Accepted (rule 1 superseded 2026-08-21 by ADR-046)
 **Date:** 2026-08-11
 **Deciders:** @architecture-guardian, @tech-lead
 
@@ -20,9 +20,10 @@ Blueprint §3.1's:
 
 - **Family-independent** — reviewer and author sit in different model families or reasoning
   architectures. This is what the Separation Invariant asks for, and the only degree that
-  defends against a bias the whole family shares. On the current Bedrock mapping the sole family
-  boundary is `MODEL_C`/`MODEL_E` (Qwen) against `MODEL_A`/`MODEL_B`/`MODEL_D` (Anthropic
-  Claude).
+  defends against a bias the whole family shares. When this ADR was written the sole family
+  boundary on the Bedrock mapping was `MODEL_C`/`MODEL_E` (Qwen) against
+  `MODEL_A`/`MODEL_B`/`MODEL_D` (Anthropic Claude). A second boundary was added 2026-08-21 by
+  ADR-046: `MODEL_F` (`minimax.minimax-m2.5`) sits outside both.
 - **Model-independent** — different model IDs from the same family, as `MODEL_A`
   (`claude-opus-5`) is to `MODEL_B` (`claude-sonnet-4-6`). Different weights and reasoning scale
   catch the author's particular mistakes but not its family's shared blind spots. This is the
@@ -78,6 +79,15 @@ emits files.
 1. **Any agent named as a Definition-of-Done gate is pinned to `MODEL_A` or `MODEL_B`. No DoD
    gate may sit on `MODEL_C` or `MODEL_E`.** This holds regardless of whether the gate also
    authors artefacts.
+
+   > **Superseded 2026-08-21 by [ADR-046](ADR-046-gate-model-capability-floor.md).** The original
+   > text is left standing per this index's own instruction not to edit a superseded decision.
+   > Rule 1 is a whitelist of tier *names*, which is a proxy for the capability it never states,
+   > so it breaks the moment a third capable tier is wanted — as it was when both `MODEL_A` gates
+   > had to move off the tier that authors Java. ADR-046 replaces the whitelist with a capability
+   > floor, a family requirement and a mandatory passing probe. `MODEL_C`/`MODEL_E` remain
+   > ineligible, but as a *consequence* of the floor (they are not reasoning-capable) rather than
+   > by name. **Rules 2 to 6 below are unaffected.**
 2. The five gates are `@tester-unit-and-quality`, `@tester-api`, `@security-auditor`,
    `@code-reviewer` and `@architecture-guardian`. `@tester-api` moves to `MODEL_B`, joining
    `@tester-unit-and-quality`, which moved earlier for the identical reason.
@@ -98,9 +108,19 @@ emits files.
    `@tech-lead` authors itself instead of delegating, since both run on `MODEL_A` alongside two
    of the five gates. Stating it as unconditional — for any artefact class — is the specific
    error this ADR exists to stop.
+
+   > **Amended 2026-08-21 by [ADR-046](ADR-046-gate-model-capability-floor.md).** The second
+   > exception is **closed**: `@architecture-guardian` and `@security-auditor` moved to `MODEL_F`,
+   > so no gate shares a family with the tier that authors production code directly. **One
+   > exception remains — test code — and from that date onward the invariant must be cited with
+   > one exception, not two.**
 6. Reversing any part of this allocation requires a superseding ADR. It may not be done by
    editing the tier tables, which is how the previous classification came to contradict a rule
    the project had already written down.
+
+The diagram below depicts the allocation as decided on 2026-08-11 and is retained as the
+historical record, not as a description of the current pins. For the arrangement in force since
+2026-08-21, see the diagram in [ADR-046](ADR-046-gate-model-capability-floor.md).
 
 ```mermaid
 flowchart LR
@@ -165,6 +185,15 @@ are at best model-independent: `@tech-lead`/primary-agent production code shares
   The trade was accepted because a gate that cannot hold its contract blocks or corrupts every
   story, whereas same-model review of test code degrades one artefact class that is itself
   never shipped.
+
+  > **Amended 2026-08-21 by [ADR-046](ADR-046-gate-model-capability-floor.md).** Three claims in
+  > the paragraph above are now false. There is **one** exception rather than two. "No reviewer of
+  > a tester-authored test sits outside the author's family … absent entirely" no longer holds:
+  > `@architecture-guardian` and `@security-auditor` moved to `MODEL_F`, which is a different
+  > family from `MODEL_B`, so tester-authored tests gained a family-independent reviewer for the
+  > first time. And the final clause about a test authored by the primary agent on `MODEL_A` is
+  > obsolete, since neither gate sits on `MODEL_A` any more. What survives unchanged is the
+  > overlap the next bullet describes: `@code-reviewer` and both testers still share one model ID.
 - `/trace` will report that overlap as a `RISK … self-review` line on any story where a tester
   writes a test. **That finding is a true positive and must not be silenced.** It is the
   visible price of this decision, and suppressing it would restore the blindness this ADR was
@@ -189,6 +218,10 @@ are at best model-independent: `@tech-lead`/primary-agent production code shares
 
 ## Related
 
+- [ADR-046](ADR-046-gate-model-capability-floor.md) — supersedes rule 1 of this ADR, replacing
+  the tier-name whitelist with a capability floor, a family requirement and a mandatory probe,
+  and closes the second exception to the Separation Invariant by moving both `MODEL_A` gates to
+  `MODEL_F`
 - [ADR-006](ADR-006-build-quality-gates.md) — mechanical build gates; this ADR governs the
   agent gates that sit alongside them, and the same reasoning applies: a gate that cannot fail
   is not a gate
