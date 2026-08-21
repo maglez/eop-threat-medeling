@@ -163,8 +163,13 @@ class GameOverControllerIntegrationTest {
      * while the flag stays {@code true}. These tests fail in that world and pass only when the
      * route is mapped and the {@code GlobalExceptionHandler} is in the dispatch chain.
      *
-     * <p>The 409 for a non-completed session is currently undocumented in
-     * {@code docs/api/openapi.yml} for this operation — that reconciliation is tracked as EOP-83.
+     * <p>EOP-83 checked the claim this javadoc used to make — that the 409 for a non-completed
+     * session was undocumented — and it was false: {@code docs/api/openapi.yml} has carried a full
+     * {@code '409'} block on this operation, with an {@code application/problem+json} body, since
+     * before that ticket was written. What the spec really got wrong sat elsewhere, in the
+     * {@code Leaderboard} schema description, which claimed the leaderboard was "available in any
+     * session state, not only {@code COMPLETED}" and so contradicted the operation immediately
+     * above it as well as the use case. The schema now agrees with both.
      */
     @Nested
     @DisplayName("RFC 9457 contract guards — leaderboard route")

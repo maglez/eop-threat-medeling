@@ -1795,8 +1795,18 @@ components:
         score descending (highest first). Players with equal scores share the same
         rank.
 
-        This is the Game Over screen's primary data. It is available in any
-        session state, not only `COMPLETED`.
+        This is the Game Over screen's primary data. It is served only once the
+        session is `COMPLETED` — a request in any other state is refused with
+        `409`, as documented on the operation itself. An earlier revision of this
+        schema claimed the opposite ("available in any session state"), which no
+        implementation ever matched.
+
+        `sessionStatus` is read off the session the request resolved, not written
+        as a constant by the adapter (EOP-87). Because the operation refuses every
+        other state one step earlier, `COMPLETED` is the only value a client can
+        observe here today. Widening that is a two-sided change: the client checks
+        this field against the `SessionStatus` members it mirrors and rejects the
+        response outright if it sees anything else.
       required: [rows, sessionStatus]
       properties:
         rows:
