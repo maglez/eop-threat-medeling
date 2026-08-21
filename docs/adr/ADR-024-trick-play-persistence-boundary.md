@@ -154,10 +154,10 @@ javadoc of the class it constrains.
 
 > **Amended 2026-08-13, EOP-14 Slice C2 — this obligation is now discharged.** The bolded sentence
 > above says "undischarged" and was true when it was written; it is no longer. All three use cases
-> call `ResolvePlayerUseCase.execute` as their first statement, before any hand, trick or card is
-> read: `DealHandsUseCase.java:120`, `PlayCardUseCase.java:139` and `ResolveTrickUseCase.java:111`.
+> call `ResolvePlayerUseCase.execute` as their first port call, before any hand, trick or card is
+> read: `DealHandsUseCase.java:133`, `PlayCardUseCase.java:189` and `ResolveTrickUseCase.java:166`.
 > `PlayCardUseCase` then derives the acting seat and the acting player identifier from the resolved
-> player and from nothing the caller supplied (`PlayCardUseCase.java:140-141`), which is stronger than
+> player and from nothing the caller supplied (`PlayCardUseCase.java:190-191`), which is stronger than
 > the obligation asked for: `PlayCardCommand` has no seat and no player component, so a caller-supplied
 > seat is inexpressible rather than rejected. Each of the three has a test asserting a stranger is
 > refused *before* any port read happens, asserted against the repository double's read log rather than
@@ -169,6 +169,22 @@ javadoc of the class it constrains.
 > the index, because a reader who stops at the word "undischarged" never follows a pointer. See
 > [ADR-025](ADR-025-dealing-is-its-own-use-case.md), decision 4. The status of this ADR is unchanged:
 > nothing in the decision is superseded, only its implementation state.
+>
+> *(Anchors re-derived 2026-08-21, EOP-49. The discharge above is unchanged and still holds; only its
+> pointers moved. All four line numbers in it had drifted, and drifted in the way that matters most
+> for a security obligation: `:120`, `:139` and `:111` had come to land on a `@throws` javadoc tag, a
+> `@throws` javadoc tag and a `private final Clock clock;` field respectively, well above the
+> statements they were meant to identify — so an auditor following one of them to confirm that
+> authorisation precedes any read arrived at documentation, or at a field, and could confirm nothing.
+> Only the `PlayCardUseCase` anchor had been reported; the other two were found while re-deriving it.
+> The ordinal in the sentence above is also corrected, from "first statement" to "first port call":
+> in `PlayCardUseCase` a null check on the command and the read of its session identifier precede the
+> call, so "first statement" was false there, while "first port call" is true of all three — and of
+> every other use case that authorises the same way, `ReadOwnHandUseCase` and `GetTrickStateUseCase`
+> among them. The security property this sentence exists to assert was never in doubt, because
+> "before any hand, trick or card is read" was true throughout. Regenerate rather than trust these
+> four numbers: `grep -n 'resolvePlayerUseCase\.' src/main/java/org/maglez/eop/usecase/*.java` prints
+> every authorisation call site in the layer, one line each.)*
 
 **Negative — one exception ships with no thrower.** `WinningPlayNotInTrickException` is declared and
 mapped to 422 but nothing in production raises it. It is Slice C2's `ResolveTrickUseCase` contract

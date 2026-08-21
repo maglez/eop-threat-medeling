@@ -767,9 +767,24 @@ reachable at once, and the flag will not be the thing holding them shut.
 > **Corrected again 2026-08-14, EOP-14 Slice D:** the containment described above is spent. C2
 > added the use cases and Slice D added the route — `TrickController`, four paths — so nothing
 > is now held back by absence. What holds these gaps back is `eop.features.trick-play` alone,
-> `false` at `application.yml:112`, withholding four use-case beans and the controller. A flag
+> which Slice D left `false` at `application.yml:112`, withholding four use-case beans and the
+> controller. A flag
 > can be flipped, so every gap enumerated below is one property change away from reachable and
 > must be read that way rather than as latent.
+>
+> **Amended 2026-08-21, EOP-49 — the flag has since been flipped, so read the paragraph above as
+> the state at Slice D.** The two sentences before this one are left as Slice D wrote them, with
+> only their tense pinned, because the argument they make is still the right one — a flag is
+> weaker containment than an absent class. What has changed is that the conditional has been
+> discharged: `eop.features.trick-play` is **`true`**, at `application.yml:129`, flipped by
+> EOP-70 on 2026-08-17. So every gap enumerated below is not one property change away from
+> reachable — it *is* reachable, through a live route, and must be read that way. The arity has
+> grown too, from Slice D's four use-case beans and one controller to seven use-case beans and
+> three controllers over seven routes; that count is stated with its own date and its own
+> regeneration command in [ADR-013](ADR-013-feature-flags.md), which is the flag register, and is
+> deliberately not restated here where it would drift again. This note corrects no reasoning and
+> renumbers nothing: it changes the reader's obligation from watching a property to auditing a
+> reachable surface.
 >
 > This note is deliberately placed against the claim it corrects rather than in date order
 > with the reversal below, because the defect a review found here was not that the record was
@@ -1312,11 +1327,15 @@ exception type and its 422, and it is not a restatement of any of the other thre
 > revalidation on read in `winnerAmong` is now joined by a refusal on the write path, one layer
 > higher, where the trick and its plays are both in hand. Containment is also no longer only
 > "no route": since Slice C2 there are callers of the trick-play ports, and what withholds them
-> is `eop.features.trick-play`, declared `false` at `application.yml:112`. As of EOP-14 Slice D it
-> gates four use-case beans and `TrickController` (`UseCaseConfiguration.java:219`, `:250`, `:269`,
-> `:320` and `TrickController.java:69`), which now
+> is `eop.features.trick-play`, which as of EOP-14 Slice D was `false` at `application.yml:112`
+> and gated four use-case beans and `TrickController`, which
 > supplies the route this paragraph once said was absent. A flag is weaker than an absent class
-> and is named as such rather than presented as equivalent. See
+> and is named as such rather than presented as equivalent. **Amended 2026-08-21, EOP-49:** the
+> flag is now `true` (`application.yml:129`, flipped by EOP-70), so it withholds nothing and this
+> paragraph's containment is gone entirely rather than merely weak; the Slice D bean anchors that
+> stood here have been dropped rather than renumbered, because the current arity belongs in one
+> place and [ADR-013](ADR-013-feature-flags.md) is the flag register that carries it with a date.
+> See
 > [ADR-025](ADR-025-dealing-is-its-own-use-case.md).
 
 **No range CHECK on any seat or sequence column, which bounds what the composite keys prove.**
