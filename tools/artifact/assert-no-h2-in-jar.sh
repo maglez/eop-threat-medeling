@@ -12,9 +12,20 @@
 # PostgreSQL and therefore never needs H2 at all.
 #
 # EOP-34 excludes it at `repackage`. This script is what stops that exclusion from
-# silently regressing. It is a script rather than a JUnit test for a mechanical reason:
-# surefire binds to `test`, which runs BEFORE `package`, so no test in this project can
-# observe the repackaged jar. `./mvnw verify` cannot gate its own output.
+# silently regressing.
+#
+# Why a script and not a test, stated precisely: no SUREFIRE test can do this, because
+# surefire binds to `test`, which runs BEFORE `package`, so the repackaged jar does not
+# exist yet when the suite runs. That is a hard mechanical constraint. It is NOT true that
+# no test could do it -- maven-failsafe-plugin binds `integration-test` and `verify`, both
+# AFTER `package`, and is already available at 3.5.6 from the Boot parent, so a failsafe IT
+# reading the jar with java.util.zip.ZipFile would work and would run inside `./mvnw
+# verify`. That was considered and rejected: this project declares no failsafe execution
+# today, so it would become the seventh declared Maven plugin (ADR-006 and ADR-047 both
+# treat that count as a thing to hold), and tools/supply-chain/audit-plugins.sh already
+# establishes the committed-script-invoked-from-CI idiom for a gate of exactly this shape.
+# The cost of that choice is real and is recorded in ADR-047: `./mvnw verify` alone does
+# not prove this property, so a developer running only Maven locally does not exercise it.
 #
 # What it checks:
 #   1. Exactly one repackaged jar exists         -- so a rename or a build change cannot
@@ -35,6 +46,10 @@
 # See docs/adr/ADR-047-h2-excluded-from-deployable-artifact.md.
 #
 # Usage: ./mvnw package   (or verify), then tools/artifact/assert-no-h2-in-jar.sh
+#
+# Needs bash 4+ for `mapfile`. Fine on ubuntu-latest and on any Homebrew bash; stock macOS
+# /bin/bash is 3.2 and would fail, which is why the shebang is `env bash` rather than a
+# hardcoded /bin/bash.
 set -euo pipefail
 
 readonly TARGET_DIR="${1:-target}"
@@ -46,8 +61,9 @@ fail() {
 
 command -v unzip >/dev/null 2>&1 || fail "unzip is not on PATH; cannot inspect the artifact."
 
-# `*.jar` deliberately excludes the -sources / -javadoc / .original siblings that would
-# otherwise make "exactly one" untrue.
+# The two `! -name` clauses exclude the -sources / -javadoc siblings, which would otherwise
+# make "exactly one" untrue. The .original sibling that `repackage` leaves behind needs no
+# clause: it ends in `.jar.original`, so `-name '*.jar'` never matches it in the first place.
 mapfile -t jars < <(find "$TARGET_DIR" -maxdepth 1 -type f -name '*.jar' \
     ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
 

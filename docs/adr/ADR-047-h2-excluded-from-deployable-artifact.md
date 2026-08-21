@@ -94,16 +94,23 @@ profile was started and `/health` returned 200 with `Database dialect: H2Dialect
 
 It is **gated by a script in the required check**, `tools/artifact/assert-no-h2-in-jar.sh`,
 run in the `build` job of `.github/workflows/ci.yml` immediately after `./mvnw verify` and
-before the artifact is uploaded. A JUnit test cannot do this job: surefire binds to the
-`test` phase, which runs before `package`, so `./mvnw verify` cannot inspect its own output.
+before the artifact is uploaded. No *surefire* test can do this job: surefire binds to the
+`test` phase, which runs before `package`, so the repackaged jar does not exist when the
+suite runs. That constraint is mechanical, and it is the only part of this that is forced —
+see the rejected alternative below for why a failsafe integration test, which genuinely
+could do it, was not chosen.
 The script asserts there is exactly one candidate jar (refusing to guess otherwise), that
 `BOOT-INF/lib/postgresql-*.jar` **is** present as a positive control so an empty or
 truncated jar cannot pass an absence assertion for the wrong reason, that no
 `BOOT-INF/lib/h2-*.jar` exists, and that no `org/h2/**` entry exists anywhere — the last
 catching H2 arriving flattened, shaded, or under different coordinates.
 
-Both directions were proven before this was committed. The hardened jar passes and is
-2,685,796 bytes smaller, against the 2,685,418-byte nested jar removed. Restoring
+Both directions were proven before this was committed. The hardened jar passes, and the
+2,685,418-byte nested jar is gone from it. Deliberately not stated as an exact byte delta
+between the two builds: the `pom.xml` is itself embedded in the artifact, so editing a
+comment in it moves that delta by a few hundred bytes and any exact figure goes stale on
+the next prose edit. The durable facts are the size of the jar removed and that
+`BOOT-INF/lib/h2-*.jar` and every `org/h2/**` entry are absent. Restoring
 `origin/main`'s `pom.xml` and repackaging makes the script exit 1 with
 `FAIL: H2 is back inside the artifact: BOOT-INF/lib/h2-2.4.240.jar`, so the gate is not
 vacuous. Pointed at a directory with no jar it also exits 1, so it cannot pass when there
@@ -160,8 +167,22 @@ first.
 
 **Negative: the gate is a shell script outside Maven**, so `./mvnw verify` alone does not
 prove the property on a developer machine. The script is committed, executable and takes an
-optional target directory, so it can be run locally — but it has to be run deliberately. The
-alternative was a seventh Maven plugin, which was judged the worse trade.
+optional target directory, so it can be run locally — but it has to be run deliberately.
+
+**A failsafe integration test was the alternative, and it would have worked.**
+`maven-failsafe-plugin` binds `integration-test` and `verify`, both *after* `package`, and is
+already resolvable at 3.5.6 from the Boot 4.1.0 parent, so an IT reading the jar with
+`java.util.zip.ZipFile` would have gated this property from inside `./mvnw verify` with no new
+dependency — closing exactly the negative stated above. This was established by
+@code-reviewer during the gate round rather than at design time, and the first version of this
+ADR and of the script header both overstated the constraint as "no test could do it". Corrected
+here in the direction that makes the claim smaller. It was rejected on one ground: this project
+declares no failsafe execution today, so configuring one would make a seventh declared Maven
+plugin, and `tools/supply-chain/audit-plugins.sh` already establishes the
+committed-script-invoked-from-CI idiom for a gate of exactly this shape. That is a consistency
+and build-surface judgement, not a technical necessity, and it should be revisited — in favour
+of the IT — if a failsafe execution is ever added to this build for another reason, or if the
+locally-unexercised gate above ever actually lets a regression through.
 
 **Negative: a lost `<excludes>` block is a silent regression until CI runs.** There is no
 compile-time or test-time signal. The `pom.xml` comment, this ADR and the script's header all

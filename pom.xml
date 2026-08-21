@@ -127,8 +127,18 @@
                      the default profile, the exact regression this shape exists to avoid.
                      Keep it here; do not hoist it.
 
-                     tools/artifact/assert-no-h2-in-jar.sh gates the result, because no JUnit
-                     test can: surefire runs at `test`, which precedes `package`. -->
+                     The id below must stay `repackage`. Maven merges an execution with an
+                     inherited one BY ID, which is what layers this configuration onto the
+                     Boot parent's own repackage execution and preserves its
+                     <mainClass>${start-class}</mainClass>. Rename the id and you get a
+                     SECOND execution instead: the inherited repackage still runs, without
+                     the exclusion, and H2 returns to the artifact with a green build.
+
+                     tools/artifact/assert-no-h2-in-jar.sh gates the result. Precisely: no
+                     SUREFIRE test can, because surefire runs at `test`, which precedes
+                     `package`. A failsafe IT could: failsafe binds after `package` and is
+                     already available from the Boot parent. It was rejected only because
+                     declaring it would make a seventh declared plugin. See ADR-047. -->
                 <executions>
                     <execution>
                         <id>repackage</id>
