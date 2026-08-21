@@ -866,6 +866,15 @@ paths:
         Requesting it while the session is still in progress returns `409` — the
         resource exists but is not yet in the right state.
 
+        Two distinct conditions return `404`, and the problem detail's `title`
+        tells them apart. `Session not found` means no session has that
+        identifier. `Game result not recorded` means the session is completed but
+        no result aggregate was ever written for it — either a facilitator ended
+        play early, which by design records no result, or the best-effort result
+        write failed and is not retried. Only the second is worth retrying, and
+        only a seated player can ever see it, so sharing a status discloses
+        nothing.
+
         Players with equal scores share the same rank (competition ranking). The
         `tied` flag makes this visible to a client rendering an ordinal without
         having to compare totals itself.
@@ -892,7 +901,16 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/SessionNotFound'
+          description: |
+            Either no session has that identifier (`title: Session not found`), or
+            the session is completed but no result was recorded for it
+            (`title: Game result not recorded`). The two share a status so a client
+            need not branch on it, and differ in `title` and `detail` so a seated
+            player is never told their own session does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
         '409':
           description: |
             The session exists but is not yet completed. The leaderboard is only

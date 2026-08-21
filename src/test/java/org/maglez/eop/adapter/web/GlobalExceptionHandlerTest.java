@@ -48,6 +48,7 @@ import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
+import org.maglez.eop.usecase.GameResultNotRecordedException;
 import org.maglez.eop.usecase.RateLimitedException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
 import org.maglez.eop.usecase.TooManySubscribersException;
@@ -915,6 +916,38 @@ class GlobalExceptionHandlerTest {
             assertThat(notCompleted.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
             assertThat(notFound.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
             assertThat(notCompleted.getTitle()).isNotEqualTo(notFound.getTitle());
+        }
+
+        @Test
+        @DisplayName("a completed session with no recorded result is a 404 of its own")
+        void shouldMapGameResultNotRecordedToNotFound() {
+            final ProblemDetail problem =
+                    handler.handleGameResultNotRecorded(new GameResultNotRecordedException(SESSION_ID));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+            assertThat(problem.getTitle()).isEqualTo("Game result not recorded");
+            assertThat(problem.getDetail())
+                    .as("the session identifier must appear so the caller can correlate the error")
+                    .contains(SESSION_ID.toString());
+        }
+
+        @Test
+        @DisplayName("an unrecorded result does not claim the session is missing")
+        void shouldNotCollapseGameResultNotRecordedIntoSessionNotFound() {
+            final ProblemDetail notRecorded =
+                    handler.handleGameResultNotRecorded(new GameResultNotRecordedException(SESSION_ID));
+            final ProblemDetail notFound = handler.handleSessionNotFound(new SessionNotFoundException(SESSION_ID));
+
+            assertThat(notRecorded.getStatus())
+                    .as("the status is deliberately shared so the front end keeps its EOP-82 handling")
+                    .isEqualTo(notFound.getStatus());
+            assertThat(notRecorded.getTitle())
+                    .as("the title is what tells a seated player the two conditions apart")
+                    .isNotEqualTo(notFound.getTitle());
+            assertThat(notRecorded.getDetail())
+                    .as("a seated player must not be told their own session does not exist")
+                    .isNotEqualTo(notFound.getDetail())
+                    .doesNotContain("No session found");
         }
     }
 }

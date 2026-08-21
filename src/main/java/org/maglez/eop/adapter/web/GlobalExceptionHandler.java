@@ -31,6 +31,7 @@ import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.UnknownJoinCodeException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
+import org.maglez.eop.usecase.GameResultNotRecordedException;
 import org.maglez.eop.usecase.RateLimitedException;
 import org.maglez.eop.usecase.TooManyJoinAttemptsException;
 import org.maglez.eop.usecase.TooManySubscribersException;
@@ -959,6 +960,40 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Game not completed");
         problem.setDetail("Session " + exception.sessionId() + " is not yet completed.");
+        return problem;
+    }
+
+    /**
+     * The session is completed but no result was ever recorded for it.
+     *
+     * <p>A 404, the same status a genuinely absent session gets, and deliberately so. The front end
+     * stopped treating a leaderboard 404 as grounds for ejecting the player in EOP-82 and now ejects
+     * only on 403 (ADR-042), so moving this to another status would invalidate that handling for no
+     * gain. What changes is the title and the detail: this response no longer claims the session does
+     * not exist, which was untrue and was read by a seated player standing next to a retry button.
+     *
+     * <p>The detail says what happened without promising it will resolve. Three causes reach here and
+     * only one is transient — a read that landed between a session being marked completed and its
+     * result being written. The other two are permanent: a facilitator who ended the session early,
+     * which by design records no result, and a best-effort result write that failed and is not
+     * retried. The wording therefore reports the state rather than inviting a retry, even though the
+     * client still offers one.
+     *
+     * <p>Echoing the session identifier is safe and matches every other handler in this class. The
+     * caller has already been proved a member of that session before this exception can be raised: a
+     * stranger is stopped earlier with {@code PlayerNotRecognisedException} and gets a 403. So the
+     * response discloses nothing the caller did not supply.
+     *
+     * @param exception the exception carrying the session identifier
+     * @return a 404 problem detail distinguishing an unrecorded result from an absent session
+     */
+    @ExceptionHandler(GameResultNotRecordedException.class)
+    public ProblemDetail handleGameResultNotRecorded(
+            final GameResultNotRecordedException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Game result not recorded");
+        problem.setDetail("Session " + exception.sessionId()
+                + " is completed but no result was recorded for it.");
         return problem;
     }
 

@@ -1225,11 +1225,11 @@ sequenceDiagram
     GameOverController->>GetLeaderboardUseCase: execute(sessionId, playerToken)
     GetLeaderboardUseCase->>ResolvePlayerUseCase: execute(sessionId, playerToken)
     ResolvePlayerUseCase->>SessionRepository: findById(sessionId)
-    SessionRepository-->>ResolvePlayerUseCase: session
+    SessionRepository-->>ResolvePlayerUseCase: session (else 404 Session not found)
     ResolvePlayerUseCase-->>GetLeaderboardUseCase: ResolvedPlayer
     GetLeaderboardUseCase->>GetLeaderboardUseCase: check status == COMPLETED (else 409)
     GetLeaderboardUseCase->>GameResultRepository: findBySessionId(sessionId)
-    GameResultRepository-->>GetLeaderboardUseCase: GameResult (else 404)
+    GameResultRepository-->>GetLeaderboardUseCase: GameResult (else 404 Game result not recorded)
     GetLeaderboardUseCase->>TrickRepository: findTricks(sessionId)
     TrickRepository-->>GetLeaderboardUseCase: List<Trick>
     GetLeaderboardUseCase-->>GameOverController: LeaderboardResult(gameResult, scoreSheet)

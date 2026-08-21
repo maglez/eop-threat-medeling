@@ -234,6 +234,40 @@ class GameOverControllerIntegrationTest {
                     .contains(table.sessionId())
                     .contains("not yet completed");
         }
+
+        @Test
+        @DisplayName("completed session with no recorded result is distinguishable from an absent session")
+        void leaderboard404ForUnrecordedResultIsDistinctFromSessionNotFound() throws Exception {
+            final var table = endedTableWithoutResult();
+
+            final var result = getLeaderboard(table.sessionId(), table.facilitator().playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus())
+                    .as("the status stays 404, so the front end's EOP-82 handling still applies")
+                    .isEqualTo(404);
+            assertProblemJson(result);
+
+            final var document = JsonPath.parse(result.getResponse().getContentAsString());
+
+            Assertions.assertThat(document.read("$.title", String.class))
+                    .as("the title separates an unrecorded result from an absent session")
+                    .isEqualTo("Game result not recorded");
+
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("the detail names the session and states what is actually wrong")
+                    .contains(table.sessionId())
+                    .contains("no result was recorded");
+
+            // THE REGRESSION GUARD: before EOP-86 this path threw SessionNotFoundException, so a
+            // seated player was told their own session did not exist. If either assertion fails,
+            // the two meanings have been collapsed back onto one exception type.
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("a seated player is never told the session they are sitting at is absent")
+                    .doesNotContain("No session found");
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("detail must not contain the framework static-resource signature")
+                    .doesNotContain("No static resource");
+        }
     }
 
     @Nested
@@ -283,21 +317,30 @@ class GameOverControllerIntegrationTest {
      * then persists the game result so the leaderboard is readable.
      */
     private Table completedTable() throws Exception {
-        final var facilitator = createSession("Ada");
-        final var second = joinSession(facilitator.joinCode(), "Grace");
-        final var third = joinSession(facilitator.joinCode(), "Alan");
-        final var table = new Table(facilitator.sessionId(), List.of(facilitator, second, third));
-        // Start the game
-        mockMvc.perform(post(SESSIONS + "/" + table.sessionId() + "/start")
-                        .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
-                .andExpect(status().isOk());
-        // End the session (forces COMPLETED via EndSessionUseCase)
-        mockMvc.perform(post(SESSIONS + "/" + table.sessionId() + "/end")
-                        .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
-                .andExpect(status().isNoContent());
+        final var table = endedTableWithoutResult();
         // Persist the game result (normally triggered by ResolveTrickUseCase; here we call directly
         // because EndSessionUseCase does not go through the trick-resolution path)
         persistGameResultUseCase.execute(UUID.fromString(table.sessionId()));
+        return table;
+    }
+
+    /**
+     * Creates a session with three players, starts it, and ends it via POST /end — leaving the
+     * session {@code COMPLETED} with no recorded game result.
+     *
+     * <p>This is not a contrived state reachable only from a test. {@code EndSessionUseCase} records
+     * the completion and deliberately does not write a result, because it stops play before every
+     * card has been played and there is no final standing to record. Every session a facilitator
+     * ends early sits here permanently, which is exactly why {@link #completedTable()} has to call
+     * the persister by hand afterwards to reach the happy path at all.
+     *
+     * @return a table whose session is completed with no result row
+     */
+    private Table endedTableWithoutResult() throws Exception {
+        final var table = startedTable();
+        mockMvc.perform(post(SESSIONS + "/" + table.sessionId() + "/end")
+                        .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
+                .andExpect(status().isNoContent());
         return table;
     }
 

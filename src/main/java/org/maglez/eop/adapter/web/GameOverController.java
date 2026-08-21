@@ -58,6 +58,11 @@ public class GameOverController {
      * <p>Any seated player may read it. The leaderboard is only available once the session
      * is {@code COMPLETED}; requesting it earlier returns {@code 409}.
      *
+     * <p>Two distinct conditions return {@code 404}, and the problem detail tells them apart: no
+     * session has that identifier, or the session is completed but no result was ever recorded for
+     * it — a facilitator who ended play early, or a best-effort result write that failed. Only a
+     * seated player can see the second, so the two share a status without disclosing anything.
+     *
      * @param sessionId   identifier of the session
      * @param playerToken the caller's identity token
      * @return the leaderboard with per-player STRIDE breakdown
@@ -68,7 +73,8 @@ public class GameOverController {
         @ApiResponse(responseCode = "200", description = "The leaderboard for the completed session."),
         @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
-        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "404",
+                description = "No session exists with that identifier, or the session is completed with no recorded result."),
         @ApiResponse(responseCode = "409", description = "The session is not yet completed.")
     })
     public LeaderboardDto getLeaderboard(

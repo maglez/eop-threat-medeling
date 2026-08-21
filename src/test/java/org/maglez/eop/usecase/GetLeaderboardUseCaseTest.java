@@ -94,12 +94,25 @@ class GetLeaderboardUseCaseTest {
         }
 
         @Test
-        @DisplayName("throws SessionNotFoundException when no result has been persisted yet")
+        @DisplayName("throws GameResultNotRecordedException when the session is completed with no result")
         void shouldThrowWhenNoResultPersisted() {
             // resultRepository is empty — no result seeded
 
-            assertThatExceptionOfType(SessionNotFoundException.class)
-                    .isThrownBy(() -> useCase().execute(SESSION_ID, tokenFor(0)));
+            assertThatExceptionOfType(GameResultNotRecordedException.class)
+                    .isThrownBy(() -> useCase().execute(SESSION_ID, tokenFor(0)))
+                    .withMessageContaining(SESSION_ID.toString())
+                    .withMessageContaining("no recorded result");
+        }
+
+        @Test
+        @DisplayName("does not reuse SessionNotFoundException for a completed session with no result")
+        void shouldNotReuseSessionNotFoundForAnUnrecordedResult() {
+            // Before EOP-86 this line threw SessionNotFoundException, so a seated player was told
+            // their own session did not exist. The session is present and the caller is seated at
+            // it — only the result row is missing, which is a different fact and now a different type.
+            assertThatExceptionOfType(GameResultNotRecordedException.class)
+                    .isThrownBy(() -> useCase().execute(SESSION_ID, tokenFor(0)))
+                    .isNotInstanceOf(SessionNotFoundException.class);
         }
     }
 
