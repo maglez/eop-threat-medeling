@@ -365,7 +365,7 @@ describe('LobbyScreen', () => {
     });
   });
 
-  it('calls dealCards after startGame succeeds', async () => {
+  it('calls dealHands after startGame succeeds', async () => {
     const startedSession: SessionStateDto = { ...mockSession, status: 'IN_PROGRESS' };
     const user = userEvent.setup();
     let dealCallCount = 0;
@@ -413,7 +413,7 @@ describe('LobbyScreen', () => {
     });
   });
 
-  it('shows error message when dealCards fails after startGame succeeds', async () => {
+  it('shows error message when dealHands fails after startGame succeeds', async () => {
     const startedSession: SessionStateDto = { ...mockSession, status: 'IN_PROGRESS' };
     const user = userEvent.setup();
 
@@ -455,7 +455,7 @@ describe('LobbyScreen', () => {
     const startButton = await screen.findByRole('button', { name: 'Start game' });
     await user.click(startButton);
 
-    // An error message should appear after dealCards fails
+    // An error message should appear after dealHands fails
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });

@@ -1,5 +1,5 @@
 /**
- * Unit tests for subscribeToSession and dealCards in api.ts.
+ * Unit tests for subscribeToSession and dealHands in api.ts.
  *
  * subscribeToSession covers all six branches of the function:
  *  1. Non-ok response → onError(ApiError) with numeric status
@@ -9,14 +9,14 @@
  *  5. AbortError suppressed on teardown (abort() called)
  *  6. Non-AbortError network error → onError(Error)
  *
- * dealCards covers:
+ * dealHands covers:
  *  1. 204 No Content → resolves void
  *  2. Non-ok response → throws ApiError with correct status
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   subscribeToSession,
-  dealCards,
+  dealHands,
   fetchCards,
   createSession,
   joinSession,
@@ -242,7 +242,7 @@ describe('subscribeToSession', () => {
   });
 });
 
-describe('dealCards', () => {
+describe('dealHands', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
@@ -262,7 +262,7 @@ describe('dealCards', () => {
       } as unknown as Response)
     ));
 
-    await expect(dealCards('session-1', 'token-abc')).resolves.toBeUndefined();
+    await expect(dealHands('session-1', 'token-abc')).resolves.toBeUndefined();
 
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -282,10 +282,10 @@ describe('dealCards', () => {
       } as unknown as Response)
     ));
 
-    await expect(dealCards('session-1', 'token-abc')).rejects.toThrow(ApiError);
+    await expect(dealHands('session-1', 'token-abc')).rejects.toThrow(ApiError);
 
     try {
-      await dealCards('session-1', 'token-abc');
+      await dealHands('session-1', 'token-abc');
     } catch (e) {
       expect(e).toBeInstanceOf(ApiError);
       const apiErr = e as ApiError;

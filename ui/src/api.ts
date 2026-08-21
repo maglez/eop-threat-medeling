@@ -830,12 +830,15 @@ function parseTrickStateDto(value: unknown, path = 'TrickStateDto'): TrickStateD
 }
 
 /**
- * Deal cards to all players (facilitator only).
+ * Deal hands to all players (facilitator only).
  *
  * Calls POST /api/v1/sessions/{id}/deal. The server returns 204 No Content on
  * success; the caller should then fetch the hand via fetchHand().
+ *
+ * Named for the `dealHands` operationId in docs/api/openapi.yml, which the Java
+ * adapter method and use case also carry.
  */
-export async function dealCards(sessionId: string, playerToken: string): Promise<void> {
+export async function dealHands(sessionId: string, playerToken: string): Promise<void> {
   const response = await fetch(`/api/v1/sessions/${sessionId}/deal`, {
     method: 'POST',
     headers: {

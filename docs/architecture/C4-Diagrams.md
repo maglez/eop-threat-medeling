@@ -845,7 +845,7 @@ teardown handle, not the transport.
 > reach for one. An out-of-contract body throws `ContractViolationError extends ApiError` with a
 > synthetic `status = 502` (the server said `200`, so reusing its status would lie), which every
 > existing `catch (e) { if (e instanceof ApiError) … }` already handles unchanged. Three helpers
-> correctly have no parser and this is not an omission: `startNewGame` reads no body, `dealCards`
+> correctly have no parser and this is not an omission: `startNewGame` reads no body, `dealHands`
 > returns `204`, and `subscribeToSession`'s `data:` frames carry no DTO — the re-fetch they
 > trigger goes through a parsed helper. Strictness is bounded to structure and enum membership,
 > **not** value formats, so the honest claim about these DTOs is that they are *structurally and
