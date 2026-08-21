@@ -273,6 +273,33 @@ class GameOverControllerIntegrationTest {
                     .as("detail must not contain the framework static-resource signature")
                     .doesNotContain("No static resource");
         }
+
+        @Test
+        @DisplayName("a seated participant, not only the facilitator, sees the unrecorded-result 404")
+        void leaderboard404ForUnrecordedResultReachesAnySeatedPlayer() throws Exception {
+            // The security argument for splitting the 404 title is that only a seated player can
+            // observe it — a stranger is stopped with 403 by ResolvePlayerUseCase before the result
+            // row is read. "Seated" must therefore mean every seat, not just seat 0: a participant
+            // has to receive the same problem body rather than a 403 or the old absent-session text.
+            final var table = endedTableWithoutResult();
+            final var participant = table.seats().get(1);
+
+            final var result = getLeaderboard(table.sessionId(), participant.playerToken());
+
+            Assertions.assertThat(result.getResponse().getStatus())
+                    .as("a participant is seated, so this is 404 rather than the stranger's 403")
+                    .isEqualTo(404);
+            assertProblemJson(result);
+
+            final var document = JsonPath.parse(result.getResponse().getContentAsString());
+
+            Assertions.assertThat(document.read("$.title", String.class))
+                    .as("a participant sees the same title the facilitator sees")
+                    .isEqualTo("Game result not recorded");
+            Assertions.assertThat(document.read("$.detail", String.class))
+                    .as("and is never told the session they are sitting at is absent")
+                    .doesNotContain("No session found");
+        }
     }
 
     @Nested

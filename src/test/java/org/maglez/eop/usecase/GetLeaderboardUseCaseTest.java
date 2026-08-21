@@ -60,12 +60,17 @@ class GetLeaderboardUseCaseTest {
             // EOP-87: the adapter used to write the string "COMPLETED" itself, which was correct
             // only because the guard above refuses every other status. The status now travels from
             // the session the repository returned, so it cannot drift from it.
+            //
+            // This asserts the value is the resolved session's own status. It cannot, by
+            // construction, distinguish that from a hardcoded COMPLETED, because the guard one step
+            // above makes every other status unreachable here. The test that does draw that
+            // distinction is GameOverControllerTest.shouldEchoTheResolvedSessionStatus, which stubs
+            // this use case and hands the adapter an IN_PROGRESS result the guard would never allow.
             resultRepository.seed(aGameResult());
 
             final var returned = useCase().execute(SESSION_ID, tokenFor(0));
 
             assertThat(returned.sessionStatus()).isEqualTo(completedTable().status());
-            assertThat(returned.sessionStatus()).isEqualTo(SessionStatus.COMPLETED);
         }
 
         @Test
@@ -74,11 +79,19 @@ class GetLeaderboardUseCaseTest {
             // The row is still required — shouldThrowWhenNoResultPersisted proves that — but it is
             // deliberately not carried out of the use case, because standings are recomputed from
             // the tricks on every read (ADR-030) and no consumer ever read it.
+            //
+            // The record components are asserted reflectively rather than by comparing the returned
+            // value against a rebuilt one: a record's generated equals() makes that comparison a
+            // tautology, so it would survive re-adding a GameResult component. This fails the
+            // moment anybody puts the row back into the return value.
             resultRepository.seed(aGameResult());
 
             final var returned = useCase().execute(SESSION_ID, tokenFor(0));
 
-            assertThat(returned).isEqualTo(new LeaderboardResult(SessionStatus.COMPLETED, returned.scoreSheet()));
+            assertThat(LeaderboardResult.class.getRecordComponents())
+                    .extracting(java.lang.reflect.RecordComponent::getName)
+                    .containsExactly("sessionStatus", "scoreSheet");
+            assertThat(returned.scoreSheet()).isNotNull();
             assertThat(resultRepository.findBySessionIdCalls()).isEqualTo(1);
         }
 
@@ -130,6 +143,28 @@ class GetLeaderboardUseCaseTest {
             assertThatExceptionOfType(GameResultNotRecordedException.class)
                     .isThrownBy(() -> useCase().execute(SESSION_ID, tokenFor(0)))
                     .isNotInstanceOf(SessionNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("GameResultNotRecordedException")
+    class TheUnrecordedResultException {
+
+        @Test
+        @DisplayName("refuses a null session identifier")
+        void shouldRefuseANullSessionId() {
+            // The identifier is the only thing this exception carries, and the handler interpolates
+            // it straight into the problem detail. A null would reach the client as the string
+            // "null", so the constructor rejects it rather than rendering it.
+            assertThatNullPointerException()
+                    .isThrownBy(() -> new GameResultNotRecordedException(null))
+                    .withMessageContaining("sessionId is required");
+        }
+
+        @Test
+        @DisplayName("exposes the session identifier it was given")
+        void shouldExposeTheSessionId() {
+            assertThat(new GameResultNotRecordedException(SESSION_ID).sessionId()).isEqualTo(SESSION_ID);
         }
     }
 
