@@ -347,9 +347,21 @@ the EOP-22 amendment above required to be verified before this flag's position c
 cadence is `eop.sweep.interval-ms` (default 1 hour) with `eop.sweep.initial-delay-ms` (default
 5 minutes). Both are appropriate for the current single-instance deployment (ADR-012, ADR-036).
 
-The released surface is **lobby-only**: `eop.features.trick-play` remains `false`, so deal, play
-and resolve-trick routes are still absent. "session-lifecycle is now ON" means the five lobby
-endpoints and the sweep are live; it does not mean the full game is playable.
+The released surface was **lobby-only** at EOP-25: `eop.features.trick-play` was `false`, so deal,
+play and resolve-trick routes were absent. "session-lifecycle is now ON" meant the five lobby
+endpoints and the sweep were live; it did not mean the full game was playable.
+
+*(Amended 2026-08-21, EOP-49 — tense pinned, because this paragraph was written in the present and
+had become the opposite of true. `eop.features.trick-play` is `true` as of EOP-70 (2026-08-17),
+`application.yml:129`, so the deal, play and resolve-trick routes are present and the released
+surface is no longer lobby-only. This mattered more than an ordinary stale sentence: as the flag
+register, this document is where every other ADR now sends a reader for the flag's value — ADR-023
+and `docs/adr/README.md` both drop their own arity and point here — and it was simultaneously
+stating `true` in the dated counts above and `false` here. A register that contradicts itself is
+worse than one that is merely out of date, because each half corroborates a different answer. The
+counts paragraph above is the live statement; anything in this document phrased in the present
+tense about a flag's **value** and not carrying a date should be read as the state at its own
+story and checked with `grep -n 'trick-play' src/main/resources/application.yml`.)*
 
 Note on the Decision bullets above: "Every flag is off by default" (line 44) describes the
 invariant for *new* flags and for the off position of existing ones — it is not violated by this

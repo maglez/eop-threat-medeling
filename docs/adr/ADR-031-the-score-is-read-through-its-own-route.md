@@ -191,9 +191,13 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
 - Two `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` families surfaced on the new DTOs and were closed with a
   compact constructor calling `List.copyOf` on each list component, matching `TrickPlayDto`. The
   double copy the *domain* records use is belt-and-braces; the detector is satisfied by one.
-- **`eop.features.trick-play` remains `false`.** Nothing shipped here is reachable in a deployed
-  container, and flipping the flag is still its own story per
-  [ADR-028](ADR-028-end-of-hand-without-release-or-score.md).
+- **`eop.features.trick-play` was `false` when this slice shipped.** Nothing shipped here was
+  reachable in a deployed container, and flipping the flag was its own story per
+  [ADR-028](ADR-028-end-of-hand-without-release-or-score.md). *(Amended 2026-08-21, EOP-49 — tense
+  pinned. That story ran: EOP-70 flipped the flag `true` on 2026-08-17 (`application.yml:129`), so
+  `GET /api/v1/sessions/{sessionId}/score` is reachable and the unreachability this bullet claimed
+  no longer holds. The bullet is left standing as the slice-outcome record it is, rather than
+  rewritten, because what shipped here did not change — only the containment in front of it did.)*
 - The comment block above that flag in `application.yml` had to be corrected in this slice. It
   justified naming EOP-15 a predecessor on the grounds that "a player could play every card and the
   session would still report `IN_PROGRESS` with no score anywhere" — the second half is now false,
