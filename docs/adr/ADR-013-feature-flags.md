@@ -176,17 +176,31 @@ flag-on reachable?" is now ADR-026 and EOP-15. The list of three is kept as writ
 records why the flag was still down when Slice E merged, and because ADR-028's decision sentence
 names the same three; neither is to be read as the current count.)*
 
-The counts also moved, and this is the register's current statement of them. The flag withholds
-**six use-case beans and two controllers — eight beans in all**: `DealHandsUseCase`,
-`ReadOwnHandUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`, `GetTrickStateUseCase` and `GetScoreUseCase`, plus `ScoreController` and
-`TrickController` (`UseCaseConfiguration.java:219`, `:250`, `:269`, `:301`, `:320`, `:343`,
-`TrickController.java:69` and `ScoreController.java:42`), whose **six** routes — `POST /{sessionId}/deal`,
-`GET /{sessionId}/hand`, `POST /{sessionId}/plays`, `GET /{sessionId}/tricks/current` and
-`POST /{sessionId}/tricks/current/resolve`, and `GET /{sessionId}/score` — answer the
-framework's own 404 while it is off.
-`TrickPlayDisabledIntegrationTest` asserts both halves at that arity: eight beans absent
-(`:88`, `:94`, `:100`, `:106`, `:121`, `:128`, `:134`, `:141`) *and* six routes 404 (`:148`,
-`:156`, `:164`, `:174`, `:182`, `:190`). It stays `false` on merge — `application.yml:112`.
+**The counts moved again, and are stated below with a date rather than as a standing "current"
+figure.** Re-derived from source on 2026-08-21 under EOP-41, the flag withholds **seven use-case
+beans and three controllers — ten beans in all**: `DealHandsUseCase`, `ReadOwnHandUseCase`,
+`PlayCardUseCase`, `GetTrickStateUseCase`, `ResolveTrickUseCase`, `EndSessionUseCase` and
+`GetScoreUseCase`, plus `TrickController`, `ScoreController` and `EndSessionController`
+(`UseCaseConfiguration.java:238`, `:269`, `:295`, `:331`, `:353`, `:384`, `:410`,
+`TrickController.java:70`, `ScoreController.java:42` and `EndSessionController.java:54`), whose
+**seven** routes — `POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`,
+`GET /{sessionId}/tricks/current`, `POST /{sessionId}/tricks/current/resolve`,
+`GET /{sessionId}/score` and `POST /{sessionId}/end` — answer the framework's own 404 while it is
+off. `TrickPlayDisabledIntegrationTest` asserts both halves at that arity: ten beans absent
+(`:90`, `:96`, `:102`, `:108`, `:123`, `:130`, `:136`, `:143`, `:150`, `:163`) *and* seven routes
+404 (`:171`, `:179`, `:189`, `:197`, `:205`, `:212`, `:220`). The flag is **`true`** —
+`application.yml:129`, flipped by EOP-70; see the 2026-08-17 note below.
+
+*(Amended 2026-08-21, EOP-41 — every figure and anchor in the paragraph above was re-derived before
+being written, because none of the previous ones survived. It read "this is the register's current
+statement", claimed eight beans and six routes, cited eight `UseCaseConfiguration`/controller
+anchors that no longer pointed at the annotations they named, and closed "It stays `false` on merge
+— `application.yml:112`", which EOP-70 had made false in both the value and the line. Prefer
+regenerating to trusting the list: `grep -rn 'trick-play' --include='*.java' src/main/java | grep
+ConditionalOnProperty` prints exactly the ten gated declarations, and `grep -n 'trick-play'
+src/main/resources/application.yml` prints the flag's value and line. The figures here will decay
+the same way — the date is on them so that a reader can tell how much to trust them, which is the
+distinction the superseded wording lost by calling itself "current".)*
 
 **2026-08-14 — a fail-open condition in the first flag, found reviewing the second.**
 `TrickController` was written with `@ConditionalOnProperty(prefix = "eop.features",
