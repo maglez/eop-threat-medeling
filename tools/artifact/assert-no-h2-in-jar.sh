@@ -21,8 +21,10 @@
 # AFTER `package`, and is already available at 3.5.6 from the Boot parent, so a failsafe IT
 # reading the jar with java.util.zip.ZipFile would work and would run inside `./mvnw
 # verify`. That was considered and rejected: this project declares no failsafe execution
-# today, so it would become the seventh declared Maven plugin (ADR-006 and ADR-047 both
-# treat that count as a thing to hold), and tools/supply-chain/audit-plugins.sh already
+# today, so it would become the seventh declared Maven plugin (.opencode/rules/build-quality.md
+# enumerates the six -- spring-boot, checkstyle, javadoc, spotbugs, jacoco, enforcer -- and
+# ADR-047 treats that count as a thing to hold; ADR-006 governs the gates themselves and does
+# not itself cap the count), and tools/supply-chain/audit-plugins.sh already
 # establishes the committed-script-invoked-from-CI idiom for a gate of exactly this shape.
 # The cost of that choice is real and is recorded in ADR-047: `./mvnw verify` alone does
 # not prove this property, so a developer running only Maven locally does not exercise it.
