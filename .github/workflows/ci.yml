@@ -66,6 +66,17 @@ jobs:
       - name: Build and test
         run: ./mvnw verify --batch-mode
 
+      # `./mvnw verify` cannot gate its own output: surefire binds to `test`,
+      # which runs before `package`, so no JUnit test can inspect the
+      # repackaged jar. This step is therefore the only thing standing between
+      # a lost `<excludes>` block in `pom.xml` and H2's 13 `org.h2.server.web`
+      # classes going back inside the artifact that runs on a server. It sits
+      # before `Upload artifact` on purpose, so nothing unverified is published,
+      # and inside `build` because that is the only required check on `main`.
+      # See docs/adr/ADR-047-h2-excluded-from-deployable-artifact.md.
+      - name: Assert no H2 in the deployable artifact
+        run: tools/artifact/assert-no-h2-in-jar.sh
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

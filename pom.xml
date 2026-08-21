@@ -76,6 +76,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-liquibase</artifactId>
         </dependency>
+        <!-- Stays `runtime`, and is excluded from the repackaged jar further down. Do not
+             "harden" this to `test`: the default profile resolves org.h2.Driver, so every
+             `./mvnw spring-boot:run` needs H2 on the run classpath, and ADR-012 makes that
+             path a decision rather than an accident. The artifact is hardened instead of the
+             scope, which also holds if somebody later widens this to `compile`. See ADR-047. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
@@ -108,6 +113,35 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- H2 is kept off the deployable artifact (EOP-34, ADR-047). h2-2.4.240.jar
+                     carries 13 classes in org.h2.server.web, including JakartaWebServlet, and
+                     until now they shipped inside BOOT-INF/lib of the jar that runs on EC2:
+                     a full unauthenticated SQL console one reflective servlet registration
+                     away, in an artifact that never needs H2 at all because every deployed
+                     configuration runs the `prod` profile against PostgreSQL.
+
+                     The exclusion is deliberately on the `repackage` EXECUTION rather than on
+                     the plugin. `excludes` is inherited from AbstractDependencyFilterMojo,
+                     which the `run` goal extends too, so a plugin-level <configuration> would
+                     also strip H2 from `./mvnw spring-boot:run` and break local development on
+                     the default profile, the exact regression this shape exists to avoid.
+                     Keep it here; do not hoist it.
+
+                     tools/artifact/assert-no-h2-in-jar.sh gates the result, because no JUnit
+                     test can: surefire runs at `test`, which precedes `package`. -->
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>
+                                    <groupId>com.h2database</groupId>
+                                    <artifactId>h2</artifactId>
+                                </exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
