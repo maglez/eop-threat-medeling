@@ -82,7 +82,7 @@ public class GameOverController {
             @RequestHeader(name = SessionController.PLAYER_TOKEN_HEADER, required = false)
                     final String playerToken) {
         final var leaderboard = getLeaderboardUseCase.execute(sessionId, playerToken);
-        return LeaderboardDto.from(leaderboard.scoreSheet(), "COMPLETED");
+        return LeaderboardDto.from(leaderboard.scoreSheet(), leaderboard.sessionStatus().name());
     }
 
     /**

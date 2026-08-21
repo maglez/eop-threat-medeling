@@ -20,9 +20,16 @@ import org.maglez.eop.entity.SessionStatus;
  * those plays. Membership is still required so that a stranger who guesses a session
  * identifier cannot read the result (ADR-024).
  *
- * <p>Returns a {@link LeaderboardResult} that bundles the persisted {@link org.maglez.eop.entity.GameResult}
- * with the derived {@link ScoreSheet}, so the controller can build the full leaderboard DTO
- * (including per-suit STRIDE breakdown) from a single use-case call.
+ * <p>Returns a {@link LeaderboardResult} carrying the resolved {@link SessionStatus} and the derived
+ * {@link ScoreSheet}, so the controller can build the full leaderboard DTO (including the per-suit
+ * STRIDE breakdown) from a single use-case call and without inventing the status itself.
+ *
+ * <p>The persisted {@code GameResult} row is read here but deliberately not returned. Scores are
+ * recomputed from the trick history on every read (ADR-030), so the row holds nothing this endpoint
+ * serves — it is an existence gate, and absent it the caller gets
+ * {@link GameResultNotRecordedException} rather than a leaderboard derived from a game whose result
+ * was never recorded. Until EOP-87 it was carried out through {@code LeaderboardResult} as a
+ * non-null component that no consumer read.
  *
  * <p>Pure use case: no Spring, no Jakarta imports.
  */
@@ -55,7 +62,7 @@ public class GetLeaderboardUseCase {
      *
      * @param sessionId   the session to read the leaderboard for
      * @param playerToken the caller's identity token, as presented
-     * @return the leaderboard result containing the game result and score sheet
+     * @return the leaderboard result carrying the resolved session status and the derived score sheet
      * @throws NullPointerException              if sessionId is null
      * @throws SessionNotFoundException          if no session has that identifier
      * @throws PlayerNotRecognisedException      if the token names nobody at this table
@@ -68,10 +75,13 @@ public class GetLeaderboardUseCase {
         if (resolved.session().status() != SessionStatus.COMPLETED) {
             throw new GameNotCompletedException(sessionId);
         }
-        final var gameResult = gameResultRepository.findBySessionId(sessionId)
-                .orElseThrow(() -> new GameResultNotRecordedException(sessionId));
+        // Existence gate only: the row carries nothing the response serves, because standings are
+        // recomputed from the tricks below on every read (ADR-030).
+        if (gameResultRepository.findBySessionId(sessionId).isEmpty()) {
+            throw new GameResultNotRecordedException(sessionId);
+        }
         final var scoreSheet = ScoreSheet.of(resolved.session().players(),
                 trickRepository.findTricks(sessionId));
-        return new LeaderboardResult(gameResult, scoreSheet);
+        return new LeaderboardResult(resolved.session().status(), scoreSheet);
     }
 }

@@ -55,14 +55,31 @@ class GetLeaderboardUseCaseTest {
     class ReadingTheLeaderboard {
 
         @Test
-        @DisplayName("returns the persisted game result for a completed session")
-        void shouldReturnTheGameResult() {
-            final var result = aGameResult();
-            resultRepository.seed(result);
+        @DisplayName("carries the status read off the resolved session, not a literal")
+        void shouldCarryTheResolvedSessionStatus() {
+            // EOP-87: the adapter used to write the string "COMPLETED" itself, which was correct
+            // only because the guard above refuses every other status. The status now travels from
+            // the session the repository returned, so it cannot drift from it.
+            resultRepository.seed(aGameResult());
 
             final var returned = useCase().execute(SESSION_ID, tokenFor(0));
 
-            assertThat(returned.gameResult()).isEqualTo(result);
+            assertThat(returned.sessionStatus()).isEqualTo(completedTable().status());
+            assertThat(returned.sessionStatus()).isEqualTo(SessionStatus.COMPLETED);
+        }
+
+        @Test
+        @DisplayName("reads the result row as an existence gate without returning it")
+        void shouldNotReturnTheGameResult() {
+            // The row is still required — shouldThrowWhenNoResultPersisted proves that — but it is
+            // deliberately not carried out of the use case, because standings are recomputed from
+            // the tricks on every read (ADR-030) and no consumer ever read it.
+            resultRepository.seed(aGameResult());
+
+            final var returned = useCase().execute(SESSION_ID, tokenFor(0));
+
+            assertThat(returned).isEqualTo(new LeaderboardResult(SessionStatus.COMPLETED, returned.scoreSheet()));
+            assertThat(resultRepository.findBySessionIdCalls()).isEqualTo(1);
         }
 
         @Test

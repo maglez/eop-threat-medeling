@@ -1232,13 +1232,21 @@ sequenceDiagram
     GameResultRepository-->>GetLeaderboardUseCase: GameResult (else 404 Game result not recorded)
     GetLeaderboardUseCase->>TrickRepository: findTricks(sessionId)
     TrickRepository-->>GetLeaderboardUseCase: List<Trick>
-    GetLeaderboardUseCase-->>GameOverController: LeaderboardResult(gameResult, scoreSheet)
+    GetLeaderboardUseCase-->>GameOverController: LeaderboardResult(sessionStatus, scoreSheet)
     GameOverController-->>Browser: 200 LeaderboardDto (scores derived from live tricks, ADR-030)
 ```
 
 **Scores are always derived from the live trick history** (ADR-030). The `GameResult` row is used
 only to confirm a result was recorded; `ScoreSheet.standings()` and
-`ScoreSheet.capturedBySuitByPlayer()` compute the actual numbers.
+`ScoreSheet.capturedBySuitByPlayer()` compute the actual numbers. The row is read as an existence
+gate and deliberately **not** returned — until EOP-87 `LeaderboardResult` carried it as a non-null
+component that no consumer read.
+
+The `sessionStatus` in the response is the status read off the resolved session and carried out
+through `LeaderboardResult`, not a literal written by the adapter. Until EOP-87 `GameOverController`
+wrote `"COMPLETED"` itself, which was correct only because `GetLeaderboardUseCase` refuses every
+other status one step earlier — a temporal coupling that would have started lying silently the
+moment that guard was relaxed.
 
 ---
 
