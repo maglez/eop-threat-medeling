@@ -395,7 +395,11 @@ is its own use case.
   number is a deliberate disclosure to a member of the session and is only defensible because decision 4
   puts authorisation before every read.
 - **ADR-013** — feature flags via `@ConditionalOnProperty` and `application.yml`. `eop.features.trick-play`
-  is registered there, defaulted false, and gates the three new beans.
+  is registered there, was `false` when this ADR was written, and gated the three beans it introduced.
+  *(Amended 2026-08-21, EOP-49 — both halves of that clause have moved. EOP-70 set the flag `true` on
+  2026-08-17, and the gated set has grown well past these three: ten beans over seven routes as
+  re-derived under EOP-41. ADR-013 is the register and states the live value and arity with a date, so
+  this bullet points there rather than restating either.)*
 - **ADR-014** — Server-Sent Events as the real-time transport. None of these three use cases takes a
   `SessionEventPublisher`, so none of them broadcasts, and the stream says nothing for the whole of a
   trick; decision 8 records why and who closes it. The same publisher being non-transactional is what

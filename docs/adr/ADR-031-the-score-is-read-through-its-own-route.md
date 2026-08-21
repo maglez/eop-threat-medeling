@@ -217,19 +217,27 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
 - Slice C inherits an unchanged obligation: persisting final standings stays conditional, must be
   justified by a purpose derivation cannot serve, and a persisted standing must never be read back
   to answer the score.
-- A client watching only `GET /api/v1/sessions/{sessionId}` still never sees a session finish. That
-  gap is slice C's, and it is the one thing left before the flag can be flipped.
+- A client watching only `GET /api/v1/sessions/{sessionId}` did not yet see a session finish. That
+  gap was slice C's, and it was the one thing left before the flag could be flipped. *(Amended
+  2026-08-21, EOP-49 — both are spent: slice C closed the transition and EOP-70 flipped the flag
+  `true` on 2026-08-17. The bullet is pinned rather than deleted because it records what this slice
+  left open, but it is no longer a statement about anything outstanding.)*
 
 **Carried conditions for slice C** (re-derived from the tree; these are what the architecture gate
 will check before approving slice C):
 
-*(Amended 2026-08-21, EOP-49 — conditions 1 and 2 are spent and are left standing as the record of
+*(Amended 2026-08-21, EOP-49 — conditions 1, 2 and 5 are spent and are left standing as the record of
 what slice C was asked to carry, not as live instructions. Slice C closed the `COMPLETED`
 transition, which condition 2 named as "the one thing left before the flag can be flipped"; the
 flag was then flipped, so condition 1's "keep it `false` on merge" no longer applies to anything.
+Condition 5 needs the fuller answer, because it reads as a prohibition the shipped state violates:
+the flag did go `true` with the thirteen use cases still logging nothing, and that condition was
+discharged by relocation rather than satisfaction — ADR-026 put audit logging at the HTTP boundary
+instead of in the use cases, so what it demanded was delivered elsewhere and its precondition on the
+flag lapsed with it. Read it as a record of a bar that was later moved, not one that was cleared.
 `eop.features.trick-play` is `true` — EOP-70, 2026-08-17, and [ADR-013](ADR-013-feature-flags.md)
 is the register that states it with a date. Do not read condition 1 as a standing instruction to
-merge with the flag off.)*
+merge with the flag off, and do not read condition 5 as a standing bar on flipping it.)*
 
 1. Keep `eop.features.trick-play: false` on merge; flipping the flag is its own story and its own
    audit.
