@@ -159,7 +159,7 @@ consumer that does not exist yet rather than a fix for a live defect.
   > remove. Every field whose contract schema is a *mirrored* enum is now both typed against that
   > mirror and membership-checked by a parser; `rank` sits outside that claim because `Rank` has no
   > mirror, not because `rank` is narrow.
-- **`startNewGame` and `dealCards` gain no parser.** Neither reads a body — `dealCards`
+- **`startNewGame` and `dealHands` gain no parser.** Neither reads a body — `dealHands`
   returns `204 No Content`. Adding a parser to a void helper would be theatre.
 - **`subscribeToSession` gains no parser.** The SSE stream is a *doorbell*: a `data:` frame
   signals "state changed" and the caller re-fetches through `getSession`, which is parsed.
@@ -180,8 +180,8 @@ consumer that does not exist yet rather than a fix for a live defect.
 - Out-of-contract enum values fail loudly at the boundary with a diagnosable message,
   instead of silently making every comparison false.
 - Ten previously untested helpers gain coverage. Before this change `ui/src/api.test.ts`
-  exercised only `subscribeToSession`, `dealCards` and the mirrors — the ten JSON helpers
-  had no module-level tests at all.
+  exercised only `subscribeToSession`, `dealHands` (then named `dealCards` — renamed by
+  EOP-67) and the mirrors — the ten JSON helpers had no module-level tests at all.
 - No new production dependency; bundle size effectively unchanged.
 
 **Negative — stated plainly**

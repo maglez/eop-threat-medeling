@@ -76,8 +76,8 @@ revisited.
   audit trail is present but not machine-parseable and not correlated across requests. This deferral
   is recorded in ADR-026 §Decision.
 - The `LobbyScreen` deal call is non-atomic with the start call: if `startGame` succeeds and
-  `dealCards` fails, the session is `IN_PROGRESS` but undealt. There is no retry affordance in the
-  current UI — the `dealCards` call site in `LobbyScreen` is unmounted once the SSE event fires
+  `dealHands` fails, the session is `IN_PROGRESS` but undealt. There is no retry affordance in the
+  current UI — the `dealHands` call site in `LobbyScreen` is unmounted once the SSE event fires
   `onGameStarted`, so a failed deal leaves the session permanently undealt with no path back to a
   deal call. `GameScreen` shows a "Waiting for cards to be dealt…" banner in this state, which is
   accurate but unrecoverable without a facilitator-side retry feature. A retry affordance is a
