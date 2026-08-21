@@ -223,6 +223,14 @@ gap that quietly becomes permanent. `pom.xml` now carries a `BRANCH` limit along
 **Carried conditions for slice C** (re-derived from the tree; these are what the architecture gate
 will check before approving slice C):
 
+*(Amended 2026-08-21, EOP-49 — conditions 1 and 2 are spent and are left standing as the record of
+what slice C was asked to carry, not as live instructions. Slice C closed the `COMPLETED`
+transition, which condition 2 named as "the one thing left before the flag can be flipped"; the
+flag was then flipped, so condition 1's "keep it `false` on merge" no longer applies to anything.
+`eop.features.trick-play` is `true` — EOP-70, 2026-08-17, and [ADR-013](ADR-013-feature-flags.md)
+is the register that states it with a date. Do not read condition 1 as a standing instruction to
+merge with the flag off.)*
+
 1. Keep `eop.features.trick-play: false` on merge; flipping the flag is its own story and its own
    audit.
 2. Close the `COMPLETED` transition so a client watching only `GET /api/v1/sessions/{sessionId}`

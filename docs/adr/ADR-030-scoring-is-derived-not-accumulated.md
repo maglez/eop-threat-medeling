@@ -188,7 +188,12 @@ slice.
   a standings table as planned.
 - No changeset, no entity change, no route and no use case in this slice. It is additive
   and unreachable from HTTP, so it is safe to merge with `eop.features.trick-play` still
-  `false` — which it stays, per ADR-028; flipping it is a separate story.
+  `false` — which it stayed at the time, per ADR-028; flipping it is a separate story.
+  *(Amended 2026-08-21, EOP-49 — that separate story ran. EOP-70 set the flag `true` on
+  2026-08-17, so "which it stays" is spent: what this slice added is reachable now. The
+  bullet is left standing as the merge-safety record it is, because the reasoning was
+  sound and the merge was safe; only the containment in front of it has gone.
+  [ADR-013](ADR-013-feature-flags.md) states the live value.)*
 - The reading slice needs one new read method on `TrickRepository` returning a session's
   tricks. It must carry no acting player, per ADR-024: authorising the requester is the
   use case's job and no port's.
@@ -265,6 +270,7 @@ slice.
   is that ADR-027 forbids exposing every player's *private* state through one route, and a
   score names only cards already face up.
 - [ADR-028](ADR-028-end-of-hand-without-release-or-score.md) — assigned the `COMPLETED`
-  transition to this story and keeps `eop.features.trick-play` `false`. That transition
+  transition to this story and kept `eop.features.trick-play` `false` (EOP-70 has since set
+  it `true` — 2026-08-17; see [ADR-013](ADR-013-feature-flags.md)). That transition
   amends ADR-028 in the third slice rather than earning a new ADR, since ADR-028 already
   owns the decision.
