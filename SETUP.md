@@ -56,6 +56,17 @@ If `.env` already exists, append only missing variables:
 grep -v '^#' .env.example >> .env   # then remove duplicates manually
 ```
 
+> **Then replace every `CHANGE_ME` in your `.env` before starting anything.** The
+> template ships `CHANGE_ME` rather than a plausible-looking password precisely so
+> that a copied file cannot quietly seed Grafana, InfluxDB or PostgreSQL with a
+> credential published in git. Enumerate what you still owe with:
+> ```bash
+> grep -n CHANGE_ME .env
+> ```
+> Empty is the goal. Note `DB_PASSWORD=` is deliberately empty and is *not* a
+> `CHANGE_ME` — it pairs with `DB_USERNAME=sa` for local in-memory H2, which has no
+> password. Leave it alone.
+
 > **An `.env` predating the containerised stack will be missing `POSTGRES_DB`,
 > `POSTGRES_USER` and `POSTGRES_PASSWORD`.** `compose.app.yml` declares those with
 > required-variable syntax, so `docker compose -f compose.app.yml up -d` fails

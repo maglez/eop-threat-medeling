@@ -146,7 +146,15 @@ public final class GameSession {
      * a seat number {@link Player} would reject. Returning the count regardless
      * made the seventh join fail as an invalid argument, which the API reported
      * as 400 quoting an internal invariant, instead of the 409 the caller is
-     * owed. Keeping the capacity rule here means one place states it.
+     * owed.
+     *
+     * <p>The capacity rule is stated twice on purpose: here, so a caller asking
+     * for a seat is refused before it builds anything; and again in
+     * {@link #join(Player, Instant)}, which has to hold the invariant even for a
+     * caller that never asks for a seat. Neither check makes the other
+     * redundant. An earlier version of this paragraph claimed "one place states
+     * it", which the guard in {@code join} has always falsified — do not restore
+     * the tidier sentence.
      *
      * @return the next free seat
      * @throws SessionFullException if every seat is already taken
@@ -160,6 +168,22 @@ public final class GameSession {
 
     /**
      * Adds a player to the lobby.
+     *
+     * <p>The capacity check below is deliberate defence in depth, not a leftover.
+     * {@link #nextSeatOrder()} refuses a seventh seat and the join use case calls
+     * it immediately beforehand, so on today's path this branch cannot be
+     * reached. Reachability is a property of the current callers, though, not of
+     * this method: a future caller that seats a player without first asking for a
+     * seat number would reach it, and an entity has to hold its own invariant
+     * rather than trust the sequence it happens to be called in.
+     *
+     * <p>What it does not do is make {@code MAXIMUM_PLAYERS} true of every
+     * instance — the private constructor does that, and every path back out of
+     * this class returns through it. Delete this check and a seventh player is
+     * still refused, but as an {@code IllegalArgumentException} the API reports as
+     * 400 quoting an internal invariant. What this check preserves is the 409 the
+     * caller is owed, held at this seam instead of delegated to the constructor's
+     * coarser refusal — the same lesson {@link #nextSeatOrder()} records above.
      *
      * @param joining the player to seat
      * @param now     the instant of the join
