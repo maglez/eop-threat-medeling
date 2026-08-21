@@ -107,5 +107,9 @@ addressable and listing them is legitimate.
 - [ADR-015](ADR-015-player-identity.md) — the `X-EoP-Player-Token` header is what makes the route
   a singleton by construction; without an identity credential there would be nothing to resolve the
   hand from and a selector would be unavoidable.
-- [ADR-013](ADR-013-feature-flags.md) — the route is withheld by `eop.features.trick-play` and answers
-  404 while it is `false`.
+- [ADR-013](ADR-013-feature-flags.md) — the route was withheld by `eop.features.trick-play` and
+  answered 404 while it was `false`. *(Amended 2026-08-21, EOP-49 — it is not withheld now: EOP-70 set
+  the flag `true` on 2026-08-17, so the route is served and only ADR-015's token and ADR-024's
+  authorisation stand in front of it. Unlike the clause at the top of this section, this bullet sits
+  outside any dated block, so it is pinned here rather than superseded from below. ADR-013 states the
+  live value with a date.)*

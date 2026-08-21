@@ -93,7 +93,7 @@ refusals `Trick.acceptPlay` would raise anyway. Those pre-flights buy ordering, 
 doomed play from committing a trick row first, and they turn what would surface as a 500 into a
 distinguishable 403 or 422. Decision 9 records what that ordering rests on and how it can break.
 
-### 4. Authorisation is the first statement of all three use cases
+### 4. Authorisation is the first port call of all three use cases
 
 ADR-024 recorded that the failure paths beneath these use cases are an oracle: a conditional update
 matching no rows causes the adapter to re-read the session and answer one of five distinguishable
@@ -102,10 +102,24 @@ leads. That is the right answer for a member and a disclosure to anyone else, an
 above can tell the two apart.
 
 So `DealHandsUseCase`, `PlayCardUseCase` and `ResolveTrickUseCase` each call `ResolvePlayerUseCase`
-as their first statement, before reading a hand, a trick or a card. `PlayCardUseCase` additionally
+as their first port call, before reading a hand, a trick or a card. `PlayCardUseCase` additionally
 derives the acting seat from the resolved player, and `PlayCardCommand` carries no seat, no player
 identifier, no suit and no rank, so a caller-supplied seat and a forged card are not expressible
 rather than merely rejected.
+
+**Amended 2026-08-21, EOP-49 — the ordinal, not the property.** The heading and the paragraph above
+said "first statement", which holds for `DealHandsUseCase` (`:132-133`) and `ResolveTrickUseCase`
+(`:165-166`) but not for `PlayCardUseCase`, where a null check on the command and a read of its
+session identifier precede the call (`PlayCardUseCase.java:186` and `:187`, port call at `:189`).
+Only the ordinal was wrong: authorisation still precedes every hand, trick and card read, which is
+the property this decision exists to assert, and the qualifier "before reading a hand, a trick or a
+card" was true throughout. Both are now "first port call". The same wording is corrected in ADR-024's
+Slice C2 amendment and in `docs/adr/README.md`'s ADR-024 row; it was already right in
+`PlayCardUseCase`'s own javadoc, in `CHANGELOG.md` and in the ADR-025 row of that index, which is why
+those are untouched. Regenerate the call sites rather than trusting a list —
+`grep -n 'resolvePlayerUseCase\.' src/main/java/org/maglez/eop/usecase/*.java` prints one line each.
+"All three" above means the three use cases this ADR is about, not the number that authorise this way,
+which is why no cardinal for the latter appears here.
 
 ### 5. Any member may resolve a trick; only the facilitator may deal
 
@@ -171,7 +185,7 @@ whole trick, and a client still learns of a deal, a play or a resolution only by
 **2026-08-14, EOP-14 Slice E.** The second half is discharged, and the two paragraphs above are now
 history rather than description. All three use cases take a `SessionEventPublisher` as a constructor
 parameter and publish on the write: `DealHandsUseCase.java:162` emits `HAND_DEALT`,
-`PlayCardUseCase.java:229` emits `CARD_PLAYED` and `ResolveTrickUseCase.java:162` emits
+`PlayCardUseCase.java:253` emits `CARD_PLAYED` and `ResolveTrickUseCase.java:195` emits
 `TRICK_RESOLVED`. Read the present tense of decision 8 as "as at Slice C2"; the stream is no longer
 silent for a whole trick, and the three names are no longer **reserved** in the contract. Two
 properties of the wiring are worth recording because they were choices, not consequences. Each
@@ -206,25 +220,25 @@ wrong in the first commit of this slice and is fixed by `fcb6fd5`. But `openTric
 `acceptPlay` runs, so the orphan-trick window is closed by an argument rather than by a mechanism.
 
 The argument has to be an exhaustion over the refusals `Trick.acceptPlay` actually makes, which means
-reading `Trick.java:360-384` rather than the exception vocabulary. Taken in the order the method
+reading `Trick.java:361-385` rather than the exception vocabulary. Taken in the order the method
 applies them, on an **opening** play — the only path that writes a trick row:
 
 | Refusal in `acceptPlay` | Why it cannot fire after `openTrick` |
 | --- | --- |
-| `IllegalArgumentException`, seat outside the table (`Trick.java:366-369`) | Unreachable. `actingSeat` is read from the resolved `Player` (`PlayCardUseCase.java:140`), never from the request, and the domain bounded it when the seat was assigned. |
-| `NotYourSeatException` (`Trick.java:372`) | **Inexpressible, not pre-flighted.** The check compares `candidate.seatOrder()` with `actingSeat`, and the candidate is constructed *with* `actingSeat` (`PlayCardUseCase.java:181-190`). The two operands are the same value by construction, so no input can make them differ. |
-| `IllegalArgumentException` from `hands.handOf(actingSeat)` (`Trick.java:375`) | Pre-flighted by `hands.hasSeat(actingSeat)` (`PlayCardUseCase.java:147-149`), which refuses with `PlayerNotInSessionException` first. |
-| `PlayerMismatchException` (`Trick.java:378`) | Unreachable, but **for a reason neither pre-flight supplies.** It compares `hand.playerId()` — frozen into `Hands` when the deal was recorded — with the resolved player's identifier. They can only disagree if a seat changes hands after the deal, and no such path exists: `seatPlayer` is guarded by `touchWhileInStatus(..., LOBBY, ...)` (`SessionRepositoryAdapter.java:96-103`), `GameSession.join` refuses unless the status accepts new players (`GameSession.java:163-164`) and only `LOBBY` does (`SessionStatus.java:38-40`), and `GameSession` has no leave, remove or vacate method at all. The seat-to-player map is immutable from the moment the session starts. |
-| `OutOfTurnException` (`Trick.java:243`, via `assertSeatMayPlay` at `:231`) | Pre-flighted by the leader-seat comparison (`PlayCardUseCase.java:168-170`), which is what makes the play an opening play in the first place. |
-| `IllegalStateException`, seat holding no cards (`Trick.java:240`, same helper) | Pre-flighted by `hand.resolve(card)` (`PlayCardUseCase.java:156`), which cannot succeed against an empty hand. |
-| `CardNotInHandException` (raised in `Hand.java:115`, reached through `assertLegalPlay` at `Trick.java:205`) | Pre-flighted by the same `hand.resolve(card)` — the use case calls the identical method on the identical hand before the write. |
-| `MustFollowSuitException` (`Trick.java:214`, same helper) | Cannot fire on an opening play: no suit has been led, so `ledSuit()` is empty and `assertLegalPlay` returns at `Trick.java:209`. |
+| `IllegalArgumentException`, seat outside the table (`Trick.java:367-369`) | Unreachable. `actingSeat` is read from the resolved `Player` (`PlayCardUseCase.java:190`), never from the request, and the domain bounded it when the seat was assigned. |
+| `NotYourSeatException` (`Trick.java:372`) | **Inexpressible, not pre-flighted.** The check compares `candidate.seatOrder()` with `actingSeat`, and the candidate is constructed *with* `actingSeat` (`PlayCardUseCase.java:234-243`). The two operands are the same value by construction, so no input can make them differ. |
+| `IllegalArgumentException` from `hands.handOf(actingSeat)` (`Trick.java:376`) | Pre-flighted by `hands.hasSeat(actingSeat)` (`PlayCardUseCase.java:197-199`), which refuses with `PlayerNotInSessionException` first. |
+| `PlayerMismatchException` (`Trick.java:378`) | Unreachable, but **for a reason neither pre-flight supplies.** It compares `hand.playerId()` — frozen into `Hands` when the deal was recorded — with the resolved player's identifier. They can only disagree if a seat changes hands after the deal, and no such path exists: `seatPlayer` is guarded by `touchWhileInStatus(..., LOBBY, ...)` (`SessionRepositoryAdapter.java:104-108`), `GameSession.join` refuses unless the status accepts new players (`GameSession.java:172-174`) and only `LOBBY` does (`SessionStatus.java:52-53`), and `GameSession` has no leave, remove or vacate method at all. The seat-to-player map is immutable from the moment the session starts. |
+| `OutOfTurnException` (`Trick.java:244`, via `assertSeatMayPlay` at `:232`) | Pre-flighted by the leader-seat comparison (`PlayCardUseCase.java:221-223`), which is what makes the play an opening play in the first place. |
+| `IllegalStateException`, seat holding no cards (`Trick.java:241`, same helper) | Pre-flighted by `hand.resolve(card)` (`PlayCardUseCase.java:209`), which cannot succeed against an empty hand. |
+| `CardNotInHandException` (raised in `Hand.java:115`, reached through `assertLegalPlay` at `Trick.java:203`) | Pre-flighted by the same `hand.resolve(card)` — the use case calls the identical method on the identical hand before the write. |
+| `MustFollowSuitException` (`Trick.java:215`, same helper) | Cannot fire on an opening play: no suit has been led, so `ledSuit()` is empty and `assertLegalPlay` returns at `Trick.java:209-210`. |
 
 `Trick`'s private constructor adds nine more refusals — a sequence below one, a leader seat outside
 the seat range, a seat playing twice, the same card twice, one player holding two seats, duplicate
 play identifiers, a winner foreign to the trick, a first play that does not belong to the leading
-seat, and plays that do not run clockwise from the leading seat (`Trick.java:37-102`) — all raised as
-`IllegalArgumentException`. Two `Objects.requireNonNull` calls at `Trick.java:43-44` raise
+seat, and plays that do not run clockwise from the leading seat (`Trick.java:38-103`) — all raised as
+`IllegalArgumentException`. Two `Objects.requireNonNull` calls at `Trick.java:44-45` raise
 `NullPointerException` and are excluded on that ground rather than overlooked. None can fire here
 either: the trick is empty when it is opened, so the four duplication invariants have nothing to
 duplicate; `acceptPlay` sets no winner; the sequence and the leader seat are supplied by
@@ -233,11 +247,11 @@ duplicate; `acceptPlay` sets no winner; the sequence and the leader seat are sup
 The last **two** deserve naming together, because they are the only refusals whose predicates first
 become live at exactly one play — which is the path this table exists to exhaust, and so the only part
 of the constructor where being empty is not itself the answer. Refusals one to seven are evaluated
-even on an empty trick and pass vacuously. The leading-seat guard (`Trick.java:82-88`) cannot fire
-because `seatToPlay` returns `leaderSeat` while `plays` is empty (`Trick.java:265-269`),
-`assertSeatMayPlay` forces `actingSeat == leaderSeat` (`Trick.java:381`), and `Trick.java:371-372`
+even on an empty trick and pass vacuously. The leading-seat guard (`Trick.java:83-88`) cannot fire
+because `seatToPlay` returns `leaderSeat` while `plays` is empty (`Trick.java:266-269`),
+`assertSeatMayPlay` forces `actingSeat == leaderSeat` (`Trick.java:382`), and `Trick.java:372-373`
 forces the candidate's own seat to equal `actingSeat`. The clockwise-rotation loop
-(`Trick.java:89-101`) cannot fire because with one play it runs a single iteration comparing an
+(`Trick.java:90-102`) cannot fire because with one play it runs a single iteration comparing an
 `offset` of zero against a `previousOffset` of minus one. Two earlier versions of this paragraph got
 this wrong in the same way twice: the first counted five refusals and omitted both, the second counted
 eight, named the leading-seat guard, and claimed it was **the only** refusal with that property — a
@@ -250,6 +264,26 @@ either; the constructor's `IllegalArgumentException`s are the refusals that actu
 place. An earlier version of this decision listed those two exceptions among the refusals `acceptPlay`
 makes and omitted three that it does make, which made the enumeration unverifiable against the method
 it claimed to exhaust. Corrected 2026-08-13.
+
+**Amended 2026-08-21, EOP-49 — every anchor in this decision re-derived; no claim changed.** The
+exhaustion above stands exactly as argued, but its pointers had all drifted, and for an argument whose
+whole value is that a reader can check it against `Trick.java` line by line, a stale pointer is the
+difference between an audit and an assertion. Corrected here: the extent of `acceptPlay`
+(`:360-384` → `:361-385`), eight `Trick.java` anchors in the table, five more in the two paragraphs
+that follow it, the private constructor (`:37-102` → `:38-103`) and its two `requireNonNull` calls
+(`:43-44` → `:44-45`), three cross-references out of the class
+(`SessionRepositoryAdapter.java:96-103` → `:104-108`, `GameSession.java:163-164` → `:172-174`,
+`SessionStatus.java:38-40` → `:52-53`), and the five `PlayCardUseCase` pre-flights. Those five matter
+most: `:140`, `:147-149`, `:156`, `:168-170` and `:181-190` had all come to land inside that method's
+javadoc `@throws` block, roughly forty lines above the code they name, so a reader following one to
+confirm a pre-flight arrived at documentation and could confirm nothing. Only `Trick.java:372` and
+`:378`, `Hand.java:115` and `DealHandsUseCase.java:162` were still right, and those are untouched.
+The enumeration itself was re-checked while the anchors were: the constructor still makes nine
+refusals, and the two whose predicates first become live at one play are still the leading-seat guard
+and the rotation loop. Prefer regenerating to trusting any of these numbers next time —
+`grep -n 'throw new' src/main/java/org/maglez/eop/entity/Trick.java` lists every refusal in the class
+against its current line. This decision's enumeration has twice been wrong on its counts, as the
+paragraph above records; this is the first time its anchors have been wrong on their line numbers.
 
 That argument is an exhaustion over the refusals `Trick.acceptPlay` has *today*. **Any refusal added to
 `acceptPlay`, or to `Trick`'s constructor, reopens the window**, silently, in a class that does not
@@ -361,7 +395,11 @@ is its own use case.
   number is a deliberate disclosure to a member of the session and is only defensible because decision 4
   puts authorisation before every read.
 - **ADR-013** — feature flags via `@ConditionalOnProperty` and `application.yml`. `eop.features.trick-play`
-  is registered there, defaulted false, and gates the three new beans.
+  is registered there, was `false` when this ADR was written, and gated the three beans it introduced.
+  *(Amended 2026-08-21, EOP-49 — both halves of that clause have moved. EOP-70 set the flag `true` on
+  2026-08-17, and the gated set has grown well past these three: ten beans over seven routes as
+  re-derived under EOP-41. ADR-013 is the register and states the live value and arity with a date, so
+  this bullet points there rather than restating either.)*
 - **ADR-014** — Server-Sent Events as the real-time transport. None of these three use cases takes a
   `SessionEventPublisher`, so none of them broadcasts, and the stream says nothing for the whole of a
   trick; decision 8 records why and who closes it. The same publisher being non-transactional is what
