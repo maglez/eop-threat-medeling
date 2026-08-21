@@ -866,6 +866,15 @@ paths:
         Requesting it while the session is still in progress returns `409` — the
         resource exists but is not yet in the right state.
 
+        Two distinct conditions return `404`, and the problem detail's `title`
+        tells them apart. `Session not found` means no session has that
+        identifier. `Game result not recorded` means the session is completed but
+        no result aggregate was ever written for it — either a facilitator ended
+        play early, which by design records no result, or the best-effort result
+        write failed and is not retried. Only the second is worth retrying, and
+        only a seated player can ever see it, so sharing a status discloses
+        nothing.
+
         Players with equal scores share the same rank (competition ranking). The
         `tied` flag makes this visible to a client rendering an ordinal without
         having to compare totals itself.
@@ -892,7 +901,16 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/SessionNotFound'
+          description: |
+            Either no session has that identifier (`title: Session not found`), or
+            the session is completed but no result was recorded for it
+            (`title: Game result not recorded`). The two share a status so a client
+            need not branch on it, and differ in `title` and `detail` so a seated
+            player is never told their own session does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
         '409':
           description: |
             The session exists but is not yet completed. The leaderboard is only
@@ -1777,8 +1795,18 @@ components:
         score descending (highest first). Players with equal scores share the same
         rank.
 
-        This is the Game Over screen's primary data. It is available in any
-        session state, not only `COMPLETED`.
+        This is the Game Over screen's primary data. It is served only once the
+        session is `COMPLETED` — a request in any other state is refused with
+        `409`, as documented on the operation itself. An earlier revision of this
+        schema claimed the opposite ("available in any session state"), which no
+        implementation ever matched.
+
+        `sessionStatus` is read off the session the request resolved, not written
+        as a constant by the adapter (EOP-87). Because the operation refuses every
+        other state one step earlier, `COMPLETED` is the only value a client can
+        observe here today. Widening that is a two-sided change: the client checks
+        this field against the `SessionStatus` members it mirrors and rejects the
+        response outright if it sees anything else.
       required: [rows, sessionStatus]
       properties:
         rows:
