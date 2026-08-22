@@ -32,8 +32,15 @@ COPY src ./src
 # Default is false (fail-closed) so that a plain `docker build` ships a dark
 # build; the CI pipeline and scripts/update-local.sh both pass the flag
 # explicitly to control the deployed position.
+#
+# Both ARG and ENV are required for each flag. Vite's loadEnv reads process.env,
+# which a build ARG alone does not populate, and ui/.dockerignore is default-deny
+# with no .env* allow-list — so ARG plus ENV is the only channel a flag has into
+# the bundle (ADR-037, EOP-78 amendment).
 ARG VITE_GAME_SCREEN_ENABLED=false
 ENV VITE_GAME_SCREEN_ENABLED=$VITE_GAME_SCREEN_ENABLED
+ARG VITE_CARD_MAGNIFIER_ENABLED=false
+ENV VITE_CARD_MAGNIFIER_ENABLED=$VITE_CARD_MAGNIFIER_ENABLED
 
 # The prebuild hook copies the GOV.UK Design System fonts and images into
 # public/ before Vite runs. Without it the stylesheet's absolute asset paths
