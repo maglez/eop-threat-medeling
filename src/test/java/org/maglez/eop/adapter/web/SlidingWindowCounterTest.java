@@ -11,6 +11,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -299,5 +305,65 @@ class SlidingWindowCounterTest {
                 .contains("limit=7")
                 .contains("maxTrackedKeys=11")
                 .doesNotContain(KEY);
+    }
+
+    @Nested
+    @DisplayName("admission is atomic, which is the property the lock exists for")
+    class Atomicity {
+
+        private static final int ROUNDS = 100;
+        private static final int RACERS = 4;
+
+        /**
+         * The class Javadoc claims that two threads arriving at {@code limit - 1} cannot both be admitted. That
+         * claim is the whole reason {@code admit} prunes, tests and inserts under one lock, so it is asserted
+         * directly rather than left to inspection: without the {@code synchronized} block several racers see a
+         * window of size {@code limit - 1} and all of them insert.
+         *
+         * <p>Each round uses a fresh counter with one slot already spent, so exactly one racer may take the
+         * remaining slot. The clock is not advanced during a round, so no entry can expire mid-race and the
+         * arithmetic is exact rather than probabilistic.
+         *
+         * @throws Exception if a racer thread fails or does not finish
+         */
+        @Test
+        @DisplayName("exactly one of several threads racing for the last slot is admitted")
+        void shouldAdmitExactlyOneRacerForTheLastSlot() throws Exception {
+            final var executor = Executors.newFixedThreadPool(RACERS);
+            try {
+                for (var round = 0; round < ROUNDS; round++) {
+                    final var subject = counter(2, GENEROUS_KEY_TABLE);
+                    subject.admit(KEY);
+
+                    final var start = new CyclicBarrier(RACERS);
+                    final var admitted = new AtomicInteger();
+                    final var refused = new AtomicInteger();
+                    final var futures = new ArrayList<Future<?>>(RACERS);
+                    for (var racer = 0; racer < RACERS; racer++) {
+                        futures.add(executor.submit(() -> {
+                            start.await(10, TimeUnit.SECONDS);
+                            try {
+                                subject.admit(KEY);
+                                admitted.incrementAndGet();
+                            } catch (final RateLimitedException expected) {
+                                refused.incrementAndGet();
+                            }
+                            return null;
+                        }));
+                    }
+                    for (final var future : futures) {
+                        future.get(10, TimeUnit.SECONDS);
+                    }
+
+                    assertThat(admitted.get())
+                            .as("round %d admitted more callers than the one remaining slot", round)
+                            .isEqualTo(1);
+                    assertThat(refused.get()).isEqualTo(RACERS - 1);
+                    assertThat(subject.trackedKeys()).isEqualTo(1);
+                }
+            } finally {
+                executor.shutdownNow();
+            }
+        }
     }
 }

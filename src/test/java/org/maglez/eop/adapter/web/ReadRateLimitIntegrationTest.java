@@ -1,7 +1,8 @@
 package org.maglez.eop.adapter.web;
 
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -50,6 +51,14 @@ class ReadRateLimitIntegrationTest {
     private static final String CARDS = "/api/v1/cards";
     private static final String PROBLEM_JSON = "application/problem+json";
 
+    /**
+     * A whole number of seconds, at least one. {@code docs/api/openapi.yml} documents
+     * {@code Retry-After} as an integer with {@code minimum: 1}, and the counter floors
+     * the value at one second because {@code Retry-After: 0} reads as "no wait
+     * required" and would invite an immediate retry.
+     */
+    private static final String POSITIVE_INTEGER = "^[1-9][0-9]*$";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -57,6 +66,10 @@ class ReadRateLimitIntegrationTest {
         for (int read = 0; read < LIMIT; read++) {
             mockMvc.perform(get(CARDS)).andExpect(status().isOk());
         }
+    }
+
+    private String sessionRoute(final String suffix) {
+        return "/api/v1/sessions/" + UUID.randomUUID() + suffix;
     }
 
     @Test
@@ -67,7 +80,11 @@ class ReadRateLimitIntegrationTest {
         mockMvc.perform(get(CARDS))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
-                .andExpect(header().exists("Retry-After"))
+                .andExpect(header().string("Retry-After", matchesPattern(POSITIVE_INTEGER)))
+                // Deliberately no assertion on $.type. RFC 9457 section 3.1 makes that member
+                // optional with a default of about:blank, and Spring omits it while it holds
+                // that default -- so it is absent from every problem body the application
+                // sends. The openapi schema listed it as required until EOP-88 corrected it.
                 .andExpect(jsonPath("$.status").value(429))
                 .andExpect(jsonPath("$.title").value("Too many requests"))
                 .andExpect(jsonPath("$.detail").isNotEmpty());
@@ -81,18 +98,54 @@ class ReadRateLimitIntegrationTest {
         // A random session id with no player token would otherwise be a 403 or a 404.
         // Receiving 429 instead proves the limiter runs ahead of the handler on the
         // route EOP-88 names, without needing a completed game to reach it.
-        mockMvc.perform(get("/api/v1/sessions/" + UUID.randomUUID() + "/leaderboard"))
+        mockMvc.perform(get(sessionRoute("/leaderboard")))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(429));
     }
 
     @Test
+    @DisplayName("the pattern covers reads the tests never name individually")
+    void shouldCoverEveryReadUnderTheApiPrefix() throws Exception {
+        exhaustTheLimit();
+
+        // Registration is by the /api/v1/** pattern rather than a list of routes, and
+        // that is the property worth pinning: these four are refused for the same
+        // reason a route added tomorrow will be, not because anyone enumerated them.
+        for (final var route : new String[] {"", "/hand", "/score", "/tricks/current"}) {
+            mockMvc.perform(get(sessionRoute(route)))
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(jsonPath("$.status").value(429));
+        }
+
+        mockMvc.perform(get(CARDS + "/SPOOFING-1"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.status").value(429));
+    }
+
+    @Test
+    @DisplayName("HEAD is counted, because it reaches the same handler at the same cost")
+    void shouldCountHeadRequests() throws Exception {
+        for (int read = 0; read < LIMIT; read++) {
+            mockMvc.perform(head(CARDS)).andExpect(status().isOk());
+        }
+
+        // The allowance is shared, so a GET after the limit is spent on HEAD is refused.
+        mockMvc.perform(get(CARDS))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.status").value(429));
+    }
+
+    @Test
     @DisplayName("the event stream is excluded, so subscribing does not consume the read allowance")
     void shouldNotCountTheEventStream() throws Exception {
+        // The status is pinned rather than merely asserted not to be 429. An unknown session
+        // is a 404 here rather than the 403 the leaderboard gives, because this route checks
+        // the session exists before it resolves the player -- and pinning it means a status
+        // that changed for some other reason cannot be mistaken for evidence of exclusion.
         for (int attempt = 0; attempt < LIMIT + 2; attempt++) {
-            mockMvc.perform(get("/api/v1/sessions/" + UUID.randomUUID() + "/events"))
-                    .andExpect(status().is(not(429)));
+            mockMvc.perform(get(sessionRoute("/events")))
+                    .andExpect(status().isNotFound());
         }
 
         mockMvc.perform(get(CARDS)).andExpect(status().isOk());

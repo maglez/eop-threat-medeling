@@ -1092,12 +1092,17 @@ components:
         `@ControllerAdvice`. `detail` is therefore deliberately terse
         everywhere, and the pins in application-prod.yml are redundant
         second guards rather than the active mechanism (EOP-38).
-      required: [type, title, status]
+      required: [title, status]
       properties:
         type:
           type: string
           format: uri
-          description: URI identifying the problem type.
+          description: >
+            URI identifying the problem type. RFC 9457 section 3.1 makes this optional and
+            defaults it to about:blank, and the server omits the member entirely whenever it
+            holds that default, which is every response the application sends today. It was
+            listed as required until EOP-88, a claim no response has ever satisfied, so a
+            client must treat it as absent rather than assuming about:blank was transmitted.
           default: about:blank
         title:
           type: string

@@ -23,7 +23,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * <p><strong>Why an interceptor and not a servlet filter.</strong> A filter runs outside the
  * {@code DispatcherServlet}, so a {@link RateLimitedException} thrown there would never reach
  * {@code GlobalExceptionHandler} and the problem+json body would have to be written by hand — a second place that
- * renders errors, which {@code error-handling.md} forbids. {@link HandlerInterceptor#preHandle} runs inside the
+ * renders errors, which {@code error-handling.md} forbids. {@code HandlerInterceptor#preHandle} runs inside the
  * dispatcher, so the throw is mapped to 429 with an RFC 9457 body and a {@code Retry-After} header by the handler
  * that already exists. The alternatives are compared in ADR-051.
  *
@@ -40,7 +40,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * the limit is sized to absorb.
  *
  * <p><strong>Scope.</strong> Registered on {@code /api/v1/**} so that a read route added later is covered without
- * anyone remembering to add it, and refuses nothing but GET and HEAD — writes keep their own dedicated limiters.
+ * anyone remembering to add it, and counts nothing but GET and HEAD — writes keep their own dedicated limiters.
  * The SSE stream is excluded at registration; see the configurer for why.
  */
 @Component
@@ -53,6 +53,12 @@ public class ReadRateLimitInterceptor implements HandlerInterceptor {
      * costs the same work; anything else is a write and is left to the limiter that guards it.
      */
     private static final Set<String> READ_METHODS = Set.of("GET", "HEAD");
+
+    /**
+     * The counter's label. It reaches an operator only through the saturation warning, so it is named here
+     * rather than inline: a second counter in this class would otherwise be easy to give the same label.
+     */
+    private static final String COUNTER_NAME = "Read rate limiter";
 
     private final ClientAddressResolver clientAddressResolver;
 
@@ -71,7 +77,7 @@ public class ReadRateLimitInterceptor implements HandlerInterceptor {
             final ReadRateLimitProperties properties) {
         this.clientAddressResolver = Objects.requireNonNull(clientAddressResolver, "clientAddressResolver is required");
         Objects.requireNonNull(properties, "properties is required");
-        this.counter = new SlidingWindowCounter(clock, "Read rate limiter", properties.limit(), properties.maxTrackedKeys());
+        this.counter = new SlidingWindowCounter(clock, COUNTER_NAME, properties.limit(), properties.maxTrackedKeys());
         LOG.info(
                 "Read rate limiter initialised: {} reads per address per {}s",
                 properties.limit(),

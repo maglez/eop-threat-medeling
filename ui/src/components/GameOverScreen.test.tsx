@@ -76,7 +76,6 @@ const makeLeaderboard = (): api.LeaderboardDto => ({
 
 const defaultProps = {
     sessionId: SESSION_ID,
-    playerId: 'player-1',
     playerToken: PLAYER_TOKEN,
     isFacilitator: false,
     onNewGame: vi.fn(),

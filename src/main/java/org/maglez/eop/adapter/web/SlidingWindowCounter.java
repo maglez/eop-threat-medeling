@@ -141,7 +141,9 @@ final class SlidingWindowCounter {
             return;
         }
         evictEmptyWindows(horizon);
-        if (windowsByKey.size() >= maxTrackedKeys && !windowsByKey.containsKey(key)) {
+        // The key was absent at the guard above and eviction only removes entries, so it is still absent here:
+        // re-testing containsKey would add a branch that no input can take.
+        if (windowsByKey.size() >= maxTrackedKeys) {
             LOG.warn("{} table saturated ({} keys); refusing new key", name, windowsByKey.size());
             throw new RateLimitedException(Duration.ofSeconds(1));
         }
@@ -180,21 +182,21 @@ final class SlidingWindowCounter {
     /**
      * Computes how long the caller must wait for the oldest counted event to leave the window.
      *
-     * <p>Floored at one second: a zero or negative delay would invite an immediate retry that is certain to be
-     * refused again, and {@code Retry-After: 0} reads as "no wait required" to a client. The oldest entry can be
-     * null only if another thread emptied the window between the limit test and this call, which the caller's
-     * lock prevents but which is cheap to tolerate.
+     * <p>Floored at one second: a zero delay would invite an immediate retry that is certain to be refused again,
+     * and {@code Retry-After: 0} reads as "no wait required" to a client. The floor is expressed as a single
+     * comparison rather than separate zero and negative tests, because a negative remainder is not reachable —
+     * pruning has already dropped every entry older than the horizon, so the oldest entry is never behind it —
+     * and a guard no input can take is a branch that can never be tested.
      *
-     * @param oldest  the oldest event still counted, or null if the window is empty
+     * @param oldest  the oldest event still counted, never null — the caller holds the window's lock and has just
+     *                observed at least {@code limit} entries in it
      * @param horizon the start of the current window
-     * @return a positive delay, never zero
+     * @return a delay of at least one second
      */
     private static Duration retryAfter(final Instant oldest, final Instant horizon) {
-        if (oldest == null) {
-            return Duration.ofSeconds(1);
-        }
-        final var remaining = Duration.between(horizon, oldest);
-        return remaining.isNegative() || remaining.isZero() ? Duration.ofSeconds(1) : remaining;
+        final var minimum = Duration.ofSeconds(1);
+        final var remaining = Duration.between(horizon, Objects.requireNonNull(oldest, "oldest is required"));
+        return remaining.compareTo(minimum) < 0 ? minimum : remaining;
     }
 
     /**

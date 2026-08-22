@@ -20,7 +20,6 @@ const STRIDE_LABELS: ReadonlyArray<{ key: string; label: string }> = [
 
 interface GameOverScreenProps {
   readonly sessionId: string;
-  readonly playerId: string;
   readonly playerToken: string;
   readonly isFacilitator: boolean;
   readonly onNewGame: () => void;
@@ -134,7 +133,7 @@ export function GameOverScreen({
   // allowance whatever the outcome. loadLeaderboard handles its own errors and
   // reports success as a boolean, so the finally always clears the pending
   // state and a failure always arms the backoff.
-  const handleRetry = async () => {
+  const handleRetry = async (): Promise<void> => {
     if (!canRetry) return;
     setIsRetrying(true);
     setRetryAnnouncement('Retrying. Loading results.');
@@ -164,7 +163,7 @@ export function GameOverScreen({
     }
   };
 
-  const handleNewGame = async () => {
+  const handleNewGame = async (): Promise<void> => {
     if (isStartingNewGame) return;
     setIsStartingNewGame(true);
     try {
@@ -220,7 +219,7 @@ export function GameOverScreen({
               error, which is never true on this branch, so a screen-reader user
               would otherwise get silence between the click and the outcome.
             */}
-            <p className="govuk-visually-hidden" role="status" aria-live="polite">
+            <p className="govuk-visually-hidden" role="status" aria-live="polite" aria-atomic="true">
               {retryAnnouncement}
             </p>
           </>

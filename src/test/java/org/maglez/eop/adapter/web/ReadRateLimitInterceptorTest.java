@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +39,12 @@ class ReadRateLimitInterceptorTest {
     private static final String SPOOFED = "198.51.100.9";
     private static final int GENEROUS_KEY_TABLE = 100;
 
+    /**
+     * A frozen clock. None of these tests exercises expiry, so holding time still keeps them exactly
+     * deterministic: no entry can age out of the window part-way through a test.
+     */
+    private static final Instant FROZEN = Instant.parse("2026-08-22T10:00:00Z");
+
     private MockHttpServletResponse response;
 
     @BeforeEach
@@ -51,7 +59,7 @@ class ReadRateLimitInterceptorTest {
      */
     private static ReadRateLimitInterceptor interceptor(final int limit) {
         final var resolver = new ClientAddressResolver(new TrustedProxyProperties(List.of(), 5));
-        return new ReadRateLimitInterceptor(resolver, Clock.systemUTC(),
+        return new ReadRateLimitInterceptor(resolver, Clock.fixed(FROZEN, ZoneOffset.UTC),
                 new ReadRateLimitProperties(limit, GENEROUS_KEY_TABLE));
     }
 
@@ -72,6 +80,11 @@ class ReadRateLimitInterceptorTest {
 
             assertThat(subject.preHandle(read("GET", CALLER), response, new Object())).isTrue();
             assertThat(subject.preHandle(read("GET", CALLER), response, new Object())).isTrue();
+
+            // The third call must be refused. Without this assertion the test would still pass if
+            // preHandle returned true while counting nothing at all.
+            assertThatExceptionOfType(RateLimitedException.class)
+                    .isThrownBy(() -> subject.preHandle(read("GET", CALLER), response, new Object()));
         }
 
         @Test
@@ -216,6 +229,11 @@ class ReadRateLimitInterceptorTest {
                     subject.preHandle(read("GET", CALLER), response, new Object());
                 }
             }).doesNotThrowAnyException();
+
+            // Assert the ceiling as well as the floor. Four admissions alone would prove only that
+            // the limit is at least four, which any larger configured value would also satisfy.
+            assertThatExceptionOfType(RateLimitedException.class)
+                    .isThrownBy(() -> subject.preHandle(read("GET", CALLER), response, new Object()));
         }
     }
 }
