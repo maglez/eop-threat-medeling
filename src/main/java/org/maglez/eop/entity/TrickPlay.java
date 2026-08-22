@@ -106,8 +106,9 @@ public record TrickPlay(
      * them.
      *
      * @throws NullPointerException     if a required component is null
-     * @throws IllegalArgumentException if the seat is out of range, or the text is
-     *                                  over-long or contains a rejected character
+     * @throws IllegalArgumentException if the seat is out of range
+     * @throws InvalidInputException    if the text is over-long or contains a
+     *                                  rejected character
      */
     public TrickPlay {
         Objects.requireNonNull(trickPlayId, "trickPlayId is required");
@@ -120,7 +121,7 @@ public record TrickPlay(
                     "seatOrder must be between 0 and " + (GameSession.MAXIMUM_PLAYERS - 1) + ", was " + seatOrder);
         }
         if (components.size() > MAX_COMPONENTS) {
-            throw new IllegalArgumentException(
+            throw new InvalidInputException(
                     "A play may name at most " + MAX_COMPONENTS + " components, was " + components.size());
         }
         components = components.stream()
@@ -128,10 +129,10 @@ public record TrickPlay(
                 .map(String::strip)
                 .map(component -> {
                     if (component.isEmpty()) {
-                        throw new IllegalArgumentException("A component name must not be blank");
+                        throw new InvalidInputException("A component name must not be blank");
                     }
                     if (component.length() > MAX_COMPONENT_NAME_LENGTH) {
-                        throw new IllegalArgumentException("A component name must be at most "
+                        throw new InvalidInputException("A component name must be at most "
                                 + MAX_COMPONENT_NAME_LENGTH + " characters, was " + component.length());
                     }
                     rejectUnsafeText(component, "A component name");
@@ -141,7 +142,7 @@ public record TrickPlay(
         if (notes != null) {
             notes = notes.strip();
             if (notes.length() > MAX_NOTES_LENGTH) {
-                throw new IllegalArgumentException(
+                throw new InvalidInputException(
                         "notes must be at most " + MAX_NOTES_LENGTH + " characters, was " + notes.length());
             }
             rejectUnsafeText(notes, "A note");
@@ -257,11 +258,11 @@ public record TrickPlay(
         for (int index = 0; index < value.length(); index++) {
             final char character = value.charAt(index);
             if (Character.isISOControl(character)) {
-                throw new IllegalArgumentException(
+                throw new InvalidInputException(
                         field + " must not contain control characters, found one at position " + index);
             }
             if (isBidirectionalFormatting(character)) {
-                throw new IllegalArgumentException(
+                throw new InvalidInputException(
                         field + " must not contain bidirectional formatting characters, found one at position "
                                 + index);
             }

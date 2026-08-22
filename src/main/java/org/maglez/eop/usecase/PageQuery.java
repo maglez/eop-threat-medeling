@@ -1,5 +1,7 @@
 package org.maglez.eop.usecase;
 
+import org.maglez.eop.entity.InvalidInputException;
+
 /**
  * A request for one page of results.
  *
@@ -22,17 +24,17 @@ public record PageQuery(int page, int size) {
      * Rejects an out-of-range page request rather than silently clamping it.
      * Silent clamping hides client bugs; an explicit rejection does not.
      *
-     * @throws IllegalArgumentException if the page index is negative or the size is out of range
+     * @throws InvalidInputException if the page index is negative or the size is out of range
      */
     public PageQuery {
         if (page < 0) {
-            throw new IllegalArgumentException("page must not be negative, was " + page);
+            throw new InvalidInputException("page must not be negative, was " + page);
         }
         if (size < 1) {
-            throw new IllegalArgumentException("size must be at least 1, was " + size);
+            throw new InvalidInputException("size must be at least 1, was " + size);
         }
         if (size > MAX_SIZE) {
-            throw new IllegalArgumentException("size must be at most " + MAX_SIZE + ", was " + size);
+            throw new InvalidInputException("size must be at most " + MAX_SIZE + ", was " + size);
         }
     }
 
