@@ -8,12 +8,20 @@ import org.springframework.stereotype.Component;
 /**
  * Draws join codes from a cryptographically secure source.
  *
- * <p>Six characters from a thirty-two symbol alphabet is a keyspace of about one
- * billion, or roughly thirty bits. That is short enough to read aloud on a video
- * call, which was the point, and it is also short enough that the guess rate
- * matters: at thirty bits a code is unguessable only while guessing is slow. The
- * rate limiter on the join endpoint is therefore a primary security control here,
- * not a courtesy (ADR-019).
+ * <p>Eight characters from a thirty-two symbol alphabet is a keyspace of about
+ * 1.1 trillion, or exactly forty bits. Read that number against a distributed
+ * attacker rather than a single one: the join limiter allows ten failures per
+ * minute per client address, so the useful figure is not how long one host needs
+ * but how long a pool of hosts needs. The code was six characters until EOP-24,
+ * and at thirty bits roughly a thousand proxied addresses expected to find one of
+ * a few dozen live lobbies within days. Forty bits multiplies that by 1024
+ * (ADR-019).
+ *
+ * <p>The per-code half of the limiter does not help against that search, which is
+ * worth stating because its name suggests otherwise: enumeration never guesses the
+ * same code twice, so every attempt lands in its own fresh bucket and the per-code
+ * budget is never spent. Length is what bounds enumeration; the limiter bounds the
+ * rate at which a single address may work.
  *
  * <p>{@link SecureRandom} rather than {@link java.util.Random} for the obvious
  * reason and one less obvious one: an attacker who could predict the sequence would

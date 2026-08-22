@@ -86,7 +86,7 @@ class SessionLifecycleOffValueIntegrationTest {
     private static final String SOME_SESSION = UUID.randomUUID().toString();
 
     /** A well-formed join code, so a 404 cannot be mistaken for a rejected code. */
-    private static final String SOME_CODE = "ABC234";
+    private static final String SOME_CODE = "ABC23456";
 
     /** The smallest body the create and join routes accept, so the 404 is not a validation failure. */
     private static final String A_NAME = "{\"displayName\":\"Ada\"}";

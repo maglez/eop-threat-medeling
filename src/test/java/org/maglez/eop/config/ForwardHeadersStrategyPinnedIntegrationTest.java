@@ -89,7 +89,7 @@ class ForwardHeadersStrategyPinnedIntegrationTest {
     @Test
     @DisplayName("X-Forwarded-For is not honoured without a trusted proxy — both addresses share the real peer bucket")
     void shouldNotHonourForwardedForHeaderWithoutTrustedProxy() throws Exception {
-        final var joinCode = "ZZZZZZ";
+        final var joinCode = "ZZZZZZZZ";
 
         // Arrange: exhaust the bucket for ADDRESS_A. If the strategy were NATIVE or
         // FRAMEWORK, the container would rewrite getRemoteAddr() to ADDRESS_A, and

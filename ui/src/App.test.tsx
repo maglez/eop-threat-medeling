@@ -195,7 +195,7 @@ describe("Feature flag — game screen enabled", () => {
 
     const inProgressSession = {
       sessionId: "session-1",
-      joinCode: "XYZ999",
+      joinCode: "XYZ99999",
       status: "IN_PROGRESS",
       players: [
         { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" },
@@ -232,7 +232,7 @@ describe("Feature flag — game screen enabled", () => {
 
     const inProgressSession = {
       sessionId: "session-1",
-      joinCode: "XYZ999",
+      joinCode: "XYZ99999",
       status: "IN_PROGRESS",
       players: [
         { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" },
@@ -303,7 +303,7 @@ describe("sessionStorage reconnect", () => {
         status: 200,
         json: () => Promise.resolve({
           sessionId: "session-1",
-          joinCode: "XYZ999",
+          joinCode: "XYZ99999",
           status: "LOBBY",
           players: [
             { playerId: "player-1", displayName: "Alice", seatOrder: 0, role: "FACILITATOR", connectionStatus: "CONNECTED" }

@@ -28,11 +28,13 @@ import org.maglez.eop.usecase.TooManyJoinAttemptsException;
  * The throttle is a security control, so its boundaries are asserted rather than
  * assumed (ADR-019).
  *
- * <p>A join code is about thirty bits. That is unguessable only while guessing is
- * slow, so an off-by-one that allowed a hundred attempts a minute instead of ten
- * would not break a single feature and would not be noticed — it would simply move
- * the expected time to stumble onto a live session from centuries to weeks. Every
- * test here pins a number that a reviewer would otherwise have to take on trust.
+ * <p>A join code is forty bits since EOP-24, which bounds how much of the keyspace
+ * a blind search must cover but does nothing about how fast it is covered. That is
+ * this class's job, so an off-by-one that allowed a hundred attempts a minute
+ * instead of ten would not break a single feature and would not be noticed — it
+ * would simply multiply tenfold the rate at which a pool of addresses works through
+ * that keyspace. Every test here pins a number that a reviewer would otherwise have
+ * to take on trust.
  *
  * <p>Time is injected rather than waited for. A test that slept for a minute to
  * watch a window expire would be a minute of build time spent proving arithmetic.
@@ -56,7 +58,7 @@ class InMemoryJoinAttemptLimiterTest {
 
     private static final String ADDRESS = "203.0.113.9";
 
-    private static final String CODE = "ABC230";
+    private static final String CODE = "ABC230VW";
 
     private final TickingClock clock = new TickingClock(START);
 
@@ -160,7 +162,7 @@ class InMemoryJoinAttemptLimiterTest {
         @Test
         @DisplayName("case and the letter O are normalised before counting, so respelling a guess buys nothing")
         void shouldCountEverySpellingOfACodeTogether() {
-            final String[] spellings = {CODE, "abc230", "ABC23O", " abc23o "};
+            final String[] spellings = {CODE, "abc230vw", "ABC23OVW", " abc23ovw "};
             for (int failure = 0; failure < PER_CODE; failure++) {
                 limiter.recordFailure("192.0.2." + failure, spellings[failure % spellings.length]);
             }
@@ -187,7 +189,7 @@ class InMemoryJoinAttemptLimiterTest {
                 limiter.recordFailure("192.0.2." + failure, CODE);
             }
 
-            assertThatCode(() -> limiter.checkAllowed("198.51.100.7", "DEF567")).doesNotThrowAnyException();
+            assertThatCode(() -> limiter.checkAllowed("198.51.100.7", "DEF56789")).doesNotThrowAnyException();
         }
 
         @Test
@@ -398,7 +400,7 @@ class InMemoryJoinAttemptLimiterTest {
      * would silently collapse two keys into one and weaken the flood.
      *
      * @param index which code to build
-     * @return a valid six character code, distinct for every distinct index
+     * @return a valid eight character code, distinct for every distinct index
      */
     private static String codeFor(final int index) {
         final int radix = JoinCode.ALPHABET.length();

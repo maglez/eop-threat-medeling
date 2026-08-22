@@ -61,6 +61,30 @@ class DeckTrimMigrationRoundTripTest {
     private static final int DECK_SIZE_BEFORE_TRIM = 78;
 
     /**
+     * The changelog that removes the aces, and the number of changesets it contributes.
+     *
+     * <p>Rollback depth is computed from these rather than hardcoded, because {@code <includeAll>}
+     * orders {@code changes/} alphabetically and any later dated changelog is applied after these
+     * two. A literal {@code rollback(1)} silently rolled back the wrong changeset the first time a
+     * migration was appended (EOP-24 widened the join code and broke exactly that assumption).</p>
+     */
+    private static final String CHANGELOG_ACE_REMOVAL = "2026-08-18--remove-ace-cards.xml";
+
+    /** Changesets in {@link #CHANGELOG_ACE_REMOVAL} — the floor for a rollback that reaches it. */
+    private static final int ACE_REMOVAL_CHANGESETS = 1;
+
+    /** The changelog that trims the deck to 74 cards; rolling back to it also undoes the ace removal. */
+    private static final String CHANGELOG_DECK_TRIM = "2026-08-17--trim-deck-to-74-printed-cards.xml";
+
+    /**
+     * Floor for a rollback that reaches {@link #CHANGELOG_DECK_TRIM}: its own changeset plus the ace
+     * removal that follows it. This is a lower bound asserted by the helper, not the depth actually
+     * used — {@link #changesetsAppliedFrom} counts what {@code DATABASECHANGELOG} really holds, which
+     * today is larger because the join-code widening was appended after both deck changelogs.
+     */
+    private static final int DECK_TRIM_ONWARDS_CHANGESETS = 2;
+
+    /**
      * The four card IDs removed by the trim migration.
      * Sourced from 002-real-deck.xml lines 214, 634, 642, 650.
      */
@@ -157,8 +181,10 @@ class DeckTrimMigrationRoundTripTest {
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Act — roll back 1 changeset (ace removal), leaving trim in place
-        liquibase.rollback(1, new Contexts(), new LabelExpression());
+        // Act — roll back to the ace removal inclusive, leaving the trim in place. The depth is
+        // computed, so changelogs appended after the ace removal are unwound too.
+        liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_ACE_REMOVAL, ACE_REMOVAL_CHANGESETS),
+                new Contexts(), new LabelExpression());
 
         // Assert — total card count is back to 74 (trim applied, aces restored)
         assertThat(countCards(connection))
@@ -180,8 +206,10 @@ class DeckTrimMigrationRoundTripTest {
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Act — roll back 2 changesets (ace removal + trim)
-        liquibase.rollback(2, new Contexts(), new LabelExpression());
+        // Act — roll back to the trim inclusive, which also unwinds the ace removal above it and
+        // anything appended after either.
+        liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_DECK_TRIM, DECK_TRIM_ONWARDS_CHANGESETS),
+                new Contexts(), new LabelExpression());
 
         // Assert — total card count is back to 78
         assertThat(countCards(connection))
@@ -202,7 +230,8 @@ class DeckTrimMigrationRoundTripTest {
         // Arrange — apply, roll back both, then apply again
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(2, new Contexts(), new LabelExpression());
+        liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_DECK_TRIM, DECK_TRIM_ONWARDS_CHANGESETS),
+                new Contexts(), new LabelExpression());
 
         // Act
         liquibase.update(new Contexts(), new LabelExpression());
@@ -227,7 +256,8 @@ class DeckTrimMigrationRoundTripTest {
         // Arrange — apply the full migration (68 cards), then roll back both migrations (78 cards).
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(2, new Contexts(), new LabelExpression());
+        liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_DECK_TRIM, DECK_TRIM_ONWARDS_CHANGESETS),
+                new Contexts(), new LabelExpression());
 
         // Insert a hand_card row referencing one of the trimmed cards.
         // Disable FK checks so we can insert without satisfying the hand → game_session → player chain.
@@ -272,8 +302,9 @@ class DeckTrimMigrationRoundTripTest {
                     .isFalse();
         }
 
-        // Act — roll back 1 changeset (ace removal only)
-        liquibase.rollback(1, new Contexts(), new LabelExpression());
+        // Act — roll back to the ace removal inclusive, computed rather than a literal depth.
+        liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_ACE_REMOVAL, ACE_REMOVAL_CHANGESETS),
+                new Contexts(), new LabelExpression());
 
         // Assert — all six Ace IDs are present again
         for (final String id : ACE_CARD_IDS) {
@@ -297,7 +328,8 @@ class DeckTrimMigrationRoundTripTest {
         // Arrange — apply the full migration (68 cards), then roll back both (78 cards).
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
-        liquibase.rollback(2, new Contexts(), new LabelExpression());
+        liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_DECK_TRIM, DECK_TRIM_ONWARDS_CHANGESETS),
+                new Contexts(), new LabelExpression());
 
         // Re-apply only the trim migration (74 cards) so the Ace rows exist.
         // We do this by applying one changeset at a time — apply trim, then block ace removal.
@@ -376,6 +408,46 @@ class DeckTrimMigrationRoundTripTest {
                         .as("card with id %s must exist when reading threat_prompt", id)
                         .isTrue();
                 return rs.getString(1);
+            }
+        }
+    }
+
+    /**
+     * Counts the changesets that must be rolled back to undo {@code changelogFilename} and everything
+     * applied after it.
+     *
+     * <p>Liquibase counts backwards from the most recent changeset, so a literal count is only correct
+     * until someone appends a changelog. Taking every row at or after the target file's own
+     * {@code ORDEREXECUTED} makes the depth self-adjusting: a new dated changelog is absorbed rather
+     * than shifting what a rollback reaches. This mirrors the helpers in {@code SessionExpiryMigrationTest}
+     * and {@code TrickPlaySchemaRoundTripTest}.</p>
+     *
+     * @param conn an open connection to the migrated database
+     * @param changelogFilename the changelog file to roll back to, matched as a path suffix
+     * @param ownChangesets the fewest changesets the rollback may legitimately cover
+     * @return the number of changesets to pass to {@code Liquibase#rollback}
+     * @throws SQLException if {@code DATABASECHANGELOG} cannot be queried
+     */
+    private static int changesetsAppliedFrom(final Connection conn, final String changelogFilename,
+            final int ownChangesets) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM DATABASECHANGELOG "
+                        + "WHERE ORDEREXECUTED >= ("
+                        + "  SELECT MIN(ORDEREXECUTED) FROM DATABASECHANGELOG "
+                        + "  WHERE FILENAME LIKE ?)")) {
+            ps.setString(1, "%" + changelogFilename);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next())
+                        .as("DATABASECHANGELOG must be queryable after update() — "
+                                + "a missing row set means Liquibase never ran")
+                        .isTrue();
+                final int count = rs.getInt(1);
+                assertThat(count)
+                        .as("rolling back to %s requires at least its own %d changesets; "
+                                + "a smaller count means DATABASECHANGELOG was not populated as expected",
+                                changelogFilename, ownChangesets)
+                        .isGreaterThanOrEqualTo(ownChangesets);
+                return count;
             }
         }
     }

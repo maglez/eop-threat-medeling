@@ -16,6 +16,16 @@ consuming every six-character join code and causing legitimate facilitators to
 receive opaque 503s once the five-attempt collision retry in `CreateSessionUseCase`
 exhausts (`JoinCodeUnavailableException` → 503, ADR-019).
 
+> **Amended 2026-08-22 (EOP-24) — keyspace exhaustion is no longer the operative harm.**
+> EOP-24 widened the join code to eight Crockford characters, so the keyspace is about
+> 1.1 trillion rather than 1.07 billion. At the 43 million rows per day above, a flood
+> would need roughly seventy years to consume it, and the chance of five consecutive
+> collisions in `CreateSessionUseCase` becomes negligible — so the 503 described above is
+> now a remote consequence rather than a likely one. **The decision to rate-limit creation
+> stands unchanged**, on the harm that was always the larger one: unbounded growth of
+> `game_session` by an unauthenticated caller. Read the keyspace arithmetic above as the
+> record of why the limit was reached for, not as a live prediction.
+
 The join-attempt limiter (ADR-019, EOP-18) defends the join-code keyspace
 against guessing but does not bound creation: it counts *failures*, and a
 creation that succeeds is not a failure. A separate control is needed.

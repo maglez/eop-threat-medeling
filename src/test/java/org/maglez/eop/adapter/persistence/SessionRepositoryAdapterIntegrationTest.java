@@ -170,7 +170,7 @@ class SessionRepositoryAdapterIntegrationTest {
         @DisplayName("an unknown identifier and an unknown join code are both absent, not errors")
         void shouldReturnEmptyForAnythingUnknown() {
             assertThat(adapter.findById(identifier(0, 0))).isEmpty();
-            assertThat(adapter.findByJoinCode(new JoinCode("ZZZZZZ"))).isEmpty();
+            assertThat(adapter.findByJoinCode(new JoinCode("ZZZZZZZZ"))).isEmpty();
         }
     }
 
@@ -632,7 +632,7 @@ class SessionRepositoryAdapterIntegrationTest {
      * A canonical join code derived from a counter, so no two tests clash.
      *
      * @param serial the counter value
-     * @return six Crockford base32 characters
+     * @return eight Crockford base32 characters
      */
     private static JoinCode joinCodeFor(final int serial) {
         final int radix = JoinCode.ALPHABET.length();

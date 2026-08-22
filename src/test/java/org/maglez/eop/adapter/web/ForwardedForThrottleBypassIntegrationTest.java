@@ -22,11 +22,11 @@ import org.springframework.test.web.servlet.MockMvc;
  *
  * <p>Before EOP-26 the header was read unconditionally, so a caller could supply
  * a different value on every request and be handed a fresh, empty bucket each time.
- * With ten failures allowed per address per minute, and a join code of roughly
- * thirty bits, an attacker who rotated the header could make unlimited guesses and
- * expect to stumble onto a live session in minutes rather than centuries. ADR-019
- * designates the throttle a primary security control, so this is not defence in
- * depth — it is the control itself.
+ * With ten failures allowed per address per minute, and a join code of forty bits,
+ * an attacker who rotated the header could make unlimited guesses from a single
+ * machine, working through the keyspace at a rate the limiter exists to deny.
+ * ADR-019 treats the throttle as a security control that the code's length bounds
+ * but does not replace, so this is not defence in depth — it is the control itself.
  *
  * <p>The test drives more than {@code MAX_FAILURES_PER_ADDRESS} failing join
  * attempts while rotating the header on every request. If the fix is absent the
@@ -62,7 +62,7 @@ class ForwardedForThrottleBypassIntegrationTest {
     static String unheldCode() {
         final var alphabet = JoinCode.ALPHABET;
         var remaining = SERIAL.incrementAndGet();
-        final var drawn = new StringBuilder("YYYYYY");
+        final var drawn = new StringBuilder("YYYYYYYY");
         for (int position = 0; position < JoinCode.LENGTH && remaining > 0; position++) {
             drawn.setCharAt(position, alphabet.charAt(remaining % alphabet.length()));
             remaining /= alphabet.length();

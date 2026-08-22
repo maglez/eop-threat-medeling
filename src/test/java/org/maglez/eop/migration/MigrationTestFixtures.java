@@ -5,6 +5,8 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.UUID;
 
+import org.maglez.eop.entity.JoinCode;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -55,13 +57,19 @@ final class MigrationTestFixtures {
      * {@code version} has a column default of 0 in the schema but we supply it
      * explicitly to avoid relying on H2's default evaluation order.
      *
-     * <p>The join code takes all six characters from the row's own UUID rather than
-     * padding a fixed prefix. {@code game_session.join_code} carries
+     * <p>The join code takes its full width from the row's own UUID rather than
+     * padding a fixed prefix, and that width is {@code JoinCode#LENGTH} rather than a
+     * literal so this fixture tracks the domain constant instead of having to be found
+     * and edited the next time it moves. {@code game_session.join_code} carries
      * {@code uq_game_session_join_code} (003-session-lifecycle.xml:70), so a code
      * built from a fixed prefix plus two hex characters would draw from only 256
-     * values and collide across sessions inserted into the same database. No test
-     * inserts two sessions per database today, so this is not a live flake — it is
-     * removing the trap before someone walks into it.
+     * values and collide across sessions inserted into the same database, where the
+     * whole width drawn from the UUID scales as sixteen to the power of the length.
+     * No test inserts two sessions per database today, so this is not a live flake —
+     * it is removing the trap before someone walks into it.
+     *
+     * <p>A UUID contributes thirty-two hex characters, which is the ceiling on how far
+     * {@code JoinCode#LENGTH} can grow before this derivation needs another source.
      */
     static UUID insertMinimalGameSession(final Connection conn) throws SQLException {
         final UUID id = UUID.randomUUID();
@@ -69,7 +77,7 @@ final class MigrationTestFixtures {
                 "INSERT INTO game_session (id, join_code, status, created_at, updated_at, version) "
                         + "VALUES (?, ?, 'LOBBY', NOW(), NOW(), 0)")) {
             ps.setObject(1, id);
-            ps.setString(2, id.toString().replace("-", "").substring(0, 6).toUpperCase());
+            ps.setString(2, id.toString().replace("-", "").substring(0, JoinCode.LENGTH).toUpperCase());
             ps.executeUpdate();
         }
         return id;

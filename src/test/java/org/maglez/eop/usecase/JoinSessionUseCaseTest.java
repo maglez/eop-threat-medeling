@@ -30,7 +30,7 @@ import org.maglez.eop.entity.UnknownJoinCodeException;
  * <p>Three properties matter more than the happy path. The throttle is consulted
  * before the code is parsed, so that a flood of malformed guesses costs the guesser
  * the same as a flood of well formed ones. Every rejection looks identical from
- * outside, so the endpoint cannot be used to enumerate live sessions at thirty bits
+ * outside, so the endpoint cannot be used to enumerate live sessions at forty bits
  * of entropy. And a lost seat race is retried against a fresh read rather than
  * surfaced, because two players pressing join together is ordinary, not exceptional.
  *
@@ -60,10 +60,10 @@ class JoinSessionUseCaseTest {
     private static final String ADDRESS = "203.0.113.9";
 
     /** The code the seeded lobby really holds. */
-    private static final String SEEDED_CODE = "ABC234";
+    private static final String SEEDED_CODE = "ABC23456";
 
     /** The same code as a hurried human would type it, mixed case and padded. */
-    private static final String TYPED_CODE = " aBc234 ";
+    private static final String TYPED_CODE = " aBc23456 ";
 
     private final QueuedIdentifierGenerator identifiers = new QueuedIdentifierGenerator(JOINER_ID);
     private final FixedIdentityTokenGenerator tokens = new FixedIdentityTokenGenerator(TOKEN);
@@ -183,7 +183,7 @@ class JoinSessionUseCaseTest {
             final var unknown = new InMemorySessionRepository(aSession().build());
 
             final var forNonsense = catchJoinRefusal(nonsense, "!!!");
-            final var forUnknown = catchJoinRefusal(unknown, "ZZZZZZ");
+            final var forUnknown = catchJoinRefusal(unknown, "ZZZZZZZZ");
 
             assertThat(forUnknown).hasMessage(forNonsense.getMessage());
             assertThat(forUnknown).hasSameClassAs(forNonsense);
@@ -195,10 +195,10 @@ class JoinSessionUseCaseTest {
             final var repository = new InMemorySessionRepository(aSession().build());
 
             assertThatExceptionOfType(UnknownJoinCodeException.class)
-                    .isThrownBy(() -> useCaseFor(repository).execute("ZZZZZZ", JOINER_NAME, ADDRESS));
+                    .isThrownBy(() -> useCaseFor(repository).execute("ZZZZZZZZ", JOINER_NAME, ADDRESS));
 
             assertThat(limiter.failures()).hasSize(1);
-            assertThat(limiter.failures().get(0).code()).isEqualTo("ZZZZZZ");
+            assertThat(limiter.failures().get(0).code()).isEqualTo("ZZZZZZZZ");
         }
 
         @Test

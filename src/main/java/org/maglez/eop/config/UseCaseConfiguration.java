@@ -134,7 +134,7 @@ public class UseCaseConfiguration {
      * @param sessionRepository the port implementation supplied by the persistence adapter
      * @param identifierGenerator the UUID version 7 generator (ADR-018)
      * @param identityTokenGenerator the cryptographically secure identity token generator
-     * @param joinAttemptLimiter the rate limiter that makes a six character code safe (ADR-019)
+     * @param joinAttemptLimiter the rate limiter that bounds the guess rate against a join code (ADR-019)
      * @param sessionEventPublisher the transport that announces a change to connected clients
      * @param clock the clock the joined timestamp is read from
      * @return the join-session use case

@@ -1,6 +1,6 @@
 # ADR-019: Session Lifecycle, Join Codes, and How the Stream Is Authenticated
 
-**Status:** Accepted (next-player formula amended 2026-08-12 — see ADR-023)
+**Status:** Accepted (next-player formula amended 2026-08-12 — see ADR-023; join code widened to eight characters 2026-08-22 — see EOP-24)
 **Date:** 2026-08-05
 **Deciders:** @tech-lead, @security-auditor
 
@@ -47,7 +47,7 @@ fabricating a database fixture — a test that proves the handler works against 
 state the application cannot actually reach. Starting a session establishes that
 the lobby is closed. Nothing else.
 
-### Join codes: six Crockford base32 characters, and the limiter is therefore a primary control
+### Join codes: eight Crockford base32 characters, and the limiter is one of two controls
 
 Generated with `SecureRandom` over the Crockford base32 alphabet
 `0123456789ABCDEFGHJKMNPQRSTVWXYZ` — the digits plus the twenty-two letters left
@@ -58,16 +58,75 @@ meeting. Input is normalised before lookup — upper-cased, with `I` and `L` map
 to `1` and `O` to `0` — so a human transcription error is not a failed join. Output
 is always the canonical upper-case form.
 
-Six characters is 32⁶, about 1.07 × 10⁹ codes, or roughly **thirty bits of
-entropy**. Eight characters was the recommendation. Six was chosen deliberately for
-usability: this code is read aloud and typed by hand.
+Eight characters is 32⁸, about 1.10 × 10¹² codes, or exactly **forty bits of
+entropy**. Eight was the original recommendation. Six was chosen instead, deliberately,
+for usability — this code is read aloud and typed by hand — and EOP-24 reversed that
+choice on 2026-08-22 once the attack model was worked through properly. Two more
+characters cost the facilitator very little when reading a code aloud and buy a factor
+of 1024.
 
-**The consequence is stated plainly rather than buried: at thirty bits the rate
-limiter is a primary security control, not defence in depth.** Thirty bits is
-unguessable only while guessing is slow. An attacker permitted unlimited attempts
-enumerates the keyspace in a time that is measured, not theoretical. This is why
-the limiter is in the same story rather than a follow-up, and why removing it later
-is a security regression rather than a simplification.
+**The consequence is stated plainly rather than buried: the code's length and the rate
+limiter are two separate controls, and neither is sufficient alone.** Length bounds how
+much of the keyspace a blind search must cover. The limiter bounds how fast any one
+address may cover it. An attacker permitted unlimited attempts enumerates the keyspace
+in a time that is measured, not theoretical, whatever the length; an attacker with
+enough addresses defeats a per-address rate bound, whatever the limiter. This is why the
+limiter is in the same story rather than a follow-up, why removing it is a security
+regression rather than a simplification, and why widening the code in EOP-24 did **not**
+make it optional.
+
+> **Amended 2026-08-22 — the code is eight characters, and why six was wrong (EOP-24).**
+> The original decision above accepted thirty bits on the strength of the rate limiter.
+> That acceptance rested on an attack model that assumed a single attacker address, and
+> it does not survive being written out.
+>
+> **The arithmetic.** Six characters over a thirty-two symbol alphabet is 32⁶ ≈ 1.07 × 10⁹,
+> or 30.0 bits. The limiter allows ten failures per minute per address, which is 14,400
+> guesses per address per day. A blind search does not need to find one *specific* lobby,
+> only *any* live one, so the expected number of guesses is the keyspace divided by the
+> number of live lobbies. At a plausible 10–50 concurrent lobbies that is 2.1 × 10⁷ to
+> 1.1 × 10⁸ guesses. Against a rented pool of roughly a thousand proxy addresses —
+> 1.44 × 10⁷ guesses per day — **a real lobby is found in about 1.5 to 7.5 days.** Not
+> centuries. The word "centuries" appeared in a comment on the limiter and has been
+> removed, because that figure quietly assumed the attacker owned one address.
+>
+> **Why the per-code half of the limiter does not save it.** The limiter keys two sliding
+> windows, one per address and one per code, with `MAX_FAILURES_PER_CODE = 30`. The
+> per-code window never binds during enumeration: every guess is a *different* canonical
+> code, so each lands in its own fresh bucket and the count never reaches thirty. The
+> per-code window defends a *known* code against being hammered — a real and separate
+> job — but it contributes nothing against a walk through the keyspace. The only live
+> control against enumeration was the per-address rate, and addresses are cheap.
+>
+> **Why eight.** 32⁸ ≈ 1.10 × 10¹², exactly forty bits, which is 1024× the work. The same
+> thousand-address pool against the same few dozen lobbies now needs on the order of
+> **years** rather than days. Eight was what the original decision named as the
+> recommendation before usability argued it down, so this is a return to it rather than a
+> new invention, and two extra characters read aloud is a cost the facilitator barely
+> notices. Ten characters (fifty bits) was not chosen: it would push a spoken code past
+> the point where people reliably transcribe it in one pass, and forty bits already moves
+> the expected time past any plausible attention span for an unauthenticated party game.
+>
+> **What this is honestly worth.** The urgency is lower than the raw figures suggest. The
+> 10–50 concurrent-lobby assumption is doing a lot of work: a near-empty demo instance is
+> 10–50× slower to attack than that, because a blind search has proportionally fewer
+> targets to stumble onto. And the prize is a seat in a threat-modelling card game, not
+> money or personal data — there is no authentication in the system at all (ADR-015), so
+> "someone else's lobby" is the whole of the loss. The direction is right and the change
+> is cheap, which is why it was done; it was not an incident.
+>
+> **What it cost.** Codes already issued are six characters and no longer parse, so a
+> facilitator mid-session has to read out a new one. `JoinCode.parse` returns empty for
+> them, which surfaces as the same indistinguishable 404 as any unusable code, so nothing
+> leaks and nothing throws. Stored rows are a different matter: the strict constructor
+> runs on every read through `GameSessionJpaEntity.toDomain()`, so a six-character row
+> would make the reconnect path fail. Changeset `2026-08-22--widen-join-code-to-8-characters.xml`
+> therefore widens `join_code` to `VARCHAR(8)` and pads surviving rows rather than
+> deleting them — padding keeps every foreign key intact, cannot collide with
+> `uq_game_session_join_code` because it is injective, and leaves the reconnect path
+> working for players already seated. Those padded codes still carry only thirty bits,
+> which is not a regression because they were already issued and circulating, and the
+> 24-hour `expires_at` TTL from ADR-036 bounds how long any of them survive.
 
 Collisions are handled by inserting against a unique constraint on `join_code` and
 retrying on violation, with a bounded number of attempts before failing. The
@@ -84,7 +143,7 @@ insert has a race window and this endpoint is concurrent by nature.
 > detail of it.
 >
 > - An exhausted **join-code** budget answers **503 with `Retry-After: 5`**. It is a
->   capacity statement, not a fault: the code space is finite and thirty bits wide,
+>   capacity statement, not a fault: the code space is finite and forty bits wide,
 >   the same request is expected to succeed shortly, and nothing malfunctioned. A
 >   caller cannot provoke it, so each occurrence is genuine capacity evidence and is
 >   logged at `WARN` with its trace.
@@ -281,11 +340,15 @@ cannot be introduced by a later refactor of the join logic.
 can be exercised against a running server — with `curl` today and by EOP-11's
 client tomorrow — without a half-finished lobby being reachable by default.
 
-**Negative — thirty bits of entropy makes the limiter load-bearing.** Stated in the
-decision and repeated here because it is the single most important thing to
-carry forward: the join code is short enough that its security depends on the rate
-limiter working. Eight characters would have made the limiter a courtesy. Six makes
-it a control. Anyone tempted to remove or weaken it must lengthen the code first.
+**Negative — the limiter is load-bearing, and lengthening the code did not retire it.**
+Stated in the decision and repeated here because it is the single most important thing
+to carry forward. At six characters this entry read "eight characters would have made
+the limiter a courtesy. Six makes it a control." EOP-24 lengthened the code to eight and
+that framing did not survive contact with the arithmetic: forty bits raises the cost of
+a *blind* search by 1024×, but a per-address rate bound is the only thing that slows a
+pool of addresses down, and no code length substitutes for it. **Anyone tempted to
+remove or weaken the limiter must show that the keyspace alone defeats a distributed
+attacker — and at forty bits, against a few dozen live lobbies, it does not.**
 
 **Negative — the limiter forgets everything on restart.** A deploy resets every
 counter. Not attacker-triggerable, and therefore accepted, but it means the
@@ -349,9 +412,9 @@ status enum so that the concept has somewhere to live when it is needed.
 - [ADR-020](ADR-020-session-concurrency-control.md) — how the seat constraint and the status guard actually serialise concurrent joins, and why `@Version` is not the mechanism
 - [ADR-012](ADR-012-deployment-target.md) — one process, no TLS, restart on deploy; the EC2 target is withdrawn but every premise this ADR borrows from it still holds
 - [ADR-016](ADR-016-local-container-runtime.md) — the local container stack this actually runs in, and the restart that resets the limiter
-- [ADR-021](ADR-021-trusted-proxy-forwarded-for.md) — restores the primary control this ADR depends on. The decision here is unchanged and nothing in it is withdrawn; ADR-021 records that the address the limiter keys on was caller-supplied until EOP-26, so the throttle that makes thirty bits acceptable could be bypassed by rotating one header
+- [ADR-021](ADR-021-trusted-proxy-forwarded-for.md) — restores the primary control this ADR depends on. The decision here is unchanged and nothing in it is withdrawn; ADR-021 records that the address the limiter keys on was caller-supplied until EOP-26, so the throttle that bounds the guess rate could be bypassed by rotating one header — the half of the problem that widening the code to eight characters in EOP-24 does not help with
 - [ADR-033](ADR-033-session-creation-rate-limit-and-body-size-cap.md) — the companion creation-rate limiter and body-size cap introduced by EOP-19; counts successes rather than failures, one window not two, reserve-before-work pattern
 - [Runtime view](../architecture/runtime-view.md) — the reconnect, subscribe and create/join/start sequences
 - [C4 container diagram](../architecture/C4-Diagrams.md) — where the controller, the publisher and the limiter sit
 - [PRD §3, §4, §5](../requirements/PRD-eop-card-game.md) — the workflow, the player range, and the domain model
-- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing), EOP-18 (harden limiter: fail-closed saturation, atomic check-and-record), EOP-19 (session creation limiter and body-size cap — see ADR-033)
+- EOP-8 (spike), EOP-10 (this story), EOP-11 (the `fetch`-based client), EOP-14 (dealing), EOP-18 (harden limiter: fail-closed saturation, atomic check-and-record), EOP-19 (session creation limiter and body-size cap — see ADR-033), EOP-24 (join code widened to eight characters)

@@ -570,8 +570,11 @@ into 404 or 409 by one extra read that is only ever paid on a path already faili
 adapter writes optimistically and interprets the violation. A pre-insert `SELECT` would
 narrow the race window without closing it.
 
-**The limiter is checked first, and it is a primary control.** Six Crockford base32
-characters is about thirty bits — unguessable only while guessing is slow. The 404 for
+**The limiter is checked first, and it is one of two controls.** Eight Crockford base32
+characters is exactly forty bits, which bounds how much of the keyspace a blind search
+must cover -- the limiter bounds how fast any one address covers it, and EOP-24 widened
+the code from six characters precisely because thirty bits left the limiter carrying
+that on its own. The 404 for
 an unusable code is byte-for-byte identical whether the code never existed, was
 mistyped, or belonged to an abandoned session, so the endpoint is not an oracle. But the
 limiter's counters are in process memory, so **immediately after a restart every

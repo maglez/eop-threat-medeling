@@ -187,9 +187,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      *
      * <p>This follows {@link #handleUnknownJoinCode} and its reasoning rather than
      * minting a fresh shape, with one deliberate difference: that handler blanks the
-     * identifier because a six-character join code is guessable, whereas the session
-     * identifier echoed here is a value the caller supplied and cannot learn
-     * anything from.
+     * identifier because a join code is short enough to be worth guessing at, whereas
+     * the session identifier echoed here is a value the caller supplied and cannot
+     * learn anything from.
      *
      * @param exception the refusal, carrying the session identifier and nothing else
      * @return a 404 problem detail equal to the one for a session that does not exist
@@ -208,8 +208,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * <p>The status, title and detail are fixed strings and the exception's own
      * message is deliberately not used, so that no field of the response depends on
      * why the lookup failed. A code that was mistyped, a code that never existed and
-     * a code belonging to an abandoned session must be indistinguishable: at roughly
-     * thirty bits of entropy, an endpoint that confirmed which codes are real would
+     * a code belonging to an abandoned session must be indistinguishable: at forty
+     * bits of entropy, an endpoint that confirmed which codes are real would
      * be an oracle worth querying (ADR-019).
      *
      * <p>The bodies are not byte-identical, because Spring fills in {@code instance}
@@ -818,9 +818,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Too many failed join attempts from one source.
      *
      * <p>Returned as a {@link ResponseEntity} rather than a bare problem detail so
-     * it can carry {@code Retry-After}. This is not politeness about load: a
-     * six-character code is unguessable only while guessing is slow, so this
-     * response is a primary security control rather than a courtesy (ADR-019).
+     * it can carry {@code Retry-After}. This is not politeness about load: the length
+     * of a join code bounds a blind search but does not stop one, so this response is
+     * a security control rather than a courtesy (ADR-019).
      *
      * @param exception the refusal, carrying how long to wait
      * @return a 429 problem detail with a {@code Retry-After} header

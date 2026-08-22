@@ -1011,7 +1011,7 @@ rather than noted in passing. Four obligations follow, and they are Slice C's, n
      >    exception's own message deliberately unused, and its reasoning at `:100-116` —
      >    including the `instance` analysis, which applies here for the same reason. Do not mint
      >    a fresh title. Note the one deliberate difference: that handler blanks the identifier
-     >    because a join code is roughly thirty bits, whereas echoing a session id back is safe
+     >    because a join code is a guessable secret, whereas echoing a session id back is safe
      >    by its own argument since the caller supplied it, which is what makes exact parity
      >    with the candid 404 achievable rather than forcing a blanked detail.
      > 3. **Scope the counter-argument, because it is an argument and not a silence.**

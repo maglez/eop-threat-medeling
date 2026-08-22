@@ -3,11 +3,11 @@ package org.maglez.eop.usecase;
 /**
  * Port through which join attempts are rate limited.
  *
- * <p>A join code is six characters, which is roughly thirty bits. Thirty bits is
- * unguessable only while guessing is slow: unlimited attempts against a
- * six-character keyspace is an open door. This limiter is therefore a primary
- * security control rather than a courtesy about load, and removing it later would
- * be a security regression rather than a simplification (ADR-019).
+ * <p>A join code is eight characters, which is exactly forty bits. Length bounds how
+ * much of the keyspace a blind search must cover; this limiter bounds how fast any
+ * one address may cover it. Neither is sufficient alone, so removing this would be a
+ * security regression rather than a simplification, and lengthening the code did not
+ * make it optional (ADR-019).
  *
  * <p>Only failed attempts are counted. A facilitator sharing one code with five
  * players produces five successful joins from five addresses and must not be

@@ -8,7 +8,7 @@ import java.util.UUID;
  * <p>Deliberately candid, unlike {@link UnknownJoinCodeException}. A session
  * identifier is an unguessable UUID, so there is nothing to be gained by hiding
  * whether one exists — a caller who can name the identifier either had it or
- * guessed 122 bits. A join code is six characters, so that lookup hides it.
+ * guessed 122 bits. A join code is eight characters, so that lookup hides it.
  *
  * <p>That candour is scoped to <em>existence</em>, and does not extend to
  * membership. It rests on the identifier being unguessable, which says nothing

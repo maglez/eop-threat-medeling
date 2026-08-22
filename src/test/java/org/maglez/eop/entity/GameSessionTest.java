@@ -21,7 +21,7 @@ class GameSessionTest {
     private static final Instant NOW = Instant.parse("2026-01-01T10:00:00Z");
     private static final Instant LATER = Instant.parse("2026-01-01T10:05:00Z");
     private static final UUID SESSION_ID = UUID.fromString("00000000-0000-7000-8000-0000000000ff");
-    private static final JoinCode CODE = new JoinCode("ABC234");
+    private static final JoinCode CODE = new JoinCode("ABC23456");
 
     @Nested
     @DisplayName("opening a lobby")
