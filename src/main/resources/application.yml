@@ -176,9 +176,11 @@ eop:
 # contract-first (ADR-004): the hand-authored docs/api/openapi.yml is the contract, and the
 # runtime /v3/api-docs is a generated convenience — docs/api/openapi.yml says so itself.
 #
-# Deliberately still pinned in application-prod.yml as a second independent guard, and
-# gated by SpringdocDisabledByDefaultIntegrationTest, which also proves the opt-in works so
-# that "disabled" can never be satisfied by springdoc simply being broken.
+# Deliberately still pinned in application-prod.yml as a second independent guard. Gated by
+# SpringdocDisabledByDefaultIntegrationTest (the disabled path) and SpringdocOptInIntegrationTest
+# (the opt-in path). Both are needed: a suite that can only observe absence cannot tell a working
+# control from a broken feature, so without the second test "disabled" could be satisfied by
+# springdoc simply being broken.
 springdoc:
   api-docs:
     enabled: false
