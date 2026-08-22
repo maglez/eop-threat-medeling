@@ -3,8 +3,10 @@
 # This file is the source of truth for the HTTP API (ADR-004). It is hand
 # authored and committed BEFORE the controllers that implement it. springdoc
 # generates /v3/api-docs at runtime for convenience only, and that generated
-# document is disabled entirely in the production profile (ADR-012), so this
-# file is the ONLY contract available to a client of the deployed instance.
+# document is disabled BY DEFAULT (ADR-049) rather than only under the prod
+# profile — a local developer opts back in with SPRINGDOC_APIDOCS_ENABLED=true.
+# So this file is the ONLY contract available to a client of the deployed
+# instance, and also the only one available to anyone who forgot the opt-in.
 #
 # When an endpoint changes, this file changes in the same commit.
 
@@ -1067,8 +1069,13 @@ components:
         RFC 9457 problem details (ADR-005). Every 4xx and 5xx response uses this
         shape. Served as `application/problem+json`.
 
-        The production profile suppresses exception classes, messages,
-        stacktraces and binding errors, so `detail` is deliberately terse there.
+        Exception classes, messages, stacktraces and binding errors are absent
+        in EVERY profile, not just prod: Spring Boot has defaulted the four
+        `server.error.include-*` properties to off since 2.3, and this API
+        bypasses `BasicErrorController` almost entirely via the RFC 9457
+        `@ControllerAdvice`. `detail` is therefore deliberately terse
+        everywhere, and the pins in application-prod.yml are redundant
+        second guards rather than the active mechanism (EOP-38).
       required: [type, title, status]
       properties:
         type:
