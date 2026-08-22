@@ -55,11 +55,12 @@ final class MigrationTestFixtures {
      * {@code version} has a column default of 0 in the schema but we supply it
      * explicitly to avoid relying on H2's default evaluation order.
      *
-     * <p>The join code takes all six characters from the row's own UUID rather than
+     * <p>The join code takes all eight characters from the row's own UUID rather than
      * padding a fixed prefix. {@code game_session.join_code} carries
      * {@code uq_game_session_join_code} (003-session-lifecycle.xml:70), so a code
      * built from a fixed prefix plus two hex characters would draw from only 256
-     * values and collide across sessions inserted into the same database. No test
+     * values and collide across sessions inserted into the same database, where all
+     * eight hex characters draw from about 4.3 billion. No test
      * inserts two sessions per database today, so this is not a live flake — it is
      * removing the trap before someone walks into it.
      */
@@ -69,7 +70,7 @@ final class MigrationTestFixtures {
                 "INSERT INTO game_session (id, join_code, status, created_at, updated_at, version) "
                         + "VALUES (?, ?, 'LOBBY', NOW(), NOW(), 0)")) {
             ps.setObject(1, id);
-            ps.setString(2, id.toString().replace("-", "").substring(0, 6).toUpperCase());
+            ps.setString(2, id.toString().replace("-", "").substring(0, 8).toUpperCase());
             ps.executeUpdate();
         }
         return id;

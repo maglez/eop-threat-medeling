@@ -24,7 +24,7 @@ import java.util.UUID;
 public final class GameSessionBuilder {
 
     private UUID sessionId = UUID.fromString("00000000-0000-7000-8000-0000000000ff");
-    private JoinCode joinCode = new JoinCode("ABC234");
+    private JoinCode joinCode = new JoinCode("ABC23456");
     private SessionStatus status = SessionStatus.LOBBY;
     private List<Player> players = List.of(aPlayer().build());
     private Instant createdAt = Instant.parse("2026-01-01T10:00:00Z");

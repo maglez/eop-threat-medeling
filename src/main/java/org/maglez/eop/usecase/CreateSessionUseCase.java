@@ -28,7 +28,7 @@ public class CreateSessionUseCase {
     /**
      * How many join codes are drawn before giving up.
      *
-     * <p>Roughly a billion codes exist and sessions are counted in dozens, so a
+     * <p>Roughly 1.1 trillion codes exist and sessions are counted in dozens, so a
      * single collision is already improbable and five in a row indicates something
      * other than bad luck — a broken generator, or a table that has grown far
      * beyond what this design anticipated. Failing loudly is the correct response

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EOP-24: widen game_session.join_code from six to eight Crockford characters
+
+  JoinCode.LENGTH moved from 6 to 8, taking the keyspace from 32^6 (about thirty
+  bits) to 32^8 (exactly forty bits). The column must widen to match, because
+  GameSessionJpaEntity derives @Column(length = ...) from that same constant and
+  Hibernate runs with ddl-auto: validate — a VARCHAR(6) column would fail schema
+  validation at startup.
+
+  Two changesets, in this order, and the order is load-bearing:
+
+  001 widens the column. It has to come first: 002 writes eight-character values,
+      which a VARCHAR(6) column would reject.
+
+  002 pads the codes of any session that predates the change. This is the part
+      worth reading carefully. JoinCode's constructor is strict about length, and
+      GameSessionJpaEntity.toDomain() calls it on every read, so a surviving
+      six-character row would throw IllegalArgumentException and turn
+      GET /api/v1/sessions/{sessionId} — the reconnect path — into a 500 for the
+      players already in that lobby.
+
+      Padding with '0' rather than deleting the rows, for three reasons. It keeps
+      every foreign key intact (player, trick, game_result all reference
+      game_session), where a DELETE would either cascade further than this
+      migration should reach or fail outright. It is injective, so it cannot
+      collide and cannot violate uq_game_session_join_code. And it preserves the
+      reconnect path for players who are already seated, which is the whole point:
+      the six-character code they were told is dead either way, because
+      JoinCode.parse rejects a six-character input and the join endpoint answers
+      404, but their session itself survives to its natural expiry.
+
+      The padded codes stay thirty-bit. That is not a regression — those codes were
+      already issued and already circulating at thirty bits — and it is bounded by
+      the 24-hour expires_at TTL from changeset 006 (ADR-036), after which no
+      thirty-bit code remains in the table.
+
+  Both changesets are valid on H2 and PostgreSQL 17: modifyDataType emits
+  ALTER TABLE ... ALTER COLUMN ... on both, and both preserve NOT NULL and the
+  unique constraint across a VARCHAR widening. LENGTH() and || are ANSI and
+  behave identically on both.
+-->
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <changeSet id="001" author="miguel">
+    <preConditions onFail="HALT">
+      <columnExists tableName="game_session" columnName="join_code"/>
+    </preConditions>
+
+    <comment>
+      Widen game_session.join_code to VARCHAR(8) for eight Crockford base32
+      characters — forty bits of entropy instead of thirty (EOP-24, ADR-019).
+    </comment>
+
+    <modifyDataType tableName="game_session" columnName="join_code" newDataType="VARCHAR(8)"/>
+
+    <rollback>
+      <!--
+        Narrowing back is only safe once no eight-character code remains, so the
+        rollback of 002 must run first. Liquibase rolls back in reverse order, so
+        that happens automatically for a two-step rollbackCount.
+      -->
+      <modifyDataType tableName="game_session" columnName="join_code" newDataType="VARCHAR(6)"/>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="002" author="miguel">
+    <comment>
+      Pad pre-existing six-character join codes to eight characters so that
+      JoinCode's strict constructor can still read those rows. See the file
+      header for why these rows are padded rather than deleted.
+    </comment>
+
+    <update tableName="game_session">
+      <column name="join_code" valueComputed="join_code || '00'"/>
+      <where>LENGTH(join_code) = 6</where>
+    </update>
+
+    <rollback>
+      <!--
+        Reverse only the rows this changeset created: eight characters, ending in
+        the two padding zeroes, whose first six characters are a valid code. A
+        genuinely-generated code ending '00' would also match, which is why this
+        rollback is paired with 001's narrowing rather than offered on its own —
+        run them together (rollbackCount=2) or not at all.
+      -->
+      <update tableName="game_session">
+        <column name="join_code" valueComputed="SUBSTRING(join_code, 1, 6)"/>
+        <where>LENGTH(join_code) = 8 AND join_code LIKE '%00'</where>
+      </update>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

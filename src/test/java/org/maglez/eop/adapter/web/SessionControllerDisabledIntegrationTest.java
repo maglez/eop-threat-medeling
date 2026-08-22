@@ -40,7 +40,7 @@ class SessionControllerDisabledIntegrationTest {
 
     private static final String SESSIONS = "/api/v1/sessions";
     private static final String SOME_SESSION = UUID.randomUUID().toString();
-    private static final String SOME_CODE = "ABC234";
+    private static final String SOME_CODE = "ABC23456";
 
     @Autowired
     private MockMvc mockMvc;

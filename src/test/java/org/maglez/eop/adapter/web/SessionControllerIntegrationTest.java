@@ -162,7 +162,7 @@ class SessionControllerIntegrationTest {
     private static String unheldCode() {
         final var alphabet = JoinCode.ALPHABET;
         var remaining = SERIAL.incrementAndGet();
-        final var drawn = new StringBuilder("ZZZZZZ");
+        final var drawn = new StringBuilder("ZZZZZZZZ");
         for (int position = 0; position < JoinCode.LENGTH && remaining > 0; position++) {
             drawn.setCharAt(position, alphabet.charAt(remaining % alphabet.length()));
             remaining /= alphabet.length();
@@ -324,7 +324,7 @@ class SessionControllerIntegrationTest {
             final var attempts = List.of(
                     attemptJoin(wellFormed, unusedAddressHint()),
                     attemptJoin("12345", unusedAddressHint()),
-                    attemptJoin("1234IU", unusedAddressHint()));
+                    attemptJoin("1234IUVW", unusedAddressHint()));
 
             final var described = new ArrayList<String>();
             for (final var attempt : attempts) {

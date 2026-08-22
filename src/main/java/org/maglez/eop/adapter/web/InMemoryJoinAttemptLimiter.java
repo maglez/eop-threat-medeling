@@ -18,14 +18,23 @@ import org.springframework.stereotype.Component;
 /**
  * Counts failed join attempts in a sliding window, in this process's memory.
  *
- * <p>This is a primary security control, not a courtesy about load. A join code is
- * six characters over a thirty-two symbol alphabet: about thirty bits, or a billion
- * possibilities. That is unguessable only while guessing is slow. Ten failures a
- * minute allows roughly fourteen thousand guesses a day from one address, against a
- * keyspace of a billion and a handful of codes live at any moment — so the expected
- * time to stumble onto a real session is measured in centuries. Remove this class
- * and that becomes minutes. Any change that weakens it is a security change and
- * should be reviewed as one (ADR-019).
+ * <p>This is a security control, not a courtesy about load. A join code is eight
+ * characters over a thirty-two symbol alphabet: exactly forty bits, or about 1.1
+ * trillion possibilities. Ten failures a minute allows roughly fourteen thousand
+ * guesses a day from one address, so a single attacker is not the interesting case
+ * and never was. What this class bounds is the guess rate <em>per address</em>; what
+ * bounds the search overall is the length of the code.
+ *
+ * <p>Read the two together, because neither is sufficient alone. Against a pool of
+ * a thousand proxied addresses and a few dozen lobbies live at any moment, the
+ * expected time to stumble onto a real session is years at forty bits. The same
+ * pool needed days when the code was six characters, which is why EOP-24 lengthened
+ * it — an earlier version of this comment claimed centuries, but that arithmetic
+ * quietly assumed the attacker owned one address. Note also that the per-code
+ * window below does nothing against such a search: every guess is a different code
+ * and lands in its own fresh counter, so only the per-address window ever fires.
+ * Any change that weakens either is a security change and should be reviewed as
+ * one (ADR-019).
  *
  * <p><strong>Only failures are counted.</strong> A facilitator shares one code with
  * five people who all join successfully, and none of them should be throttled. An

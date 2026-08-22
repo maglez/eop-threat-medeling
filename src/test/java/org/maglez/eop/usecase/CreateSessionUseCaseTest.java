@@ -22,7 +22,7 @@ import org.maglez.eop.entity.SessionStatus;
  * Tests {@link CreateSessionUseCase}.
  *
  * <p>The interesting behaviour is not the happy path but the collision retry. A
- * join code is six Crockford characters, so two facilitators opening a lobby at
+ * join code is eight Crockford characters, so two facilitators opening a lobby at
  * the same moment can be handed the same one. The use case must retry with a
  * fresh code while keeping the credential it already minted: a caller told one
  * token and then a different one would have no way to know which is live.
@@ -49,8 +49,8 @@ class CreateSessionUseCaseTest {
     private static final UUID SESSION_B = UUID.fromString("00000000-0000-7000-8000-00000000000b");
 
     private static final String TOKEN = "facilitator-plaintext-token";
-    private static final String FIRST_CODE = "ABC234";
-    private static final String SECOND_CODE = "DEF567";
+    private static final String FIRST_CODE = "ABC23456";
+    private static final String SECOND_CODE = "DEF56789";
 
     private final InMemorySessionRepository repository = new InMemorySessionRepository();
 
@@ -134,7 +134,7 @@ class CreateSessionUseCaseTest {
     void shouldGiveUpAfterFiveCollisions() {
         repository.rejectNextJoinCodes(CODE_ATTEMPTS);
         final QueuedJoinCodeGenerator codes =
-                new QueuedJoinCodeGenerator("ABC234", "DEF567", "GHJ89A", "KMN0BC", "PQR1DE");
+                new QueuedJoinCodeGenerator("ABC23456", "DEF56789", "GHJ89ABC", "KMN0BCDE", "PQR1DEFG");
         final QueuedIdentifierGenerator identifiers = new QueuedIdentifierGenerator(
                 PLAYER_ID,
                 UUID.fromString("00000000-0000-7000-8000-000000000011"),

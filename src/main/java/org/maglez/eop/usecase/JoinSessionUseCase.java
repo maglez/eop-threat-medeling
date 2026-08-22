@@ -98,7 +98,7 @@ public class JoinSessionUseCase {
      * throttle for the same reason. A full table and a game already under way are both
      * proof that the code is live, so leaving those paths free would let a caller
      * confirm real codes at full request rate while the limiter — the primary control
-     * behind a thirty-bit code space — never fires. Losing a race for a seat is not
+     * behind a forty-bit code space — never fires. Losing a race for a seat is not
      * charged: that is our own contention, not a failed attempt by the caller.
      *
      * <p>The identity token and the player identifier are generated once, before the

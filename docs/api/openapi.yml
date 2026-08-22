@@ -211,9 +211,9 @@ paths:
             code from a video call is the expected input path.
           schema:
             type: string
-            minLength: 6
-            maxLength: 6
-            pattern: '^[0-9A-Za-z]{6}$'
+            minLength: 8
+            maxLength: 8
+            pattern: '^[0-9A-Za-z]{8}$'
       requestBody:
         required: true
         content:
@@ -1136,19 +1136,23 @@ components:
 
     JoinCode:
       type: string
-      minLength: 6
-      maxLength: 6
-      pattern: '^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$'
+      minLength: 8
+      maxLength: 8
+      pattern: '^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$'
       description: |
-        Six characters of Crockford base32, drawn from a cryptographically secure
-        generator. The alphabet excludes `I`, `L`, `O` and `U`, so a code cannot
-        be misread as a different valid code and cannot spell an unfortunate
-        word.
+        Eight characters of Crockford base32, drawn from a cryptographically
+        secure generator. The alphabet excludes `I`, `L`, `O` and `U`, so a code
+        cannot be misread as a different valid code and cannot spell an
+        unfortunate word.
 
         Always emitted in this canonical upper-case form. Input is normalised
         before lookup, so a code typed in lower case or with `I`/`L`/`O`
         substituted still resolves.
-      examples: ['7QK2FM']
+
+        The code was six characters until EOP-24. Eight is exactly forty bits,
+        which is what a distributed attacker — not a single address — has to
+        work through; see ADR-019 for the attack model that moved it.
+      examples: ['7QK2FMV9']
 
     CreateSessionRequest:
       type: object
@@ -1976,7 +1980,7 @@ components:
 
         Note the asymmetry with joining by code: a `sessionId` is a UUID that
         nobody can usefully guess, so there is nothing to be gained by hiding
-        whether one exists. A join code is six characters, so that endpoint
+        whether one exists. A join code is eight characters, so that endpoint
         deliberately does hide it.
       content:
         application/problem+json:
@@ -1995,10 +1999,11 @@ components:
           window. The slot is reserved before any database work, so a refused
           request never commits a row (ADR-033).
         - **Join attempt limiter** — too many failed join attempts from this
-          source or against this code. A six-character code has roughly thirty
-          bits of entropy, which is only unguessable while guessing is
-          rate-limited — so this limiter is a primary security control rather
-          than a courtesy (ADR-019).
+          source or against this code. An eight-character code carries forty
+          bits of entropy, and this limiter bounds how fast any one address may
+          guess; enumeration is impractical because of both together. The
+          per-code window is not what stops enumeration, because every guess is
+          a different code and lands in its own counter (ADR-019).
         - **Subscriber cap** — too many concurrent SSE subscribers for a session
           or globally. The cap is not time-bounded, so no `Retry-After` header
           is emitted for this case (EOP-20, ADR-034).
@@ -2032,7 +2037,7 @@ components:
         nothing malfunctioned, so this is a capacity statement rather than an
         error: the same request is expected to succeed shortly.
 
-        A six-character code carries roughly thirty bits of entropy, so a run of
+        An eight-character code carries forty bits of entropy, so a run of
         collisions across the whole attempt budget means the number of live
         lobbies is approaching what that code space comfortably bears. Unlike
         429, a caller cannot provoke this — which is why each occurrence is
