@@ -62,7 +62,7 @@ import org.springframework.web.bind.annotation.RestController;
  * because a hand is private (ADR-026 §CWE-117 and hidden-information constraints).
  *
  * <p>Descriptions here are deliberately brief: {@code docs/api/openapi.yml} is the
- * contract (ADR-004), springdoc is disabled in production, and prose duplicated in
+ * contract (ADR-004), springdoc is disabled by default (ADR-049), and prose duplicated in
  * two places is how the two come to disagree.
  */
 @RestController

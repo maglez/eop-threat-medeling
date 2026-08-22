@@ -30,7 +30,7 @@ Spring Boot provides several error-handling mechanisms: `@ExceptionHandler` per 
   - All API errors conform to a single, standard format
   - Domain exceptions stay framework-free (Clean Architecture compliance)
   - Test agents can parse errors programmatically
-  - Swagger UI documents error schemas automatically via `@ApiResponse`
+  - Swagger UI documents error schemas automatically via `@ApiResponse` (disabled by default as of EOP-38; opt in via env vars)
 - **Negative:**
   - `GlobalExceptionHandler` is a single point of failure — a bug there hides all errors
   - RFC 9457 adds a thin wrapper layer between domain exceptions and HTTP responses

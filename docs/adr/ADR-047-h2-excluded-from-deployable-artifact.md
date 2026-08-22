@@ -1,6 +1,8 @@
 # ADR-047: H2 is excluded from the deployable artifact, not moved to test scope
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-08-22 by EOP-38 — a second, independent
+configuration-layer mechanism now prevents a deployed artifact serving the API schema,
+so this ADR's `<excludes>` block is no longer the sole guard; see ADR-049)
 
 **Date:** 2026-08-21
 
@@ -216,3 +218,17 @@ credited it with.
   `H2ConsoleAbsentIntegrationTest`; raised the gap this ADR closes
 - EOP-34 — this ticket. Item 1 is delivered in substance (the artifact carries no H2) but
   deliberately not in the letter (the scope stays `runtime`); item 2 is declined above
+
+> **Amendment, 2026-08-22 (EOP-38):** its `<excludes>` block was, until EOP-38, the sole
+> mechanism preventing a deployed artifact from serving the API schema — a load it was
+> never designed to carry and which its own text did not claim. A second, independent
+> configuration-layer mechanism now exists: `springdoc.api-docs.enabled: false` and
+> `springdoc.swagger-ui.enabled: false` sit in `application.yml`, the default profile's
+> base, with a redundant pin in `application-prod.yml`. Its revisit trigger ("if a future
+> change gives the default profile a role in a deployed configuration") is **not** tripped —
+> the default profile gains no deployed role here; the change is purely about which layer
+> carries the guard. The observation in the Consequences section — that running the jar on
+> the default profile fails visibly with a missing driver — was independently reproduced
+> during EOP-38, with the exact error: `java.lang.IllegalStateException: Cannot load driver
+> class: org.h2.Driver` at `DataSourceProperties.findDriverClassName`, via
+> `entityManagerFactory` → `liquibase` → `dataSource` → `HikariDataSource`.

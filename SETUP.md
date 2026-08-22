@@ -145,8 +145,22 @@ The following items were reviewed and **accepted**; do not re-flag them in
 future audits without new evidence.
 
 ### Production hardening applied
-- `application-prod.yml` disables springdoc (`/v3/api-docs`, `/swagger-ui.html`).
-  They remain enabled in the default profile for local development.
+- **springdoc is disabled by default — no longer an accepted risk (resolved by
+  EOP-38, ADR-049, 2026-08-22).** This entry used to read "`application-prod.yml`
+  disables springdoc (`/v3/api-docs`, `/swagger-ui.html`). They remain enabled in
+  the default profile for local development", and that was accepted on the grounds
+  that the one deployment path sets `SPRING_PROFILES_ACTIVE=prod`. It is kept here,
+  struck through in substance rather than deleted, because the register is also a
+  record of what was once accepted and why it stopped being acceptable. The
+  hardening now lives in the base `application.yml`, so **the default profile
+  serves neither the schema nor the UI** — measured 404 on `/v3/api-docs`,
+  `/swagger-ui/index.html` and `/swagger-ui.html`. Local development opts *in* with
+  `SPRINGDOC_APIDOCS_ENABLED=true` and `SPRINGDOC_SWAGGERUI_ENABLED=true`, which
+  `.env.example` carries and `.envrc`'s `dotenv` exports; `compose.app.yml` has no
+  `env_file:`, so a container never sees them, and `application-prod.yml` pins both
+  to `false` regardless as a second independent guard. Pinned by
+  `SpringdocDisabledByDefaultIntegrationTest` and, so that "disabled" can never be
+  satisfied by springdoc merely being broken, `SpringdocOptInIntegrationTest`.
 - **Notificator plugin removed** — it shelled out to OS commands
   (`osascript`/`afplay`/`notify-send`) for desktop notifications; attack
   surface not justified by utility. See Blueprint §12.6.

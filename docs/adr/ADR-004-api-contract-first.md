@@ -16,7 +16,7 @@ Without a contract-first approach, each agent works from implicit assumptions, l
 ## Decision
 
 - **Contract-first** with OpenAPI 3.1 as the source of truth
-- **`springdoc-openapi-starter-webmvc-ui`** for runtime spec generation at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`
+- **`springdoc-openapi-starter-webmvc-ui`** for runtime spec generation at `/v3/api-docs` and Swagger UI at `/swagger-ui.html` (both **disabled by default as of 2026-08-22, EOP-38**; local dev opts in via `SPRINGDOC_APIDOCS_ENABLED` and `SPRINGDOC_SWAGGERUI_ENABLED`)
 - OpenAPI spec files stored in **`docs/api/openapi.yml`** and hand-authored (spec-first) for new endpoints before implementation
 - Controllers annotated with `@Operation`, `@ApiResponse` for documentation
 - **URL convention:** `/api/v1/{resource}` — versioned from day one
@@ -27,7 +27,7 @@ Without a contract-first approach, each agent works from implicit assumptions, l
 
 - **Positive:**
   - Single source of truth for all agents building or testing API endpoints
-  - Auto-generated Swagger UI for manual testing during development
+  - Auto-generated Swagger UI for manual testing during development (disabled by default as of EOP-38; opt in via env vars)
   - Clear versioning path without breaking existing consumers
 - **Negative:**
   - Spec drift if engineers forget to update `docs/api/openapi.yml` before implementation
