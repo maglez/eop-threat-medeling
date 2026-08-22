@@ -114,7 +114,7 @@ if ! run_trivy "$workdir/ships.json"; then
     echo "           Maven tree with its own parser, which keeps no cache and re-fetches the"
     echo "           whole set every run, so a shared CI IP address can earn a 429 with a"
     echo "           long Retry-After. Populate the local Maven repository first"
-    echo "           (./mvnw -B -q dependency:resolve) and Trivy reads ~/.m2/repository"
+    echo "           (./mvnw -B dependency:resolve) and Trivy reads ~/.m2/repository"
     echo "           instead of the network. Do NOT reach for --offline-scan: an"
     echo "           unresolvable parent POM would silently shrink the tree trivy believes"
     echo "           exists, turning an under-report into a clean bill of health."

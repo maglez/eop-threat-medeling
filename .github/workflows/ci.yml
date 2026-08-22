@@ -451,8 +451,17 @@ jobs:
       # throttles *this* step the job fails here, before the scan, which is
       # still the safe direction - a failed resolve is visibly a failed
       # resolve, not a clean bill of health.
+      #
+      # `-B` but deliberately NOT `-q`. Quiet mode suppresses exactly the
+      # per-artifact INFO lines that named `spring-data-bom` as the artefact
+      # Central refused, and that incident was diagnosed from this log. A
+      # throttled resolve fails loudly either way; the question is whether the
+      # log says *which* POM and *what* the HTTP status was, or only that
+      # Maven exited non-zero. Keep the output. The verbosity costs nothing
+      # that matters in a job whose whole purpose is telling someone what is
+      # wrong with a dependency tree.
       - name: Populate the local Maven repository for Trivy's parser
-        run: ./mvnw -B -q dependency:resolve
+        run: ./mvnw -B dependency:resolve
 
       # Pinned by version *and* by the SHA-256 of the release asset, rather
       # than installed through a third-party action. Both halves are
