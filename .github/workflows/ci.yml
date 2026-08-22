@@ -343,3 +343,144 @@ jobs:
 
       - name: Audit pinned OpenCode plugins
         run: tools/supply-chain/audit-plugins.sh
+
+  # CVE scanning for the two dependency trees the application actually
+  # ships: the Maven tree resolved from `pom.xml`, and the npm tree locked
+  # by `ui/package-lock.json`. Before EOP-89 there was none, anywhere - the
+  # enforcer covered dependency *convergence* and banned coordinates, which
+  # is supply-chain hygiene but is not CVE detection, so a transitive with a
+  # published critical passed every gate the project had. It was not a
+  # theoretical gap: the first run of this scanner against `main` found six
+  # findings, one of them a HIGH in a directly-declared runtime dependency
+  # (`org.postgresql:postgresql`, CVE-2026-54291). All six were closed by
+  # patch-level version overrides in `pom.xml` before this job landed, which
+  # is why it is green on arrival - a gate that is red the day it appears
+  # gets switched off rather than fixed.
+  #
+  # Note the division of labour with `supply-chain` above, which is a
+  # different job about a different tree and is not redundant with this one.
+  # That one audits the OpenCode *developer plugins* and checks more than
+  # CVEs there (maintainer continuity, provenance attestations, npm
+  # signatures); this one audits the *deployed application* and checks only
+  # CVEs. This job therefore skips `.opencode/` and `tools/` deliberately:
+  # two gating scanners over one tree would mean two allowlists to keep in
+  # step, and the first divergence would be silent.
+  #
+  # Deliberately NOT a required status check when it lands - but for a
+  # weaker reason than the `supply-chain` job's, and the difference is worth
+  # keeping straight rather than inheriting. That job's argument is that an
+  # advisory against a developer tool "is a thing to know about, not a
+  # reason to block a merge"; that argument does not transfer here, because
+  # these dependencies are executed in production by users. The reason this
+  # one is not required yet is narrower: a CVE gate goes red on a
+  # publication by a third party against code that has not changed, so
+  # making it required means an unrelated PR can be blocked by someone
+  # else's release schedule. `tools/supply-chain/accepted-cves.json` exists
+  # precisely so that situation has an answer other than disabling the
+  # scanner, and once that mechanism has been exercised in anger a couple of
+  # times, promoting this to required is the intended end state. Two honest
+  # caveats on that: branch protection is configured outside this file, so
+  # no comment here can make the job required or stop it being required;
+  # and the job exits non-zero and shows red on a gating finding either way,
+  # so "not required" affects whether a merge is blocked, never whether the
+  # finding is visible.
+  #
+  # Failure policy, in full, is HIGH and CRITICAL only. That matches the
+  # `audit-plugins.sh` gating set exactly and diverges from the SpotBugs
+  # posture in `build-quality.md`, which fails on high *and medium*. The
+  # divergence is deliberate: a medium SpotBugs finding is in our own code
+  # and is always actionable, whereas a medium CVE in a third-party
+  # transitive is frequently unreachable, often has no in-range fix, and
+  # arrives at a volume set by other people's release cadence. Medium and
+  # low findings are printed in their own non-gating section. See ADR-050.
+  dependency-cve:
+    name: dependency-cve
+    runs-on: ubuntu-latest
+    # Reads the repository, the vulnerability database and Maven Central.
+    # Writes nothing anywhere.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `setup-java` and no `setup-node`, which looks like an omission
+      # and is not. Trivy resolves the Maven tree with its own parser,
+      # fetching parent and dependency POMs from Central over HTTP rather
+      # than invoking Maven, and it reads `ui/package-lock.json` as a file
+      # rather than installing it. Nothing here needs a JDK or a Node
+      # runtime. The consequence to be aware of is that the scan depends on
+      # Maven Central being reachable: if Central is down this job fails
+      # rather than silently under-reporting, which is the safe direction.
+
+      # Pinned by version *and* by the SHA-256 of the release asset, rather
+      # than installed through a third-party action. Both halves are
+      # deliberate. A `setup-trivy`-style action would add another
+      # unpinned-by-default dependency to the very job whose purpose is
+      # dependency hygiene; and pinning only the version still trusts
+      # whatever bytes that tag serves today. What the digest does and does
+      # not prove is worth being exact about: it detects a corrupted
+      # download or a tampered mirror, and it does NOT prove the release
+      # itself is benign - if upstream published a backdoored 0.74.0, this
+      # check passes. Bumping the version means replacing both values
+      # together, from
+      # https://github.com/aquasecurity/trivy/releases/download/v<ver>/trivy_<ver>_checksums.txt
+      - name: Install Trivy 0.74.0
+        env:
+          TRIVY_VERSION: 0.74.0
+          TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+        run: |
+          set -euo pipefail
+          asset="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          url="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${asset}"
+          curl -sSfL -o "$asset" "$url"
+          echo "${TRIVY_SHA256}  ${asset}" | sha256sum --check --strict
+          tar -xzf "$asset" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+          rm -f trivy "$asset"
+          trivy --version
+
+      # The vulnerability database is ~109 MiB and is the single largest
+      # cost in this job, so it is cached - but note what the cache is and
+      # is not. It is an optimisation, never a correctness control: Trivy
+      # checks the database's own age and refreshes it when stale, so a
+      # cache hit reduces bytes transferred rather than pinning the job to
+      # yesterday's advisories. That is why the key must NOT be
+      # `hashFiles('**/pom.xml')`, the reflex for a Maven cache - the
+      # database ages on a clock of its own, entirely independently of
+      # whether our dependencies changed, and keying it to `pom.xml` would
+      # hold a stale database for as long as nobody edited the POM.
+      #
+      # Keyed by UTC date so the full download happens at most once a day,
+      # with a bare prefix restore-key so a first-run-of-the-day miss still
+      # restores yesterday's database and updates it incrementally instead
+      # of pulling the whole thing.
+      - name: Compute cache date
+        id: cache-date
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.cache-date.outputs.date }}
+          restore-keys: trivy-db-
+
+      # Two passes, and the second one cannot fail the job. Trivy's default
+      # is to suppress development and test dependencies, so pass one sees
+      # only what ships and is the pass that gates; pass two re-runs with
+      # `--include-dev-deps` and prints whatever is visible only at build
+      # time - the UI's dev tree is 331 of its 337 packages, and a finding
+      # in a test-scoped Maven artifact never reaches production. Knowing
+      # about those is useful; blocking on them is not. Both passes, the
+      # allowlist gating and the exit-code contract (0 clean, 1 gating
+      # finding or allowlist drift, 2 could not run) live in the script, so
+      # the same command reproduces this job locally.
+      #
+      # Runtime, measured on EOP-89: 4.75 s warm, plus roughly 6 s of
+      # database download on a cold cache. It is not the reason the CI wall
+      # clock is what it is, and needs no scheduled-only treatment - though
+      # the workflow's weekly cron covers this job too, which is the trigger
+      # that catches an advisory published against dependencies we have not
+      # touched.
+      - name: Scan application dependency trees for known CVEs
+        run: tools/supply-chain/scan-dependencies.sh
