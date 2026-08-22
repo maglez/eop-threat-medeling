@@ -185,27 +185,40 @@ class GlobalExceptionHandlerTest {
     /**
      * The invariant the narrowing exists to create, rather than a behaviour of any one handler.
      *
-     * <p>The defect this test guards was not a wrong status code but a missing rule: mapping a JDK exception type
-     * commits this class to answering for every library that throws it, and to doing so more specifically than the
-     * {@code Exception} catch-all, which is what silenced the log. A future handler could reintroduce that by mapping
-     * {@code IllegalStateException}, or {@code IllegalArgumentException} again, and every existing test here would
-     * still pass. So the rule is asserted directly: no mapping may name a type the JDK owns, except the
-     * {@code Exception} catch-all itself.</p>
+     * <p>The defect this test guards was not a wrong status code but a missing rule: mapping an exception type we do
+     * not own commits this class to answering for every library that throws it, and to doing so more specifically than
+     * the {@code Exception} catch-all, which is what silenced the log. A future handler could reintroduce that by
+     * mapping {@code IllegalStateException}, or {@code IllegalArgumentException} again, and every existing test here
+     * would still pass. So the rule is asserted directly: a mapping may name only a type this project declares, except
+     * the {@code Exception} catch-all itself.</p>
+     *
+     * <p>The check deliberately reaches past the JDK. {@code IllegalArgumentException} was merely the instance we were
+     * bitten by; mapping {@code jakarta.validation.ConstraintViolationException} or a Spring binding exception would
+     * echo text we did not write just as readily, and rob the fault of the same log. Naming the packages we do not own
+     * states the rule at the width of the defect instead of the width of one example.</p>
+     *
+     * <p>Scope is this class's own declared methods. Handlers inherited from
+     * {@code ResponseEntityExceptionHandler} are Spring's to define, are already narrow, and answer framework faults
+     * with field-level detail of their own — they are not the defect, and asserting over them would fail immediately
+     * and permanently.</p>
      */
     @Test
-    @DisplayName("no handler maps a JDK exception type, except the Exception catch-all itself")
-    void shouldMapNoJdkExceptionTypeApartFromTheCatchAll() {
-        final List<Class<? extends Throwable>> jdkMappings = Arrays.stream(GlobalExceptionHandler.class.getDeclaredMethods())
+    @DisplayName("no handler maps a type this project does not own, except the Exception catch-all itself")
+    void shouldMapNoForeignExceptionTypeApartFromTheCatchAll() {
+        final List<String> notOurs = List.of("java.", "javax.", "jakarta.", "org.springframework.", "com.fasterxml.",
+                "org.hibernate.", "org.slf4j.", "ch.qos.");
+
+        final List<Class<? extends Throwable>> foreignMappings = Arrays.stream(GlobalExceptionHandler.class.getDeclaredMethods())
                 .map(method -> method.getAnnotation(ExceptionHandler.class))
                 .filter(Objects::nonNull)
                 .flatMap(annotation -> Arrays.stream(annotation.value()))
                 .filter(mapped -> mapped != Exception.class)
-                .filter(mapped -> mapped.getName().startsWith("java."))
+                .filter(mapped -> notOurs.stream().anyMatch(prefix -> mapped.getName().startsWith(prefix)))
                 .toList();
 
-        assertThat(jdkMappings)
-                .as("a JDK type is thrown by every library on the classpath, so mapping one answers for text we did not write "
-                        + "and, being more specific than the Exception catch-all, denies the fault its only error log")
+        assertThat(foreignMappings)
+                .as("a type we do not own is thrown by every library that shares it, so mapping one answers for text we did "
+                        + "not write and, being more specific than the Exception catch-all, denies the fault its only error log")
                 .isEmpty();
     }
 

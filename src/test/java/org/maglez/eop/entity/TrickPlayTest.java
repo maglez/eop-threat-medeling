@@ -82,7 +82,7 @@ class TrickPlayTest {
                     .mapToObj(index -> "Component " + index)
                     .toList();
 
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(tooMany).build());
         }
 
@@ -96,7 +96,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a blank component name, because an empty box names nothing")
         void shouldRejectBlankComponentName() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(List.of("   ")).build());
         }
 
@@ -105,7 +105,7 @@ class TrickPlayTest {
         void shouldRejectOverLongComponentName() {
             final String tooLong = "c".repeat(TrickPlay.MAX_COMPONENT_NAME_LENGTH + 1);
 
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(List.of(tooLong)).build());
         }
 
@@ -114,7 +114,7 @@ class TrickPlayTest {
         void shouldRejectOverLongNotes() {
             final String tooLong = "n".repeat(TrickPlay.MAX_NOTES_LENGTH + 1);
 
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withNotes(tooLong).build());
         }
     }
@@ -228,7 +228,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a NUL byte in a component name, which PostgreSQL cannot store at all")
         void shouldRejectNulByteInComponent() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(List.of("payments\u0000api")).build())
                     .withMessageContaining("control characters");
         }
@@ -236,7 +236,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a NUL byte in a note")
         void shouldRejectNulByteInNotes() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withNotes("the token\u0000is never checked").build())
                     .withMessageContaining("control characters");
         }
@@ -244,7 +244,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a carriage return in a note, because a player must not be able to forge a log line")
         void shouldRejectCarriageReturnInNotes() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withNotes("ok\r\nWARN  admin granted").build())
                     .withMessageContaining("control characters");
         }
@@ -252,7 +252,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a newline in a component name")
         void shouldRejectNewlineInComponent() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(List.of("payments\napi")).build())
                     .withMessageContaining("control characters");
         }
@@ -260,7 +260,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a right-to-left override, which would display a component name other than the one stored")
         void shouldRejectBidiOverrideInComponent() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(List.of("safe\u202eelbisiv")).build())
                     .withMessageContaining("bidirectional");
         }
@@ -268,7 +268,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("a right-to-left mark in a note")
         void shouldRejectBidiMarkInNotes() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withNotes("looks\u200fharmless").build())
                     .withMessageContaining("bidirectional");
         }
@@ -283,7 +283,7 @@ class TrickPlayTest {
             };
 
             for (final char control : controls) {
-                assertThatIllegalArgumentException()
+                assertThatExceptionOfType(InvalidInputException.class)
                         .as("component containing U+%04X", (int) control)
                         .isThrownBy(() -> aTrickPlay().withComponents(List.of("a" + control + "b")).build())
                         .withMessageContaining("bidirectional");
@@ -293,7 +293,7 @@ class TrickPlayTest {
         @Test
         @DisplayName("names the position, so a player can find the character they cannot see")
         void shouldNameThePosition() {
-            assertThatIllegalArgumentException()
+            assertThatExceptionOfType(InvalidInputException.class)
                     .isThrownBy(() -> aTrickPlay().withComponents(List.of("ab\u0000cd")).build())
                     .withMessageContaining("position 2");
         }
