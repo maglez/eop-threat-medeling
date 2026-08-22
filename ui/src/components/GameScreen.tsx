@@ -13,6 +13,7 @@ import {
   type PlayerDto,
 } from '../api';
 import { ErrorSummary } from './ErrorSummary';
+import { CardLens, useCardMagnifier } from './CardMagnifier';
 import { cardImagePath } from '../utils/cardImagePath';
 import './GameScreen.css';
 
@@ -65,19 +66,93 @@ const SUIT_LABELS: Record<string, string> = {
 
 // ---- Sub-components ----
 
+interface CardBodyProps {
+  readonly card: CardDto;
+  readonly rankFontSize: string;
+  readonly suitFontSize: string;
+  readonly imageBorderRadius: string;
+  readonly suitLineHeight?: number;
+}
+
+/**
+ * The inside of a card: its bundled art, or a three-line text fallback for the
+ * suit and rank combinations that have no image.
+ *
+ * Extracted by EOP-145 so that the magnifier's replica renders the *same* JSX as
+ * the card it magnifies, rather than a second copy that can silently drift out
+ * of step with the original.
+ *
+ * @param props the card and the type sizes the text fallback should use
+ * @return the card body
+ */
+function CardBody({ card, rankFontSize, suitFontSize, imageBorderRadius, suitLineHeight }: CardBodyProps): React.JSX.Element {
+  const suitColour = SUIT_COLOURS[card.suit] ?? '#0b0c0c';
+  const suitLabel = SUIT_LABELS[card.suit] ?? card.suit[0];
+  const imagePath = cardImagePath(card.suit, card.rank);
+
+  if (imagePath !== null) {
+    return (
+      <img
+        src={imagePath}
+        alt={`${card.rankSymbol} of ${card.suit.toLowerCase().replace(/_/g, ' ')}`}
+        // An <img> is implicitly draggable="true" in every browser, so pressing on the
+        // card art and moving starts a *native* HTML5 drag. That fires `dragstart` and
+        // aborts the in-flight pointer stream with `pointercancel`, which
+        // `handlePointerCancel` correctly treats as "drag abandoned" — so the card
+        // snapped back to the hand and no play was ever submitted (EOP-79). Disabling
+        // native dragging is what lets the pointer-based drag reach `pointerup`.
+        draggable={false}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          borderRadius: imageBorderRadius,
+          display: 'block',
+          WebkitUserDrag: 'none',
+        } as React.CSSProperties}
+      />
+    );
+  }
+
+  return (
+    <>
+      <div style={{ fontSize: rankFontSize, fontWeight: 'bold', color: suitColour }}>
+        {card.rankSymbol}
+      </div>
+      <div style={{
+        fontSize: suitFontSize,
+        color: suitColour,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        lineHeight: suitLineHeight,
+      }}>
+        {suitLabel}
+      </div>
+      <div style={{ fontSize: rankFontSize, fontWeight: 'bold', color: suitColour, textAlign: 'right' }}>
+        {card.rankSymbol}
+      </div>
+    </>
+  );
+}
+
+/** Border-box geometry of a hand card, shared with its magnifier replica. */
+const HAND_CARD_WIDTH_PX = 80;
+const HAND_CARD_HEIGHT_PX = 120;
+const HAND_CARD_PADDING_PX = 6;
+
 interface CardFaceProps {
   readonly card: CardDto;
   readonly selected: boolean;
   readonly disabled: boolean;
   readonly dragging: boolean;
+  readonly magnifierEnabled: boolean;
   readonly onSelect: () => void;
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
 }
 
-function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
-  const suitColour = SUIT_COLOURS[card.suit] ?? '#0b0c0c';
-  const suitLabel = SUIT_LABELS[card.suit] ?? card.suit[0];
+function CardFace({ card, selected, disabled, dragging, magnifierEnabled, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
   const [focused, setFocused] = React.useState(false);
+  const magnifier = useCardMagnifier(magnifierEnabled);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
@@ -90,8 +165,33 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
   // The inset is applied via inline style so it is not overridden by the CSS class rule.
   const focusBoxShadow = '0 0 0 3px #ffdd00, inset 0 0 0 2px #0b0c0c';
 
+  const body = (
+    <CardBody
+      card={card}
+      rankFontSize="14px"
+      suitFontSize="11px"
+      imageBorderRadius="4px"
+      suitLineHeight={1}
+    />
+  );
+
+  const handleCardPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') {
+      // A mouse drag calls setPointerCapture, so every subsequent pointermove is
+      // routed here and the lens would track the cursor away across the table.
+      // Hide it for the duration of the press; the next hover brings it back.
+      magnifier.hide();
+    } else {
+      magnifier.onPointerDown(e);
+    }
+    // A disabled card still magnifies (a player must be able to read a card that
+    // is not theirs to play yet) but must never start a drag.
+    if (!disabled) onPointerDown(e);
+  };
+
   return (
     <div
+      ref={magnifier.containerRef}
       role="button"
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
@@ -100,18 +200,25 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
       className="eop-card"
       onClick={disabled ? undefined : onSelect}
       onKeyDown={handleKeyDown}
-      onPointerDown={disabled ? undefined : onPointerDown}
+      onPointerDown={handleCardPointerDown}
+      onPointerMove={dragging ? undefined : magnifier.onPointerMove}
+      onPointerLeave={magnifier.onPointerLeave}
       onFocus={() => { setFocused(true); }}
       onBlur={() => { setFocused(false); }}
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        width: '80px',
-        height: '120px',
+        // Declared inline rather than relying on `.eop-card { position: relative }`
+        // in GameScreen.css, because the lens is absolutely positioned against
+        // this box and that CSS win is incidental — every other geometric
+        // property here already overrides the class.
+        position: 'relative',
+        width: `${String(HAND_CARD_WIDTH_PX)}px`,
+        height: `${String(HAND_CARD_HEIGHT_PX)}px`,
         border: selected ? '3px solid #ffdd00' : '2px solid #b1b4b6',
         borderRadius: '6px',
-        padding: '6px',
+        padding: `${String(HAND_CARD_PADDING_PX)}px`,
         backgroundColor: '#ffffff',
         cursor: disabled ? 'not-allowed' : dragging ? 'grabbing' : 'grab',
         opacity: disabled ? 0.45 : 1,
@@ -122,44 +229,83 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         flexShrink: 0,
       }}
     >
-      {cardImagePath(card.suit, card.rank) ? (
-        <img
-          src={cardImagePath(card.suit, card.rank) as string}
-          alt={`${card.rankSymbol} of ${card.suit.toLowerCase().replace(/_/g, ' ')}`}
-          // An <img> is implicitly draggable="true" in every browser, so pressing on the
-          // card art and moving starts a *native* HTML5 drag. That fires `dragstart` and
-          // aborts the in-flight pointer stream with `pointercancel`, which
-          // `handlePointerCancel` correctly treats as "drag abandoned" — so the card
-          // snapped back to the hand and no play was ever submitted (EOP-79). Disabling
-          // native dragging is what lets the pointer-based drag reach `pointerup`.
-          draggable={false}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            borderRadius: '4px',
-            display: 'block',
-            WebkitUserDrag: 'none',
-          } as React.CSSProperties}
-        />
-      ) : (
-        <>
-          <div style={{ fontSize: '14px', fontWeight: 'bold', color: suitColour }}>
-            {card.rankSymbol}
-          </div>
-          <div style={{
-            fontSize: '11px',
-            color: suitColour,
-            fontWeight: 'bold',
-            textAlign: 'center',
-            lineHeight: 1,
-          }}>
-            {suitLabel}
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: 'bold', color: suitColour, textAlign: 'right' }}>
-            {card.rankSymbol}
-          </div>
-        </>
+      {body}
+      {magnifier.point !== null && (
+        <CardLens
+          point={magnifier.point}
+          width={HAND_CARD_WIDTH_PX}
+          height={HAND_CARD_HEIGHT_PX}
+          padding={HAND_CARD_PADDING_PX}
+        >
+          {body}
+        </CardLens>
+      )}
+    </div>
+  );
+}
+
+/** Border-box geometry of a trick-zone card, shared with its magnifier replica. */
+const TRICK_CARD_WIDTH_PX = 64;
+const TRICK_CARD_HEIGHT_PX = 96;
+const TRICK_CARD_PADDING_PX = 4;
+
+interface TrickCardFaceProps {
+  readonly card: CardDto;
+  readonly magnifierEnabled: boolean;
+}
+
+/**
+ * A card already played into the current trick. Smaller than a hand card and
+ * never interactive — it cannot be selected, dragged or focused.
+ *
+ * Extracted from the trick zone's inline markup by EOP-145 so that it can own a
+ * magnifier hook; a hook cannot be called inside the `.map` that renders the
+ * plays. The rendered DOM is unchanged from the inline version.
+ *
+ * @param props the played card and whether the magnifier is switched on
+ * @return the trick-zone card
+ */
+function TrickCardFace({ card, magnifierEnabled }: TrickCardFaceProps): React.JSX.Element {
+  const magnifier = useCardMagnifier(magnifierEnabled);
+
+  const body = (
+    <CardBody
+      card={card}
+      rankFontSize="12px"
+      suitFontSize="10px"
+      imageBorderRadius="3px"
+    />
+  );
+
+  return (
+    <div
+      ref={magnifier.containerRef}
+      onPointerMove={magnifier.onPointerMove}
+      onPointerLeave={magnifier.onPointerLeave}
+      onPointerDown={magnifier.onPointerDown}
+      style={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        position: 'relative',
+        width: `${String(TRICK_CARD_WIDTH_PX)}px`,
+        height: `${String(TRICK_CARD_HEIGHT_PX)}px`,
+        border: '2px solid #b1b4b6',
+        borderRadius: '6px',
+        padding: `${String(TRICK_CARD_PADDING_PX)}px`,
+        backgroundColor: '#ffffff',
+      }}
+    >
+      {body}
+      {magnifier.point !== null && (
+        <CardLens
+          point={magnifier.point}
+          width={TRICK_CARD_WIDTH_PX}
+          height={TRICK_CARD_HEIGHT_PX}
+          padding={TRICK_CARD_PADDING_PX}
+        >
+          {body}
+        </CardLens>
       )}
     </div>
   );
@@ -237,6 +383,12 @@ export function GameScreen({
   onSessionEnd,
   onGameOver,
 }: GameScreenProps): React.JSX.Element {
+  // Feature flag — read at component scope so that `vi.stubEnv` can reach it in
+  // tests. Read at module scope it would be captured once at import time, and
+  // the flag-off test would silently exercise whatever position the developer's
+  // .env.local happens to hold. The `=== 'true'` comparison is what makes an
+  // unset variable fail closed (ADR-037).
+  const isCardMagnifierEnabled = import.meta.env.VITE_CARD_MAGNIFIER_ENABLED === 'true';
   const [session, setSession] = useState<SessionStateDto>(initialSession);
   const [hand, setHand] = useState<HandDto | null>(null);
   const [trickState, setTrickState] = useState<TrickStateDto | null>(null);
@@ -615,48 +767,7 @@ export function GameScreen({
                     <span className="govuk-body-s" style={{ fontSize: '11px' }}>
                       {playedByPlayer?.displayName ?? 'Unknown'}
                     </span>
-                    <div style={{
-                      display: 'inline-flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      width: '64px',
-                      height: '96px',
-                      border: '2px solid #b1b4b6',
-                      borderRadius: '6px',
-                      padding: '4px',
-                      backgroundColor: '#ffffff',
-                    }}>
-                      {cardImagePath(play.card.suit, play.card.rank) ? (
-                        <img
-                          src={cardImagePath(play.card.suit, play.card.rank) as string}
-                          alt={`${play.card.rankSymbol} of ${play.card.suit.toLowerCase().replace(/_/g, ' ')}`}
-                          // Same invariant as the hand card (EOP-79): this image is a descendant
-                          // of the container carrying onPointerCancel, so a native drag started
-                          // here would fire pointercancel and abort a hand-card drag in flight.
-                          draggable={false}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'contain',
-                            borderRadius: '3px',
-                            display: 'block',
-                            WebkitUserDrag: 'none',
-                          } as React.CSSProperties}
-                        />
-                      ) : (
-                        <>
-                          <div style={{ fontSize: '12px', fontWeight: 'bold', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c' }}>
-                            {play.card.rankSymbol}
-                          </div>
-                          <div style={{ fontSize: '10px', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c', textAlign: 'center', fontWeight: 'bold' }}>
-                            {SUIT_LABELS[play.card.suit] ?? play.card.suit[0]}
-                          </div>
-                          <div style={{ fontSize: '12px', fontWeight: 'bold', color: SUIT_COLOURS[play.card.suit] ?? '#0b0c0c', textAlign: 'right' }}>
-                            {play.card.rankSymbol}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <TrickCardFace card={play.card} magnifierEnabled={isCardMagnifierEnabled} />
                   </div>
                 );
               })}
@@ -684,6 +795,7 @@ export function GameScreen({
                 selected={selectedCardId === card.cardId}
                 disabled={!isMyTurn || isPlayingCard}
                 dragging={dragState?.cardId === card.cardId}
+                magnifierEnabled={isCardMagnifierEnabled}
                 onSelect={() => {
                   if (!isMyTurn || isPlayingCard) return;
                   setSelectedCardId(prev => prev === card.cardId ? null : card.cardId);

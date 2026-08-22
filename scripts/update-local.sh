@@ -55,7 +55,10 @@ echo "==> [1/4] Building backend image: eop-threat-medeling:local"
 docker build -t eop-threat-medeling:local "$REPO_ROOT"
 
 echo "==> [2/4] Building frontend image: eop-ui:local"
-docker build --build-arg VITE_GAME_SCREEN_ENABLED=true -t eop-ui:local "$REPO_ROOT/ui"
+docker build \
+  --build-arg VITE_GAME_SCREEN_ENABLED=true \
+  --build-arg VITE_CARD_MAGNIFIER_ENABLED=true \
+  -t eop-ui:local "$REPO_ROOT/ui"
 
 echo "==> [3/4] Restarting eop-app and eop-caddy (postgres is left untouched)"
 docker compose -f "$REPO_ROOT/compose.app.yml" up -d \
