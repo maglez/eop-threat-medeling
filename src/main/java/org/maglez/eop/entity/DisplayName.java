@@ -29,21 +29,21 @@ public record DisplayName(String value) {
     /**
      * Rejects a name that must not be stored.
      *
-     * @throws NullPointerException     if the value is null
-     * @throws IllegalArgumentException if the value is blank, too long, or
-     *                                  contains control characters
+     * @throws NullPointerException  if the value is null
+     * @throws InvalidInputException if the value is blank, too long, or
+     *                               contains control characters
      */
     public DisplayName {
         Objects.requireNonNull(value, "value is required");
         if (value.isBlank()) {
-            throw new IllegalArgumentException("A display name must not be blank");
+            throw new InvalidInputException("A display name must not be blank");
         }
         if (value.length() > MAX_LENGTH) {
-            throw new IllegalArgumentException("A display name is at most " + MAX_LENGTH + " characters, was " + value.length());
+            throw new InvalidInputException("A display name is at most " + MAX_LENGTH + " characters, was " + value.length());
         }
         for (int index = 0; index < value.length(); index++) {
             if (Character.isISOControl(value.charAt(index))) {
-                throw new IllegalArgumentException("A display name must not contain control characters");
+                throw new InvalidInputException("A display name must not contain control characters");
             }
         }
     }
@@ -58,7 +58,7 @@ public record DisplayName(String value) {
      * @param raw the submitted name, possibly padded, possibly null
      * @return the validated name
      * @throws NullPointerException     if the value is null
-     * @throws IllegalArgumentException if the trimmed value is not acceptable
+     * @throws InvalidInputException if the trimmed value is not acceptable
      */
     public static DisplayName of(final String raw) {
         Objects.requireNonNull(raw, "displayName is required");

@@ -1,10 +1,11 @@
 package org.maglez.eop.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.entity.InvalidInputException;
 
 @DisplayName("PageQuery")
 class PageQueryTest {
@@ -21,7 +22,7 @@ class PageQueryTest {
     @Test
     @DisplayName("rejects a negative page rather than treating it as the first")
     void shouldRejectNegativePage() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> new PageQuery(-1, 10))
                 .withMessageContaining("page must not be negative");
     }
@@ -29,7 +30,7 @@ class PageQueryTest {
     @Test
     @DisplayName("rejects a non-positive size")
     void shouldRejectSizeBelowOne() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> new PageQuery(0, 0))
                 .withMessageContaining("size must be at least 1");
     }
@@ -37,7 +38,7 @@ class PageQueryTest {
     @Test
     @DisplayName("rejects a size above the cap, so one request cannot pull the whole table")
     void shouldRejectSizeAboveMaximum() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> new PageQuery(0, PageQuery.MAX_SIZE + 1))
                 .withMessageContaining("size must be at most 100");
     }

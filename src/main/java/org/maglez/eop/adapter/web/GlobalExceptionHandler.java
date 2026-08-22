@@ -8,6 +8,7 @@ import org.maglez.eop.entity.GameNotCompletedException;
 import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
+import org.maglez.eop.entity.InvalidInputException;
 import org.maglez.eop.entity.JoinCodeUnavailableException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
@@ -107,16 +108,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * The request asked for something the domain refuses to represent — an
-     * out-of-range page, a rank that does not exist. The message is safe to
-     * return because these exceptions are raised by our own guard clauses with
-     * text written for a caller, not by a library with text written for a
+     * out-of-range page, a display name carrying control characters. The message
+     * is safe to return because {@code InvalidInputException} is only ever raised
+     * by our own guard clauses, with text written for a caller rather than for a
      * maintainer.
      *
-     * @param exception the rejected argument
+     * <p>This deliberately does not map {@code IllegalArgumentException}, which an
+     * earlier revision did. That type is thrown pervasively by the JDK, Hibernate,
+     * Jackson and Spring — {@code NumberFormatException} extends it — so mapping it
+     * echoed library-internal text to callers, and because the mapping was more
+     * specific than the catch-all it also robbed those faults of the only
+     * error-level log we have. An internal defect was billed to the caller as a 400
+     * and left no record. A library {@code IllegalArgumentException} now falls
+     * through to {@code #handleUnexpected}, which answers 500 and logs it.
+     *
+     * <p>Logged at warn rather than error: a caller sending a bad value is not a
+     * fault of ours, but it is still worth a trace, so that nothing at all reaches
+     * a caller unlogged. The message is ours by construction, so logging it leaks
+     * nothing.
+     *
+     * @param exception the rejected input
      * @return a 400 problem detail
      */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ProblemDetail handleIllegalArgument(final IllegalArgumentException exception) {
+    @ExceptionHandler(InvalidInputException.class)
+    public ProblemDetail handleInvalidInput(final InvalidInputException exception) {
+        LOG.warn("Rejected caller input: {}", exception.getMessage());
         final ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setTitle("Invalid request");
         problem.setDetail(exception.getMessage());

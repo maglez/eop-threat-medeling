@@ -8,7 +8,9 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,7 @@ import org.maglez.eop.entity.HandAlreadyDealtException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.IdentityTokenHash;
+import org.maglez.eop.entity.InvalidInputException;
 import org.maglez.eop.entity.JoinCodeUnavailableException;
 import org.maglez.eop.entity.MustFollowSuitException;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
@@ -57,6 +60,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 
 /**
  * The error handling rules require a test for every mapped exception, because
@@ -92,14 +96,130 @@ class GlobalExceptionHandlerTest {
         assertThat(problem.getDetail()).contains(missing.toString());
     }
 
-    @Test
-    @DisplayName("a rejected argument is a 400 carrying the guard clause's own message")
-    void shouldMapIllegalArgumentTo400() {
-        final ProblemDetail problem = handler.handleIllegalArgument(new IllegalArgumentException("size must be at most 100, was 500"));
+    /**
+     * The narrowed input mapping, and the two things that used to be wrong with it.
+     *
+     * <p>Until this handler was narrowed it answered every {@code IllegalArgumentException} with a 400 carrying the
+     * exception's own message. That was two defects rather than one. A library-thrown message was echoed to the caller
+     * verbatim, and — the less obvious half — because the mapping was more specific than the {@code Exception}
+     * catch-all, a fault of that kind bypassed the only error-level log in the application: an internal defect was
+     * billed to the caller as a 400 and left no record at all.</p>
+     *
+     * <p>Status assertions alone cannot show either half is fixed, so these tests attach a Logback appender to the
+     * handler's own logger and assert on what was emitted as well as on what was returned.</p>
+     */
+    @Nested
+    @DisplayName("mapping a rejected input value")
+    class CallerInput {
 
-        assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
-        assertThat(problem.getTitle()).isEqualTo("Invalid request");
-        assertThat(problem.getDetail()).isEqualTo("size must be at most 100, was 500");
+        private final Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+        private final ListAppender<ILoggingEvent> emitted = new ListAppender<>();
+
+        private Level originalLevel;
+
+        @BeforeEach
+        void captureLogging() {
+            originalLevel = logger.getLevel();
+            logger.setLevel(Level.DEBUG);
+            emitted.start();
+            logger.addAppender(emitted);
+        }
+
+        @AfterEach
+        void releaseLogging() {
+            logger.detachAppender(emitted);
+            emitted.stop();
+            logger.setLevel(originalLevel);
+        }
+
+        @Test
+        @DisplayName("one of our own guard clauses is a 400 carrying its own message")
+        void shouldMapInvalidInputTo400() {
+            final ProblemDetail problem = handler.handleInvalidInput(new InvalidInputException("size must be at most 100, was 500"));
+
+            assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+            assertThat(problem.getTitle()).isEqualTo("Invalid request");
+            assertThat(problem.getDetail()).as("the message is ours by construction, written for a caller")
+                    .isEqualTo("size must be at most 100, was 500");
+        }
+
+        @Test
+        @DisplayName("a rejection is logged at warn, so that nothing at all reaches a caller unlogged")
+        void shouldLogARejectionAtWarnRatherThanError() {
+            handler.handleInvalidInput(new InvalidInputException("size must be at most 100, was 500"));
+
+            assertThat(emitted.list).hasSize(1);
+            assertThat(emitted.list.getFirst().getLevel()).as("a caller sending a bad value is not a fault of ours, but it is still a trace")
+                    .isEqualTo(Level.WARN);
+            assertThat(emitted.list.getFirst().getThrowableProxy())
+                    .as("a caller can provoke this at will, so the trace would be a flood; the message alone is the diagnosis")
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("a library-thrown IllegalArgumentException is a generic 500, not an echoed 400")
+        void shouldNotEchoALibraryThrownIllegalArgument() {
+            final ProblemDetail problem = handler.handleUnexpected(new NumberFormatException("For input string: \"/opt/eop/secrets/db.properties\""));
+
+            assertThat(problem.getStatus()).as("a NumberFormatException is an IllegalArgumentException, and is nobody's guard clause")
+                    .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            assertThat(problem.getTitle()).isEqualTo("Internal server error");
+            assertThat(problem.getDetail()).isEqualTo("The request could not be completed.");
+            assertThat(problem.getDetail()).doesNotContain("secrets");
+        }
+
+        @Test
+        @DisplayName("a library-thrown IllegalArgumentException is logged at error, which the old mapping silenced")
+        void shouldLogALibraryThrownIllegalArgumentAtError() {
+            handler.handleUnexpected(new NumberFormatException("For input string: \"nope\""));
+
+            assertThat(emitted.list).hasSize(1);
+            assertThat(emitted.list.getFirst().getLevel()).as("this is the log the old 400 mapping robbed us of")
+                    .isEqualTo(Level.ERROR);
+            assertThat(emitted.list.getFirst().getThrowableProxy()).as("an internal defect is worth a full trace on every occurrence")
+                    .isNotNull();
+        }
+    }
+
+    /**
+     * The invariant the narrowing exists to create, rather than a behaviour of any one handler.
+     *
+     * <p>The defect this test guards was not a wrong status code but a missing rule: mapping an exception type we do
+     * not own commits this class to answering for every library that throws it, and to doing so more specifically than
+     * the {@code Exception} catch-all, which is what silenced the log. A future handler could reintroduce that by
+     * mapping {@code IllegalStateException}, or {@code IllegalArgumentException} again, and every existing test here
+     * would still pass. So the rule is asserted directly: a mapping may name only a type this project declares, except
+     * the {@code Exception} catch-all itself.</p>
+     *
+     * <p>The check deliberately reaches past the JDK. {@code IllegalArgumentException} was merely the instance we were
+     * bitten by; mapping {@code jakarta.validation.ConstraintViolationException} or a Spring binding exception would
+     * echo text we did not write just as readily, and rob the fault of the same log. Naming the packages we do not own
+     * states the rule at the width of the defect instead of the width of one example.</p>
+     *
+     * <p>Scope is this class's own declared methods. Handlers inherited from
+     * {@code ResponseEntityExceptionHandler} are Spring's to define, are already narrow, and answer framework faults
+     * with field-level detail of their own — they are not the defect, and asserting over them would fail immediately
+     * and permanently.</p>
+     */
+    @Test
+    @DisplayName("no handler maps a type this project does not own, except the Exception catch-all itself")
+    void shouldMapNoForeignExceptionTypeApartFromTheCatchAll() {
+        final List<String> notOurs = List.of("java.", "javax.", "jakarta.", "org.springframework.", "com.fasterxml.",
+                "org.hibernate.", "org.slf4j.", "ch.qos.");
+
+        final List<Class<? extends Throwable>> foreignMappings = Arrays.stream(GlobalExceptionHandler.class.getDeclaredMethods())
+                .map(method -> method.getAnnotation(ExceptionHandler.class))
+                .filter(Objects::nonNull)
+                .flatMap(annotation -> Arrays.stream(annotation.value()))
+                .filter(mapped -> mapped != Exception.class)
+                .filter(mapped -> notOurs.stream().anyMatch(prefix -> mapped.getName().startsWith(prefix)))
+                .toList();
+
+        assertThat(foreignMappings)
+                .as("a type we do not own is thrown by every library that shares it, so mapping one answers for text we did "
+                        + "not write and, being more specific than the Exception catch-all, denies the fault its only error log")
+                .isEmpty();
     }
 
     @Test

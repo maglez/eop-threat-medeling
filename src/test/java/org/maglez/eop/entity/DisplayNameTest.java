@@ -1,7 +1,7 @@
 package org.maglez.eop.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import org.junit.jupiter.api.Test;
@@ -39,7 +39,7 @@ class DisplayNameTest {
     @Test
     @org.junit.jupiter.api.DisplayName("rejects a name that is only whitespace")
     void shouldRejectBlank() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> DisplayName.of("   "))
                 .withMessageContaining("must not be blank");
     }
@@ -48,7 +48,7 @@ class DisplayNameTest {
     @org.junit.jupiter.api.DisplayName("rejects a name one character longer than the column")
     void shouldRejectOverlongName() {
         final String tooLong = "x".repeat(DisplayName.MAX_LENGTH + 1);
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> DisplayName.of(tooLong))
                 .withMessageContaining("at most 40 characters, was 41");
     }
@@ -63,7 +63,7 @@ class DisplayNameTest {
     @Test
     @org.junit.jupiter.api.DisplayName("rejects an embedded newline, which no real name needs")
     void shouldRejectEmbeddedNewline() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> DisplayName.of("Ada\nLovelace"))
                 .withMessageContaining("control characters");
     }
@@ -71,7 +71,7 @@ class DisplayNameTest {
     @Test
     @org.junit.jupiter.api.DisplayName("rejects a terminal escape sequence")
     void shouldRejectTerminalEscape() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidInputException.class)
                 .isThrownBy(() -> DisplayName.of("Ada\u001b[31m"))
                 .withMessageContaining("control characters");
     }
