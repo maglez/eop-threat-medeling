@@ -53,7 +53,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * unrecognised one arrive at the same place and leave as the same 403.
  *
  * <p>Descriptions here are deliberately brief: {@code docs/api/openapi.yml} is the
- * contract (ADR-004), springdoc is disabled in production, and duplicating prose in
+ * contract (ADR-004), springdoc is disabled by default (ADR-049), and duplicating prose in
  * two places is how the two come to disagree.
  */
 @RestController

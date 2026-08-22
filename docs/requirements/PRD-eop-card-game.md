@@ -222,7 +222,7 @@ which trick is in progress, and the notes recorded against played cards.
 - Optional game variants (pass cards after trick 3; double scoring; riffing; diagram mark-up) —
   known and explicitly declined for this PoC; see §7
 - TLS and HTTPS, until a domain exists
-- Swagger UI on the deployed instance — disabled in the `prod` profile by ADR-012
+- Swagger UI on the deployed instance — disabled by default (base configuration) per ADR-012 and ADR-049; local dev opts in via env vars
 - Full WCAG 2.2 AA conformance — best effort only, and recorded as a gap
 - A native mobile application. Responsive web is sufficient.
 

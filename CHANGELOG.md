@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-SNAPSHOT] — Unreleased
 
+### Security
+
+- **Springdoc disabled by default — fail-closed configuration (EOP-38, ADR-049).** `springdoc.api-docs.enabled: false` and `springdoc.swagger-ui.enabled: false` moved from `application-prod.yml` into `application.yml`, so the default profile is now secure by default. Local development opts in via `SPRINGDOC_APIDOCS_ENABLED=true` and `SPRINGDOC_SWAGGERUI_ENABLED=true` in `.env.example`. `application-prod.yml` keeps a redundant second guard. This satisfies `.opencode/rules/security.md`'s "Fail securely — default-denied access, explicit allow-lists" and adds a second, independent mechanism to ADR-047's artifact-layer exclusion. The ticket's claim about `server.error.*` was disproven — Spring Boot has defaulted those to false since 2.3, and the project bypasses `BasicErrorController` via its RFC 9457 `@ControllerAdvice`.
+
 ### Removed
 
 - **Ace cards removed from the deck — deck size is now 68 (EOP-75, ADR-041).** The six Ace cards (one per STRIDE suit, rank 14) do not appear in the physical printed Elevation of Privilege card game. The committed card artwork (`ui/src/assets/cards/`) contains exactly 68 PNG images with no Ace in any suit, confirming the physical deck. `Rank.ACE` (value 14) has been removed from the `Rank` enum; `Card.isOpenThreat()` has been removed — the Open-Threat concept does not exist in the physical game. The Liquibase migration `2026-08-18--remove-ace-cards.xml` deletes the six Ace rows. King (rank 13) is now the highest rank. ADR-041 records the decision and resolves the conflict between the author's "74 cards" quote in `LICENCE-eop-deck.md` and the committed card images. ADR-023 deal arithmetic is re-derived for D = 68.

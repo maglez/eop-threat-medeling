@@ -147,7 +147,12 @@ behaviour predicts deployed behaviour.
 **Accepted cost: there is no Swagger UI in the container.** The production profile
 disables `springdoc.api-docs` and `springdoc.swagger-ui` on purpose. It remains
 available via `./mvnw spring-boot:run` on the default profile. This is a decision, not
-a defect, and should not be "fixed" later.
+a defect, and should not be "fixed" later. **Amendment, 2026-08-22 (EOP-38):** the
+mechanism changed from "the prod profile disables it" to "the base configuration
+disables it and prod pins it redundantly". The local availability it was protecting
+is preserved — developers opt in via `SPRINGDOC_APIDOCS_ENABLED` and
+`SPRINGDOC_SWAGGERUI_ENABLED` in `.env.example`. The two-profile count and the
+byte-identical-configuration rationale are untouched.
 
 ### Rejected alternatives
 
@@ -289,7 +294,8 @@ What this reversal does and does not change:
   boundary; GHCR is the registry; the image is built `linux/amd64` in CI because
   the development machine is Apple Silicon; `compose.app.yml` and the `prod`
   profile are what actually run; `server.address` is `0.0.0.0`; there is no Swagger
-  UI in the container; PostgreSQL publishes no port outside the Compose network;
+  UI in the container (EOP-38 moved the guard from the profile to the base
+  configuration); PostgreSQL publishes no port outside the Compose network;
   the repository still holds zero secrets. These were the load-bearing decisions
   and none of them depended on EC2 — which the local pivot demonstrated by
   requiring no change to any of them.

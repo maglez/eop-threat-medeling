@@ -149,3 +149,38 @@ eop:
     interval-ms: 3600000
     # Initial delay before the first sweep run in milliseconds. Default: 5 minutes.
     initial-delay-ms: 300000
+
+# Fail closed (EOP-38, ADR-049). Until now this file carried no springdoc block at all,
+# so both surfaces were enabled by default and the *secure* configuration was the one you
+# had to remember to ask for: hardening existed only in application-prod.yml, and therefore
+# only when SPRING_PROFILES_ACTIVE=prod was set. That inverts the rule in
+# .opencode/rules/security.md — "fail securely, default-denied access" — because omission
+# produced the permissive state. It was not hypothetical: on the default profile
+# GET /v3/api-docs returned 200 with 18,739 bytes of schema, /swagger-ui/index.html
+# returned 200, and /swagger-ui.html redirected to it.
+#
+# The two surfaces are now off in the base, so every profile inherits the safe value and
+# the container needs no configuration to be hardened. Note application.yml is NOT a
+# local-only file: Spring always loads it and application-prod.yml overrides only the keys
+# it names, which is the same mechanism that makes the eop.features.* values here
+# authoritative in production (ADR-013, ADR-042).
+#
+# Local opt-in, because a control nobody can satisfy is a control people disable: set
+# SPRINGDOC_APIDOCS_ENABLED=true and SPRINGDOC_SWAGGERUI_ENABLED=true. Both are in
+# .env.example and .envrc runs `dotenv`, so a developer who copied .env.example keeps
+# Swagger UI on `./mvnw spring-boot:run` with no extra ceremony. The container never sees
+# them: compose.app.yml has no `env_file:`, so .env is used only for ${...} interpolation
+# in the Compose file itself and is not injected into the app container.
+#
+# Turning the generated schema off costs nothing contractually. This project is
+# contract-first (ADR-004): the hand-authored docs/api/openapi.yml is the contract, and the
+# runtime /v3/api-docs is a generated convenience — docs/api/openapi.yml says so itself.
+#
+# Deliberately still pinned in application-prod.yml as a second independent guard, and
+# gated by SpringdocDisabledByDefaultIntegrationTest, which also proves the opt-in works so
+# that "disabled" can never be satisfied by springdoc simply being broken.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

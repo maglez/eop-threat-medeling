@@ -46,7 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
  * uniformity that ADR-026 records as the reason the gap is tolerable at all.
  *
  * <p>Descriptions here are deliberately brief: {@code docs/api/openapi.yml} is the
- * contract (ADR-004), springdoc is disabled in production, and prose duplicated in
+ * contract (ADR-004), springdoc is disabled by default (ADR-049), and prose duplicated in
  * two places is how the two come to disagree.
  */
 @RestController

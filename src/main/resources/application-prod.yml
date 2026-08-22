@@ -40,7 +40,11 @@ server:
     include-message: never
     include-binding-errors: never
 
-# Never expose API schema or Swagger UI in production
+# Deliberately redundant since EOP-38 moved these to application.yml, so the base is now
+# fail-closed and every profile inherits it. Kept as a second independent guard, exactly as
+# spring.h2.console.enabled above: if somebody ever flips the base back on, or sets the
+# SPRINGDOC_* opt-in variables in a deployed environment, this profile still refuses.
+# Defense in depth, not a single gate. See ADR-049.
 springdoc:
   api-docs:
     enabled: false
