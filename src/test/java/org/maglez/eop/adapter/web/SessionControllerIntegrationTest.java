@@ -324,7 +324,12 @@ class SessionControllerIntegrationTest {
             final var attempts = List.of(
                     attemptJoin(wellFormed, unusedAddressHint()),
                     attemptJoin("12345", unusedAddressHint()),
-                    attemptJoin("1234IUVW", unusedAddressHint()));
+                    attemptJoin("1234IUVW", unusedAddressHint()),
+                    // A code that was well formed before EOP-24 widened the length. It has to be
+                    // refused exactly like the rest: JoinCode.parse rejects the length and never
+                    // reaches the strict constructor, so this is a 404 and not the 500 it would be
+                    // if a six-character value ever reached GameSessionJpaEntity.toDomain.
+                    attemptJoin("7QK2FM", unusedAddressHint()));
 
             final var described = new ArrayList<String>();
             for (final var attempt : attempts) {

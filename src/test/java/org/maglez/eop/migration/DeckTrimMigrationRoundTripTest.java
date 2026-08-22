@@ -61,10 +61,6 @@ class DeckTrimMigrationRoundTripTest {
     private static final int DECK_SIZE_BEFORE_TRIM = 78;
 
     /**
-     * The four card IDs removed by the trim migration.
-     * Sourced from 002-real-deck.xml lines 214, 634, 642, 650.
-     */
-    /**
      * The changelog that removes the aces, and the number of changesets it contributes.
      *
      * <p>Rollback depth is computed from these rather than hardcoded, because {@code <includeAll>}
@@ -80,9 +76,18 @@ class DeckTrimMigrationRoundTripTest {
     /** The changelog that trims the deck to 74 cards; rolling back to it also undoes the ace removal. */
     private static final String CHANGELOG_DECK_TRIM = "2026-08-17--trim-deck-to-74-printed-cards.xml";
 
-    /** Changesets from {@link #CHANGELOG_DECK_TRIM} onwards, counting the ace removal that follows it. */
+    /**
+     * Floor for a rollback that reaches {@link #CHANGELOG_DECK_TRIM}: its own changeset plus the ace
+     * removal that follows it. This is a lower bound asserted by the helper, not the depth actually
+     * used — {@link #changesetsAppliedFrom} counts what {@code DATABASECHANGELOG} really holds, which
+     * today is larger because the join-code widening was appended after both deck changelogs.
+     */
     private static final int DECK_TRIM_ONWARDS_CHANGESETS = 2;
 
+    /**
+     * The four card IDs removed by the trim migration.
+     * Sourced from 002-real-deck.xml lines 214, 634, 642, 650.
+     */
     private static final Set<String> TRIMMED_CARD_IDS = Set.of(
             "0145d70f-544b-5cd0-9c0a-164d09a969b7",  // TAMPERING rank 2
             "24b333fb-38c4-581e-b86c-670cdc7b4c62",  // ELEVATION_OF_PRIVILEGE rank 2
@@ -176,7 +181,8 @@ class DeckTrimMigrationRoundTripTest {
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Act — roll back 1 changeset (ace removal), leaving trim in place
+        // Act — roll back to the ace removal inclusive, leaving the trim in place. The depth is
+        // computed, so changelogs appended after the ace removal are unwound too.
         liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_ACE_REMOVAL, ACE_REMOVAL_CHANGESETS),
                 new Contexts(), new LabelExpression());
 
@@ -200,7 +206,8 @@ class DeckTrimMigrationRoundTripTest {
         liquibase.update(new Contexts(), new LabelExpression());
         connection.setAutoCommit(true);
 
-        // Act — roll back 2 changesets (ace removal + trim)
+        // Act — roll back to the trim inclusive, which also unwinds the ace removal above it and
+        // anything appended after either.
         liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_DECK_TRIM, DECK_TRIM_ONWARDS_CHANGESETS),
                 new Contexts(), new LabelExpression());
 
@@ -295,7 +302,7 @@ class DeckTrimMigrationRoundTripTest {
                     .isFalse();
         }
 
-        // Act — roll back 1 changeset (ace removal only)
+        // Act — roll back to the ace removal inclusive, computed rather than a literal depth.
         liquibase.rollback(changesetsAppliedFrom(connection, CHANGELOG_ACE_REMOVAL, ACE_REMOVAL_CHANGESETS),
                 new Contexts(), new LabelExpression());
 

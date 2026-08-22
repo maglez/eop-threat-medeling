@@ -20,8 +20,12 @@ import java.util.Optional;
  *
  * <p>Stored and transmitted in one canonical form: upper case, with the
  * ambiguous characters already folded away. {@link #parse(String)} does that
- * folding, so a human transcribing {@code 7qk2fmv9} or {@code 7QKZFMV9} with an
- * {@code O} for a zero still reaches the right session.
+ * folding, so a human who types {@code 7qk2fmv9} in lower case reaches
+ * {@code 7QK2FMV9}, and one who writes a letter {@code O} where the code has a
+ * zero — {@code 7QKOFMV9} for {@code 7QK0FMV9} — still reaches the right
+ * session. {@code I} and {@code L} fold to {@code 1} the same way. Note that
+ * {@code U} is deliberately not folded: it is excluded from the alphabet
+ * outright, so a code containing one is refused rather than reinterpreted.
  *
  * @param value the canonical eight-character code
  */
