@@ -403,14 +403,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # No `setup-java` and no `setup-node`, which looks like an omission
-      # and is not. Trivy resolves the Maven tree with its own parser,
-      # fetching parent and dependency POMs from Central over HTTP rather
-      # than invoking Maven, and it reads `ui/package-lock.json` as a file
-      # rather than installing it. Nothing here needs a JDK or a Node
-      # runtime. The consequence to be aware of is that the scan depends on
-      # Maven Central being reachable: if Central is down this job fails
-      # rather than silently under-reporting, which is the safe direction.
+      # No `setup-node`: Trivy reads `ui/package-lock.json` as a file rather
+      # than installing it, so the npm half of this job needs no Node.
+      #
+      # A JDK and a warm `~/.m2/repository`, however, are a prerequisite,
+      # and the first version of this job learned that the hard way. Trivy
+      # resolves the Maven tree with its own parser rather than invoking
+      # Maven, which reads as "no JDK needed" and is true of the parser but
+      # false of the job: that parser has no cache of its own, so it
+      # re-fetches every parent POM and BOM over HTTP on every single run.
+      # From a shared GitHub Actions IP address that is enough to earn a
+      # `429 Too Many Requests` from Maven Central with a 1800-second
+      # `Retry-After`, which is exactly what happened on the first run of
+      # this job (EOP-89) - on `spring-data-bom`, with the whole tree still
+      # to go. Populating the local Maven repository first removes almost
+      # all of that traffic, because Trivy reads `~/.m2/repository` when it
+      # is present and only goes to the network for what is missing.
+      #
+      # What this is NOT is `--offline-scan`. That flag would stop Trivy
+      # reaching the network at all, and a parent POM it could not resolve
+      # would silently reduce the dependency tree it believes exists - an
+      # under-report presented as a clean scan, which is the one failure
+      # mode this whole design refuses. The network remains reachable and a
+      # resolution failure remains a loud exit 2. Warming the cache is a
+      # way of not provoking the rate limiter, not a way of tolerating it.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Distinct save key, shared restore prefix. The `build` job caches the
+      # same directory under `${{ runner.os }}-maven-<pom hash>`; the bare
+      # `${{ runner.os }}-maven-` restore prefix below matches that entry, so
+      # this job starts from whatever `build` last saved instead of
+      # populating a second copy from cold. The save key differs so that two
+      # jobs in the same run do not race to write one key.
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-cve-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      # `dependency:resolve` rather than a full `verify`: this job has no
+      # business compiling or testing anything, it only needs the POMs and
+      # artifacts on disk so Trivy's parser finds them locally. If Central
+      # throttles *this* step the job fails here, before the scan, which is
+      # still the safe direction - a failed resolve is visibly a failed
+      # resolve, not a clean bill of health.
+      - name: Populate the local Maven repository for Trivy's parser
+        run: ./mvnw -B -q dependency:resolve
 
       # Pinned by version *and* by the SHA-256 of the release asset, rather
       # than installed through a third-party action. Both halves are
@@ -476,11 +518,12 @@ jobs:
       # finding or allowlist drift, 2 could not run) live in the script, so
       # the same command reproduces this job locally.
       #
-      # Runtime, measured on EOP-89: 4.75 s warm, plus roughly 6 s of
-      # database download on a cold cache. It is not the reason the CI wall
-      # clock is what it is, and needs no scheduled-only treatment - though
-      # the workflow's weekly cron covers this job too, which is the trigger
-      # that catches an advisory published against dependencies we have not
-      # touched.
+      # Runtime, measured on EOP-89: the scan itself is 4.75 s warm, plus
+      # roughly 6 s of database download on a cold cache, plus about 3 s for
+      # the `dependency:resolve` step above once `~/.m2/repository` is warm.
+      # It is not the reason the CI wall clock is what it is, and needs no
+      # scheduled-only treatment - though the workflow's weekly cron covers
+      # this job too, which is the trigger that catches an advisory
+      # published against dependencies we have not touched.
       - name: Scan application dependency trees for known CVEs
         run: tools/supply-chain/scan-dependencies.sh

@@ -106,9 +106,19 @@ trivy --version | head -1
 echo
 echo "=== Pass 1 of 2: shipped dependencies (this pass gates) ==="
 if ! run_trivy "$workdir/ships.json"; then
-    echo "FATAL: trivy failed. If this is a network error the vulnerability database could"
-    echo "       not be fetched, and a scan that could not fetch a database has not scanned"
-    echo "       anything. That is exit 2, not a pass."
+    echo "FATAL: trivy failed, so nothing above is a result. Two network causes account for"
+    echo "       almost every instance, and neither is a pass:"
+    echo "         - the vulnerability database could not be fetched, so there was nothing"
+    echo "           to scan against;"
+    echo "         - Maven Central refused to serve a parent POM or BOM. Trivy resolves the"
+    echo "           Maven tree with its own parser, which keeps no cache and re-fetches the"
+    echo "           whole set every run, so a shared CI IP address can earn a 429 with a"
+    echo "           long Retry-After. Populate the local Maven repository first"
+    echo "           (./mvnw -B -q dependency:resolve) and Trivy reads ~/.m2/repository"
+    echo "           instead of the network. Do NOT reach for --offline-scan: an"
+    echo "           unresolvable parent POM would silently shrink the tree trivy believes"
+    echo "           exists, turning an under-report into a clean bill of health."
+    echo "       Either way this is exit 2, not a pass."
     exit 2
 fi
 
