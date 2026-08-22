@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameScreen } from './GameScreen';
-import { LENS_DIAMETER_PX, LENS_ZOOM } from './CardMagnifier';
+import { LENS_BORDER_PX, LENS_DIAMETER_PX, LENS_ZOOM } from './CardMagnifier';
 import * as api from '../api';
 
 /**
@@ -113,11 +113,25 @@ describe('CardMagnifier', () => {
 
       const shown = lens();
       expect(shown).not.toBeNull();
+      // Literals, not the imported constants. Asserting against LENS_DIAMETER_PX
+      // would make this test a tautology: changing the constant would change both
+      // the rendered value and the expectation, and the suite would stay green.
       // jsdom's getBoundingClientRect is all zeroes, so the point is the raw
-      // client coordinate and the lens is centred on it.
-      expect(shown?.style.left).toBe(`${String(40 - LENS_DIAMETER_PX / 2)}px`);
-      expect(shown?.style.top).toBe(`${String(60 - LENS_DIAMETER_PX / 2)}px`);
-      expect(shown?.style.width).toBe(`${String(LENS_DIAMETER_PX)}px`);
+      // client coordinate and the lens is centred on it: 40 - 100/2, 60 - 100/2.
+      expect(shown?.style.left).toBe('-10px');
+      expect(shown?.style.top).toBe('10px');
+      expect(shown?.style.width).toBe('100px');
+      expect(shown?.style.height).toBe('100px');
+    });
+
+    it('pins the agreed lens dimensions, so a change to them is a deliberate act', () => {
+      // The product decision was a 2x lens, revised down from 3x during discovery.
+      // Every other geometry assertion in this file uses literals, so this is the
+      // one place a reader can see the agreed numbers, and the one place that
+      // fails if somebody edits them without revisiting the story.
+      expect(LENS_ZOOM).toBe(2);
+      expect(LENS_DIAMETER_PX).toBe(100);
+      expect(LENS_BORDER_PX).toBe(2);
     });
 
     it('removes the lens when the pointer leaves the card', async () => {
@@ -141,8 +155,18 @@ describe('CardMagnifier', () => {
       fireEvent.pointerMove(card, { pointerType: 'mouse', clientX: 40, clientY: 60 });
 
       const replica = lens()?.firstElementChild as HTMLElement | undefined;
-      expect(replica?.style.transform).toBe(`scale(${String(LENS_ZOOM)})`);
+      expect(replica?.style.transform).toBe('scale(2)');
       expect(replica?.style.transformOrigin).toBe('0 0');
+      // The replica offset is the actual lens maths, and it is the one thing a
+      // sign error would break invisibly. An absolutely positioned child is laid
+      // out against the PADDING box, which sits one border width inside the lens
+      // box, so the offset carries a - LENS_BORDER_PX correction:
+      //   left = radius - zoom * x - border = 50 - 2*40 - 2 = -32
+      //   top  = radius - zoom * y - border = 50 - 2*60 - 2 = -72
+      // Drop the border term and the whole magnified image shifts by the ring
+      // width, which is exactly the bug these two lines exist to catch.
+      expect(replica?.style.left).toBe('-32px');
+      expect(replica?.style.top).toBe('-72px');
     });
 
     it('keeps the lens out of the accessibility tree and out of the tab order', async () => {
@@ -263,6 +287,58 @@ describe('CardMagnifier', () => {
       // setPointerCapture would otherwise route every subsequent pointermove to
       // this card, dragging the lens across the table with the ghost.
       fireEvent.pointerDown(card, { pointerType: 'mouse', clientX: 40, clientY: 60, pointerId: 1 });
+
+      expect(lens()).toBeNull();
+    });
+
+    it('ignores a moving touch pointer, which would fight the tap-to-pin gesture', async () => {
+      stubApi([spoofingKing]);
+      render(<GameScreen {...defaultProps} />);
+      const card = await waitForHand();
+
+      // A finger dragged across the hand emits pointermove just as a mouse does.
+      // Tracking it would make the lens follow the finger instead of pinning
+      // where the player tapped, so onPointerMove is guarded on pointerType.
+      fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 40, clientY: 60 });
+
+      expect(lens()).toBeNull();
+    });
+
+    it('removes its document listener when a card unmounts with the lens pinned', async () => {
+      stubApi([spoofingKing]);
+      const addSpy = vi.spyOn(document, 'addEventListener');
+      const removeSpy = vi.spyOn(document, 'removeEventListener');
+      const { unmount } = render(<GameScreen {...defaultProps} />);
+      const card = await waitForHand();
+
+      fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 40, clientY: 60 });
+      expect(lens()).not.toBeNull();
+
+      // The tap-outside dismissal is a capture-phase document listener. If the
+      // effect's cleanup were missing, unmounting a pinned card would leak one
+      // listener per card per session and keep a dead component's state alive.
+      const added = addSpy.mock.calls.filter((call) => call[0] === 'pointerdown' && call[2] === true);
+      expect(added.length).toBeGreaterThan(0);
+
+      unmount();
+
+      const removed = removeSpy.mock.calls.filter((call) => call[0] === 'pointerdown' && call[2] === true);
+      expect(removed.length).toBe(added.length);
+    });
+
+    it('drops a pinned lens when the flag is turned off underneath it', async () => {
+      stubApi([spoofingKing]);
+      const { rerender } = render(<GameScreen {...defaultProps} />);
+      const card = await waitForHand();
+
+      fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 40, clientY: 60 });
+      expect(lens()).not.toBeNull();
+
+      // The flag is read at component scope, so a re-render re-reads it. Without
+      // the enabled-goes-false effect a lens pinned before the flip would stay on
+      // screen for the rest of the session with no way to dismiss it.
+      vi.stubEnv('VITE_CARD_MAGNIFIER_ENABLED', 'false');
+      rerender(<GameScreen {...defaultProps} />);
 
       expect(lens()).toBeNull();
     });
