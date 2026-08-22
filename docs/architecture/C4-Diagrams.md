@@ -201,6 +201,8 @@ flowchart LR
          LIM["InMemoryJoinAttemptLimiter<br/>process-local — A SECURITY CONTROL"]
          CLIM["InMemorySessionCreationLimiter<br/>process-local — A SECURITY CONTROL<br/>EOP-19 — counts successes, not failures<br/>reserve-before-work: slot reserved before DB write, refunded on failure"]
          CA["ClientAddressResolver<br/>the one answer to who the caller is<br/>ignores X-Forwarded-For unless the peer is allow-listed"]
+        RRLI["ReadRateLimitInterceptor<br/>process-local — A SECURITY CONTROL<br/>EOP-88 — HandlerInterceptor over GET and HEAD under /api/v1<br/>registered by WebInterceptorConfiguration, the only WebMvcConfigurer<br/>keyed on the resolved client address, never a header, never the player token<br/>event stream excluded — bounded by the subscriber cap instead (ADR-034)"]
+        SWC["SlidingWindowCounter<br/>EOP-88 — the counting mechanism, held by the interceptor rather than a bean<br/>60-second window, prune-check-insert under one lock<br/>fail-closed when the key table saturates (ADR-033)<br/>the join and creation limiters still carry their own copy of this algorithm"]
         TP["TrustedProxies + IpLiterals<br/>eop.web.trusted-proxies — empty by default, so deny-all<br/>malformed entry fails startup; addresses canonicalised"]
     end
 
@@ -272,6 +274,15 @@ flowchart LR
     SC -.->|"throws domain exceptions"| GEH
     SC -->|"resolves the client address before calling the use case"| CA
     CA --> TP
+
+    RRLI -->|"admit(resolved client address) in preHandle — refused before any controller runs (EOP-88, ADR-051)"| SWC
+    RRLI -->|"the same resolver the write limiters use, so no request header can move the bucket"| CA
+    RRLI -->|"every GET and HEAD under /api/v1 passes here first — the event stream is excluded"| SC
+    RRLI --> CC
+    RRLI --> SCORE
+    RRLI --> TC
+    RRLI --> GOC
+
     CC --> GETCARD
     CC --> LISTCARDS
 
@@ -698,6 +709,70 @@ without being counted, defeating the control.
 
 **Restart amnesia.** The same caveat as the join limiter applies: a restart resets
 every counter. Accepted on the same grounds (ADR-033).
+
+### `ReadRateLimitInterceptor` — the first cross-cutting control, and the only one on reads (EOP-88)
+
+Until EOP-88 the two limiters above were the whole of the rate limiting, and both
+guard writes: creating a session and joining one. Every read was uncounted at
+every layer — the card catalogue, session state, a hand, the current trick, the
+score and the leaderboard. There was no servlet filter, no MVC interceptor, no
+`WebMvcConfigurer` at all, and no `rate_limit` directive in `ui/Caddyfile`.
+`GET /api/v1/sessions/{sessionId}/leaderboard` was the worst of them, because it
+re-derives every score from the whole trick history on each call (ADR-030), and
+EOP-82 gave the browser a retry button that issued one such read per click with
+no cap on the number of clicks.
+
+**It is an interceptor rather than a filter, and that is the decision ADR-051
+records.** A servlet filter runs outside the `DispatcherServlet`, so a
+`RateLimitedException` thrown there would never reach `GlobalExceptionHandler`
+and the RFC 9457 body would have to be serialised by hand — a second
+error-rendering path, which the error-handling rules forbid.
+`HandlerInterceptor.preHandle` runs inside it, so the throw is rendered by the
+single `@ControllerAdvice` that already maps `RateLimitedException` to 429 with a
+`Retry-After` header. Nothing here needs to run before request mapping, so a
+filter would have bought nothing and cost a duplicate.
+
+**The key is the resolved client address and nothing else.** It comes from the
+same `ClientAddressResolver` the write limiters use, so with
+`eop.web.trusted-proxies` empty — the shipped default — `X-Forwarded-For` is
+ignored outright, and `server.forward-headers-strategy: none` stops the container
+rewriting `getRemoteAddr()` from a header. `ReadRateLimitInterceptorTest` asserts
+over twelve candidate headers that none of them moves an exhausted caller into a
+fresh bucket, which is exactly the regression EOP-26 and ADR-021 exist to
+prevent. The player token was considered and rejected as a key: the counter fails
+closed when its key table saturates, and a caller can mint unlimited bogus
+tokens, so keying on one would let a single attacker fill the table and have the
+limiter refuse everybody. A spoofable identifier must not select the bucket a
+fail-closed control counts in.
+
+**Registration is by pattern, not by list.** `WebInterceptorConfiguration` — the
+application's only `WebMvcConfigurer` — registers the interceptor on
+`/api/v1/**` and excludes `/api/v1/sessions/*/events`. `preHandle` returns
+immediately unless the method is `GET` or `HEAD`, so writes keep their own
+dedicated limiters and no current behaviour changed, while a read route added
+later is covered without anyone remembering to add it. `HEAD` counts because it
+reaches the same handler and costs the same work. The event stream is excluded
+because Spring runs `preHandle` again on the `ASYNC` dispatch and a long-lived
+stream is not a request rate; its cost is bounded by the subscriber cap instead
+(ADR-034), which leaves SSE reconnection unlimited — a real remaining gap,
+recorded rather than papered over.
+
+`SlidingWindowCounter` is the mechanism, held by the interceptor rather than
+registered as a bean, so one process can run several independently configured
+counters. It prunes, checks and inserts under one lock per key, so two threads
+both sitting at the limit cannot both pass; it floors `Retry-After` at one
+second, because `Retry-After: 0` reads as no wait at all; it does not count a
+refused call, so a throttled caller cannot extend its own penalty; and it refuses
+a new key once the table is full rather than admitting requests it cannot track.
+It is a third copy of an algorithm the two limiters above already implement.
+EOP-88 deliberately left them alone rather than refactor a control ADR-019 calls
+primary alongside a new and untested one, and the migration is filed as a
+follow-up.
+
+There is no use-case port for this limiter, unlike `JoinAttemptLimiter` and
+`SessionCreationLimiter`. Those exist because a *use case* calls them. The read
+limiter is called by an interceptor, which is already an interface adapter, so a
+port would be an inward-facing abstraction with no inward caller.
 
 ### `SessionRepositoryAdapter` — one class, two package-private repositories
 

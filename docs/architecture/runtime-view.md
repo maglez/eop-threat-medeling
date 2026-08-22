@@ -952,7 +952,12 @@ and each trick's winner, recomputed on every read. There is no counter to increm
 play path, so there is no second transaction to fail independently and no total that can be
 wrong with no read able to detect it. The cost is bounded by the rules of the game rather than
 by a limit in code — a 68-card deck is at most 68 rows and at most six standings — which is
-why ADR-030 accepts the recomputation and declines to cache it.
+why ADR-030 accepts the recomputation and declines to cache it. Since EOP-88 a limit in code does apply to this route,
+but it bounds the *rate* of reads rather than the cost of any one of them:
+`ReadRateLimitInterceptor` counts this `GET` along with every other read under
+`/api/v1` against a sixty-second per-address window and answers 429 once it is
+full (ADR-051). What a single read costs is still bounded only by the rules of
+the game.
 
 **There is no 409 on this path, and its absence is the interesting part.** Every other read
 in this document can be asked before the state it reports exists: `GET /tricks/current` answers
@@ -1217,6 +1222,7 @@ name a seat it does not hold — `PlayCardRequest` carries no seat field.
 ```mermaid
 sequenceDiagram
     participant Browser
+    participant ReadRateLimitInterceptor
     participant GameOverController
     participant GetLeaderboardUseCase
     participant ResolvePlayerUseCase
@@ -1224,7 +1230,11 @@ sequenceDiagram
     participant GameResultRepository
     participant TrickRepository
 
-    Browser->>GameOverController: GET /leaderboard (X-Player-Token)
+    Browser->>ReadRateLimitInterceptor: GET /leaderboard (X-Player-Token)
+    ReadRateLimitInterceptor->>ReadRateLimitInterceptor: admit(ClientAddressResolver.of(request))
+    Note over ReadRateLimitInterceptor: Counted in preHandle, so a refusal costs no query at all.<br/>Keyed on the resolved client address, never a request header and never the player token (EOP-88, ADR-051).
+    ReadRateLimitInterceptor-->>Browser: 429 problem+json with Retry-After (window full)
+    ReadRateLimitInterceptor->>GameOverController: preHandle true, request proceeds
     GameOverController->>GetLeaderboardUseCase: execute(sessionId, playerToken)
     GetLeaderboardUseCase->>ResolvePlayerUseCase: execute(sessionId, playerToken)
     ResolvePlayerUseCase->>SessionRepository: findById(sessionId)
@@ -1238,6 +1248,16 @@ sequenceDiagram
     GetLeaderboardUseCase-->>GameOverController: LeaderboardResult(sessionStatus, scoreSheet)
     GameOverController-->>Browser: 200 LeaderboardDto (scores derived from live tricks, ADR-030)
 ```
+
+**The read is refused before the handler is reached when the window is full** (EOP-88, ADR-051).
+`ReadRateLimitInterceptor` counts every `GET` and `HEAD` under `/api/v1` against a sixty-second
+window keyed on the resolved client address, so a refusal is served without touching the database.
+That matters more on this route than on any other, because the handler behind it re-derives every
+score from the whole trick history on each call. The interceptor throws `RateLimitedException` and
+the single `@ControllerAdvice` renders the 429, the `application/problem+json` body and the
+`Retry-After` header, so nothing about error rendering is duplicated at this layer. The event stream
+is the one read excluded from the limiter — its cost is bounded by the subscriber cap instead
+(ADR-034), which leaves SSE reconnection unlimited.
 
 **Scores are always derived from the live trick history** (ADR-030). The `GameResult` row is used
 only to confirm a result was recorded; `ScoreSheet.standings()` and

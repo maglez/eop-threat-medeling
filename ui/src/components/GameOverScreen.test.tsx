@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameOverScreen } from './GameOverScreen';
@@ -96,6 +96,10 @@ describe('GameOverScreen', () => {
     });
 
     afterEach(() => {
+        // Unconditionally restore real timers. The backoff tests below install
+        // fake ones and restore them themselves, but a test that fails part-way
+        // through would otherwise leak mocked timers into the next test.
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -219,8 +223,10 @@ describe('GameOverScreen', () => {
     // -----------------------------------------------------------------------
     // Test 3b — a double-click issues exactly one extra fetch
     //
-    // GET /leaderboard has no rate limit at any layer (EOP-88) and recomputes
-    // a ScoreSheet on every call, so the client must not amplify it.
+    // GET /leaderboard recomputes a ScoreSheet from the whole trick history on
+    // every call (ADR-030), so it is the most expensive read in the API. A
+    // per-address limit now guards it server side (EOP-88, ADR-051); this guard
+    // and the attempt cap below are the client half of the same concern.
     // -----------------------------------------------------------------------
     it('issues only one extra fetch when the retry button is double-clicked', async () => {
         // Arrange — first call fails; the retry hangs so the button stays pending
@@ -355,5 +361,122 @@ describe('GameOverScreen', () => {
             expect(screen.getByText('Alice')).toBeInTheDocument();
         });
         expect(screen.queryByRole('button', { name: 'Start new game' })).not.toBeInTheDocument();
+    });
+
+    // -------------------------------------------------------------------------
+    // 10. A failed retry arms a backoff cooldown before another attempt is allowed
+    //
+    //     EOP-88 asks for a bounded attempt cap or backoff on this button as
+    //     defence in depth behind the server-side per-address limit (ADR-051).
+    //     The cooldown is a chain of one-second timeouts, so the clock has to be
+    //     faked -- and that rules userEvent out: userEvent.setup() awaits real
+    //     delays inside RTL's async wrapper and deadlocks against mocked timers.
+    //     fireEvent is synchronous and touches no timers, so the click is issued
+    //     inside act() and each wait is flushed with the *async* timer advance,
+    //     which drains microtasks between timers -- the synchronous variant would
+    //     fire the first timeout and stop, leaving the chain stuck.
+    // -------------------------------------------------------------------------
+    it('disables the retry button for a backoff period after a failed retry', async () => {
+        // Arrange
+        vi.useFakeTimers();
+        try {
+            mockGetLeaderboard.mockRejectedValue(new api.ApiError(404, 'Not yet persisted'));
+
+            render(<GameOverScreen {...defaultProps} />);
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Act
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: 'Retry loading results' }));
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Assert -- the button counts the wait down and cannot be pressed
+            expect(screen.getByRole('button', { name: 'Retry available in 1s' })).toBeDisabled();
+            expect(screen.getByRole('status')).toHaveTextContent(
+                'Retry failed. You can try again in 1 second. 4 attempts remaining.',
+            );
+            expect(mockGetLeaderboard).toHaveBeenCalledTimes(2);
+
+            // Act -- let the cooldown expire
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(1000);
+            });
+
+            // Assert -- the button is offered again, and the wait ending is announced
+            expect(screen.getByRole('button', { name: 'Retry loading results' })).toBeEnabled();
+            expect(screen.getByRole('status')).toHaveTextContent('You can retry loading the results now.');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    // -------------------------------------------------------------------------
+    // 11. The retry button disappears once the attempt cap is spent
+    //
+    //     Five attempts, with the backoff sequence 1s, 2s, 4s, 8s between them,
+    //     so a human holding the button down spends 15 seconds of enforced
+    //     waiting and then has to reload. The server limit is 300 reads per
+    //     address per minute (EOP-88), so this cap is nowhere near it -- the
+    //     point is that the client cannot contribute to exhausting it.
+    // -------------------------------------------------------------------------
+    it('stops offering a retry once the attempt cap is spent', async () => {
+        // Arrange
+        vi.useFakeTimers();
+        try {
+            mockGetLeaderboard.mockRejectedValue(new api.ApiError(404, 'Not yet persisted'));
+
+            render(<GameOverScreen {...defaultProps} />);
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Act -- attempts 1 to 4, each followed by its doubling cooldown
+            for (const wait of [1, 2, 4, 8]) {
+                // Two act() blocks, deliberately, and the zero-length advance in the
+                // first one is load bearing. handleRetry is async, so the cooldown
+                // timeout is only scheduled once the rejected request has settled;
+                // advancing the full wait in the same block would move the clock
+                // before that timer existed, leaving the countdown frozen at its
+                // starting value and the button still disabled on the next pass.
+                await act(async () => {
+                    fireEvent.click(screen.getByRole('button', { name: 'Retry loading results' }));
+                    await vi.advanceTimersByTimeAsync(0);
+                });
+
+                // One act() per second, not one for the whole wait. The cooldown is a
+                // chain of one-second timeouts and each link is only scheduled by the
+                // effect after React has re-rendered with the decremented count, which
+                // does not happen until act() exits. Advancing the full wait in a
+                // single block therefore fires exactly one tick.
+                for (let tick = 0; tick < wait; tick += 1) {
+                    await act(async () => {
+                        await vi.advanceTimersByTimeAsync(1000);
+                    });
+                }
+            }
+
+            // Act -- the fifth and final attempt
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: 'Retry loading results' }));
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Assert -- no retry control remains, and the user is told what to do
+            expect(screen.queryByRole('button', { name: /^Retry/ })).not.toBeInTheDocument();
+            expect(
+                screen.getByText('Retrying has not recovered the results. Reload the page to try again.'),
+            ).toBeInTheDocument();
+            expect(screen.getByRole('status')).toHaveTextContent(
+                'Retry failed. No further attempts are available. Reload the page to try again.',
+            );
+
+            // One initial load on mount plus exactly five retries, and no more
+            expect(mockGetLeaderboard).toHaveBeenCalledTimes(6);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

@@ -120,6 +120,8 @@ paths:
                 $ref: '#/components/schemas/CardPage'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/cards/{cardId}:
     get:
@@ -145,6 +147,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/sessions:
     post:
@@ -289,6 +293,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/sessions/{sessionId}/events:
     get:
@@ -556,6 +562,8 @@ paths:
           $ref: '#/components/responses/SessionNotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/sessions/{sessionId}/plays:
     post:
@@ -701,6 +709,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/sessions/{sessionId}/tricks/current/resolve:
     post:
@@ -832,6 +842,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           description: |
             The stored game contradicts itself and no score can be derived from
@@ -924,6 +936,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/sessions/{sessionId}/new-game:
     post:
@@ -2001,8 +2015,15 @@ components:
         Too many requests from this source address and further attempts are
         refused for a period.
 
-        Three controls can produce this response:
+        Four controls can produce this response:
 
+        - **Read rate limiter** — a single address may issue at most
+          `eop.web.read-rate-limit.limit` reads (default 300) per 60-second
+          window, counted across every `GET` and `HEAD` under `/api/v1`. The
+          counter is keyed on the resolved client address, never on a request
+          header and never on the player token, so no caller can move itself
+          into a fresh bucket. The event stream is excluded, because its cost
+          is bounded by the subscriber cap instead (EOP-88, ADR-051).
         - **Session creation limiter** — a single address may create at most
           `eop.web.session-creation-limit` sessions (default 5) per 60-second
           window. The slot is reserved before any database work, so a refused

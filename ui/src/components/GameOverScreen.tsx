@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getLeaderboard,
   startNewGame,
@@ -28,6 +28,36 @@ interface GameOverScreenProps {
 }
 
 /**
+ * Maximum number of manual retries offered after the leaderboard fails to load.
+ *
+ * `GET /leaderboard` re-derives every score from the whole trick history on each
+ * call (ADR-030), so it is the most expensive read in the application, and before
+ * EOP-88 nothing bounded how often a client could ask for it. The server now
+ * enforces a per-address read limit (ADR-051), which is the control; this cap is
+ * defence in depth on the one control the client actually owns — a human holding
+ * down a retry button. Five attempts spread over the backoff below is more than
+ * enough for the race this button exists for (the game-completed event arriving
+ * before the result row is persisted, EOP-86), and far short of the server limit.
+ */
+const MAX_RETRY_ATTEMPTS = 5;
+
+/** Ceiling on the exponential backoff, in seconds. */
+const RETRY_BACKOFF_MAX_SECONDS = 16;
+
+/** Countdown tick interval, in milliseconds. */
+const COOLDOWN_TICK_MS = 1000;
+
+/**
+ * Seconds to wait before the nth retry is offered again: 1, 2, 4, 8, 16.
+ *
+ * Five attempts therefore span 31 seconds of enforced waiting, which is what
+ * turns a held-down button into a trickle rather than a flood.
+ */
+function backoffSecondsFor(attempt: number): number {
+  return Math.min(2 ** (attempt - 1), RETRY_BACKOFF_MAX_SECONDS);
+}
+
+/**
  * Game Over screen: shows the final leaderboard with STRIDE breakdown per player.
  * Facilitators see a "Start new game" button that re-deals the same deck to the
  * same seats.
@@ -46,12 +76,17 @@ export function GameOverScreen({
   const [error, setError] = useState<string | null>(null);
   const [isStartingNewGame, setIsStartingNewGame] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [retryAnnouncement, setRetryAnnouncement] = useState('');
+  const cooldownWasActive = useRef(false);
 
-  const loadLeaderboard = useCallback(async () => {
+  const loadLeaderboard = useCallback(async (): Promise<boolean> => {
     try {
       const data = await getLeaderboard(sessionId, playerToken);
       setLeaderboard(data);
       setError(null);
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load leaderboard';
       setError(message);
@@ -62,6 +97,7 @@ export function GameOverScreen({
       if (err instanceof ApiError && err.status === 403) {
         onSessionEnd();
       }
+      return false;
     }
   }, [sessionId, playerToken, onSessionEnd]);
 
@@ -69,14 +105,60 @@ export function GameOverScreen({
     void loadLeaderboard();
   }, [loadLeaderboard]);
 
+  // Ticks the retry cooldown down once per second, then announces that the
+  // button is live again. The countdown is rendered in the button label, which
+  // a screen reader never reaches because the button is disabled while it runs,
+  // so the end of the wait is announced through the live region instead of
+  // being read out second by second.
+  useEffect(() => {
+    if (cooldownSeconds > 0) {
+      cooldownWasActive.current = true;
+      const timer = setTimeout(() => {
+        setCooldownSeconds((seconds) => seconds - 1);
+      }, COOLDOWN_TICK_MS);
+      return () => { clearTimeout(timer); };
+    }
+    if (cooldownWasActive.current) {
+      cooldownWasActive.current = false;
+      setRetryAnnouncement('You can retry loading the results now.');
+    }
+    return undefined;
+  }, [cooldownSeconds]);
+
+  const attemptsRemaining = MAX_RETRY_ATTEMPTS - retryCount;
+  const canRetry = attemptsRemaining > 0 && cooldownSeconds === 0 && !isRetrying;
+
   // Guards the retry button against a double-click issuing two concurrent
-  // fetches, mirroring the isStartingNewGame guard below. loadLeaderboard
-  // handles its own errors, so the finally always clears the pending state.
+  // fetches, and bounds how many times it can be pressed at all. The attempt
+  // is counted before the request goes out, so a click always consumes an
+  // allowance whatever the outcome. loadLeaderboard handles its own errors and
+  // reports success as a boolean, so the finally always clears the pending
+  // state and a failure always arms the backoff.
   const handleRetry = async () => {
-    if (isRetrying) return;
+    if (!canRetry) return;
     setIsRetrying(true);
+    setRetryAnnouncement('Retrying. Loading results.');
+    const attempt = retryCount + 1;
+    setRetryCount(attempt);
     try {
-      await loadLeaderboard();
+      const succeeded = await loadLeaderboard();
+      if (succeeded) {
+        setRetryAnnouncement('');
+        return;
+      }
+      const remaining = MAX_RETRY_ATTEMPTS - attempt;
+      if (remaining === 0) {
+        setRetryAnnouncement(
+          'Retry failed. No further attempts are available. Reload the page to try again.',
+        );
+        return;
+      }
+      const wait = backoffSecondsFor(attempt);
+      setCooldownSeconds(wait);
+      setRetryAnnouncement(
+        `Retry failed. You can try again in ${wait} ${wait === 1 ? 'second' : 'seconds'}. ` +
+          `${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining.`,
+      );
     } finally {
       setIsRetrying(false);
     }
@@ -110,16 +192,26 @@ export function GameOverScreen({
 
         {error && !leaderboard && (
           <>
-            <button
-              type="button"
-              className="govuk-button govuk-button--secondary"
-              data-module="govuk-button"
-              disabled={isRetrying}
-              aria-disabled={isRetrying}
-              onClick={() => { void handleRetry(); }}
-            >
-              {isRetrying ? 'Retrying…' : 'Retry loading results'}
-            </button>
+            {attemptsRemaining > 0 ? (
+              <button
+                type="button"
+                className="govuk-button govuk-button--secondary"
+                data-module="govuk-button"
+                disabled={!canRetry}
+                aria-disabled={!canRetry}
+                onClick={() => { void handleRetry(); }}
+              >
+                {isRetrying
+                  ? 'Retrying…'
+                  : cooldownSeconds > 0
+                    ? `Retry available in ${cooldownSeconds}s`
+                    : 'Retry loading results'}
+              </button>
+            ) : (
+              <p className="govuk-body">
+                Retrying has not recovered the results. Reload the page to try again.
+              </p>
+            )}
 
             {/*
               Disabling the button removes it from the tab order and drops focus,
@@ -129,7 +221,7 @@ export function GameOverScreen({
               would otherwise get silence between the click and the outcome.
             */}
             <p className="govuk-visually-hidden" role="status" aria-live="polite">
-              {isRetrying ? 'Retrying. Loading results.' : ''}
+              {retryAnnouncement}
             </p>
           </>
         )}
