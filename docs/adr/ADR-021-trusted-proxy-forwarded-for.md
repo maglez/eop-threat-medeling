@@ -40,6 +40,16 @@ accepted precisely on the strength of the throttle. So this defect did not thin 
 defence-in-depth layer that other layers could cover for. It removed the control the entropy
 budget in ADR-019 was calculated against.
 
+> **Amended 2026-08-22 (EOP-24) — the quotation above is now historical.** The join code is
+> eight characters and forty bits, and ADR-019's wording no longer calls this limiter a
+> *primary* control: length bounds how much of the keyspace a blind search must cover, the
+> limiter bounds how fast any one address covers it, and neither is sufficient alone. **Nothing
+> in the reasoning of this ADR is withdrawn.** The defect it fixed was that the limiter keyed on
+> a caller-supplied address, which is exactly the half that widening the code does not help
+> with — a header-rotating attacker defeats the rate bound whatever the code's length. If
+> anything the argument reads more cleanly now, because the two controls are named separately
+> instead of one being asked to carry both jobs.
+
 One further piece of evidence is recorded here because it is the most persuasive artefact the
 story produced. The existing integration suite used a helper called `freshAddress()` to give each
 test its own throttle bucket, so that tests could run in any order without one test's failed joins
@@ -457,7 +467,7 @@ true and ignored where it is not, instead of choosing one wrong answer for both 
 
 ## Related
 
-- [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — designates the join-attempt limiter a primary security control at thirty bits of entropy; this ADR restores the control that decision depends on
+- [ADR-019](ADR-019-session-lifecycle-and-join-codes.md) — the join-attempt limiter and the entropy budget it is paired with; this ADR restores the control that decision depends on. Its "primary security control at thirty bits" wording was quoted here as it stood, and was itself amended on 2026-08-22 when EOP-24 widened the code to eight characters (forty bits)
 - [ADR-017](ADR-017-frontend-delivery-topology.md) — the single-origin topology whose "only Caddy is reachable" property was over-read as a guarantee that the peer is Caddy
 - [ADR-013](ADR-013-feature-flags.md) — configuration properties under `eop.*` with `@ConditionalOnProperty`; `eop.web.trusted-proxies` is infrastructure configuration rather than a feature flag and so sits directly under `eop.`, not `eop.features.`
 - [ADR-012](ADR-012-deployment-target.md) — a single application instance behind a single reverse proxy, which is what makes a one-entry allow-list sufficient

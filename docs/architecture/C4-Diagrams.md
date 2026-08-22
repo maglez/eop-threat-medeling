@@ -206,7 +206,7 @@ flowchart LR
 
     subgraph secpkg["adapter/security"]
         TOK["SecureRandomIdentityTokenGenerator<br/>256-bit token, base64url"]
-        JC["SecureRandomJoinCodeGenerator<br/>6 chars, Crockford base32"]
+        JC["SecureRandomJoinCodeGenerator<br/>8 chars, Crockford base32"]
         SHUF["SecureRandomDeckShuffler<br/>EOP-14 Slice C2<br/>no seed, no setter — a permutation, not an identifier<br/>@Component, NOT behind the flag"]
     end
 
@@ -640,11 +640,16 @@ work for clearly over-limit callers; the authoritative gate is `recordFailure`. 
 racing at the limit boundary cannot both pass: the second thread to acquire the monitor
 sees the count already at the limit and is refused.
 
-**Why it is load-bearing:** a join code is six Crockford base32 characters, about
-thirty bits of entropy, chosen short deliberately because humans read it aloud on a
-video call. Thirty bits is unguessable *only while guessing is slow*. The limiter is
-therefore a **primary control, not defence in depth** (ADR-019). Lengthening the code
-is a precondition for weakening the limiter, not an alternative to it.
+**Why it is load-bearing:** a join code is eight Crockford base32 characters, exactly
+forty bits of entropy, still short enough that humans read it aloud on a video call.
+Forty bits bounds *how much* of the keyspace a blind search must cover, and this
+limiter bounds *how fast* any one address may cover it. Neither is sufficient alone,
+which is the correction EOP-24 made: the code was six characters until then, and at
+thirty bits a pool of about a thousand proxied addresses was expected to stumble onto
+a live lobby within days. Widening the code multiplied that by 1024, so the limiter is
+**a control the code's length bounds but does not replace** (ADR-019). Note the
+per-code half of this limiter never fires against enumeration, because every guess is
+a different code landing in its own fresh counter -- only the per-address half bites.
 
 **Which makes the key it counts against part of the control.** Until EOP-26 the client
 address came from `X-Forwarded-For` unconditionally, so a caller could pick its own
@@ -758,7 +763,7 @@ that constraint to reject.
 ### `adapter/security` — three classes, one reason to be separate
 
 `SecureRandomIdentityTokenGenerator` (256 bits, base64url, the plaintext leaving the
-server exactly once), `SecureRandomJoinCodeGenerator` (six Crockford base32
+server exactly once), `SecureRandomJoinCodeGenerator` (eight Crockford base32
 characters, `I`/`L`/`O`/`U` excluded) and, added by EOP-14 Slice C2,
 `SecureRandomDeckShuffler`. They sit in their own package rather than in
 `adapter/persistence` or `adapter/web` because they are neither storage nor transport:
