@@ -158,6 +158,97 @@ insert has a race window and this endpoint is concurrent by nature.
 > severity. Five seconds is a guess; it only has to be a defensible one, since there
 > is no queue draining at a known rate to compute it from.
 
+> **Amended 2026-08-22 — the `WARN` justification names a control, not only the
+> arithmetic (EOP-56).**
+> The join-code bullet above rests "a caller cannot provoke it" on collision
+> probability alone. That was sound when written and remains true, but it is
+> contingent on three constants — `MAXIMUM_CODE_ATTEMPTS`, the join-code alphabet and
+> the code length — none of which was, at the time, pinned by anything. A later change
+> to any of them would silently withdraw the justification for logging a full stack
+> trace on a caller-reachable path, and nothing would fail to say so. EOP-56 was raised
+> to close that gap, and closed it from two directions.
+>
+> The control that closes it already exists: the per-address creation rate limit added
+> by EOP-19 (ADR-033). Every request that reaches the join-code retry loop has passed
+> it, so the rate at which this `WARN` can be emitted is bounded by the configured
+> per-address allowance and by the limiter's tracked-key ceiling, which fails closed on
+> an unrecognised address once it is full. The two controls are independent, answer
+> different questions, and neither subsumes the other: the arithmetic is why an
+> occurrence is *evidence worth logging*, the limiter is why it cannot be turned into a
+> *flood*. Note the scope difference rather than collapsing it — the limiter is keyed
+> per address while the occupied fraction of the code space is global, so the limiter
+> bounds the rate of this log line and not the number of live lobbies.
+>
+> The second direction is a build gate. `JoinCodeSpaceClaimsTest` derives the width of
+> the code space from `JoinCode.ALPHABET` and `JoinCode.LENGTH`, and checks it in two
+> layers. The first pins the three sentences whose *argument* depends on the figure — the
+> 503 bullet above, and the two Javadoc paragraphs in `GlobalExceptionHandler` that
+> justify the log level and the refusal to say why a lookup failed — each anchored on a
+> neighbouring phrase asserted to occur exactly once, so a reworded sentence fails rather
+> than quietly matching nothing. The second sweeps every `.java`, `.md` and `.yml` file
+> under `src/main/java`, `docs/architecture`, `docs/adr` and `docs/api` for any English-word
+> bit figure and
+> requires each one either to equal the derived width or to appear on a small allowlist of
+> deliberately historical mentions, each carrying the reason it is exempt. Shrinking the
+> alphabet or the code now turns every stale sentence red at once instead of leaving them
+> to be believed.
+>
+> `docs/api` is in that list because a reviewer found it missing from it. The sweep first
+> covered only source, the C4 model and the ADRs, and `@tester-api` pointed out that
+> `docs/api/openapi.yml` states the width three times — at `:1161`, `:2011` and `:2049` —
+> and was therefore the one place a stale figure could survive the very gate built to stop
+> it. That is the worst place for it to survive, because the contract is what a client
+> integrates against, so YAML was added to the extensions and `docs/api` to the roots.
+> Widening it is what proved it: with the code length temporarily set to seven, the failure
+> now names the three specification claims alongside the rest. One of those three mentions
+> wraps across lines, so a line-based `grep` finds two where there are three — which is the
+> same reason the flattening step exists.
+>
+> The sweep exists because the first layer alone would have been a false comfort. An
+> earlier draft of this amendment claimed those three sites were the complete set of live
+> claims; they are not, and the sweep found roughly a dozen more across the domain, the
+> ports, the adapters, the C4 model and the runtime view. That is the same list EOP-24 had
+> to assemble by hand, which is the measured failure this gate is built against. The
+> allowlist deliberately fails in **both** directions: an unexplained figure fails the
+> build, and so does an allowlist entry whose passage no longer exists, so a rewritten
+> paragraph forces the exemption to be deleted rather than left to widen what the sweep
+> will tolerate. It caught an error of my own on its first run — two entries naming a file
+> that does not exist by that name — which is the best evidence available that it is not
+> vacuous.
+>
+> Four limits are worth stating plainly. It pins **two** of the three constants, not all
+> three: `MAXIMUM_CODE_ATTEMPTS` is private to `CreateSessionUseCase` and reachable only
+> by reflection, so the attempt budget stays unpinned and stays a reviewer's concern. It
+> verifies only that prose and constants agree, never that the resulting figure is
+> adequate — deciding that forty bits is enough is this ADR's job, not the test's. It
+> reads English number words only, so a figure written as `2^40` or `40 bits` passes
+> unexamined; the sweep is a net with a known mesh, not a proof. And the allowlist is
+> keyed on a filename and a number word rather than on a particular passage, so a file
+> that legitimately quotes the superseded thirty-bit figure would also tolerate a
+> *second*, genuinely stale mention of thirty bits appearing beside it. That is the one
+> way a stale claim can still hide, it is why the exemptions carry a written reason
+> rather than only a filename, and narrowing the key to an anchored phrase is the obvious
+> next move if a file ever needs two mentions of the same word for different purposes.
+>
+> The two directions are not redundant. The gate keeps the arithmetic honest but cannot
+> keep it *sufficient*: a narrower space would fail the build and be corrected to a
+> smaller true number, which is exactly when the control matters. Conversely the control
+> bounds the log rate but says nothing about whether an occurrence is meaningful. This
+> is defence in depth in the ordinary sense — two independent mechanisms, neither
+> load-bearing alone.
+>
+> **No behaviour changed under EOP-56.** The status, the `Retry-After` header and the
+> log level are all as EOP-17 left them; the ticket's other three asks were already
+> discharged by EOP-19. What changed is that `GlobalExceptionHandler` and this ADR both
+> now cite the control, so the reasoning survives a change to the constants above.
+>
+> One correction for anyone reading the ticket alongside this ADR: EOP-56 states the
+> collision probability as `(N / 2^30)^5`. The exponent is right and the base is not —
+> a thirty-two character alphabet over eight characters is 2^40, so it is `(N / 2^40)^5`
+> and the ticket understates the space by a factor of 1024. The figure in this ADR has
+> always been the correct one, and `JoinCodeSpaceClaimsTest` now derives it rather than
+> asserting it, which is what stops the ticket's version being copied back in later.
+
 ### Join attempts are rate-limited in memory, per IP and per code
 
 A sliding window over failed attempts, keyed both by client address and by the code

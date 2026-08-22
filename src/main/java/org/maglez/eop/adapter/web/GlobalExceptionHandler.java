@@ -912,12 +912,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * carries the standard way of saying when to come back.
      *
      * <p>Logged at warning level, with the throwable, because unlike a contested seat
-     * this is not something a caller can provoke: it takes a run of independent
-     * collisions across the whole attempt budget, so each occurrence is real evidence
-     * that the number of live lobbies is approaching what the code space will bear,
-     * and this handler is the only place that evidence will appear. It is deliberately
-     * not an error — the request was refused correctly and nothing malfunctioned — so
-     * it no longer reaches the catch-all that logs at error level.
+     * this is not something a caller can provoke at will. Two independent things hold
+     * that, and it is worth being clear which one is load-bearing. The binding one is
+     * a control: every request reaching the retry loop has already passed
+     * {@link org.maglez.eop.usecase.SessionCreationLimiter}, which admits a configured
+     * number of creations per client address per minute and refuses an unrecognised
+     * address outright once its tracked-key table is full, so the rate at which this
+     * handler can be driven is bounded by that allowance and that ceiling rather than
+     * by how many addresses a caller commands. The other is arithmetic: a run of
+     * independent collisions across the whole attempt budget stays vanishingly
+     * unlikely while the occupied fraction of the forty-bit code space is small. The
+     * arithmetic is why an occurrence is worth reading; the limiter is why logging one
+     * with a trace cannot become a flood, and it is the half that survives a change to
+     * the attempt budget, the alphabet or the code length. So each occurrence is still
+     * real evidence that the number of live lobbies is approaching what the code space
+     * will bear, and this handler is the only place that evidence will appear. It is
+     * deliberately not an error — the request was refused correctly and nothing
+     * malfunctioned — so it no longer reaches the catch-all that logs at error level.
      *
      * <p>The response says nothing about join codes. The exception's own message
      * describes our generator colliding with itself, which is an internal detail, and
