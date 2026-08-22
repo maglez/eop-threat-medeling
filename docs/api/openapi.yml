@@ -4,7 +4,9 @@
 # authored and committed BEFORE the controllers that implement it. springdoc
 # generates /v3/api-docs at runtime for convenience only, and that generated
 # document is disabled BY DEFAULT (ADR-049) rather than only under the prod
-# profile — a local developer opts back in with SPRINGDOC_APIDOCS_ENABLED=true.
+# profile. A local developer opts back in with BOTH SPRINGDOC_APIDOCS_ENABLED=true
+# and SPRINGDOC_SWAGGERUI_ENABLED=true — the first alone serves the JSON document
+# but leaves the Swagger UI disabled, because the two are separate properties.
 # So this file is the ONLY contract available to a client of the deployed
 # instance, and also the only one available to anyone who forgot the opt-in.
 #
