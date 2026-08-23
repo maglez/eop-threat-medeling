@@ -1,7 +1,7 @@
 package org.maglez.eop.migration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -36,12 +36,16 @@ import org.junit.jupiter.api.Test;
  * {@code main} — {@code 2026-08-22--widen-join-code-to-8-characters.xml} carries a rollback that is
  * both lossy and, for most values, hard-failing, and nothing in the build noticed.</p>
  *
- * <p>Two of the tests below therefore assert the <em>current, defective</em> behaviour rather than
- * the behaviour we want. That is deliberate and is the point of the story: they pin the defect down
- * on the engine that production runs, so EOP-163's fix has something to flip. Each carries a
- * {@code DEFECT} note saying what the assertion should become once that fix lands. Do not delete
- * them to make the file read more happily — a deleted characterisation test is how the defect got
- * in.</p>
+ * <p>Three of the tests below characterised that defect: they asserted the behaviour PostgreSQL
+ * actually exhibited rather than the behaviour we wanted, pinning it down on the engine production
+ * runs so EOP-163's fix had something to flip. That fix has now landed as
+ * {@code 2026-08-23--guard-join-code-rollback.xml}, whose filename sorts after the widening's, so
+ * Liquibase unwinds it first; its rollback adds a validated CHECK constraint asserting that every
+ * join code still fits {@code VARCHAR(6)} and then drops it again, which fails if and only if a
+ * violating row exists. Those three tests have therefore been flipped rather than removed: each now
+ * pins the <em>refusal</em>, asserting that the rollback aborts naming the guard and that no row and
+ * no column type was modified. Do not delete them to make the file read more happily — a deleted
+ * characterisation test is how the defect got in.</p>
  *
  * <p>Like the other tests in this package this drives the Liquibase API directly rather than through
  * {@code @SpringBootTest}: Spring's Liquibase would already have migrated the datasource, so
@@ -63,8 +67,22 @@ class PostgresRollbackRoundTripIT {
     /** Changesets that changelog contributes: the {@code modifyDataType} and the padding update. */
     private static final int JOIN_CODE_CHANGESETS = 2;
 
-    /** Total changesets in the changelog; the h2 branch of 006 is MARK_RAN but still recorded. */
-    private static final int EXPECTED_CHANGESET_ROWS = 26;
+    /**
+     * The CHECK constraint EOP-163's guard changelog adds and immediately drops while rolling back.
+     *
+     * <p>Assertions on it must ignore case: the engines both name it in the failure but disagree on
+     * the casing — H2 reports {@code CK_EOP163_JOIN_CODE_FITS_VARCHAR6}, PostgreSQL reports it in
+     * lower case.</p>
+     */
+    private static final String GUARD_CONSTRAINT = "ck_eop163_join_code_fits_varchar6";
+
+    /**
+     * Total changesets in the changelog; the h2 branch of 006 is MARK_RAN but still recorded.
+     *
+     * <p>27, not 26: EOP-163's {@code 2026-08-23--guard-join-code-rollback.xml} contributes one more,
+     * a marker changeset that applies no schema change and exists only so that its rollback runs.</p>
+     */
+    private static final int EXPECTED_CHANGESET_ROWS = 27;
 
     /**
      * An eight-character join code of the kind {@code JoinCode} actually generates. Chosen not to end
@@ -319,7 +337,11 @@ class PostgresRollbackRoundTripIT {
     @Test
     @DisplayName("keeps a legacy six-character session intact across a rollback and re-apply of the widening")
     void roundTripsASixCharacterSessionWithoutLoss() throws Exception {
-        // Arrange — a session created before the widening, plus a player and a finalised result
+        // Arrange — a session created before the widening, plus a player and a finalised result.
+        // Note the ordering: update() runs FIRST, so the six-character code is seeded into a column
+        // that is already VARCHAR(8) and no eight-character code exists when the rollback runs. That
+        // is what makes this test the proof that EOP-163's guard is data-conditional rather than a
+        // blanket refusal — the very rollback the three tests below see refused succeeds here.
         update();
         final SeededSession seeded = seedSession(JOIN_CODE_LEGACY);
 
@@ -343,82 +365,120 @@ class PostgresRollbackRoundTripIT {
     }
 
     @Test
-    @DisplayName("DEFECT (EOP-163): rolling back the widening silently truncates every eight-character code")
-    void rollingBackTheWideningSilentlyTruncatesAGenuineEightCharacterCode() throws Exception {
+    @DisplayName("refuses to roll back the widening while a genuine eight-character code is live, leaving it intact")
+    void refusesToRollBackTheWideningWhenAGenuineEightCharacterCodeExists() throws Exception {
         // Arrange — the ordinary case: a live session holding a generated eight-character code
         update();
         final SeededSession seeded = seedSession(JOIN_CODE_GENUINE);
 
-        // Act — changeset 002's rollback leaves this code alone (it does not end "00"), so the code
-        // survives to meet changeset 001's narrowing to VARCHAR(6). That narrowing does NOT fail.
-        rollback(joinCodeRollbackDepth());
+        // Act — EOP-163's guard unwinds first and tries to add a CHECK constraint asserting that
+        // every join code still fits VARCHAR(6). This one does not, so the ALTER TABLE fails and the
+        // whole rollback aborts before either of the widening's own rollbacks can run.
+        final Throwable thrown = catchThrowable(() -> rollback(joinCodeRollbackDepth()));
 
-        // Assert — the rollback reported success and discarded two characters of a live join code.
+        // Assert — the refusal names the guard, so it is the guard that stopped this and not a later
+        // accident.
         //
-        // This is the finding that makes EOP-163 worse than its title. Liquibase's PostgreSQL
-        // modifyDataType generator narrows the column with an explicit cast, and an explicit cast to
-        // varchar(n) truncates in PostgreSQL instead of raising "value too long for type character
-        // varying(6)". So on the engine production runs, rolling back the widening quietly rewrites
-        // EVERY eight-character join code, not just the 1-in-1024 that end "00" which changeset
-        // 002's own rollback catches. The hard failure EOP-163's title describes is not what
-        // PostgreSQL does — silent truncation is.
-        //
-        // DEFECT: EOP-163 must stop this rollback discarding live join codes. When it lands, this
-        // test should assert the code is preserved (or that the rollback refuses up front with an
-        // explicit precondition) instead of asserting the truncation.
-        assertThat(joinCodeOf(seeded.sessionId()))
-                .as("genuine eight-character code silently truncated by the narrowing cast")
-                .isEqualTo("ABCDEF");
-        assertThat(joinCodeLength()).as("column width after the rollback").isEqualTo(6);
-        assertThat(playerCountOf(seeded.sessionId())).as("players are untouched; only the code was rewritten").isEqualTo(2);
+        // This is the case that made EOP-163 worse than its title, and the reason the guard exists.
+        // Changeset 002's rollback leaves this code alone (it does not end "00"), so without the
+        // guard the code survived to meet changeset 001's narrowing to VARCHAR(6) — and that
+        // narrowing did NOT fail. Liquibase's PostgreSQL modifyDataType generator narrows with an
+        // explicit cast, and an explicit cast to varchar(n) truncates in PostgreSQL instead of
+        // raising "value too long for type character varying(6)". So on the engine production runs,
+        // rolling back the widening would quietly rewrite EVERY eight-character join code, not just
+        // the 1-in-1024 that end "00" which changeset 002's own rollback catches. Silent truncation
+        // reported as success, not the hard failure EOP-163's title describes, is what is being
+        // prevented here.
+        assertThat(thrown)
+                .as("rolling back the widening while a genuine eight-character code is live")
+                .isInstanceOf(LiquibaseException.class);
+        assertThat(thrown.getMessage())
+                .as("the guard constraint named in the refusal")
+                .containsIgnoringCase(GUARD_CONSTRAINT);
+
+        // Assert — refused, not half-applied. PostgreSQL DDL is transactional, so neither the row nor
+        // the column type was modified.
+        connection.rollback();
+        connection.setAutoCommit(true);
+        assertThat(joinCodeOf(seeded.sessionId())).as("join code after the refused rollback").isEqualTo(JOIN_CODE_GENUINE);
+        assertThat(joinCodeLength()).as("column width after the refused rollback").isEqualTo(8);
+        assertThat(playerCountOf(seeded.sessionId())).as("players after the refused rollback").isEqualTo(2);
     }
 
     @Test
-    @DisplayName("DEFECT (EOP-163): the truncating rollback can collide two sessions on the join-code unique constraint")
-    void rollingBackTheWideningCanCollideTwoSessionsOnTheUniqueConstraint() throws Exception {
+    @DisplayName("refuses to roll back the widening before two sessions sharing a six-character prefix can collide")
+    void refusesToRollBackTheWideningBeforeTwoSessionsCanCollide() throws Exception {
         // Arrange — two live sessions whose codes differ only in the last two characters. Both are
         // legitimate under a 40-bit keyspace and neither ends "00".
         update();
         final SeededSession first = seedSession("ABCDEFGH");
-        seedSession("ABCDEFJK");
+        final SeededSession second = seedSession("ABCDEFJK");
 
-        // Act — narrowing truncates both to ABCDEF, which uq_game_session_join_code forbids
-        assertThatThrownBy(() -> rollback(joinCodeRollbackDepth()))
-                .as("rolling back the widening with two codes sharing a six-character prefix")
-                .isInstanceOf(LiquibaseException.class)
-                .hasMessageContaining("uq_game_session_join_code");
+        // Act
+        final Throwable thrown = catchThrowable(() -> rollback(joinCodeRollbackDepth()));
 
-        // Assert — refused rather than half-applied. PostgreSQL DDL is transactional, so the whole
-        // narrowing rolled back and both rows are as they were.
+        // Assert — the rollback still refuses, but now for a better reason. Narrowing would have
+        // truncated both codes to ABCDEF, which uq_game_session_join_code forbids; the guard fires
+        // first, so that collision is never reached. Asserting the message names the guard and does
+        // NOT name the unique constraint is the point of this test: it proves the refusal happens
+        // before the destructive UPDATE and the narrowing, rather than the collision being what
+        // saved us.
         //
-        // DEFECT: this is the genuine hard failure. It is data-dependent, so a rollback rehearsed on
-        // an empty or lightly-seeded database succeeds and the same rollback against production
-        // aborts — which is exactly the failure mode a migration rollback must never have.
+        // That distinction also removes the trap. Failing only on a collision made the abort
+        // data-dependent — a rollback rehearsed on an empty or lightly-seeded database succeeded
+        // while the same rollback against production aborted, which is exactly the failure mode a
+        // migration rollback must never have. The guard is deterministic for ANY code wider than six
+        // characters, so it no longer takes two unlucky sessions for a rehearsal to show the refusal.
+        assertThat(thrown)
+                .as("rolling back the widening with two codes sharing a six-character prefix")
+                .isInstanceOf(LiquibaseException.class);
+        assertThat(thrown.getMessage())
+                .as("the refusal must name the guard, not the unique constraint the guard pre-empts")
+                .containsIgnoringCase(GUARD_CONSTRAINT)
+                .doesNotContainIgnoringCase("uq_game_session_join_code");
+
+        // Assert — both rows and the column type are as they were.
         connection.rollback();
         connection.setAutoCommit(true);
-        assertThat(joinCodeOf(first.sessionId())).as("join code after the refused rollback").isEqualTo("ABCDEFGH");
+        assertThat(joinCodeOf(first.sessionId())).as("first join code after the refused rollback").isEqualTo("ABCDEFGH");
+        assertThat(joinCodeOf(second.sessionId())).as("second join code after the refused rollback").isEqualTo("ABCDEFJK");
         assertThat(joinCodeLength()).as("column width after the refused rollback").isEqualTo(8);
     }
 
     @Test
-    @DisplayName("DEFECT (EOP-163): rolling back the widening truncates a genuine code that ends in 00")
-    void rollingBackTheWideningTruncatesAGenuineCodeEndingInZeros() throws Exception {
-        // Arrange — the 1-in-1024 case the rollback's WHERE clause cannot tell from a padded code
+    @DisplayName("refuses to roll back the widening while a genuine code ending in 00 is live, leaving it intact")
+    void refusesToRollBackTheWideningWhenAGenuineCodeEndingInZerosExists() throws Exception {
+        // Arrange — the 1-in-1024 case changeset 002's rollback WHERE clause cannot tell from a code
+        // the forward migration padded
         update();
         final SeededSession seeded = seedSession(JOIN_CODE_ENDING_IN_ZEROS);
 
-        // Act — this one does not hard-fail, which is worse: it succeeds quietly
-        rollback(joinCodeRollbackDepth());
+        // Act
+        final Throwable thrown = catchThrowable(() -> rollback(joinCodeRollbackDepth()));
 
-        // Assert — two characters of a live join code are gone. A seated player reconnecting with
-        // ABCDEF00 no longer resolves to this session, and nothing recorded that it ever existed.
-        //
-        // DEFECT: EOP-163 must stop conflating a generated code that ends "00" with a code the
-        // forward migration padded. When it lands, this test should assert the code is preserved.
+        // Assert — this is the case no better predicate could ever rescue, which is why refusing is
+        // the fix rather than tightening changeset 002's LIKE '%00'. Once the forward migration has
+        // run, a padded QRSTUV -> QRSTUV00 is byte-for-byte indistinguishable from a genuinely
+        // generated code that happens to end "00": the padding destroyed the distinction and nothing
+        // in the schema records which rows it touched. No predicate can separate them, so any
+        // rollback that proceeds must guess — and without the guard it guessed silently and wrongly.
+        // This code became ABCDEF, a seated player reconnecting with ABCDEF00 no longer resolved to
+        // the session, and nothing recorded that it ever existed. Refusing is the only safe outcome.
+        assertThat(thrown)
+                .as("rolling back the widening while a genuine code ending in 00 is live")
+                .isInstanceOf(LiquibaseException.class);
+        assertThat(thrown.getMessage())
+                .as("the guard constraint named in the refusal")
+                .containsIgnoringCase(GUARD_CONSTRAINT);
+
+        // Assert — nothing was modified
+        connection.rollback();
+        connection.setAutoCommit(true);
         assertThat(joinCodeOf(seeded.sessionId()))
-                .as("genuine eight-character code silently truncated by the rollback")
-                .isEqualTo("ABCDEF");
-        assertThat(playerCountOf(seeded.sessionId())).as("players are untouched; only the code was rewritten").isEqualTo(2);
+                .as("join code after the refused rollback")
+                .isEqualTo(JOIN_CODE_ENDING_IN_ZEROS);
+        assertThat(joinCodeLength()).as("column width after the refused rollback").isEqualTo(8);
+        assertThat(playerCountOf(seeded.sessionId())).as("players after the refused rollback").isEqualTo(2);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -458,6 +518,11 @@ class PostgresRollbackRoundTripIT {
      * correct until someone appends a changelog. Deriving it from {@code DATABASECHANGELOG} keeps the
      * test honest — the same lesson {@code DeckTrimMigrationRoundTripTest} records after a literal
      * {@code rollback(1)} silently unwound the wrong changeset.</p>
+     *
+     * <p>Deriving it is also what makes EOP-163's guard participate: {@code
+     * 2026-08-23--guard-join-code-rollback.xml} sorts after the widening and so executes after it,
+     * which puts its changeset inside this depth and unwinds it first. The depth is three today, not
+     * the widening's own two.</p>
      *
      * @return the rollback depth, never fewer than the widening's own two changesets
      * @throws SQLException if the query fails

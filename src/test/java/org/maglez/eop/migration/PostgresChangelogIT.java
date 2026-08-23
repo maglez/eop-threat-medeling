@@ -81,12 +81,12 @@ class PostgresChangelogIT {
     /**
      * The number of {@code DATABASECHANGELOG} rows the full changelog must produce.
      *
-     * <p>26, not 25. Only 25 changesets <em>execute</em> on any one engine, because
+     * <p>27, not 26. Only 26 changesets <em>execute</em> on any one engine, because
      * {@code 006-session-expiry.xml}'s two branches are mutually exclusive -- but a changeset
      * skipped by an {@code onFail="MARK_RAN"} precondition still records a row, so the row count is
      * the same on both engines and it is the total in the files that this must equal.
      */
-    private static final int EXPECTED_CHANGESET_ROWS = 26;
+    private static final int EXPECTED_CHANGESET_ROWS = 27;
 
     private static final String CHANGESET_POSTGRES_BRANCH = "001-add-expires-at-postgresql";
 
