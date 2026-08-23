@@ -253,7 +253,140 @@ jobs:
           fi
 
           echo "GET /api/v1/cards returned the seeded deck"
-          docker compose -f compose.app.yml down --volumes
+
+      # Run k6 performance regression canary as per ADR-055
+      # This check uses relaxed CI-specific thresholds to account for 2-vCPU runner jitter
+      # while still catching gross regressions (N+1, missing index, 50x slowdown).
+      # Results are uploaded as artifacts for debugging regressions, not for trend analysis.
+      # Do NOT append CI results to docs/performance/TRENDS.md - that file tracks local
+      # development baselines measured on a developer Mac via Colima against a t3.small-bound topology.
+      - name: Run k6 performance regression canary
+        run: |
+          set -euo pipefail
+
+          RESULTS="${{ github.workspace }}/test/k6/results"
+          mkdir -p "$RESULTS"
+
+          # --user keeps the container writing as the runner user, so the results
+          # directory needs no relaxed permissions. The image runs as uid 12345
+          # (k6) by default and could not otherwise write into a 0755 host mount.
+          # /scripts is mounted read-only; only /results is writable.
+          #
+          # Two digest-pinning traps, both verified with `docker buildx imagetools
+          # inspect` (ADR-055): the tag is `2.2.0` and NOT `v2.2.0`, and the digest
+          # below is the OCI image *index* digest. Pinning a per-platform
+          # sub-manifest instead would fail on this x86_64 runner with "no matching
+          # manifest for linux/amd64", and `docker inspect` on an arm64 developer
+          # machine reports a third digest again -- never derive the pin there.
+          k6_exit=0
+          docker run --network host \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}/test/k6:/scripts:ro" \
+            -v "$RESULTS:/results" \
+            -e K6_ENV=ci \
+            -e BASE_URL=https://localhost \
+            grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6 \
+            run --insecure-skip-tls-verify \
+            --out json=/results/raw.json \
+            --summary-export /results/summary.json \
+            /scripts/health-check.js || k6_exit=$?
+
+          # Two independent signals. k6's own exit code is captured above rather
+          # than left to `set -e`, so the summary assertion below always runs; the
+          # exit code alone is not sufficient, as the InfluxDB write failure
+          # recorded in ADR-016 logs one error per flush interval and still exits 0.
+          SUMMARY="$RESULTS/summary.json"
+
+          if [[ ! -s "$SUMMARY" ]]; then
+            echo "::error::k6 summary export is missing or empty: $SUMMARY"
+            exit 1
+          fi
+
+          if ! jq -e 'type == "object" and has("metrics")' "$SUMMARY" >/dev/null; then
+            echo "::error::k6 summary export is not a JSON object carrying a .metrics key"
+            exit 1
+          fi
+
+          # Flatten every threshold in the document rather than naming each one.
+          # Hardcoding `.thresholds."p(95) < 500"` would silently disarm this gate
+          # the moment that string changed in options-ci.js: `jq -r` emits `null`
+          # for a missing key, which is not "true", so the breach test would pass
+          # forever. In this export a threshold value of `false` means NOT
+          # breached. Note http_req_failed also reports "passes": 0, "fails": 221
+          # on a fully healthy run -- an inverted Rate metric whose real error rate
+          # lives in "value" -- so the threshold booleans are the only sound signal.
+          thresholds=$(jq -r '
+            .metrics
+            | to_entries[]
+            | select(.value.thresholds != null)
+            | . as $m
+            | $m.value.thresholds
+            | to_entries[]
+            | "\($m.key)\t\(.key)\t\(.value)"
+          ' "$SUMMARY")
+
+          # Tied to test/k6/config/options-ci.js, where http_req_duration carries
+          # `p(95) < 500` and `max < 2000` and http_req_failed carries
+          # `rate < 0.001`. Move the two together: a mismatch fails here by design,
+          # which is what stops a renamed or deleted threshold going unnoticed.
+          EXPECTED_THRESHOLD_COUNT=3
+          actual_count=$(printf '%s\n' "$thresholds" | grep -c . || true)
+          if [[ "$actual_count" -ne "$EXPECTED_THRESHOLD_COUNT" ]]; then
+            echo "::error::Expected $EXPECTED_THRESHOLD_COUNT thresholds in the k6 summary, found $actual_count -- has options-ci.js changed?"
+            printf '%s\n' "$thresholds"
+            exit 1
+          fi
+
+          breached=0
+          while IFS=$'\t' read -r metric threshold value; do
+            case "$value" in
+              false)
+                echo "  PASS  $metric  $threshold"
+                ;;
+              true)
+                echo "::error::Threshold breached: $metric $threshold"
+                breached=1
+                ;;
+              *)
+                echo "::error::Non-boolean threshold result for $metric $threshold: '$value'"
+                breached=1
+                ;;
+            esac
+          done <<< "$thresholds"
+
+          if [[ "$breached" -ne 0 ]]; then
+            exit 1
+          fi
+
+          if [[ "$k6_exit" -ne 0 ]]; then
+            echo "::error::k6 exited $k6_exit although every exported threshold passed -- inspect the k6-results artifact"
+            exit 1
+          fi
+
+          echo "All $EXPECTED_THRESHOLD_COUNT k6 thresholds passed"
+
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: test/k6/results/
+
+      # Tear down by project name with no `-f`. That is deliberate and is the
+      # reason this step needs no credentials at all: `compose.app.yml`
+      # declares POSTGRES_DB, POSTGRES_USER and POSTGRES_PASSWORD with the
+      # fail-hard `${VAR:?}` form, so passing `-f` would make Compose refuse
+      # to *parse* the file whenever they are unset - even for `down`, which
+      # needs none of their values. Resolving the stack by its `name: eop-app`
+      # project label instead skips parsing entirely, so no database
+      # credentials enter this step (security.md, least privilege).
+      #
+      # Verified: `docker compose -p eop-app down --volumes` removes all three
+      # containers, the network and both named volumes, and does not touch the
+      # separate `eop-monitoring` stack declared in docker-compose.yml.
+      - name: Tear down stack
+        if: always()
+        run: docker compose -p eop-app down --volumes
 
       # Publish only from `main`. A pull request builds and smoke tests the
       # image but never publishes one, so an unreviewed change can never
