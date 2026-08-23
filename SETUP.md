@@ -126,12 +126,18 @@ Without direnv, export the variables manually before running the app.
 docker-compose up -d
 ```
 
-**First boot / after changing any `GF_SECURITY_*` or `INFLUXDB_*` values:**
-credentials are baked into volumes on first start only. Recreate them:
+**After changing any `GF_SECURITY_*` value:** Grafana's admin credentials are
+seeded into `grafana_data` on first start only, so a changed value needs the
+volume recreated. InfluxDB has no credentials to seed — it runs with HTTP
+authentication disabled on a loopback-bound port (ADR-016), so nothing about it
+requires this step.
 ```bash
-docker-compose down -v   # wipes grafana_data + influxdb_data
+docker-compose down -v   # wipes grafana_data AND influxdb_data
 docker-compose up -d
 ```
+> `-v` destroys your k6 metric history along with the Grafana volume, and the
+> dashboard exists to show that history. Prefer `docker-compose down` without
+> `-v` unless you specifically need to re-seed the Grafana admin account.
 
 ### Logging into Grafana
 1. Open `http://localhost:3000/login`

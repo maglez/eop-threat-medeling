@@ -298,3 +298,4 @@ for four weeks is a property of k6, and it did not go away.
 - `compose.app.yml`, `Dockerfile` — the artifacts that did not have to change
 - `SETUP.md`, `docs/devops/local-development.md` — the per-clone steps this adds
 - [EOP-16](https://maglez.atlassian.net/browse/EOP-16) — the story
+- [EOP-154](https://maglez.atlassian.net/browse/EOP-154) — the story behind the 2026-08-23 amendment, which repaired the metrics pipeline this ADR had disclosed as broken
