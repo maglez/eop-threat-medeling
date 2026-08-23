@@ -160,6 +160,17 @@ and the derivation returned empty while `getProperty` kept working. The agreemen
 empty set against the registry and reported the registry's own entries as missing. The vacuity guard is
 what identified the cause.
 
+**The floor is one, not three, and that bound is deliberate but real.** Each guard asserts only that its
+derivation is non-empty. So a flag removed from the shipped YAML, from every annotation and from the
+registry *in the same commit* leaves three smaller sets that still agree and are still non-empty, and the
+build stays green — which is correct when the removal was intended, and silent when it was not. Pinning
+the expected count instead would make the guard a snapshot again, red on every legitimate addition and
+removal, which is the property this ADR exists to remove; the count also cannot be derived, because all
+three sources are exactly what is under suspicion. Nothing here detects a *consistent* mistake, and a
+reviewer is the only control on one. This is the same bound ADR-006 records for the documentation gates:
+a green build proves the specific fault classes enumerated here are absent, never that the flag set is
+correct.
+
 ### 6. Bytecode, not source text
 
 For the reasons ADR-052 records: annotation formatting, attribute order, comments and line wrapping are
@@ -193,6 +204,13 @@ imported by nothing and couples nothing. The registry is data, not a class.
 - **The flag lifecycle has a mechanism instead of a promise.** `game-over`'s 2026-09-18 expiry, which
   ADR-042 wrote in prose, is now enforced. When it passes the build goes red until someone removes the
   flag or extends the date under review.
+- **Negative — a consistent removal across all three sources is undetected.** The vacuity floor is one
+  entry per derivation, not three, so dropping a flag from the YAML, its annotations and the registry in
+  one commit leaves three agreeing non-empty sets and a green build. The guard catches disagreement
+  between the three sources; it cannot catch a mistake all three share. Deriving the expected count is
+  impossible, since the sources are what is under suspicion, and hard-coding it would restore the
+  snapshot this ADR replaces. Found by @tester-unit-and-quality during this story's gate round, and left
+  open rather than closed with a number nobody could maintain.
 - **Negative — an expiry turns the build red on a calendar boundary, and this project deploys every
   passing commit.** A red `main` blocks all deployment, including changes unrelated to the flag. This is
   accepted as the intended signal on the precedent of `tools/supply-chain/accepted-advisories.json`,
