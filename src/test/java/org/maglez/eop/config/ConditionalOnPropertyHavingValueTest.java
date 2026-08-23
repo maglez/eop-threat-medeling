@@ -31,7 +31,18 @@ import org.springframework.core.type.classreading.SimpleMetadataReaderFactory;
  * {@code EOP_FEATURES_SOMETHING=} exported empty produces. {@code off} is the worst of them: it is both the
  * spelling an operator reaches for as a kill switch and a YAML 1.1 boolean false, so it reads "disabled" to a
  * human and "enabled" to Spring. Note that {@code matchIfMissing} already defaults to {@code false}, so an
- * <em>absent</em> property was never the hole — the hole is confined to present-but-not-{@code false}.
+ * <em>absent</em> property was never the hole <em>in the loose form</em> — that hole is confined to
+ * present-but-not-{@code false}.
+ *
+ * <p>{@code matchIfMissing} is audited here too, as a second and independent invariant, because it reaches the
+ * same fail-open shape through a different attribute. A site written {@code havingValue = "true",
+ * matchIfMissing = true} satisfies the ADR-013 mandate to the letter while enabling the feature when the
+ * property is <em>absent</em> — the exact inverse of the fail-closed default {@code feature-flags.md} mandates
+ * ("an unset flag reads as disabled, so forgetting to think about one fails closed"). It is in one respect
+ * worse than the loose {@code havingValue} it would sit beside, because it needs no operator mistake at all to
+ * fire: shipping the annotation is sufficient. No site sets it today, so this half of the gate is preventive in
+ * the same way the first half is. It was added during EOP-50's own review round, on the finding that a gate
+ * checking only {@code havingValue} would have admitted a configuration defeating that gate's own purpose.
  *
  * <p>The reason that mandate needs a test rather than only a rule and an ADR is that prose was tried and
  * demonstrably did not hold. ADR-013 already required the tight form when it was violated <em>twice, in two
@@ -68,7 +79,7 @@ import org.springframework.core.type.classreading.SimpleMetadataReaderFactory;
  * reviewer-enforced, an asymmetry worth knowing before citing this test as proof the whole mandate is
  * automated.
  */
-@DisplayName("ADR-052: every @ConditionalOnProperty carries havingValue = \"true\"")
+@DisplayName("ADR-052: every @ConditionalOnProperty carries havingValue = \"true\" and no matchIfMissing")
 class ConditionalOnPropertyHavingValueTest {
 
     /** Fully-qualified name of the annotation under audit, referenced as text so no outward import is needed. */
@@ -106,6 +117,21 @@ class ConditionalOnPropertyHavingValueTest {
         assertThat(offenders)
                 .as("An empty or non-\"true\" havingValue enables the feature for every present value but the "
                         + "literal false — the empty string and \"off\" included. See ADR-052. Offending sites")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("no annotation site turns the absent property into an enabled feature")
+    void shouldForbidMatchIfMissingAtEverySite() {
+        final List<ConditionSite> offenders = sites().stream()
+                .filter(ConditionSite::matchIfMissing)
+                .toList();
+
+        assertThat(offenders)
+                .as("matchIfMissing = true enables the feature when the property is absent, inverting the "
+                        + "fail-closed default that an unset flag reads as disabled. It passes the havingValue "
+                        + "assertion untouched, which is why it is checked separately. See ADR-052. "
+                        + "Offending sites")
                 .isEmpty();
     }
 
@@ -153,7 +179,9 @@ class ConditionalOnPropertyHavingValueTest {
      * written {@code @ConditionalOnProperty("eop.features.x")} puts its key in {@code value} and leaves
      * {@code name} empty. Reading only {@code name} would report such a site as keyless and, worse, invite a
      * future reader to conclude the alias form is out of scope. {@code prefix} is joined back on so the failure
-     * message names the effective property key an operator would actually set.
+     * message names the effective property key an operator would actually set. {@code matchIfMissing} is read
+     * through {@code Boolean.parseBoolean} over the string form rather than cast, so the site is described
+     * identically whether the metadata reader hands back a {@code Boolean} or its textual rendering.
      *
      * @param className declaring class, always present
      * @param methodName annotated method, or {@code null} for a class-level annotation
@@ -170,7 +198,8 @@ class ConditionalOnPropertyHavingValueTest {
                 .map(key -> prefix.isEmpty() ? key : prefix + "." + key)
                 .toList();
         return new ConditionSite(className, methodName, qualified,
-                String.valueOf(attributes.getOrDefault("havingValue", "")));
+                String.valueOf(attributes.getOrDefault("havingValue", "")),
+                Boolean.parseBoolean(String.valueOf(attributes.getOrDefault("matchIfMissing", Boolean.FALSE))));
     }
 
     private List<String> stringsAt(final Map<String, Object> attributes, final String attribute) {
@@ -211,9 +240,10 @@ class ConditionalOnPropertyHavingValueTest {
      * @param methodName annotated method, or {@code null} when the annotation sits on the type
      * @param propertyKeys effective property keys, prefix already applied
      * @param havingValue the declared {@code havingValue}, empty string when omitted
+     * @param matchIfMissing the declared {@code matchIfMissing}, {@code false} when omitted
      */
     private record ConditionSite(String className, String methodName, List<String> propertyKeys,
-            String havingValue) {
+            String havingValue, boolean matchIfMissing) {
 
         private boolean classLevel() {
             return methodName == null;
@@ -222,7 +252,8 @@ class ConditionalOnPropertyHavingValueTest {
         @Override
         public String toString() {
             final String location = classLevel() ? className : className + "#" + methodName;
-            return location + " " + propertyKeys + " havingValue=\"" + havingValue + "\"";
+            return location + " " + propertyKeys + " havingValue=\"" + havingValue + "\""
+                    + " matchIfMissing=" + matchIfMissing;
         }
     }
 }

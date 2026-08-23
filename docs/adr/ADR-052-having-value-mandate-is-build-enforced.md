@@ -1,4 +1,4 @@
-# ADR-052: The `@ConditionalOnProperty(havingValue = "true")` mandate from ADR-013 is now enforced by a build-failing bytecode test
+# ADR-052: The `@ConditionalOnProperty(havingValue = "true")` mandate from ADR-013 is now enforced by a build-failing bytecode test, which also forbids `matchIfMissing`
 
 **Status:** Accepted
 
@@ -17,7 +17,7 @@ Both were caught by a reviewer, not by the build. Prose in an ADR demonstrably d
 
 ## Decision
 
-A new test `src/test/java/org/maglez/eop/config/ConditionalOnPropertyHavingValueTest.java` reads compiled bytecode via Spring's `SimpleMetadataReaderFactory` + `PathMatchingResourcePatternResolver` (both from `spring-core`, already on the test classpath transitively — **zero new dependencies**). It enumerates every `@ConditionalOnProperty` site in `org.maglez.eop.**` and asserts each carries `havingValue = "true"`.
+A new test `src/test/java/org/maglez/eop/config/ConditionalOnPropertyHavingValueTest.java` reads compiled bytecode via Spring's `SimpleMetadataReaderFactory` + `PathMatchingResourcePatternResolver` (both from `spring-core`, already on the test classpath transitively — **zero new dependencies**). It enumerates every `@ConditionalOnProperty` site in `org.maglez.eop.**` and asserts **two independent invariants** at each: that it carries `havingValue = "true"`, and that it does not carry `matchIfMissing = true`.
 
 The mechanism was chosen after a spike that verified four facts:
 
@@ -27,6 +27,22 @@ The mechanism was chosen after a spike that verified four facts:
 4. **Both attribute spellings in the codebase are read faithfully** — 5 sites use `prefix = "eop.features", name = "trick-play"`, 16 use a fully-qualified `name = "eop.features.trick-play"` with empty prefix. `value` is an alias for `name` in this annotation, so the check unions both.
 
 All 21 existing sites already comply, so the check lands green. The gate is **preventive**, protecting against the third recurrence rather than fixing a present defect.
+
+### The second invariant: `matchIfMissing` must not be `true`
+
+The gate as first written asserted only `havingValue`, and @security-auditor rejected it during EOP-50's own review round on the ground that such a gate would admit a configuration defeating its own purpose. A site written
+
+```java
+@ConditionalOnProperty(name = "eop.features.something", havingValue = "true", matchIfMissing = true)
+```
+
+satisfies ADR-013's mandate **to the letter** while enabling the feature whenever the property is **absent** — the exact inverse of the fail-closed default `.opencode/rules/feature-flags.md` mandates ("an unset flag reads as disabled, so forgetting to think about one fails closed"). It reaches the same fail-open shape as a loose `havingValue` through a different attribute, and is in one respect worse: a loose `havingValue` still needs an operator to *set* the property to something, whereas `matchIfMissing = true` fires with no operator action at all. Shipping the annotation is sufficient.
+
+So the test asserts it separately, in `shouldForbidMatchIfMissingAtEverySite`. Separate rather than folded into the main assertion, deliberately: the two failures have different causes and different remedies, so each message must stand alone. That the two invariants are genuinely independent was verified empirically, not assumed — with a site loosened to `matchIfMissing = true`, exactly one of the four tests failed and `shouldRequireHavingValueTrueAtEverySite` passed untouched.
+
+No site in the repository sets `matchIfMissing` today (a grep returns one hit, the test's own javadoc), so this half of the gate is preventive on the same terms as the first.
+
+Note the consequence for how the ADR-013 analysis is now stated. EOP-48 established that `matchIfMissing` already defaults to `false`, so an *absent* property was never the hole **in the loose form** — that hole is confined to present-but-not-`false` values. That remains true, and is not a reason to leave the attribute unaudited: it describes the default, and the gate exists precisely because defaults can be overridden in a future commit.
 
 The check asserts on **every** `@ConditionalOnProperty` in `org.maglez.eop.**`, not only `eop.features.*` ones. This is deliberate: `.opencode/rules/caching.md` establishes that infrastructure toggles (e.g. a future `eop.cache.enabled`) default to `false` for the same fail-closed reason, and it "matters more here than elsewhere" for caching in front of security-sensitive reads. A future non-flag conditional is therefore correctly in scope. If a genuine need for a non-`"true"` `havingValue` ever arises, the resolution is to amend this ADR and add a narrowly-justified allow-list, not to weaken the assertion.
 
@@ -71,6 +87,7 @@ The first clause — `havingValue = "true"` — is machine-enforced. The second 
 ## Consequences
 
 - **Positive:** The third violation will be caught by the build, not by a reviewer. The test is deterministic and immune to formatting changes.
+- **Positive:** A second fail-open route — `matchIfMissing = true`, which ADR-013's prose never forbade because EOP-48's analysis had correctly shown the *default* to be safe — is closed at the same time, before any site ever used it.
 - **Positive:** Zero new dependencies — uses `spring-core` classes already on the classpath.
 - **Positive:** The test runs in the normal test phase, no special CI configuration needed.
 - **Negative:** The test is in `src/test/java/org/maglez/eop/config/`, not in `src/test/java/org/maglez/eop/docs/`, because it reads bytecode and not prose. This is the correct location — it is a code property, not a documentation property.
@@ -79,7 +96,7 @@ The first clause — `havingValue = "true"` — is machine-enforced. The second 
 
 ## Related
 
-- [ADR-013: Feature flags via Spring configuration properties](./ADR-013-feature-flags.md) — the mandate this ADR now enforces
+- [ADR-013: Feature flags via Spring configuration properties](./ADR-013-feature-flags.md) — the mandate this ADR enforces, and slightly extends: ADR-013's prose covers `havingValue` only, so the `matchIfMissing` invariant originates here
 - [ADR-006: Build quality gates](./ADR-006-build-quality-gates.md) — the build-quality gate posture this extends
 - `.opencode/rules/feature-flags.md` — the rule file that references ADR-013
 - `.opencode/rules/caching.md` — the precedent for fail-closed infrastructure toggles
