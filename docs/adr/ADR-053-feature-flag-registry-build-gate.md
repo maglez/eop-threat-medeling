@@ -240,6 +240,25 @@ imported by nothing and couples nothing. The registry is data, not a class.
   deliberately four scalar fields for that reason; anything richer would be a parser to maintain.
 - **`ShippedFeatureFlagDefaultsTest` no longer exists.** A search for it in ADR-042 or in commit history
   will find the interim guard this replaced.
+- **Negative — this story proved its own thesis against its own prose, and that bound is recorded rather
+  than closed.** ADR-042 carried a false claim about the second-order trap on removal: that a suite
+  staying green after an incomplete flag removal was the evidence of it. The suite in fact goes red,
+  because the OFF-position test asserts bean *absence* and not merely that the routes 404. Correcting it
+  took **three** commits one review round apart, because the same sentence had been restated in three
+  places in three file types — the ADR's Consequences (`25a9a4d`), the `.as(…)` message of
+  `shouldFailOnceAFlagPassesItsExpiry` (`46d349f`), and the `game-over` comment in the registry itself
+  (`fe29585`, found by @tester-api, which rejected the commit before it). Each copy was found by a
+  reviewer reading the artefact; none by the build. Nothing counted the copies, which is precisely the
+  argument this ADR makes for deriving the flag set instead of listing it — turned on the story's own
+  comments. **No follow-up ticket and no new gate.** The documentation-integrity matchers in
+  `src/test/java/org/maglez/eop/docs/` are phrase lists scoped to `docs/**/*.md`, so they could in
+  principle have caught the Markdown copy and could never have caught the Java or YAML ones; a
+  cross-file-type prose gate is scope creep against a fault whose real cause is restatement, not any
+  one file type. Ruled a bound by @architecture-guardian at this story's final gate. The instrument for
+  such a correction also differs by container and deliberately so: an ADR carries a dated `>
+  **Corrected**` blockquote preserving what it used to say, while a string literal and a YAML comment
+  cannot, so both instead cite `ADR-042, corrected 2026-08-23` in place — the correction carries its own
+  date rather than the container's format.
 
 ## Related
 
