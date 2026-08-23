@@ -54,7 +54,8 @@ public class CardController {
             description = "Returns a page of threat cards ordered by STRIDE suit, then by ascending rank.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "A page of cards."),
-        @ApiResponse(responseCode = "400", description = "The page index or size is out of range.")
+        @ApiResponse(responseCode = "400", description = "The page index or size is out of range."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted.")
     })
     public ResponseEntity<PagedResponse<CardDto>> listCards(
             @RequestParam(name = "page", defaultValue = "0") final int page,
@@ -74,7 +75,8 @@ public class CardController {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "The card."),
         @ApiResponse(responseCode = "400", description = "The identifier is not a UUID."),
-        @ApiResponse(responseCode = "404", description = "No card exists with that identifier.")
+        @ApiResponse(responseCode = "404", description = "No card exists with that identifier."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted.")
     })
     public ResponseEntity<CardDto> getCard(@PathVariable("cardId") final UUID cardId) {
         final Card card = getCard.execute(cardId);

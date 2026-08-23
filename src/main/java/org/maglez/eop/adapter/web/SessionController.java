@@ -1,6 +1,8 @@
 package org.maglez.eop.adapter.web;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -123,6 +125,12 @@ public class SessionController {
      */
     @PostMapping
     @Operation(summary = "Create a session and become its facilitator")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "The session was created and the caller admitted as facilitator."),
+        @ApiResponse(responseCode = "400", description = "The display name is missing or fails validation."),
+        @ApiResponse(responseCode = "429", description = "The session creation limit for this source address is exhausted."),
+        @ApiResponse(responseCode = "503", description = "No unused join code could be minted; retry after the given delay.")
+    })
     public ResponseEntity<SessionAdmissionDto> createSession(
             @Valid @RequestBody final CreateSessionRequest request,
             final HttpServletRequest httpRequest) {
@@ -150,6 +158,13 @@ public class SessionController {
      */
     @PostMapping("/{joinCode}/players")
     @Operation(summary = "Join a session using its code")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The participant was admitted."),
+        @ApiResponse(responseCode = "400", description = "The display name is missing or fails validation."),
+        @ApiResponse(responseCode = "404", description = "No joinable session matches the code."),
+        @ApiResponse(responseCode = "409", description = "The table is full or the lobby has already closed."),
+        @ApiResponse(responseCode = "429", description = "The join attempt limit for this source address is exhausted.")
+    })
     public SessionAdmissionDto joinSession(
             @PathVariable final String joinCode,
             @Valid @RequestBody final JoinSessionRequest request,
@@ -173,6 +188,13 @@ public class SessionController {
      */
     @GetMapping("/{sessionId}")
     @Operation(summary = "Read the current state of a session")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The current state of the session."),
+        @ApiResponse(responseCode = "400", description = "The identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "The credential is missing, unrecognised, or belongs to another session."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted.")
+    })
     public SessionStateDto getSessionState(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
@@ -191,6 +213,13 @@ public class SessionController {
      */
     @PostMapping("/{sessionId}/start")
     @Operation(summary = "Start play, closing the lobby")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Play has started."),
+        @ApiResponse(responseCode = "400", description = "The identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "The caller is not the facilitator of this session."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "409", description = "The session has already started, or too few players are seated.")
+    })
     public SessionStateDto startSession(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
@@ -223,6 +252,13 @@ public class SessionController {
      */
     @GetMapping(value = "/{sessionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @Operation(summary = "Stream notifications that the session changed")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The stream is open and will emit a frame on every change."),
+        @ApiResponse(responseCode = "400", description = "The identifier is not a UUID."),
+        @ApiResponse(responseCode = "403", description = "The credential is missing, unrecognised, or belongs to another session."),
+        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "429", description = "This session already has the maximum number of subscribers.")
+    })
     public SseEmitter streamSessionEvents(
             @PathVariable final UUID sessionId,
             @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {

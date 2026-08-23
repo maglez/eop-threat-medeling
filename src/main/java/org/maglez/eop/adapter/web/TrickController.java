@@ -143,7 +143,8 @@ public class TrickController {
         @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
         @ApiResponse(responseCode = "403", description = "No credential, an unrecognised one, or one belonging to another session."),
         @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
-        @ApiResponse(responseCode = "409", description = "The deck has not been dealt, so there is no hand to read.")
+        @ApiResponse(responseCode = "409", description = "The deck has not been dealt, so there is no hand to read."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted.")
     })
     public HandDto getOwnHand(
             @PathVariable final UUID sessionId,
@@ -220,7 +221,8 @@ public class TrickController {
         @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
         @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
-        @ApiResponse(responseCode = "409", description = "The deck has not been dealt, so there is no state of play to report.")
+        @ApiResponse(responseCode = "409", description = "The deck has not been dealt, so there is no state of play to report."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted.")
     })
     public TrickStateDto getTrickState(
             @PathVariable final UUID sessionId,

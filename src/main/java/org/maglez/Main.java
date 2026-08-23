@@ -1,5 +1,8 @@
 package org.maglez;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -53,9 +56,19 @@ public class Main {
      * dependency check — a probe that fails when the database is briefly unavailable would have the deployment
      * restart a container that was working.
      *
+     * <p>It is documented in {@code docs/api/openapi.yml} alongside the game's own endpoints even though it is not
+     * under {@code /api/v1}, because {@code OpenApiContractDriftTest} compares the whole surface Spring serves
+     * against that file and carries no path exclusions. Leaving it undocumented would fail the build.
+     *
      * @return the fixed body {@code OK}
      */
     @GetMapping("/health")
+    @Operation(summary = "Liveness probe",
+            description = "Answers 200 with the body OK whenever the process is up and serving HTTP. "
+                    + "It touches no database and no use case, so it never reports on dependency health.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "The process is up and serving HTTP.")
+    })
     public String health() {
         return "OK";
     }
