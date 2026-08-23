@@ -140,6 +140,38 @@
             <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers, for running the Liquibase changelog against the engine production
+             actually uses (EOP-164, ADR-056). Until this existed, `006-session-expiry.xml`'s
+             PostgreSQL branch was verified by nothing: the H2 branch ran in CI and the
+             PostgreSQL one only in production.
+
+             Three coordinates that are easy to get wrong:
+
+             1. Testcontainers 2.x RENAMED every module with a `testcontainers-` prefix. The
+                familiar 1.x `org.testcontainers:postgresql` and `org.testcontainers:junit-jupiter`
+                DO NOT EXIST at 2.0.5 and fail resolution outright. The Boot 4.1.0 parent manages
+                `testcontainers.version` at 2.0.5, so these are deliberately version-less.
+             2. `spring-boot-testcontainers` supplies @ServiceConnection, which is what lets a
+                container hand its JDBC URL to a Spring context without an @ActiveProfiles. Tests
+                here activate no profile at all (see configuration.md), so the PostgreSQL settings
+                that live in application-prod.yml are passed as explicit test properties instead.
+             3. The PostgreSQL JDBC driver is NOT repeated here. It is already declared above at
+                `runtime` scope, which is on the test classpath. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -184,8 +216,44 @@
                                 </exclude>
                             </excludes>
                         </configuration>
-                    </execution>
+                     </execution>
                 </executions>
+            </plugin>
+            <!--
+                The SEVENTH declared plugin, and EOP-164 pays that cost deliberately. The
+                PostgreSQL migration tests must run under "mvnw verify" but not under
+                "mvnw test", and surefire alone cannot express that: both commands execute the
+                "test" phase with identical surefire configuration, so no JUnit tag and no
+                junit-platform.properties setting can make one run more tests than the other.
+                Only a plugin bound to a later phase separates them. ADR-047 weighed seven
+                declared plugins as a real cost; EOP-164's AC4 accepts it, and ADR-056 records
+                why.
+
+                Do NOT delete this declaration as redundant. It was deleted once during EOP-164
+                because "mvnw help:effective-pom" appeared to show the Boot parent binding
+                failsafe by itself. It does not. The parent supplies the unnamed execution
+                through pluginManagement, and a pluginManagement entry materialises only when
+                the plugin is also declared here, so the effective POM had been computed with
+                this very declaration in place and the reading was circular. With it deleted,
+                "mvnw clean verify" ran 1360 tests, zero integration tests, and still reported
+                BUILD SUCCESS with every coverage check met. A green build that silently skips
+                the whole integration suite is the failure mode this declaration prevents.
+
+                No version and no configuration of our own: the parent's pluginManagement
+                supplies both, along with the integration-test and verify goal bindings. JaCoCo
+                needs no second prepare-agent because failsafe's argLine also defaults to
+                ${argLine}, and the integration-test phase precedes verify, so integration
+                coverage merges into target/jacoco.exec before jacoco:check reads it.
+
+                What selects between the two suites is class naming alone, enforced by nothing:
+                surefire's default includes are Test*, *Test, *Tests and *TestCase, so a *IT class
+                is invisible to "mvnw test"; failsafe's are IT*, *IT and *ITCase. Renaming a
+                migration IT to *Test silently moves it into the fast suite and points it at H2,
+                which is the very gap EOP-164 closed. Keep the *IT suffix.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
