@@ -75,7 +75,8 @@ public class GameOverController {
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
         @ApiResponse(responseCode = "404",
                 description = "No session exists with that identifier, or the session is completed with no recorded result."),
-        @ApiResponse(responseCode = "409", description = "The session is not yet completed.")
+        @ApiResponse(responseCode = "409", description = "The session is not yet completed."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted.")
     })
     public LeaderboardDto getLeaderboard(
             @PathVariable final UUID sessionId,

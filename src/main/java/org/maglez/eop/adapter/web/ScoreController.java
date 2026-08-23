@@ -72,6 +72,7 @@ public class ScoreController {
         @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
         @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
+        @ApiResponse(responseCode = "429", description = "The read rate limit for this source address is exhausted."),
         @ApiResponse(responseCode = "500",
                 description = "The stored game contradicts itself, so no score can be derived from it. The body names nothing.")
     })

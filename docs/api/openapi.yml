@@ -10,6 +10,13 @@
 # So this file is the ONLY contract available to a client of the deployed
 # instance, and also the only one available to anyone who forgot the opt-in.
 #
+# **The generated document is also the input to a build gate.** `OpenApiContractDriftTest`
+# fetches /v3/api-docs at test time and compares it against this file on two axes:
+# path+method operation set, and declared response status codes per operation. The
+# gate catches drift in both directions — implementation drifting from the spec, and
+# the spec drifting from the implementation. It does NOT catch prose drift, schema
+# drift, reachability, or proxy-layer contributions beyond the one declared 413.
+#
 # When an endpoint changes, this file changes in the same commit.
 
 openapi: 3.1.0
@@ -79,6 +86,13 @@ tags:
     description: |
       Game Over screen: final leaderboard with STRIDE breakdown, and starting a
       new game with the same players. Gated by `eop.features.game-over` (ADR-013).
+  - name: health
+    description: |
+      The liveness probe. Not part of the game API and not under `/api/v1`, but a
+      deployed public surface all the same — `ui/Caddyfile` proxies it and the
+      deployment pipeline polls it — so it is documented here rather than left
+      out. `OpenApiContractDriftTest` compares every path Spring serves against
+      this file and carries no path exclusions.
 
 paths:
   /api/v1/cards:
@@ -992,6 +1006,36 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: |
+        Answers `200` with the plain-text body `OK` whenever the process is up and
+        serving HTTP.
+
+        This is a **liveness** check, not a readiness check. It deliberately
+        touches no database and no use case, so a `200` means the web layer is
+        answering and nothing more — it never reports on dependency health. Do
+        not extend it into a dependency check: a probe that fails while the
+        database is briefly unavailable would have the deployment restart a
+        container that was working.
+
+        Unlike every other path in this document it is not under `/api/v1` and it
+        is not versioned, because the deployment pipeline and `ui/Caddyfile` both
+        hard-code it. It is also not behind a feature flag and not rate limited —
+        the read rate limiter (ADR-051) is registered on `/api/v1/**` only, so no
+        `429` is possible here.
+      responses:
+        '200':
+          description: The process is up and serving HTTP.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [OK]
+              example: OK
 
 components:
   schemas:

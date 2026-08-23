@@ -1,8 +1,8 @@
-- Contract-first: hand-author `docs/api/openapi.yml` before implementing new endpoints
+- Contract-first: hand-author `docs/api/openapi.yml` before implementing new endpoints. **Since EOP-95 this is partly build-enforced** — `OpenApiContractDriftTest` compares the generated springdoc document against that file bidirectionally on two axes, so an endpoint served but not authored, an operation authored but not served, and a response status declared on one side only all fail `./mvnw verify`. It reads no prose, so it cannot tell you the *description* has gone stale, which is exactly the drift that prompted the story ([ADR-054](../../docs/adr/ADR-054-openapi-contract-drift-gate.md))
 - URL pattern: `/api/v1/{resource}` with plural nouns (`/api/v1/games`, `/api/v1/cards`)
 - HTTP methods: GET (read), POST (create), PUT (replace), PATCH (partial update), DELETE (remove)
 - Response codes: 200 (success), 201 (created), 204 (deleted), 400 (bad request), 404 (not found), 409 (conflict), 422 (unprocessable), 500 (error)
 - Pagination: Spring `Page<T>` for list endpoints with `?page=0&size=20`
 - Error responses follow RFC 9457 Problem Details — see error-handling rules
-- Use `@Operation` and `@ApiResponse` on all controller methods
+- Use `@Operation` and `@ApiResponse` on all controller methods. The *status codes* in `@ApiResponse` are now compared against the authored contract by `OpenApiContractDriftTest`, but the presence of `@Operation` and the truthfulness of any description are not — and never add an `@ApiResponse` for a status the endpoint cannot return just to make that comparison pass; fix whichever side is wrong, or declare the exception with its reason as the Caddy-produced `413` on `POST /api/v1/sessions` is
 - No `@RequestMapping` on interfaces — concrete controllers only
