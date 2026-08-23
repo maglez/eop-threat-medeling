@@ -110,6 +110,12 @@ in the way.
 
 This is an **interim workaround, not the architectural answer**. See Consequences.
 
+> **Superseded, 2026-08-23 (EOP-84).** `ShippedFeatureFlagDefaultsTest` has been deleted and
+> replaced by `FeatureFlagRegistryTest`, which keeps the classpath-read technique described above —
+> that part was always sound — but derives the flag set from the shipped YAML and from the compiled
+> `@ConditionalOnProperty` sites instead of naming keys by hand, and holds both against a registry
+> of declared intent. See [ADR-053](ADR-053-feature-flag-registry-build-gate.md).
+
 ### 4. The flag is catalogued in ADR-013 for the first time
 
 [ADR-013](ADR-013-feature-flags.md) is amended with a `game-over` entry, in the same dated shape as
@@ -134,7 +140,10 @@ time since the third flag was introduced.
   `ShippedFeatureFlagDefaultsTest` asserts three **hand-named** keys. A fourth flag is invisible to
   it: a fifth feature merged dark, forgotten, and shipped `false` would reproduce EOP-82 exactly
   with the suite green. The test pins today's three positions; it does not detect an undeclared
-  flag, and it is not a tripwire.
+  flag, and it is not a tripwire. **Closed, 2026-08-23 (EOP-84):** the derived guard in
+  [ADR-053](ADR-053-feature-flag-registry-build-gate.md) is the tripwire this bullet asked for. A
+  flag with no registry entry now fails `./mvnw verify`, so the fifth feature merged dark cannot
+  ship `false` with the suite green.
 - **The structural fix is specified but deliberately not implemented here.** Derive the assertion
   from the set of flags that *exist* rather than from a hand-written list — either every key under
   `eop.features` in the shipped YAML, or every `@ConditionalOnProperty(prefix = "eop.features")` on
@@ -142,7 +151,11 @@ time since the third flag was introduced.
   shipped state, its owning story and its expiry. A flag present in the code but absent from the
   registry fails the build. That inverts the default from "silent unless someone remembers to add a
   line" to "fails until someone declares intent", which is what makes it a tripwire rather than a
-  snapshot. This is filed as a separate ticket; EOP-82 ships the snapshot.
+  snapshot. This is filed as a separate ticket; EOP-82 ships the snapshot. **Implemented, 2026-08-23
+  (EOP-84):** built as specified, and with both enumeration routes rather than either — the shipped
+  YAML keys, the bytecode keys and the registry entries are held in three-way agreement, so an
+  annotation without a declared default fails as loudly as a YAML key without an entry. See
+  [ADR-053](ADR-053-feature-flag-registry-build-gate.md).
 - **Negative — three flags flipped on, zero flags ever removed.** `session-lifecycle` (EOP-25),
   `trick-play` (EOP-70) and `game-over` (EOP-82) are all now permanently `true`. Each flip promised
   removal "once the feature is confirmed stable"; the promise has been made three times and kept
@@ -152,8 +165,8 @@ time since the third flag was introduced.
   exactly what the first three were.
 - **Concrete expiry condition for `game-over`, replacing the undated promise.** The flag, its four
   `@ConditionalOnProperty` guards, `GameOverControllerDisabledIntegrationTest`, the `game-over`
-  line in `src/test/resources/application.properties` and the `game-over` assertion in
-  `ShippedFeatureFlagDefaultsTest` are to be deleted in the story that closes **EOP-83** (the
+  line in `src/test/resources/application.properties` and the `game-over` entry in
+  `src/test/resources/feature-flag-registry.yml` are to be deleted in the story that closes **EOP-83** (the
   OpenAPI leaderboard divergences), or by **2026-09-18** — one month from this decision —
   whichever comes first. If neither has happened by that date, this ADR must be amended with the
   reason. The date does not move silently.
@@ -162,9 +175,19 @@ time since the third flag was introduced.
   `@SpringBootTest(properties = "eop.features.game-over=false")`. Once the flag and its guards are
   deleted, that property becomes inert (an unrecognised property is not an error), the beans become
   unconditional, and the test would be asserting a condition the code can no longer reach. It must
-  be **deleted in the same commit as the flag**, not left behind. A suite that stays green after
-  flag removal without that test being touched is evidence the removal was incomplete, not evidence
-  that it was safe.
+  be **deleted in the same commit as the flag**, not left behind.
+
+  > **Corrected, 2026-08-23 (EOP-84).** This bullet originally closed by saying that "a suite that
+  > stays green after flag removal without that test being touched is evidence the removal was
+  > incomplete". That is **false**, and the error made the trap sound both more dangerous and more
+  > silent than it is. `GameOverControllerDisabledIntegrationTest` asserts bean *absence* as well as
+  > the two 404s, so once the guards are deleted the beans become unconditional and those
+  > `isEmpty()` assertions **fail**: the suite goes **red**, not green. Leaving the test behind is
+  > therefore self-announcing rather than silent, and the red build is the signal to delete it. What
+  > genuinely remains reviewer-enforced is narrower: nothing *names* the incomplete removal, so
+  > whoever meets those failures must recognise them as a leftover OFF-position test rather than a
+  > regression, and delete it instead of "fixing" it by relaxing the assertions. Found by
+  > @tester-api during EOP-84's gate round, which read the test rather than this paragraph.
 - ADR-013's "no audit trail" weakness is sidestepped here, not fixed. It applies to environment
   overrides, and this change moves the source default instead. Anyone who sets
   `EOP_FEATURES_GAME_OVER=false` on a deployed container still leaves no trace beyond their own
@@ -189,6 +212,27 @@ time since the third flag was introduced.
   static module view of the now-live game-over surface exists only as Level 2 of
   `docs/architecture/C4-Diagrams.md`.
 
+## Amendment, 2026-08-23 (EOP-84): the specified structural fix is now in place
+
+The Consequences above name two defects in this record's own mitigation and specify the remedy for
+both. Both are now built, in [ADR-053](ADR-053-feature-flag-registry-build-gate.md).
+
+- **The hand-named key list is gone.** `FeatureFlagRegistryTest` derives the flag set from the keys
+  under `eop.features` in the shipped `application.yml` *and* from every compiled
+  `@ConditionalOnProperty` whose resolved key sits in that namespace, then requires both to equal the
+  entries in `src/test/resources/feature-flag-registry.yml`. A fourth flag is no longer invisible: it
+  fails the build until someone declares its intended state, its owning story and its expiry.
+- **The `game-over` expiry is enforced rather than promised.** The 2026-09-18 date this record wrote
+  in prose is now a field in the registry, and the build goes red the day after it passes. That is
+  the only mechanism the three-flips-zero-removals bullet has ever had behind it.
+- **The second-order trap on removal still needs a human.** Nothing detects that
+  `GameOverControllerDisabledIntegrationTest` has been left asserting an unreachable condition after
+  the flag is deleted. The expiry failure will make somebody look on 2026-09-19 at the latest, and
+  the registry's own comment repeats the warning, but the check itself remains reviewer-enforced.
+- **The masking trap is still there.** Flags remain pinned ON in test resources. ADR-053 routes
+  around that rather than removing it, so the first bullet of this record's Consequences stands
+  unchanged: any future guard in this area must read the shipped artefact, not the `Environment`.
+
 ## Relations
 
 - **ADR-039** (new-game reset) — the slice this flag gates; amended with a pointer to this record.
@@ -205,6 +249,9 @@ time since the third flag was introduced.
   reading the persisted standings; that path is only now reachable.
 - **ADR-032** (end-of-game transitions) — the transitions to `COMPLETED` that make a leaderboard
   read legal.
+- **ADR-053** (feature-flag registry as a build gate) — implements the structural fix this record
+  specified and deferred; deletes `ShippedFeatureFlagDefaultsTest` and encodes the `game-over`
+  expiry date as an enforced field.
 - **ADR-037** (front-end build-time feature flags) — the front-end half of the game-over surface is
   gated by `VITE_GAME_SCREEN_ENABLED`, a build-time variable, and is untouched by this server-side
   flip.
