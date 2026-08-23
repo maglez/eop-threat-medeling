@@ -43,11 +43,20 @@ If a threshold is crossed and `abortOnFail: true`, the test stops immediately. S
 - k6 CLI: `brew install k6`
 - App running on `http://localhost:8080`
 
-> **Known broken:** k6 results have never reached InfluxDB, so the Grafana
-> dashboard is empty. k6 logs `Couldn't write stats` once per flush interval but
-> **exits 0**, so thresholds still gate correctly and the JSON plus summary files
-> written to `docs/performance/history/` are the real evidence. Causes and
-> evidence are recorded in ADR-016; repair is not yet scheduled.
+> **Verify writes by query, never by exit code.** The pipeline works as of
+> 2026-08-23 (EOP-154, ADR-016) — it was broken from 2026-07-27 until then — but
+> k6 **exits 0 even when every write fails**, logging `Couldn't write stats` once
+> per flush interval and passing its thresholds regardless. So a green run proves
+> nothing about InfluxDB. Confirm the data landed:
+>
+> ```bash
+> curl -sG http://localhost:8086/query --data-urlencode 'db=k6' \
+>   --data-urlencode 'q=SHOW MEASUREMENTS'
+> ```
+>
+> If writes fail, suspect your shell before the stack: direnv exports
+> `INFLUXDB_URL` when the shell loads `.envrc`, so editing `.env` in a running
+> shell appears to do nothing until you `direnv reload` or open a new one.
 
 ### Quick smoke test (no monitoring stack)
 

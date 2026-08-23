@@ -58,7 +58,7 @@ grep -v '^#' .env.example >> .env   # then remove duplicates manually
 
 > **Then replace every `CHANGE_ME` in your `.env` before starting anything.** The
 > template ships `CHANGE_ME` rather than a plausible-looking password precisely so
-> that a copied file cannot quietly seed Grafana, InfluxDB or PostgreSQL with a
+> that a copied file cannot quietly seed Grafana or PostgreSQL with a
 > credential published in git. Enumerate what you still owe with:
 > ```bash
 > grep -n CHANGE_ME .env
@@ -74,13 +74,16 @@ grep -v '^#' .env.example >> .env   # then remove duplicates manually
 > add them and retry.
 >
 > **direnv exports `.env` at directory entry, so editing it does not change an
-> already-running shell.** After changing a variable, open a new shell or pass the
-> value inline. Two separate diagnoses were wasted on this.
+> already-running shell.** After changing a variable, run `direnv reload`, open a
+> new shell, or pass the value inline. Two separate diagnoses were wasted on this,
+> and a third was spent on it during EOP-154 — `INFLUXDB_URL` is the variable that
+> keeps catching people, because a stale value makes `test/k6/run.sh` write to the
+> wrong address while still exiting `0`. Check with `echo "$INFLUXDB_URL"`.
 
 > **`chmod 600 .env` is not optional.** `cp` gives the new file your umask
 > default, which on macOS is `0644` — group- and world-readable. `.env` holds
 > live credentials (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `SUPERMEMORY_API_KEY`,
-> `AWS_BEARER_TOKEN_BEDROCK`, and the Grafana/InfluxDB admin passwords), so any
+> `AWS_BEARER_TOKEN_BEDROCK`, and the Grafana admin password), so any
 > local process under any account on the machine could read them. It sat at
 > `0644` from creation until the 2026-08-02 audit caught it. For comparison,
 > OpenCode's own credential store `~/.local/share/opencode/auth.json` is `0600`
@@ -97,9 +100,7 @@ You **choose** these values yourself — they seed accounts on first boot:
 | `DB_PASSWORD`        | Database password (blank OK for local H2)|                       |
 | `GF_SECURITY_ADMIN_USER` | Grafana login username                  | `admin`               |
 | `GF_SECURITY_ADMIN_PASSWORD` | Grafana login password (you choose; wrap in single quotes if it contains `$`) | |
-| `INFLUXDB_URL`       | InfluxDB URL (inside Docker network)     | `http://influxdb:8086`|
-| `INFLUXDB_USER`      | InfluxDB admin username (you choose)     | `eop_admin`           |
-| `INFLUXDB_PASSWORD`  | InfluxDB admin password (you choose)     |                       |
+| `INFLUXDB_URL`       | Where `test/k6/run.sh` streams metrics — a **host** address, not a container one | `http://localhost:8086/k6` |
 
 ### 3. Load `.env` via direnv (required for the backend)
 Spring Boot does **not** read `.env` natively — the app fails fast if
