@@ -189,7 +189,7 @@ beans and three controllers — ten beans in all**: `DealHandsUseCase`, `ReadOwn
 off. `TrickPlayDisabledIntegrationTest` asserts both halves at that arity: ten beans absent
 (`:90`, `:96`, `:102`, `:108`, `:123`, `:130`, `:136`, `:143`, `:150`, `:163`) *and* seven routes
 404 (`:171`, `:179`, `:189`, `:197`, `:205`, `:212`, `:220`). The flag is **`true`** —
-`application.yml:129`, flipped by EOP-70; see the 2026-08-17 note below.
+`application.yml:157` (anchor: `trick-play`), flipped by EOP-70; see the 2026-08-17 note below.
 
 *(Amended 2026-08-21, EOP-41 — every figure and anchor in the paragraph above was re-derived before
 being written, because none of the previous ones survived. It read "this is the register's current
@@ -226,11 +226,11 @@ longer "unconditional", and it is no longer "left for its own commit" because th
 which also strengthens the mandate in its last two lines.)*
 
 **2026-08-14, later the same day — EOP-48: the explicit form on both flags, and the beans were
-the deeper half of the defect.** `SessionController.java:60` now reads
+the deeper half of the defect.** `SessionController.java:63` (anchor: `havingValue`) now reads
 `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle", havingValue = "true")`,
 and the four use cases that open or mutate a session — `createSessionUseCase`,
 `joinSessionUseCase`, `getSessionStateUseCase`, `startSessionUseCase` — each carry the same
-condition (`UseCaseConfiguration.java:101`, `:124`, `:167`, `:182`). The two spellings in the tree,
+condition (`UseCaseConfiguration.java:120` (anchor: `session-lifecycle`), `:143`, `:187`, `:202`). The two spellings in the tree,
 `prefix` + `name` on the controllers and the single dotted `name = "eop.features.…"` on the beans,
 resolve to the same property and the same condition; the inconsistency is cosmetic and is recorded
 here so that nobody reads it as two mechanisms.
@@ -378,7 +378,7 @@ endpoints and the sweep were live; it did not mean the full game was playable.
 
 *(Amended 2026-08-21, EOP-49 — tense pinned, because this paragraph was written in the present and
 had become the opposite of true. `eop.features.trick-play` is `true` as of EOP-70 (2026-08-17),
-`application.yml:129`, so the deal, play and resolve-trick routes are present and the released
+`application.yml:157` (anchor: `trick-play`), so the deal, play and resolve-trick routes are present and the released
 surface is no longer lobby-only. This mattered more than an ordinary stale sentence: as the flag
 register, this document is where every other ADR now sends a reader for the flag's value — ADR-023
 and `docs/adr/README.md` both drop their own arity and point here — and it was simultaneously

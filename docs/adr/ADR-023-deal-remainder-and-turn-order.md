@@ -1287,8 +1287,8 @@ constraint: not the denormalisation objection, but an engine-and-tooling collisi
 use case — which is the same lesson as the paragraph before this one, applied to the fix rather
 than to the defect.
 
-**Owner, and why nothing can produce it today.** `Trick.winningPlay()` (`Trick.java:440`, and
-private) computes the winner from the trick's own plays, `Trick.reconstitute` (`Trick.java:437`)
+**Owner, and why nothing can produce it today.** `Trick.winningPlay()` (`Trick.java:441` (anchor: `winningPlay`), and
+private) computes the winner from the trick's own plays, `Trick.resolved` (`Trick.java:438`, anchor: `winningPlay()`)
 is the only caller, and no adapter, repository or entity maps `trick` at all — see the
 containment paragraph at the head of this section. So this is unreachable until Slice C, and
 Slice C's resolve-trick use case owns the check that the winner play belongs to the trick it
@@ -1342,7 +1342,7 @@ exception type and its 422, and it is not a restatement of any of the other thre
 @security-auditor measured `player.seat_order = -7`, `trick.sequence = -5` and
 `game_session.current_leader_seat = 9999` all **accepted** by storage, while the domain refuses
 every one of them (`GameSession.MAXIMUM_PLAYERS = 6`, and `Trick`/`TrickPlay` reject a seat
-outside `0..5` — `Trick.java:50`, `TrickPlay.java:115`). @architecture-guardian's ruling is that
+outside `0..5` — `Trick.java:51` (anchor: `leaderSeat`), `TrickPlay.java:115`). @architecture-guardian's ruling is that
 this is correctly Slice C's, with the adapter that first writes these columns, and it is recorded
 here rather than left in the audit for one reason the audit did not state: the seat range on
 `hand` and `trick_play` is **inherited**, not independent. `fk_hand_player_seat` and

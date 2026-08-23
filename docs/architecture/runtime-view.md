@@ -768,7 +768,7 @@ sequenceDiagram
     end
 
     PC->>EV: publish(CARD_PLAYED, sessionId, now)
-    Note over PC,EV: EOP-14 Slice E, PlayCardUseCase.java:229.<br/>After the writes, and carrying no card, no seat and<br/>no trick — a subscriber is told a play happened and<br/>re-reads GET /tricks/current to learn what it was.
+    Note over PC,EV: EOP-14 Slice E, PlayCardUseCase.java:253.<br/>After the writes, and carrying no card, no seat and<br/>no trick — a subscriber is told a play happened and<br/>re-reads GET /tricks/current to learn what it was.
 
     PC-->>CL: the updated Trick
     Note over PC,CL: A complete trick is NOT resolved here.<br/>Resolution is sequence 6, a separate request.
@@ -808,7 +808,7 @@ the window**, which is why ADR-025 records the reasoning rather than only the co
 table, row by row against the method, in its decision 9.
 
 **The play is broadcast, after the writes.** `PlayCardUseCase` takes a
-`SessionEventPublisher` and publishes `CARD_PLAYED` at `PlayCardUseCase.java:229`, once
+`SessionEventPublisher` and publishes `CARD_PLAYED` at `PlayCardUseCase.java:253` (anchor: `CARD_PLAYED`), once
 `appendPlay` has returned. The event names the session and nothing else: not the card,
 not the seat, not the trick. That is what makes it safe on a fan-out transport where
 every subscriber of a session receives every event — the other players learn *that* the
