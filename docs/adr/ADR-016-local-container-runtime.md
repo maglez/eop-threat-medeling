@@ -1,6 +1,6 @@
 # ADR-016: Colima as the Local Container Runtime
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-08-23)
 **Date:** 2026-08-05
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -144,17 +144,16 @@ reported the other's containers as orphans and `docker compose down
 adding `name: eop-app` and `name: eop-monitoring`. Anyone with volumes from
 before this change will find them orphaned under the old project name.
 
-**Neutral — the k6 metrics pipeline is broken, and this decision did not fix
-it.** Running the load test revealed that measurements have never reached
-InfluxDB, so the Grafana dashboard has always been empty. Three independent
-causes were identified: `.env.example` shipped `INFLUXDB_URL=http://influxdb:8086`,
-a *container* hostname that cannot resolve from the host where k6 runs and which
-also drops the `/k6` database path (fixed here, because it is a tracked file);
-direnv exports the stale value into an already-running shell so editing `.env`
-appears to have no effect; and the monitoring stack enables HTTP authentication
-while the k6 output URL carries no credentials — a direct credentialed write
-still returns 401, so why the configured admin credentials are refused is
-unresolved. `test/k6/run.sh` is *not* at fault; its default is correct and it
+**Neutral — the k6 metrics pipeline was broken when this decision was taken, and
+this decision did not fix it.** Running the load test revealed that measurements
+had never reached InfluxDB, so the Grafana dashboard had always been empty. Three
+causes were identified at the time: `.env.example` shipped
+`INFLUXDB_URL=http://influxdb:8086`, a *container* hostname that cannot resolve
+from the host where k6 runs and which also drops the `/k6` database path (fixed
+here, because it is a tracked file); direnv exports the stale value into an
+already-running shell so editing `.env` appears to have no effect; and the
+monitoring stack enables HTTP authentication while the k6 output URL carries no
+credentials. `test/k6/run.sh` is *not* at fault; its default is correct and it
 passes the variable through untransformed.
 
 Notably k6 logs one `Couldn't write stats` error per flush interval — 41 in a
@@ -163,11 +162,134 @@ checking only the exit code never notices. Loud in the log, silent in the exit
 code. Repair belongs in its own story; the load test's own JSON and summary
 output files are the real evidence and they are written correctly.
 
+**The pipeline was repaired on 2026-08-23 (EOP-154) — see the amendment below,
+which supersedes the two paragraphs above.** The third cause as stated there was
+misdiagnosed, and two further faults on the read path had to be fixed before the
+dashboard could render anything.
+
 **Neutral — this does not give anyone else access.** The stack binds to
 `127.0.0.1`. Multiplayer is simulated with several browser tabs, which works
 because ADR-015 chose a per-tab credential; a duplicated tab inherits it and
 would arrive as the same player, and the game needs three players minimum.
 Sharing a URL with colleagues remains unsolved and would need its own decision.
+
+## Amendment — 2026-08-23 (EOP-154): the metrics pipeline is repaired, and one of the three causes was wrong
+
+The pipeline now works end to end: `test/k6/run.sh` writes, InfluxDB stores, and
+the provisioned "k6 Load Testing" dashboard renders. Three faults had to be
+fixed, one per layer, and only the first was known when the consequence above was
+written.
+
+### The write path — auth was working; k6 simply sent no credentials
+
+The claim above that "a direct credentialed write still returns 401, so why the
+configured admin credentials are refused is unresolved" **does not reproduce, and
+the question it poses is void.** Probed against the running container:
+
+| Probe against `POST /write?db=k6` | Result |
+| --- | --- |
+| no credentials | `401` |
+| the container's own `$INFLUXDB_ADMIN_USER:$INFLUXDB_ADMIN_PASSWORD` | `204` |
+| deliberately wrong credentials | `401` |
+
+Correct credentials accepted and wrong ones refused is a *functioning* auth
+setup, not a broken one. The admin user existed all along, and the timeline says
+why it had to: auth was enabled on 2026-07-27, and the volume actually in use,
+`eop-monitoring_influxdb_data`, was created on 2026-08-05 — *after* that, so
+`INFLUXDB_ADMIN_USER` and `INFLUXDB_ADMIN_PASSWORD` were honoured on its first
+init exactly as InfluxDB 1.8 documents. The earlier diagnosis had the ordering
+backwards. (A second volume, `eop-threat-medeling_influxdb_data`, does predate
+auth — it is the orphan left under the pre-`name:` project namespace described in
+the Negative consequence above, and nothing mounts it.)
+
+So the write path had one ordinary fault and no mystery: authentication was on,
+and `INFLUXDB_URL=http://localhost:8086/k6` carries no userinfo, so every k6
+write was an *unauthenticated* write and was correctly refused.
+
+### The read path — one variable served two consumers that need different values
+
+Not previously recorded, and sufficient on its own to keep the dashboard empty.
+`tools/monitoring/grafana/datasources/datasource.yml` took `url: ${INFLUXDB_URL}`
+— the same variable k6 uses. But `access: proxy` means *Grafana* makes the call,
+from inside its own container, where `localhost:8086` is Grafana itself. Proved
+from inside `eop-grafana`: `curl http://localhost:8086/ping` fails to connect,
+while `curl http://influxdb:8086/ping` returns `204`.
+
+k6 runs on the host and needs `localhost`; Grafana runs in the Compose network
+and needs the service name. **No single value satisfies both**, so the datasource
+now pins `url: http://influxdb:8086` literally — a Compose-network address, not a
+secret — and `docker-compose.yml` no longer passes `INFLUXDB_URL` to Grafana at
+all. `${INFLUXDB_URL}` keeps exactly one consumer, on the host, which is what
+`.env.example` now says it is for.
+
+### The dashboard wiring — a generated uid that no panel referenced
+
+Also not previously recorded. The datasource declared no `uid`, so provisioning
+generated one (observed: `P951FEA4DE68E13C5`), while all ten panels in
+`tools/monitoring/grafana/dashboards/k6-load-testing.json` reference
+`"uid": "InfluxDB"`. No panel could resolve its datasource even once the URL was
+right. The datasource now pins `uid: InfluxDB`.
+
+### Decision: disable InfluxDB HTTP authentication rather than give k6 credentials
+
+`INFLUXDB_HTTP_AUTH_ENABLED` is now `"false"`, and the two admin-credential
+variables are deleted from the service rather than left inert.
+
+The reasoning is that authentication here protects nothing and costs a secret.
+The port binds to `127.0.0.1` (see the consequence above), the database holds
+load-test timing metrics — no application data and no personal data — and k6's
+only way to authenticate is to embed the password in the `--out
+influxdb=$INFLUXDB_URL` URL. `test/k6/run.sh` echoes that URL to the terminal, so
+the credential would land in scrollback, in shell history, and in any CI log that
+ever ran the script. Authentication would have bought no confidentiality against
+the threat this stack actually faces while guaranteeing the exposure of a secret.
+
+Two alternatives were rejected. **Embedding credentials in the output URL** loses
+the secret as just described, for a database of latency samples. **Recreating the
+volume with `down -v` to re-seed credentials** destroys the accumulated metric
+history — the very thing the dashboard exists to show — and would not have fixed
+either read-path fault. No volume recreation was needed in the end: with auth
+disabled InfluxDB ignores the users the volume already holds.
+
+Consequently `INFLUXDB_USER` and `INFLUXDB_PASSWORD` are removed from
+`.env.example` and `SETUP.md`, since a variable nothing reads is worse than
+absent — it reads as a control while enforcing nothing. Grafana's own admin
+credentials (`GF_SECURITY_ADMIN_USER`, `GF_SECURITY_ADMIN_PASSWORD`) are
+untouched; Grafana is the component with a login worth having.
+
+### `deleteDatasources` is required, not defensive
+
+Pinning `uid` on a name Grafana's sqlite volume already knows under a *generated*
+uid makes provisioning look the datasource up by uid, miss, and abort startup:
+`Datasource provisioning error: data source not found`, cascading through
+`*appregistry.Service`, `*ngalert.AlertNG`, `*live.GrafanaLive` and others, ending
+in `invalid service state: Failed` and **exit 1**. The file therefore declares a
+`deleteDatasources` entry for the same name, which runs first and always, so the
+stack converges from any prior volume state without `docker compose down -v`.
+That matters because `down -v` would take the InfluxDB history with it. Nothing
+is lost by deleting: a datasource holds no data of its own, and `editable: false`
+means there was never anything hand-made to preserve.
+
+### Verified by query, because the exit code cannot be trusted
+
+k6 exits `0` even when every write fails, so a green run is not evidence. After
+the fix, a `SMOKE_STAGES` run through `test/k6/run.sh`:
+
+- logged **zero** `Couldn't write stats` lines, against 41 in a 40-second run before
+- left **16** k6 measurements in the `k6` database, `http_req_duration` and
+  `http_reqs` among them
+- `SELECT count(value)` returned **221** for each of those two, matching the 221
+  requests in k6's own summary — an independent cross-check rather than a
+  restatement of the same number
+- answered a `percentile(value, 95)` query through Grafana's *own* datasource
+  proxy at `uid/InfluxDB` with a non-empty series, which proves both the pinned
+  uid and the container-network URL
+
+The "known broken" disclosures this ADR, `.opencode/rules/performance-testing.md`,
+`docs/performance/TRENDS.md` and `CHANGELOG.md` all carried are retired in the
+same change. What replaces them is not silence: each now records that k6 exits
+`0` regardless, and how to check by query — the trap that let this go unnoticed
+for four weeks is a property of k6, and it did not go away.
 
 ## Related
 
@@ -176,3 +298,4 @@ Sharing a URL with colleagues remains unsolved and would need its own decision.
 - `compose.app.yml`, `Dockerfile` — the artifacts that did not have to change
 - `SETUP.md`, `docs/devops/local-development.md` — the per-clone steps this adds
 - [EOP-16](https://maglez.atlassian.net/browse/EOP-16) — the story
+- [EOP-154](https://maglez.atlassian.net/browse/EOP-154) — the story behind the 2026-08-23 amendment, which repaired the metrics pipeline this ADR had disclosed as broken

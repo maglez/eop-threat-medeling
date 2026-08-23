@@ -1,13 +1,40 @@
 apiVersion: 1
 
+# Two fields here are pinned rather than defaulted or interpolated, and both were
+# silent faults that kept the k6 dashboard empty until EOP-154. See ADR-016.
+#
+# `url` is the Compose service name on the monitoring network, hardcoded. It used
+# to read ${INFLUXDB_URL}, but that variable is the *host* address k6 writes to
+# (http://localhost:8086/k6) and `access: proxy` means Grafana itself makes the
+# call - so inside this container `localhost` was Grafana, not InfluxDB, and the
+# datasource could never connect. One variable cannot serve both consumers.
+#
+# `uid` is pinned to match the ten `"uid": "InfluxDB"` panel references in
+# ../dashboards/k6-load-testing.json. Provisioning generates a random uid when
+# this is omitted (it was P951FEA4DE68E13C5), which no panel could resolve.
+#
+# No credentials: InfluxDB runs with HTTP auth disabled, justified in
+# docker-compose.yml and ADR-016.
+#
+# The delete-then-declare pair below is required, not defensive. Grafana stores
+# provisioned datasources in its own sqlite volume, and an existing volume already
+# holds this one under the generated uid. Declaring a different uid for the same
+# name makes provisioning look it up by uid, miss, and abort the whole startup with
+# "Datasource provisioning error: data source not found" - Grafana exits 1 and the
+# container never becomes healthy. Deleting by name runs first and always, so the
+# stack converges from any prior state instead of needing `down -v`, which would
+# also throw away the InfluxDB metric history. A datasource holds no data of its
+# own and `editable: false` means nothing hand-made is lost.
+deleteDatasources:
+  - name: InfluxDB
+    orgId: 1
+
 datasources:
   - name: InfluxDB
+    uid: InfluxDB
     type: influxdb
     access: proxy
-    url: ${INFLUXDB_URL}
+    url: http://influxdb:8086
     database: k6
-    user: ${INFLUXDB_USER}
-    secureJsonData:
-      password: ${INFLUXDB_PASSWORD}
     isDefault: true
     editable: false

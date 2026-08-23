@@ -46,7 +46,19 @@ never run against a container anywhere. Any latency figure quoted in this reposi
 
 > See `tools/monitoring/` for the Docker monitoring stack, and `test/k6/` for the load test scripts.
 >
-> **Known broken:** k6 results never reach InfluxDB, so the Grafana dashboard at
-> http://localhost:3000 is empty. k6 logs one write error per flush interval but exits `0`, so
-> thresholds still gate correctly and the JSON files in `docs/performance/history/` remain the real
-> evidence. See the Known issues section of `CHANGELOG.md` for the three causes.
+> **The k6 → InfluxDB → Grafana pipeline works as of 2026-08-23** (EOP-154). `test/k6/run.sh` streams
+> metrics into InfluxDB and the provisioned "k6 Load Testing" dashboard at http://localhost:3000
+> renders them. It was broken from 2026-07-27 until then; ADR-016 records the causes.
+>
+> **Confirm a run landed by querying InfluxDB, never by trusting the exit code** — k6 exits `0` even
+> when every write fails, logging `Couldn't write stats` once per flush interval:
+>
+> ```bash
+> curl -sG http://localhost:8086/query --data-urlencode 'db=k6' \
+>   --data-urlencode 'q=SHOW MEASUREMENTS'
+> ```
+>
+> If writes fail, suspect a stale `INFLUXDB_URL` in your shell before suspecting the stack. direnv
+> exports the value at the moment the shell loads `.envrc`, so editing `.env` in an already-running
+> shell appears to have no effect — run `direnv reload`, or open a new shell, and re-check with
+> `echo "$INFLUXDB_URL"` (it should read `http://localhost:8086/k6`).
