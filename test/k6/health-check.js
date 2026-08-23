@@ -17,9 +17,11 @@ export const options = {
 // publishes no host port at all (ADR-017), so this is the path users take.
 // NOTE: the Caddy local CA certificate is self-signed (tls internal). Run k6
 // with --insecure-skip-tls-verify, or trust the Caddy CA in the system store.
-// The default is deliberately unconditional: there is no environment in which
-// http://localhost:8080 is reachable, in CI or otherwise. compose.app.yml gives
-// the app service no `ports:` at all, so only Caddy publishes (443 -> 8080).
+// The default is deliberately unconditional. In every containerised environment,
+// CI included, compose.app.yml gives the app service no `ports:` at all, so only
+// Caddy publishes (443 -> 8080) and http://localhost:8080 is refused. A native
+// `./mvnw spring-boot:run` does bind 8080 on the host, so if that is the target
+// pass BASE_URL explicitly rather than reintroducing a branch here.
 const BASE_URL = __ENV.BASE_URL || "https://localhost";
 
 export default function () {

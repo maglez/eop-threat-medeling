@@ -112,4 +112,5 @@ The real 40s run through the workflow step: 663/663 checks passed, `http_req_fai
 - ADR-017 (Front-end delivery via Caddy on a single origin)
 - `.github/workflows/ci.yml` (the file this ADR modifies)
 - `test/k6/config/options.js` (existing thresholds)
+- `test/k6/config/options-ci.js` (the relaxed CI thresholds this ADR mandates)
 - `docs/performance/TRENDS.md` (local baseline, not CI results)
