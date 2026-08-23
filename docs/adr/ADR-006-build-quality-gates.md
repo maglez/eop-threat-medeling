@@ -1,6 +1,6 @@
 # ADR-006: Build Quality Gates
 
-**Status:** Accepted (amended 2026-08-18, 2026-08-19 and 2026-08-20)
+**Status:** Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20 and 2026-08-23)
 **Date:** 2026-07-26
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -121,6 +121,35 @@ Plugins pinned to specific versions for reproducible builds.
 > **A known gap, recorded rather than closed.** Both Checkstyle Javadoc modules are pinned to `scope=public`, so an undocumented `protected` member on a `public` non-final class is not caught. There is no live instance — the one such member, `PersistGameResultUseCase`'s `protected` constructor, is documented — but the 31 domain exception classes are all non-final, so the gap is reachable. Raising to `scope=protected` would close it; that is a future amendment, not a silent change.
 >
 > **Related:** `.opencode/rules/build-quality.md`, which lists the gates and carries the same sixth entry and the amended Checkstyle entry; [ADR-015](ADR-015-player-identity.md), whose EOP-120 amendment records the `IdentityTokenHash` correction this story's first commit made; `.opencode/rules/clean-architecture.md`, which gained the `{@code Type#member}`-not-`{@link}` rule that this gate makes load-bearing.
+
+> **Amended 2026-08-23 (EOP-130): a line citation may carry its own anchor, and the anchored ones are build-enforced.**
+>
+> **Decision.** `src/test/java/org/maglez/eop/docs/SourceCitationAnchorTest` joins the documentation-integrity gates as the **eighth**, and the roster is now `AdrIndexConsistencyTest`, `DeckArithmeticClaimsTest`, `EnumMirrorParityTest`, `JoinCodeSpaceClaimsTest`, `MermaidSequenceTextTest`, `OpenApiContractDriftTest`, `SourceCitationAnchorTest` and `TrickPlayExceptionOriginTest`. Earlier amendments in this ADR name three and then six; those counts are frozen where they stand and this list supersedes them. The new gate reads every tracked `docs/**/*.md`, parses citations that name a file and a line — `Trick.java:441`, or a range as `Trick.java:441-448` — and applies three checks:
+>
+> | Check | Scope | What it catches |
+> |---|---|---|
+> | The cited path resolves to a tracked file | every citation | a rename, a move, a typo'd filename |
+> | The cited start and end lines exist in that file | every citation | a citation into a file that has since shrunk |
+> | A declared anchor token appears within the cited range | **opt-in** | the line number drifting away from the code the prose describes |
+>
+> **The anchor is written by the author, not inferred by the gate, and that is the whole design.** A citation opts in by carrying a token beside it, in either of two forms — `` `Trick.java:441` (anchor: `winningPlay`) `` as its own parenthetical, or `` (`Trick.java:438`, anchor: `winningPlay()`) `` folded into the citation's own brackets. Both read as English, and requiring a single form would mean doubled brackets wherever the citation already sits inside a parenthesis.
+>
+> - **Inference was built, measured and rejected.** A prototype that treated any backticked identifier near a citation as an implied anchor flagged 36 of the 67 citations it could interpret. The ambiguity is irreducible rather than tunable: this repository has ~58 citations that deliberately point *at* javadoc or a comment, and EOP-49's failure mode was drift *onto* javadoc, so no automatic rule can separate the two. Generic tokens made it worse — flags driven by `true`, `throw` and `getId` carry no information. An author declaring the anchor states the intent the machine cannot recover.
+> - **Opt-in also protects quoted history, which a total check could not.** The 2026-08-18 amendment above cites `GlobalExceptionHandlerTest.java:553` for a numeric literal that has since been corrected and has moved to line 674. Both the number and the line are stale *by design*, because the paragraph is a dated amendment record and this ADR's own convention is that those are immutable. An unanchored citation is checked only for resolvability and range, both of which that citation still satisfies, so the gate leaves it alone. A gate that content-checked every citation would have forced a choice between falsifying history and inventing an opt-out marker; opt-in dissolves the dilemma, and no blockquote-exclusion rule is needed anywhere in the implementation.
+> - **An anchor that looks enforced but is not is worse than no anchor, so a ninth test guards the guard.** During this story's own implementation sixteen anchors were written and only fourteen were enforced: two used the comma placement, which the pattern of the day rejected, and they sat in the prose reading exactly like the others while the gate saw nothing. `shouldParseEveryAnchorMarkerItFinds` now counts every literal `anchor:` marker in the documentation with a deliberately looser pattern that ignores position, compares it against the number the parser actually bound to a citation, and fails on any surplus. A future author inventing a third placement gets a build failure rather than a hollow guard.
+> - **Two floors, in the style of `MermaidSequenceTextTest`'s minimum-diagram count.** The gate must find at least 150 citations (171 exist) and at least 18 anchored ones (21 exist). Both exist so the gate cannot pass by matching nothing — the anchored floor was observed failing at zero before the anchors were written, and the drift check was observed failing on a deliberately perturbed line number, reporting where the token actually was so the author can re-point it.
+>
+> **Three limits, stated because a green run must not be read as more than it is.**
+>
+> - **Named citations only.** The bare continuation form — `` `:143` `` following a named citation — is out of scope and is roughly 122 of the ~285 line-like references in the documentation. It is not an oversight: that syntax is indistinguishable from a port (`` `:8080` ``, `` `:5173` `` both appear in these docs), and its antecedent is not mechanically recoverable, as one list here interleaves references to three different files before continuing in bare form.
+> - **Presence, not position.** The check is that the anchor occurs somewhere in the cited range, not that the range is the *best* citation for the claim.
+> - **No proof of truth.** The gate cannot tell whether the surrounding prose is right about what the code does. It proves a pointer resolves, not that the sentence holding it is honest.
+>
+> **A deliberate escape, kept small.** Two citations name `liquibase-core` internals that are not in this repository; `EXTERNAL_CITATIONS` allow-lists exactly those and nothing else. Adding to it is a reviewed admission that a citation cannot be checked, not a way to silence one that can.
+>
+> **What the gate found on arrival.** Seventeen live citations across six documents were repaired in the same commit, and each repaired one was anchored. Most were simple drift, including three copies of one claim about where `CARD_PLAYED` is published while a fourth document already carried the correct line — the same fact under two contradicting numbers. One was not drift at all: a citation had carried a **false architectural claim**, naming `Trick.reconstitute` as the only caller of `winningPlay()` when that method takes the winner as a parameter and never calls it, the real caller being `Trick.resolved`. No existing gate could have seen that, and it is the clearest argument for the anchored subset.
+>
+> **Related:** `.opencode/rules/build-quality.md`, whose prose-gate bullet gains this gate and the corrected roster; [ADR-044](ADR-044-changelog-file-naming-is-dated.md) and [ADR-054](ADR-054-openapi-contract-drift-gate.md) for the sibling pattern of a convention held by a test rather than by review.
 
 ## Consequences
 
