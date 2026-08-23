@@ -175,9 +175,19 @@ time since the third flag was introduced.
   `@SpringBootTest(properties = "eop.features.game-over=false")`. Once the flag and its guards are
   deleted, that property becomes inert (an unrecognised property is not an error), the beans become
   unconditional, and the test would be asserting a condition the code can no longer reach. It must
-  be **deleted in the same commit as the flag**, not left behind. A suite that stays green after
-  flag removal without that test being touched is evidence the removal was incomplete, not evidence
-  that it was safe.
+  be **deleted in the same commit as the flag**, not left behind.
+
+  > **Corrected, 2026-08-23 (EOP-84).** This bullet originally closed by saying that "a suite that
+  > stays green after flag removal without that test being touched is evidence the removal was
+  > incomplete". That is **false**, and the error made the trap sound both more dangerous and more
+  > silent than it is. `GameOverControllerDisabledIntegrationTest` asserts bean *absence* as well as
+  > the two 404s, so once the guards are deleted the beans become unconditional and those
+  > `isEmpty()` assertions **fail**: the suite goes **red**, not green. Leaving the test behind is
+  > therefore self-announcing rather than silent, and the red build is the signal to delete it. What
+  > genuinely remains reviewer-enforced is narrower: nothing *names* the incomplete removal, so
+  > whoever meets those failures must recognise them as a leftover OFF-position test rather than a
+  > regression, and delete it instead of "fixing" it by relaxing the assertions. Found by
+  > @tester-api during EOP-84's gate round, which read the test rather than this paragraph.
 - ADR-013's "no audit trail" weakness is sidestepped here, not fixed. It applies to environment
   overrides, and this change moves the source default instead. Anyone who sets
   `EOP_FEATURES_GAME_OVER=false` on a deployed container still leaves no trace beyond their own
