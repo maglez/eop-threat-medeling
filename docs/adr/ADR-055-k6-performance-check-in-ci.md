@@ -106,6 +106,38 @@ The ADR required assertion on the JSON rather than the exit code alone. The desi
 
 The real 40s run through the workflow step: 663/663 checks passed, `http_req_failed 0.00% (0 of 221)`, avg 3.34ms, med 1.86ms, p95 **10.51ms**, p99 25.06ms, max 39.53ms, 221 iterations at 5.4947/s, vus_max 10. Against the CI budget this is ~48× headroom on p95 (10.51 vs 500) and ~50× on max (39.53 vs 2000), and it is consistent with the 9.856ms `TRENDS.md` baseline. **These numbers were measured on a developer Mac via Colima and are not written to `docs/performance/TRENDS.md`** — mixing them into the curated baseline would repeat the error that forced the 2026-08-05 baseline reset. They are recorded here only as evidence that the CI gate has substantial headroom and that the `--network host` path delivers the expected performance.
 
+**2026-08-23 (later the same day) — a sixth finding, from the first real CI run:**
+
+### 6. Tear down by project label, not by file
+
+The first CI run on PR #122 (run `32644143043`) passed the k6 step on a real GitHub runner — 221 iterations, 0 interrupted, all three CI thresholds green, a 30,349-byte `k6-results.zip` artifact — and then failed the *next* step:
+
+```
+error while interpolating services.postgres.environment.POSTGRES_DB:
+required variable POSTGRES_DB is missing a value: POSTGRES_DB must be set in .env
+Process completed with exit code 1
+```
+
+`compose.app.yml` declares `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` with the fail-hard `${VAR:?}` form, so passing `-f compose.app.yml` makes Compose refuse to **parse** the file when they are unset — even for `down`, which needs none of their values. Those three exist only as step-level `env:` on the `Smoke test` step; this story moved teardown out of that step into its own `if: always()` step, which carried no `env:`, and so lost them.
+
+The fix resolves the stack by its project label instead, with no `-f` at all:
+
+```yaml
+- name: Tear down stack
+  if: always()
+  run: docker compose -p eop-app down --volumes
+```
+
+`compose.app.yml` declares `name: eop-app`, so the label is canonical. `docker compose -p eop-app --dry-run down --volumes`, run from the repository root where `docker-compose.yml` also lives, resolved only the app stack — containers `eop-postgres`, `eop-caddy`, `eop-app`, network `eop-app_default`, and volumes `eop-app_eop_postgres_data` and `eop-app_eop_caddy_data` — and left the separate `eop-monitoring` stack untouched. CI run `32644675531` then passed the `image` job on a real runner.
+
+Re-adding an `env:` block was considered and rejected. It would hand PostgreSQL credentials to a step that never authenticates to PostgreSQL, and would have to stay in sync with the `Smoke test` block or silently break again. Resolving by label needs no credentials at all — least privilege by construction rather than by careful scoping (`.opencode/rules/security.md`).
+
+### The lesson, and the gate deliberately not built
+
+**Any `if: always()` cleanup step that passes `-f <file>` must be audited for `${VAR:?}` interpolation in that file.** That is a reviewer checklist item, not a build gate. A `docker compose -f compose.app.yml config --quiet` probe with those three variables deliberately unset would catch it, and needs no Docker daemon because `config` only parses — but the return was judged too low for a permanent gate while `compose.app.yml` is the only file here using `${VAR:?}`. Revisit if a second one appears.
+
+Recorded honestly: **all five Definition-of-Done gates and the Tech Lead missed this defect** in the round before it reached a runner. It was unreachable locally, because local verification executed the k6 step's script directly and never the surrounding Compose lifecycle. The generalisable point is about the limits of the local loop rather than about any one reviewer — a step that only ever runs in CI is only ever proven in CI.
+
 ## Related
 
 - ADR-016 (Colima as local container runtime)
