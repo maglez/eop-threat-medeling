@@ -17,7 +17,7 @@ Both were caught by a reviewer, not by the build. Prose in an ADR demonstrably d
 
 ## Decision
 
-A new test `src/test/java/org/maglez/eop/config/ConditionalOnPropertyHavingValueTest.java` reads compiled bytecode via Spring's `SimpleMetadataReaderFactory` + `PathMatchingResourcePatternResolver` (both from `spring-core`, already on the test classpath transitively — **zero new dependencies**). It enumerates every `@ConditionalOnProperty` site in `org.maglez.eop.**` and asserts **two independent invariants** at each: that it carries `havingValue = "true"`, and that it does not carry `matchIfMissing = true`.
+A new test `src/test/java/org/maglez/eop/config/ConditionalOnPropertyHavingValueTest.java` reads compiled bytecode via Spring's `SimpleMetadataReaderFactory` over a `FileSystemResource` per `.class` file, walking `target/classes` with NIO `Files.walk` (the Spring types are from `spring-core`, already on the test classpath transitively — **zero new dependencies**). It enumerates every `@ConditionalOnProperty` site in `org.maglez.eop.**` and asserts **two independent invariants** at each: that it carries `havingValue = "true"`, and that it does not carry `matchIfMissing = true`.
 
 The mechanism was chosen after a spike that verified four facts:
 
@@ -39,6 +39,8 @@ The gate as first written asserted only `havingValue`, and @security-auditor rej
 satisfies ADR-013's mandate **to the letter** while enabling the feature whenever the property is **absent** — the exact inverse of the fail-closed default `.opencode/rules/feature-flags.md` mandates ("an unset flag reads as disabled, so forgetting to think about one fails closed"). It reaches the same fail-open shape as a loose `havingValue` through a different attribute, and is in one respect worse: a loose `havingValue` still needs an operator to *set* the property to something, whereas `matchIfMissing = true` fires with no operator action at all. Shipping the annotation is sufficient.
 
 So the test asserts it separately, in `shouldForbidMatchIfMissingAtEverySite`. Separate rather than folded into the main assertion, deliberately: the two failures have different causes and different remedies, so each message must stand alone. That the two invariants are genuinely independent was verified empirically, not assumed — with a site loosened to `matchIfMissing = true`, exactly one of the four tests failed and `shouldRequireHavingValueTrueAtEverySite` passed untouched.
+
+ADR-013 was amended on 2026-08-23 to carry the prohibition itself, so the flag mandate reads in one place and this ADR owns only the mechanism that enforces it. That amendment followed @architecture-guardian's gate on EOP-50, which called it split authority for the enforcement ADR to state a rule the mandate ADR did not.
 
 No site in the repository sets `matchIfMissing` today (a grep returns one hit, the test's own javadoc), so this half of the gate is preventive on the same terms as the first.
 
@@ -96,7 +98,7 @@ The first clause — `havingValue = "true"` — is machine-enforced. The second 
 
 ## Related
 
-- [ADR-013: Feature flags via Spring configuration properties](./ADR-013-feature-flags.md) — the mandate this ADR enforces, and slightly extends: ADR-013's prose covers `havingValue` only, so the `matchIfMissing` invariant originates here
+- [ADR-013: Feature flags via Spring configuration properties](./ADR-013-feature-flags.md) — the mandate this ADR enforces. Its 2026-08-23 amendment carries the `matchIfMissing` prohibition, so the whole flag mandate reads in one place; this ADR owns the enforcement mechanism only
 - [ADR-006: Build quality gates](./ADR-006-build-quality-gates.md) — the build-quality gate posture this extends
 - `.opencode/rules/feature-flags.md` — the rule file that references ADR-013
 - `.opencode/rules/caching.md` — the precedent for fail-closed infrastructure toggles

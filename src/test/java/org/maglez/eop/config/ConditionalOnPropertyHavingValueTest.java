@@ -219,6 +219,17 @@ class ConditionalOnPropertyHavingValueTest {
         }
     }
 
+    /**
+     * Returns every compiled class file under {@link #MAIN_CLASSES}, sorted so failure messages are
+     * stable between runs.
+     *
+     * <p>Returns an empty list when the directory does not exist, rather than throwing. That is
+     * deliberate but is <em>not</em> a silent pass: an empty result makes both vacuity guards fail,
+     * and their messages name the missing directory. Throwing here would report the same fault in a
+     * less specific place.
+     *
+     * @return the compiled class files, or an empty list when the directory is absent
+     */
     private List<Path> compiledClassFiles() {
         if (!Files.isDirectory(MAIN_CLASSES)) {
             return List.of();

@@ -282,6 +282,31 @@ empty string. And the flag must be repeated on every bean that opens or mutates 
 it, not on the controller alone; collaborators that only read, and collaborators shared with
 another flag, stay ungated and say in their javadoc why.**
 
+### Amendment, 2026-08-23 (EOP-50): `matchIfMissing = true` is prohibited too
+
+The paragraph above about `matchIfMissing` says only that it *defaults* to `false`, and that
+therefore an absent property was never the hole. That remains true, and it was the right thing to
+establish under EOP-48, because it bounded the defect to the present-but-not-`false` case. It is
+not a prohibition, and the difference matters: a default is what a future commit overrides.
+
+A site written `@ConditionalOnProperty(name = "eop.features.x", havingValue = "true",
+matchIfMissing = true)` satisfies the mandate above **to the letter** while enabling the feature
+whenever the property is **absent**, inverting the fail-closed default that an unset flag reads as
+disabled. It reaches the same fail-open shape as a loose `havingValue` through a different
+attribute, and in one respect it is worse: a loose `havingValue` still needs an operator to set the
+property to *something*, whereas this fires with no operator action at all — shipping the
+annotation is sufficient.
+
+So the mandate is extended: **no `@ConditionalOnProperty` in this repository may carry
+`matchIfMissing = true`.** No site does today, so this is preventive rather than a fix.
+
+This clause was written during EOP-50, on @security-auditor's finding that a build gate asserting
+`havingValue` alone would admit a configuration defeating its own purpose. It is recorded *here*,
+alongside the `havingValue` mandate, so that the whole flag mandate can be read in one place;
+[ADR-052](./ADR-052-having-value-mandate-is-build-enforced.md) owns the enforcement mechanism and
+the reasoning for choosing it, and originally carried this clause alone until
+@architecture-guardian's gate on EOP-50 called that split authority a defect.
+
 Slice C1 shipped without it, and the reason is worth stating in the register rather
 than only in the ADR that argued it. C1 is the persistence layer — five JPA entities,
 five Spring Data interfaces, two ports and one adapter — with no controller, no route
