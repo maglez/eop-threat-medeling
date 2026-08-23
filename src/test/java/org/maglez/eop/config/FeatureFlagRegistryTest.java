@@ -219,9 +219,11 @@ class FeatureFlagRegistryTest {
                         + "There are exactly two correct responses, and both are reviewed changes: remove the"
                         + " flag together with every @ConditionalOnProperty that names it, its key in %s, its"
                         + " line in src/test/resources/application.properties and its OFF-position integration"
-                        + " test — ADR-042 warns that such a test asserts an unreachable condition once the"
-                        + " guards are gone, so a suite still green without it having been touched is evidence"
-                        + " the removal was incomplete — or extend the date here with the reason. Deleting the"
+                        + " test — that test asserts the beans are absent, not merely that the routes 404, so"
+                        + " leaving it behind turns the build red rather than leaving it quietly green. Read"
+                        + " those failures as the leftover OFF-position test they are and delete it; do not"
+                        + " relax its assertions (ADR-042, corrected 2026-08-23) — or extend the date here"
+                        + " with the reason. Deleting the"
                         + " expiry field is not one of them.", REGISTRY, SHIPPED_YAML)
                 .isEmpty();
     }
