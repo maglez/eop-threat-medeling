@@ -160,7 +160,8 @@ and the derivation returned empty while `getProperty` kept working. The agreemen
 empty set against the registry and reported the registry's own entries as missing. The vacuity guard is
 what identified the cause.
 
-**The floor is one, not three, and that bound is deliberate but real.** Each guard asserts only that its
+**The floor is “at least one”, not “exactly the three that exist today”, and that bound is deliberate but
+real.** Each guard asserts only that its
 derivation is non-empty. So a flag removed from the shipped YAML, from every annotation and from the
 registry *in the same commit* leaves three smaller sets that still agree and are still non-empty, and the
 build stays green — which is correct when the removal was intended, and silent when it was not. Pinning

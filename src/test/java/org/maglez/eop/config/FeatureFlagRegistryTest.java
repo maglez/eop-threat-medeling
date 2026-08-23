@@ -466,10 +466,21 @@ class FeatureFlagRegistryTest {
      * <p>Duplicates are preserved rather than collapsed so that {@link #shouldDeclareEachFlagOnce()}
      * can see them; the agreement assertions compare sets and are unaffected.
      *
+     * <p>Deliberately <em>not</em> sorted, unlike {@link #shippedFlagKeys()} and
+     * {@link #gatedFlagKeys()}, which sort for stable failure messages. Those two derive their order
+     * from a hash-ordered {@link Properties} and a filesystem walk respectively, so sorting is what
+     * makes them reproducible. This one reads a hand-maintained file top to bottom, so declaration
+     * order is already deterministic <em>and</em> more useful: a message listing keys in the order
+     * they appear points a reader at the line to edit. Every consumer is order-independent
+     * ({@code containsExactlyInAnyOrderElementsOf}, {@code doesNotHaveDuplicates}), so the sort this
+     * method once carried bought nothing and contradicted the contract stated above — a prose claim
+     * disagreeing with its own code, in the one story whose purpose is removing those. Caught by
+     * @code-reviewer's second gate round.
+     *
      * @return the declared flag keys
      */
     private List<String> registryKeys() {
-        return rawEntries().stream().map(entry -> String.valueOf(entry.get(FIELD_KEY))).sorted().toList();
+        return rawEntries().stream().map(entry -> String.valueOf(entry.get(FIELD_KEY))).toList();
     }
 
     /**
