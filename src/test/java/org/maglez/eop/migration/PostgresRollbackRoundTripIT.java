@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Locale;
 import java.util.UUID;
 
 import liquibase.Contexts;
@@ -81,10 +82,36 @@ class PostgresRollbackRoundTripIT {
     /** A six-character code, as sessions created before the widening hold. */
     private static final String JOIN_CODE_LEGACY = "QRSTUV";
 
-    /** Tables the changelog creates, checked for absence after a full rollback. */
+    /**
+     * Every table the changelog creates, checked for absence after a full rollback and for presence
+     * after re-applying.
+     *
+     * <p>This list was one entry short when the class was first written: {@code trick_play_component}
+     * was missing, so a rollback that failed to drop it would have gone unnoticed. A hand-kept list
+     * of this shape cannot be trusted on its own, which is why
+     * {@link #appliesRollsBackAndReappliesTheEntireChangelog()} also counts the tables the migrated
+     * schema actually holds and asserts the total matches this array's length. Add a table here and
+     * the count moves with it; forget one and the count disagrees.
+     */
     private static final String[] MIGRATED_TABLES = {
-        "card", "game_session", "player", "hand", "hand_card", "trick", "trick_play", "game_result", "game_result_player",
+        "card", "game_session", "player", "hand", "hand_card", "trick", "trick_play", "trick_play_component",
+        "game_result", "game_result_player",
     };
+
+    /** The changelog holding the two mutually exclusive, engine-gated {@code expires_at} changesets. */
+    private static final String CHANGELOG_SESSION_EXPIRY = "006-session-expiry.xml";
+
+    /** Changesets 006 declares. Both are recorded; only the engine-matching one executes. */
+    private static final int SESSION_EXPIRY_CHANGESETS = 2;
+
+    /** The table 006 adds its column to. */
+    private static final String TABLE_GAME_SESSION = "game_session";
+
+    /** The column 006 adds, with a DB-side default whose SQL differs between engines. */
+    private static final String COLUMN_EXPIRES_AT = "expires_at";
+
+    /** The index 006 creates alongside the column, and must drop on rollback. */
+    private static final String INDEX_EXPIRES_AT = "idx_game_session_expires_at";
 
     private Connection connection;
     private Liquibase liquibase;
@@ -113,6 +140,9 @@ class PostgresRollbackRoundTripIT {
         // Arrange
         update();
         assertThat(changelogRowCount()).as("changesets recorded by the first apply").isEqualTo(EXPECTED_CHANGESET_ROWS);
+        assertThat(migratedTableCount())
+                .as("tables in the migrated schema must match MIGRATED_TABLES, which was one entry short once already")
+                .isEqualTo(MIGRATED_TABLES.length);
 
         // Act — unwind everything, then wind it back up
         rollback(EXPECTED_CHANGESET_ROWS);
@@ -134,6 +164,156 @@ class PostgresRollbackRoundTripIT {
         }
         assertThat(changelogRowCount()).as("changesets recorded by the second apply").isEqualTo(EXPECTED_CHANGESET_ROWS);
         assertThat(joinCodeLength()).as("join_code length after re-applying").isEqualTo(8);
+    }
+
+    @Test
+    @DisplayName("rolls back and re-applies the PostgreSQL branch of 006-session-expiry")
+    void roundTripsThePostgresBranchOfSessionExpiry() throws Exception {
+        // Arrange — 006 is the only changelog whose DDL differs by engine, so its rollback is the one
+        // the H2 suite structurally cannot rehearse. SessionExpiryMigrationTest proves the H2 branch
+        // unwinds and comes back; until this test nothing proved the PostgreSQL branch did.
+        update();
+        assertThat(columnExists(TABLE_GAME_SESSION, COLUMN_EXPIRES_AT))
+                .as("%s after applying every changeset", COLUMN_EXPIRES_AT)
+                .isTrue();
+
+        // Act — unwind 006 and everything layered on top of it
+        rollback(rollbackDepthFrom(CHANGELOG_SESSION_EXPIRY, SESSION_EXPIRY_CHANGESETS));
+
+        // Assert — both halves of the changeset are undone, the column and its index
+        assertThat(columnExists(TABLE_GAME_SESSION, COLUMN_EXPIRES_AT))
+                .as("%s after rolling back 006", COLUMN_EXPIRES_AT)
+                .isFalse();
+        assertThat(indexExists(INDEX_EXPIRES_AT)).as("%s after rolling back 006", INDEX_EXPIRES_AT).isFalse();
+
+        // Act
+        update();
+
+        // Assert — and it is the PostgreSQL branch that came back, rendered with PostgreSQL's own
+        // interval syntax. The H2 branch's CURRENT_TIMESTAMP + INTERVAL '24' HOUR does not parse
+        // here, so this also proves the dbms gate still selects correctly on a re-apply.
+        assertThat(columnExists(TABLE_GAME_SESSION, COLUMN_EXPIRES_AT))
+                .as("%s after re-applying 006", COLUMN_EXPIRES_AT)
+                .isTrue();
+        assertThat(indexExists(INDEX_EXPIRES_AT)).as("%s after re-applying 006", INDEX_EXPIRES_AT).isTrue();
+        assertThat(columnDefaultOf(TABLE_GAME_SESSION, COLUMN_EXPIRES_AT))
+                .as("re-applied %s default", COLUMN_EXPIRES_AT)
+                .containsIgnoringCase("now()")
+                .containsIgnoringCase("interval");
+    }
+
+    /**
+     * Counts the tables the migrated schema holds, excluding Liquibase's own bookkeeping pair.
+     *
+     * <p>This exists to keep {@link #MIGRATED_TABLES} honest. That array is hand-kept, and it was
+     * one entry short when this class was written, so comparing its length against the schema's real
+     * table count turns a forgotten entry into a failure instead of a silently narrower assertion.
+     *
+     * @return the number of non-Liquibase tables in the {@code public} schema
+     * @throws SQLException if the metadata query fails
+     */
+    private int migratedTableCount() throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' "
+                        + "AND table_type = 'BASE TABLE' AND table_name NOT LIKE 'databasechangelog%'")) {
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).as("table count for the migrated schema").isTrue();
+                return rows.getInt(1);
+            }
+        }
+    }
+
+    /**
+     * Derives how many changesets must be rolled back to undo the named changelog and everything
+     * applied after it.
+     *
+     * <p>Liquibase counts backwards from the most recent changeset, so a literal depth is only
+     * correct until someone appends a changelog. Deriving it from {@code databasechangelog} keeps the
+     * depth right as the changelog grows.
+     *
+     * @param changelogFilename the changelog file whose first changeset marks the rollback floor
+     * @param ownChangesets the number of changesets that file declares, asserted as a lower bound
+     * @return the number of changesets to pass to {@code Liquibase#rollback}
+     * @throws SQLException if the bookkeeping query fails
+     */
+    private int rollbackDepthFrom(final String changelogFilename, final int ownChangesets) throws SQLException {
+        final int depth;
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM databasechangelog WHERE orderexecuted >= "
+                        + "(SELECT MIN(orderexecuted) FROM databasechangelog WHERE filename LIKE ?)")) {
+            statement.setString(1, "%" + changelogFilename);
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).as("rollback depth for %s", changelogFilename).isTrue();
+                depth = rows.getInt(1);
+            }
+        }
+        assertThat(depth)
+                .as("%s declares %d changesets, so the depth cannot be smaller", changelogFilename, ownChangesets)
+                .isGreaterThanOrEqualTo(ownChangesets);
+        return depth;
+    }
+
+    /**
+     * Reports whether a column exists, using lower-cased identifiers.
+     *
+     * @param table the table name, folded to lower case for PostgreSQL
+     * @param column the column name, folded to lower case for PostgreSQL
+     * @return {@code true} when {@code information_schema} lists the column
+     * @throws SQLException if the metadata query fails
+     */
+    private boolean columnExists(final String table, final String column) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' "
+                        + "AND table_name = ? AND column_name = ?")) {
+            statement.setString(1, table.toLowerCase(Locale.ROOT));
+            statement.setString(2, column.toLowerCase(Locale.ROOT));
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).as("information_schema row for %s.%s", table, column).isTrue();
+                return rows.getInt(1) > 0;
+            }
+        }
+    }
+
+    /**
+     * Reports whether an index exists in the {@code public} schema.
+     *
+     * <p>Reads {@code pg_indexes} rather than JDBC metadata because the index under test is created
+     * by its own {@code createIndex} element and is not tied to a constraint.
+     *
+     * @param index the index name, folded to lower case for PostgreSQL
+     * @return {@code true} when {@code pg_indexes} lists the index
+     * @throws SQLException if the catalogue query fails
+     */
+    private boolean indexExists(final String index) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?")) {
+            statement.setString(1, index.toLowerCase(Locale.ROOT));
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).as("pg_indexes row for %s", index).isTrue();
+                return rows.getInt(1) > 0;
+            }
+        }
+    }
+
+    /**
+     * Reads a column's DB-side default expression as PostgreSQL stores it.
+     *
+     * @param table the table name, folded to lower case for PostgreSQL
+     * @param column the column name, folded to lower case for PostgreSQL
+     * @return the normalised default expression, or {@code null} when the column has none
+     * @throws SQLException if the metadata query fails
+     */
+    private String columnDefaultOf(final String table, final String column) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT column_default FROM information_schema.columns WHERE table_schema = 'public' "
+                        + "AND table_name = ? AND column_name = ?")) {
+            statement.setString(1, table.toLowerCase(Locale.ROOT));
+            statement.setString(2, column.toLowerCase(Locale.ROOT));
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).as("information_schema row for %s.%s", table, column).isTrue();
+                return rows.getString(1);
+            }
+        }
     }
 
     @Test
@@ -283,19 +463,7 @@ class PostgresRollbackRoundTripIT {
      * @throws SQLException if the query fails
      */
     private int joinCodeRollbackDepth() throws SQLException {
-        final String sql = "SELECT COUNT(*) FROM databasechangelog WHERE orderexecuted >= ("
-                + "  SELECT MIN(orderexecuted) FROM databasechangelog WHERE filename LIKE ?)";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, "%" + CHANGELOG_JOIN_CODE);
-            try (ResultSet rows = statement.executeQuery()) {
-                assertThat(rows.next()).as("rollback depth query returned a row").isTrue();
-                final int depth = rows.getInt(1);
-                assertThat(depth)
-                        .as("changesets from %s onwards", CHANGELOG_JOIN_CODE)
-                        .isGreaterThanOrEqualTo(JOIN_CODE_CHANGESETS);
-                return depth;
-            }
-        }
+        return rollbackDepthFrom(CHANGELOG_JOIN_CODE, JOIN_CODE_CHANGESETS);
     }
 
     // ---------------------------------------------------------------------------------------------

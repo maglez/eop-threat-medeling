@@ -291,6 +291,67 @@ same change. What replaces them is not silence: each now records that k6 exits
 `0` regardless, and how to check by query — the trap that let this go unnoticed
 for four weeks is a property of k6, and it did not go away.
 
+## Amendment — 2026-08-23 (EOP-164): Testcontainers needs two environment variables to reach Colima
+
+EOP-164 made the Liquibase migration tests run against a real PostgreSQL 17 container during
+`./mvnw verify` — see [ADR-056](ADR-056-postgres-migration-tests-via-testcontainers.md). Nothing in
+this ADR anticipated a container started by the *test suite* rather than by `docker compose`, and a
+developer reading it would not learn that Testcontainers does not work against Colima out of the
+box. It needs two environment variables. Both failures are recorded here because neither error
+message mentions Colima, so neither is self-diagnosing.
+
+### Testcontainers does not read the Docker CLI context
+
+The active `docker` context on this machine is `colima`, whose endpoint is
+`unix://$HOME/.colima/default/docker.sock`. The `docker` CLI resolves that from its own
+configuration, but Testcontainers 2.0.5 does not: its `DockerClientProviderStrategy` consults
+`DOCKER_HOST`, system properties, `~/.testcontainers.properties` and the conventional socket path,
+and nothing else. Colima creates no `/var/run/docker.sock` on the host. So with `DOCKER_HOST` unset,
+every migration test fails in class initialisation:
+
+```
+java.lang.IllegalStateException: Could not find a valid Docker environment
+```
+
+### Ryuk bind-mounts the resolved socket path, which does not exist inside the VM
+
+Setting `DOCKER_HOST` alone moves the failure rather than removing it. Testcontainers starts its
+Ryuk reaper sidecar with the Docker socket bind-mounted, and it mounts the *literal* path resolved
+from `DOCKER_HOST`. That path is on the macOS side of the VM boundary, virtiofs cannot create it
+inside the guest, and the daemon answers:
+
+```
+Status 500: {"message":"error while creating mount source path
+ '/Users/.../.colima/default/docker.sock': ... operation not supported"}
+```
+
+`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` names the path to mount instead of the resolved one. Inside
+the Colima VM the daemon really does listen on `/var/run/docker.sock`, so that is the value.
+
+Ryuk stays **enabled**. `TESTCONTAINERS_RYUK_DISABLED=true` also clears the error, but only by
+giving up reliable cleanup of stray containers — a worse trade than naming one path correctly.
+
+### Both variables live in `.envrc`, behind two guards
+
+```bash
+if [ -z "${DOCKER_HOST:-}" ] && [ -S "$HOME/.colima/default/docker.sock" ]; then
+  export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+  export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}"
+fi
+```
+
+`.envrc` rather than prose in `SETUP.md`, because the value is derived from `$HOME` and would
+otherwise be retyped in every clone. Both guards carry weight: a developer who has set `DOCKER_HOST`
+themselves keeps it, and a developer on Docker Desktop or a non-default Colima profile is untouched,
+because the socket the second guard tests for does not exist for them. A shell without the direnv
+hook must prefix commands with `direnv exec .`. `SETUP.md` documents the requirement and points
+here for the reasoning.
+
+**CI needs none of this.** GitHub's `ubuntu-latest` runners expose the conventional
+`/var/run/docker.sock`, which Testcontainers finds unaided, so the `build` job runs the migration
+tests with no Docker configuration of its own. This ADR's existing position therefore stands
+unchanged: Colima is a local-development convenience, and CI remains the authority.
+
 ## Related
 
 - [ADR-012: Deployment to a single EC2 instance with Terraform](ADR-012-deployment-target.md) — the image and Compose file this reuses unchanged; amended alongside this decision

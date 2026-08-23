@@ -198,10 +198,12 @@ on this branch after it.
 **A consequence for ADR-047 worth recording rather than acting on.** `pom.xml` notes that asserting
 H2 is absent from the repackaged jar could have been a failsafe integration test rather than a
 shell script, and that it was rejected because declaring failsafe would have cost a seventh
-plugin. That plugin is now declared for this story, so the objection no longer holds and the shell
-script could be replaced by an integration test that runs after `package`. Nothing here changes
-that decision — `tools/artifact/assert-no-h2-in-jar.sh` still works and still runs in CI — but the
-constraint behind it has gone.
+plugin. ADR-047 did not close that door: it says the decision "should be revisited — in favour of
+the IT — if a failsafe execution is ever added to this build for another reason". EOP-164 is exactly
+that other reason, so the revisit has now happened and the alternative path exists. It is not taken
+here: `tools/artifact/assert-no-h2-in-jar.sh` still works and still runs in CI, and nothing about
+this story forces it to change. The seventh plugin remains a real cost — what changed is that a
+future story wanting that IT no longer has to pay it, not that the constraint disappeared.
 
 ## Alternatives Considered
 
