@@ -482,11 +482,45 @@ class FeatureFlagRegistryTest {
         for (final Map<String, Object> entry : rawEntries()) {
             declarations.add(new FlagDeclaration(
                     String.valueOf(entry.get(FIELD_KEY)),
-                    Boolean.TRUE.equals(entry.get(FIELD_SHIPPED_DEFAULT)),
+                    shippedDefaultOf(entry),
                     String.valueOf(entry.get(FIELD_OWNER_STORY)),
                     expiryOf(entry)));
         }
         return declarations;
+    }
+
+    /**
+     * Reads one entry's declared shipped default, requiring an actual YAML boolean.
+     *
+     * <p>The type is checked rather than coerced, and the direction of the coercion is why. A
+     * tolerant read such as {@code Boolean.TRUE.equals(raw)} answers {@code false} for anything
+     * that is not the boolean {@code true} — so a typo like {@code shipped-defualt: ture} or
+     * {@code shipped-default: flase} arrives as a {@code String} and reads back as a deliberate
+     * declaration of {@code false}. In a fail-closed control that is the wrong way to fail: the
+     * mistake is silently reinterpreted as "this flag is meant to ship dark", which is a sentence
+     * nobody wrote. Worse, it can agree with a matching typo in {@code application.yml} — Spring
+     * treats any value but the literal {@code true} as disabled — and the pair would then pass this
+     * guard while the flag ships OFF, which is precisely the EOP-82 fault the class exists to catch.
+     *
+     * <p>{@code shouldRequireEveryFieldOnEveryEntry} catches a misspelled field *name*, because the
+     * field set is compared in both directions. It cannot catch a misspelled *value*, because the
+     * key is spelled correctly and only the scalar is wrong. Hence this check, which mirrors the
+     * type assertion {@code expiryOf} already makes for its own field.
+     *
+     * @param entry one registry entry
+     * @return the declared shipped default
+     */
+    private boolean shippedDefaultOf(final Map<String, Object> entry) {
+        final Object raw = entry.get(FIELD_SHIPPED_DEFAULT);
+        assertThat(raw)
+                .as("%s of %s must be an unquoted YAML boolean (true or false), not a %s."
+                        + " A quoted \"true\" or a typo such as flase parses as a string, and a tolerant"
+                        + " read would silently treat it as false — declaring the flag dark, which is not"
+                        + " what was written. Fix the value in %s.",
+                        FIELD_SHIPPED_DEFAULT, entry.get(FIELD_KEY),
+                        raw == null ? "null" : raw.getClass().getName(), REGISTRY)
+                .isInstanceOf(Boolean.class);
+        return (Boolean) raw;
     }
 
     /**

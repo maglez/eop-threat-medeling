@@ -102,6 +102,23 @@ is what catches a misspelling: `shipped-defualt` would otherwise read as an abse
 plus a harmless extra key, and `expriy` would silently mean "no expiry declared", which is the failure
 mode this whole mechanism exists to remove.
 
+**Field *values* are type-checked too, and not coerced.** Checking the field set catches a misspelled
+field *name*; it cannot catch a misspelled *value*, because the key is spelled correctly and only the
+scalar is wrong. So `shipped-default` must be an unquoted YAML boolean and `expiry` must be a quoted
+string, each asserted rather than read tolerantly. The direction of the coercion is the reason. A
+tolerant `Boolean.TRUE.equals(raw)` answers `false` for anything that is not the boolean `true`, so
+`shipped-default: flase` arrives as a `String` and reads back as a deliberate declaration that the
+flag ships dark — a sentence nobody wrote. It gets worse if the same typo is made in `application.yml`,
+since Spring treats every value but the literal `true` as disabled: the two would then *agree*, the
+guard would pass, and the flag would ship OFF. That is exactly the EOP-82 fault, reintroduced through
+the mechanism built to catch it. A fail-closed control must not silently reinterpret a mistake as an
+intention, so the type is rejected with the fix named in the message.
+
+This was added during EOP-84's own gate round, on @tester-api's finding, and the mutation
+`shipped-default: flase` was confirmed to fail loudly afterwards where it had passed silently before.
+Note it fails every test that reads a typed declaration rather than exactly one, because the fault is
+in the schema and is detected while parsing — the same shape as the `expiry` type assertion.
+
 ### 3. `expiry` is `Optional<LocalDate>`, but the field is mandatory
 
 `expiry: null` is a legitimate resting state meaning *no expiry has been authorised*. Omitting the key
