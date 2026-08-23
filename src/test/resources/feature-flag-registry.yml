@@ -65,8 +65,10 @@ flags:
   #
   # ADR-042 also records a second-order trap for whoever removes it: once the flag and its
   # guards are gone, GameOverControllerDisabledIntegrationTest asserts a condition the code
-  # cannot reach, so it must be deleted in the same commit. A suite that stays green after
-  # removal without that test being touched is evidence the removal was incomplete.
+  # cannot reach, so it must be deleted in the same commit. That test asserts the beans are
+  # absent, not merely that the routes 404, so leaving it behind turns the build red rather
+  # than leaving it quietly green. Read those failures as the leftover OFF-position test they
+  # are and delete it; do not relax its assertions (ADR-042, corrected 2026-08-23).
   - key: eop.features.game-over
     shipped-default: true
     owner-story: EOP-82
