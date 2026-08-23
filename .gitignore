@@ -76,6 +76,19 @@ docs/EoP_Microsoft_Docs/EoP_Cards_Box_Native_files.zip
 # its .gitkeep.
 docs/performance/history/*.json
 
+# The k6 output directory used by the CI canary (EOP-155, ADR-055) and by any local
+# run of the same step. CI collects it as the `k6-results` workflow artifact, which
+# is deliberately where those numbers stop: a run on a shared 2-vCPU runner must
+# never reach TRENDS.md, whose baseline was measured against the real topology.
+test/k6/results/
+
+### Build and run logs ###
+# Redirected build or application output (`./mvnw ... > app.log`, `spring-boot:run`
+# tee'd to a file). Machine-specific, regenerated on every run, and large — one
+# such file was committed by accident during EOP-155, which is why this is a
+# blanket pattern rather than a named path.
+*.log
+
 ### Agent scratch space ###
 # Throwaway working area for agents and humans: experiments, generated output,
 # and `git worktree add .tmp/scratch HEAD` checkouts. Inside the worktree on

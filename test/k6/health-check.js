@@ -1,10 +1,15 @@
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { THRESHOLDS, SMOKE_STAGES } from "./config/options.js";
+import { THRESHOLDS_CI } from "./config/options-ci.js";
+
+// Select thresholds based on environment
+const USE_CI_THRESHOLDS = __ENV.K6_ENV === "ci";
+const SELECTED_THRESHOLDS = USE_CI_THRESHOLDS ? THRESHOLDS_CI : THRESHOLDS;
 
 export const options = {
   stages: SMOKE_STAGES,
-  thresholds: THRESHOLDS,
+  thresholds: SELECTED_THRESHOLDS,
   summaryTrendStats: ["avg", "min", "med", "max", "p(50)", "p(95)", "p(99)"],
 };
 
@@ -12,6 +17,9 @@ export const options = {
 // publishes no host port at all (ADR-017), so this is the path users take.
 // NOTE: the Caddy local CA certificate is self-signed (tls internal). Run k6
 // with --insecure-skip-tls-verify, or trust the Caddy CA in the system store.
+// The default is deliberately unconditional: there is no environment in which
+// http://localhost:8080 is reachable, in CI or otherwise. compose.app.yml gives
+// the app service no `ports:` at all, so only Caddy publishes (443 -> 8080).
 const BASE_URL = __ENV.BASE_URL || "https://localhost";
 
 export default function () {
