@@ -372,9 +372,21 @@ jobs:
           name: k6-results
           path: test/k6/results/
 
+      # Tear down by project name with no `-f`. That is deliberate and is the
+      # reason this step needs no credentials at all: `compose.app.yml`
+      # declares POSTGRES_DB, POSTGRES_USER and POSTGRES_PASSWORD with the
+      # fail-hard `${VAR:?}` form, so passing `-f` would make Compose refuse
+      # to *parse* the file whenever they are unset - even for `down`, which
+      # needs none of their values. Resolving the stack by its `name: eop-app`
+      # project label instead skips parsing entirely, so no database
+      # credentials enter this step (security.md, least privilege).
+      #
+      # Verified: `docker compose -p eop-app down --volumes` removes all three
+      # containers, the network and both named volumes, and does not touch the
+      # separate `eop-monitoring` stack declared in docker-compose.yml.
       - name: Tear down stack
         if: always()
-        run: docker compose -f compose.app.yml down --volumes
+        run: docker compose -p eop-app down --volumes
 
       # Publish only from `main`. A pull request builds and smoke tests the
       # image but never publishes one, so an unreviewed change can never
