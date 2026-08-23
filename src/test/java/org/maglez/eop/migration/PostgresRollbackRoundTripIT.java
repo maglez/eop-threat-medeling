@@ -688,7 +688,7 @@ class PostgresRollbackRoundTripIT {
     private boolean tableExists(final String table) throws SQLException {
         final String sql = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, table.toLowerCase());
+            statement.setString(1, table.toLowerCase(Locale.ROOT));
             return countFrom(statement) == 1;
         }
     }

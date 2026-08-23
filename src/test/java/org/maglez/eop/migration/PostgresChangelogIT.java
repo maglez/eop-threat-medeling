@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -347,8 +348,8 @@ class PostgresChangelogIT {
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT " + attribute + " FROM information_schema.columns "
                         + "WHERE table_schema = 'public' AND table_name = ? AND column_name = ?")) {
-            statement.setString(1, table.toLowerCase());
-            statement.setString(2, column.toLowerCase());
+            statement.setString(1, table.toLowerCase(Locale.ROOT));
+            statement.setString(2, column.toLowerCase(Locale.ROOT));
             try (ResultSet rows = statement.executeQuery()) {
                 assertThat(rows.next()).as("information_schema row for %s.%s", table, column).isTrue();
                 return rows.getString(1);
