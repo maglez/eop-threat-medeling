@@ -152,6 +152,12 @@ while H2 uses `CURRENT_TIMESTAMP + INTERVAL '24' HOUR`. XML localises the diverg
 onFail="MARK_RAN"><dbms type="postgresql"/></preConditions>` and `<dbms type="h2"/>`. Formatted
 SQL would require forking the file entirely.
 
+`onFail="MARK_RAN"` in that example is a portability trade-off, not a pattern to reach for
+generally: it records the non-matching changeset as run *without* running it. That is sound here
+only because the two changesets are mutually exclusive alternatives that between them cover
+every supported target, so exactly one applies on any database. Used anywhere that property does
+not hold, `MARK_RAN` is a fail-open marker that silently retires a migration nobody applied.
+
 The cost is real: five of the 26 rollbacks fall back to raw `<sql>` because no declarative
 element covers the operation, all of them in `005-seat-and-sequence-bounds.xml` and
 `006-session-expiry.xml`. XML confines dialect-specific text rather than eliminating it, on top
