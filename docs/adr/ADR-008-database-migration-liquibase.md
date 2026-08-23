@@ -1,6 +1,6 @@
 # ADR-008: Database Migration Strategy with Liquibase
 
-- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; amended 2026-08-19 — the "Context labels" comparison row records a capability this project has decided not to use, see ADR-043; both in Amendments)
+- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; amended 2026-08-19 — the "Context labels" comparison row records a capability this project has decided not to use, see ADR-043; amended 2026-08-23 — XML over formatted-SQL rationale, centred on rollback; all in Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, DevOps Engineer, Security Auditor
@@ -110,6 +110,59 @@ changeset in this repository carries `context`, `contextFilter` or `labels`, or 
 profile file sets the property. See
 [ADR-043](ADR-043-liquibase-contexts-are-not-used.md) for the mechanism, the evidence and the
 residual risks.
+
+**Amendment, 2026-08-23 (EOP-162).** The comparison table row "Team preference | XML format
+preferred | —" is replaced with a rationale.
+
+Liquibase supports two changelog formats: XML and formatted SQL. The XML format was chosen
+because it delivers three properties that formatted SQL cannot, all centring on rollback:
+
+1. **Declarative, dialect-agnostic rollback.** Liquibase's XML elements express the inverse
+   operation directly, and the rollback blocks in this repository use eight of them —
+   `<dropTable>`, `<insert>`, `<delete>`, `<update>`, `<modifyDataType>`, `<dropColumn>`,
+   `<dropUniqueConstraint>` and `<dropForeignKeyConstraint>`. Each renders for both H2 and
+   PostgreSQL from a single source. Formatted SQL expresses rollback as a `--rollback` comment
+   directive that the SQL parser must ignore — a mistyped directive silently yields no rollback
+   and is discovered only during an incident. This repo writes every rollback explicitly
+   (26 `<rollback>` blocks across ten changelogs), so it does not rely on Liquibase's
+   auto-inference, but the explicit blocks still benefit from the declarative form: they are
+   portable across the two database targets without writing dialect-specific SQL twice.
+
+2. **Schema-validated rollback.** Every changelog carries `xsi:schemaLocation` to
+   `dbchangelog-latest.xsd`, so a malformed XML rollback is rejected when the changelog is
+   parsed — and because the test suite runs Liquibase, that rejection fails `./mvnw verify`
+   rather than waiting for someone to attempt a rollback. A comment directive has no schema to
+   be checked against, so the failure mode differs in *when* it surfaces, not merely in how
+   loudly: XML makes a bad rollback a parse-time error, formatted SQL makes it a rollback-time
+   one.
+
+3. **Reference-data rollback.** The two migrations that delete seeded reference data — the
+   deck trim of 2026-08-17 and the ace removal of 2026-08-18 — reverse a `<delete>` by
+   re-seeding the exact rows, and their `<rollback>` blocks hold 10 `<insert>` elements between
+   them (4 and 6 respectively) carrying 50 `<column>` children. That is the sharpest case for
+   the declarative form: the same 50 column values written as `INSERT` statements in formatted
+   SQL would have to be maintained per dialect, or pinned to the dialect intersection, and a
+   down-migration that re-seeds reference data is exactly the kind that rots unnoticed because
+   nothing exercises it until it is needed.
+
+The worked example is changeset `006-session-expiry.xml`, which adds `expires_at` to
+`game_session` with a database-side default. PostgreSQL uses `NOW() + INTERVAL '24 hours'`
+while H2 uses `CURRENT_TIMESTAMP + INTERVAL '24' HOUR`. XML localises the divergence to the
+`defaultValueComputed` attribute on each of two changesets, gated by `<preConditions
+onFail="MARK_RAN"><dbms type="postgresql"/></preConditions>` and `<dbms type="h2"/>`. Formatted
+SQL would require forking the file entirely.
+
+`onFail="MARK_RAN"` in that example is a portability trade-off, not a pattern to reach for
+generally: it records the non-matching changeset as run *without* running it. That is sound here
+only because the two changesets are mutually exclusive alternatives that between them cover
+every supported target, so exactly one applies on any database. Used anywhere that property does
+not hold, `MARK_RAN` is a fail-open marker that silently retires a migration nobody applied.
+
+The cost is real: five of the 26 rollbacks fall back to raw `<sql>` because no declarative
+element covers the operation, all of them in `005-seat-and-sequence-bounds.xml` and
+`006-session-expiry.xml`. XML confines dialect-specific text rather than eliminating it, on top
+of the learning curve already conceded under **Negative** above. XML was the right choice for
+this project's rollback requirements, and the row now records why.
 
 ## Related
 
