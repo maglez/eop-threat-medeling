@@ -444,11 +444,14 @@ complete, fully tested feature behind it and a green build throughout. This is t
 trap that EOP-27 removed for `spring.h2.console.enabled` (see the `**Amendment, 2026-08-10
 (EOP-27).**` block of [ADR-008](ADR-008-database-migration-liquibase.md)), and EOP-27's remedy —
 stop pinning the property in test resources — is unavailable here, because pinning flags ON in
-tests is mandatory. `ShippedFeatureFlagDefaultsTest` is the interim mitigation: it reads
+tests is mandatory. `ShippedFeatureFlagDefaultsTest` was the interim mitigation: it read
 `application.yml` off the classpath with `YamlPropertiesFactoryBean`, outside any Spring context.
-It asserts three hand-named keys, so a fourth flag is invisible to it; the structural fix — derive
-the assertion from the flags that exist and check them against a registry declaring intended state,
-owning story and expiry — is specified in ADR-042 and filed as a separate ticket.
+It asserted three hand-named keys, so a fourth flag was invisible to it. **Superseded 2026-08-23
+(EOP-84):** the structural fix — derive the assertion from the flags that exist and check them
+against a registry declaring intended state, owning story and expiry — is built as
+`FeatureFlagRegistryTest` and recorded in [ADR-053](ADR-053-feature-flag-registry-build-gate.md).
+The masking trap itself is unchanged and will keep masking every future flag from any
+`Environment` lookup.
 
 **Standing consequence — the deletion bullet in Decision is not being honoured.** "**A flag is
 deleted once its feature is released.**" (line 46) has now been restated at three flag flips
@@ -456,3 +459,27 @@ deleted once its feature is released.**" (line 46) has now been restated at thre
 guards are still in the code. Treat the bullet as an aspiration with one dated commitment against
 it (ADR-042's expiry condition for `game-over`) rather than as a description of practice, and do
 not add a fourth undated promise: a new flag flip must either delete a flag or state a date.
+
+**2026-08-23 (EOP-84) — the flag namespace is now compiler-checked, and every flag must declare
+intent.** The catalogue in this ADR is no longer the only record of which flags exist:
+`src/test/resources/feature-flag-registry.yml` declares, per flag, its intended shipped value, the
+Jira story that owns that position, and an expiry date or an explicit `null`.
+`FeatureFlagRegistryTest` derives the flag set independently from the shipped `application.yml` and
+from the compiled `@ConditionalOnProperty` sites, and fails `./mvnw verify` unless all three agree.
+Three consequences for anyone adding or moving a flag.
+
+- **Adding a flag is now three coordinated edits, not one.** A key in `application.yml`, a gate in
+  the code, and a registry entry. Any two without the third fails the build. This is the inversion
+  ADR-042 asked for: the guard fails *until* intent is declared, rather than staying silent unless
+  someone remembers to add a line.
+- **Changing a flag's shipped value means changing the registry in the same commit**, because the
+  registry's `shipped-default` is asserted against the YAML rather than merely documenting it. That
+  is the point — it forces the change to be a recorded decision instead of an edited literal.
+- **The deletion bullet in Decision finally has a mechanism behind it, for flags that carry a
+  date.** The standing consequence below still holds for the two flags whose expiry is `null`:
+  `session-lifecycle` and `trick-play` remain permanently `true` with no date against them, and
+  ADR-053 deliberately did not invent dates that no decision authorised. What has changed is that
+  the field cannot be *omitted*, so a fourth flag can no longer inherit no-expiry by silence — the
+  absence of a date is now a visible declaration rather than an oversight.
+
+The mechanism is ADR-053's; this ADR remains the authority on what the flags are and what they gate.

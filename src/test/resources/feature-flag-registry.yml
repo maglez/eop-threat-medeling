@@ -1,0 +1,73 @@
+# Feature-flag registry (EOP-84, ADR-053).
+#
+# This file is the declaration of *intent* for every flag under the eop.features.*
+# namespace. FeatureFlagRegistryTest reads it and holds it in three-way agreement with
+# the two places a flag actually exists:
+#
+#   1. the keys under `eop.features` in src/main/resources/application.yml   (the shipped default)
+#   2. the @ConditionalOnProperty sites in target/classes whose resolved key   (the gate itself)
+#      starts with eop.features.
+#   3. the entries below                                                      (the declared intent)
+#
+# All three sets must be equal. A flag that exists in the code or the shipped YAML but
+# not here fails `./mvnw verify`; so does an entry here for a flag that no longer exists.
+# That is the point: the guard fails *until* someone declares intent, rather than staying
+# silent unless someone remembers to add a line. It replaces the hand-written key list in
+# the deleted ShippedFeatureFlagDefaultsTest, which could not see a fourth flag at all.
+#
+# Why the registry is not read from the Environment: src/test/resources/application.properties
+# pins every flag `true` for the whole suite, as .opencode/rules/feature-flags.md requires, so
+# the Spring Environment in any @SpringBootTest resolves the override and never the shipped
+# value. That masking is what let EOP-82 ship a completed feature dark for two stories. The
+# guard therefore reads application.yml off the classpath as a file. Do not "simplify" it into
+# an Environment lookup — see the javadoc of FeatureFlagRegistryTest.
+#
+# Schema — every field is REQUIRED on every entry, including expiry:
+#
+#   key             the fully qualified property, always prefixed eop.features.
+#   shipped-default the value application.yml must carry. Asserted, not documented.
+#   owner-story     the Jira key of the story that owns the flag's current position (EOP-NNN).
+#   expiry          an ISO date in QUOTES, or the literal null.
+#
+# `expiry: null` means "no expiry declared" and is a legitimate resting state. Omitting the
+# key entirely is NOT: it fails the build, so a new flag cannot inherit no-expiry by silence.
+# The date must be quoted — unquoted YAML resolves 2026-09-18 to a java.util.Date, which the
+# guard rejects rather than guessing at.
+#
+# Once a date passes, the build goes red. That is the tripwire, and it is deliberate: ADR-042
+# recorded three flags flipped on, three promises of removal, and zero removals. Extend a date
+# under review, or remove the flag; do not delete the field.
+
+flags:
+  # Session create, join, state, event stream and start. Flipped on by EOP-25 (2026-08-16)
+  # as a permanent rollout. No expiry has ever been authorised for it, and ADR-042 forbids
+  # inventing one here — the honest declaration is null.
+  - key: eop.features.session-lifecycle
+    shipped-default: true
+    owner-story: EOP-25
+    expiry: null
+
+  # Dealing the deck, playing a trick, resolving the winner, and scoring. Flipped on by
+  # EOP-70 (2026-08-17). No authorised expiry; see above.
+  - key: eop.features.trick-play
+    shipped-default: true
+    owner-story: EOP-70
+    expiry: null
+
+  # Final leaderboard and "Start new game". Flipped on by EOP-82 (2026-08-18).
+  #
+  # This is the one flag with a concrete expiry, and it was not invented here: the ADR-042
+  # Consequences bullet "Concrete expiry condition for game-over" commits the flag, its four
+  # @ConditionalOnProperty guards, GameOverControllerDisabledIntegrationTest and the game-over
+  # line in src/test/resources/application.properties to deletion in the story that closes
+  # EOP-83, or by 2026-09-18, whichever comes first. Encoding the date here is what makes that
+  # commitment a mechanism rather than a fourth undated promise.
+  #
+  # ADR-042 also records a second-order trap for whoever removes it: once the flag and its
+  # guards are gone, GameOverControllerDisabledIntegrationTest asserts a condition the code
+  # cannot reach, so it must be deleted in the same commit. A suite that stays green after
+  # removal without that test being touched is evidence the removal was incomplete.
+  - key: eop.features.game-over
+    shipped-default: true
+    owner-story: EOP-82
+    expiry: "2026-09-18"
