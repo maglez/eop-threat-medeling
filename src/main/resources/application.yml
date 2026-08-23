@@ -83,6 +83,34 @@ eop:
     # access bypasses Caddy and is unprotected. See ADR-033 for the rationale.
     session-creation-limit: 5
 
+    # Read-route rate limiting (EOP-88, ADR-051). Applied by a HandlerInterceptor to
+    # every GET and HEAD under /api/v1/**, keyed on the resolved client address — the
+    # same key the creation and join limiters use, so no request header can influence
+    # it while trusted-proxies is empty. The SSE stream is excluded: it is an async
+    # dispatch that preHandle sees twice, and its cost is already bounded by the
+    # per-session subscriber cap (ADR-034).
+    #
+    # Before EOP-88 no read route was limited at all. GET /leaderboard re-derives
+    # every score from the session's whole trick history on each call (ADR-030), and
+    # the game-over screen offers a retry button that issues one such read per click.
+    read-rate-limit:
+      # Reads admitted per address per 60-second window before HTTP 429. 300 is
+      # generous by design: the key is an address, so a household behind one NAT
+      # shares one allowance, and a three-player game on that NAT peaks near 100
+      # reads a minute (about 66 trick events, each waking roughly two re-fetches
+      # per client, ADR-014). Override it in
+      # src/test/resources/application.properties so the shared Spring context is
+      # not exhausted across integration tests; the tests that assert the 429 pin a
+      # low limit per class with @DirtiesContext instead of forging the key.
+      limit: 300
+
+      # Distinct addresses tracked at once. On reaching it the limiter evicts expired
+      # windows and, if still full, refuses new keys rather than admitting requests it
+      # cannot count — a flood of distinct keys is itself an attack pattern, and
+      # admitting the untrackable would let an attacker bypass the limiter by
+      # exhausting the table first (ADR-033).
+      max-tracked-keys: 10000
+
   # Feature flags (ADR-013). New flags default to false so that forgetting to think
   # about one fails closed. A flag is bound at startup, so flipping it restarts the
   # application; in a container that means setting EOP_FEATURES_SESSION_LIFECYCLE

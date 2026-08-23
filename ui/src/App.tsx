@@ -186,7 +186,6 @@ export default function App(): React.JSX.Element {
         return (
           <GameOverScreen
             sessionId={view.sessionId}
-            playerId={view.playerId}
             playerToken={view.playerToken}
             isFacilitator={view.isFacilitator}
             onNewGame={() => {
