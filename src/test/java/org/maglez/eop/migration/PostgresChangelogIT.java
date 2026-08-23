@@ -1,17 +1,21 @@
 package org.maglez.eop.migration;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import liquibase.Contexts;
 import liquibase.LabelExpression;
@@ -58,14 +62,21 @@ class PostgresChangelogIT {
 
     private static final String CHANGELOG_MASTER = "db/changelog/db.changelog-master.xml";
 
-    private static final String CHANGES_DIRECTORY = "db/changelog/changes/";
+    /**
+     * Changelog directory as it sits in the repository. Read from disk rather than the classpath
+     * because the point is to enumerate the files, and a classpath directory cannot be listed
+     * portably. Reading repository files as text from the project root is the established idiom of
+     * the documentation gates in {@code org.maglez.eop.docs}.
+     */
+    private static final Path CHANGES_PATH =
+            Path.of("src", "main", "resources", "db", "changelog", "changes");
 
     /**
-     * Every changelog file, with the number of changesets each declares. Asserted against the files
-     * themselves by {@link #changesetTotalMatchesTheChangelogFiles()}, so appending a changeset
-     * without updating this map fails loudly instead of weakening the total below.
+     * Floor on the number of changelog files. Without it a wrong working directory, or a filter that
+     * stopped matching, would make {@link #changesetTotalMatchesTheChangelogFiles()} scan nothing and
+     * pass vacuously.
      */
-    private static final Map<String, Integer> CHANGESETS_PER_FILE = changesetsPerFile();
+    private static final int MINIMUM_CHANGELOG_FILES = 10;
 
     /**
      * The number of {@code DATABASECHANGELOG} rows the full changelog must produce.
@@ -84,6 +95,16 @@ class PostgresChangelogIT {
     private static final String EXECTYPE_EXECUTED = "EXECUTED";
 
     private static final String EXECTYPE_MARK_RAN = "MARK_RAN";
+
+    /**
+     * The {@code information_schema.columns} attributes {@link #columnAttribute} is allowed to select.
+     *
+     * <p>An allow-list rather than a comment, because the attribute name is the one part of that query
+     * that cannot be a bind parameter. Every call site passes a literal today, so this guards nothing
+     * yet; it exists so that a future computed argument fails the assertion instead of reaching the
+     * database as concatenated SQL.
+     */
+    private static final Set<String> COLUMN_ATTRIBUTES = Set.of("column_default", "data_type", "is_nullable");
 
     private Connection connection;
 
@@ -187,67 +208,60 @@ class PostgresChangelogIT {
 
     @Test
     @DisplayName("expected changeset total matches the changelog files on disk")
-    void changesetTotalMatchesTheChangelogFiles() {
+    void changesetTotalMatchesTheChangelogFiles() throws IOException {
+        // Arrange -- enumerate the directory rather than hardcoding filenames. A hardcoded list is a
+        // second place to update when a changelog is appended, and forgetting it leaves the total
+        // below quietly stale; a scan cannot drift, and it also catches a changelog that was written
+        // but never picked up because <includeAll> filters on the .xml suffix.
+        final List<Path> changelogs;
+        try (Stream<Path> entries = Files.list(CHANGES_PATH)) {
+            changelogs = entries
+                    .filter(path -> path.getFileName().toString().endsWith(".xml"))
+                    .sorted()
+                    .toList();
+        }
+
         // Act
         int counted = 0;
-        final Map<String, Integer> mismatches = new LinkedHashMap<>();
-        for (final Map.Entry<String, Integer> entry : CHANGESETS_PER_FILE.entrySet()) {
-            final int actual = countChangesets(CHANGES_DIRECTORY + entry.getKey());
-            counted += actual;
-            if (actual != entry.getValue()) {
-                mismatches.put(entry.getKey(), actual);
-            }
+        final Map<String, Integer> perFile = new LinkedHashMap<>();
+        for (final Path changelog : changelogs) {
+            final int declared = countChangesets(changelog);
+            perFile.put(changelog.getFileName().toString(), declared);
+            counted += declared;
         }
 
         // Assert -- guards EXPECTED_CHANGESET_ROWS, which is otherwise a literal that silently goes
         // stale the moment a changelog is appended.
-        assertThat(mismatches)
-                .as("changelog files whose <changeSet> count differs from CHANGESETS_PER_FILE")
-                .isEmpty();
+        assertThat(changelogs)
+                .as("changelog files under %s", CHANGES_PATH)
+                .hasSizeGreaterThanOrEqualTo(MINIMUM_CHANGELOG_FILES);
+        assertThat(perFile)
+                .as("every changelog declares at least one changeset")
+                .allSatisfy((file, declared) -> assertThat(declared).as(file).isPositive());
         assertThat(counted)
-                .as("total <changeSet> elements across %d changelog files", CHANGESETS_PER_FILE.size())
+                .as("total <changeSet> elements across %d changelog files: %s", changelogs.size(), perFile)
                 .isEqualTo(EXPECTED_CHANGESET_ROWS);
     }
 
-    private static Map<String, Integer> changesetsPerFile() {
-        final Map<String, Integer> perFile = new LinkedHashMap<>();
-        perFile.put("001-card-catalogue.xml", 2);
-        perFile.put("002-real-deck.xml", 2);
-        perFile.put("003-session-lifecycle.xml", 2);
-        perFile.put("004-trick-play-schema.xml", 9);
-        perFile.put("005-seat-and-sequence-bounds.xml", 3);
-        perFile.put("006-session-expiry.xml", 2);
-        perFile.put("2026-08-16--game-result.xml", 2);
-        perFile.put("2026-08-17--trim-deck-to-74-printed-cards.xml", 1);
-        perFile.put("2026-08-18--remove-ace-cards.xml", 1);
-        perFile.put("2026-08-22--widen-join-code-to-8-characters.xml", 2);
-        return perFile;
-    }
-
     /**
-     * Counts {@code <changeSet} elements in a changelog on the test classpath.
+     * Counts {@code <changeSet} elements in a changelog file.
      *
-     * @param classpathResource changelog path relative to the classpath root
+     * @param changelog path to the changelog file
      * @return the number of {@code <changeSet} elements the file declares
      */
-    private static int countChangesets(final String classpathResource) {
-        final String xml = readClasspathResource(classpathResource);
+    private static int countChangesets(final Path changelog) {
+        final String xml;
+        try {
+            xml = Files.readString(changelog, StandardCharsets.UTF_8);
+        } catch (final IOException e) {
+            throw new AssertionError("Could not read " + changelog, e);
+        }
         final Matcher matcher = Pattern.compile("<changeSet\\b").matcher(xml);
         int count = 0;
         while (matcher.find()) {
             count++;
         }
         return count;
-    }
-
-    private static String readClasspathResource(final String classpathResource) {
-        try (InputStream stream = PostgresChangelogIT.class.getClassLoader()
-                .getResourceAsStream(classpathResource)) {
-            assertThat(stream).as("classpath resource %s", classpathResource).isNotNull();
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (final IOException e) {
-            throw new AssertionError("Could not read " + classpathResource, e);
-        }
     }
 
     private int changelogRowCount() throws SQLException {
@@ -307,8 +321,29 @@ class PostgresChangelogIT {
         return "YES".equals(columnAttribute("is_nullable", table, column));
     }
 
+    /**
+     * Reads one {@code information_schema.columns} attribute for a column of the migrated schema.
+     *
+     * <p>The attribute name is concatenated into the SQL because a column being <em>selected</em> cannot be a bind
+     * parameter, so it is checked against {@link #COLUMN_ATTRIBUTES} first. All three call sites pass compile-time
+     * literals and none is reachable from outside this class, so the allow-list guards nothing today; it is here so
+     * that a later call site passing a computed name fails loudly instead of relying on a reviewer noticing the
+     * concatenation. The table and column names are ordinary bind parameters.</p>
+     *
+     * <p>Both identifiers are lower-cased. PostgreSQL folds unquoted identifiers to lower case, the opposite of the
+     * H2 migration tests in this package, which upper-case them for the same reason.</p>
+     *
+     * @param attribute the {@code information_schema.columns} column to read; must be in {@link #COLUMN_ATTRIBUTES}
+     * @param table the table name
+     * @param column the column name
+     * @return the attribute value as PostgreSQL reports it
+     * @throws SQLException if the query fails
+     */
     private String columnAttribute(final String attribute, final String table, final String column)
             throws SQLException {
+        assertThat(COLUMN_ATTRIBUTES)
+                .as("information_schema attribute must be allow-listed, not computed")
+                .contains(attribute);
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT " + attribute + " FROM information_schema.columns "
                         + "WHERE table_schema = 'public' AND table_name = ? AND column_name = ?")) {

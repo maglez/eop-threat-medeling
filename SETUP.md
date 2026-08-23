@@ -113,6 +113,33 @@ direnv allow
 ```
 Without direnv, export the variables manually before running the app.
 
+### 4. Docker socket for the PostgreSQL migration tests
+
+`./mvnw verify` runs three Testcontainers integration tests that start a real
+PostgreSQL 17 container (`*IT` classes under `src/test/java/org/maglez/eop/migration/`,
+see [ADR-056](docs/adr/ADR-056-postgres-migration-tests-via-testcontainers.md)).
+`./mvnw test` does **not** — the fast suite stays on in-memory H2 and needs no
+container runtime at all.
+
+So `colima start` must have been run before `./mvnw verify`. Two exports in `.envrc`
+handle the rest, and both are guarded so they fire only when a default Colima socket
+exists and you have not set `DOCKER_HOST` yourself:
+
+| Variable | Why |
+|---|---|
+| `DOCKER_HOST` | Testcontainers does not read the Docker CLI *context*, and Colima creates no `/var/run/docker.sock`. Without this every migration IT fails with `Could not find a valid Docker environment` |
+| `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` | Testcontainers bind-mounts the resolved socket path into its Ryuk cleanup sidecar. The macOS-side path does not exist inside the Colima VM and virtiofs cannot create it, so Ryuk fails to start with `operation not supported`. This names the in-VM path to mount instead |
+
+Ryuk is deliberately left **enabled** — `TESTCONTAINERS_RYUK_DISABLED=true` clears that
+second error only by giving up automatic cleanup of stray containers.
+
+Because these live in `.envrc`, a shell without the direnv hook loaded will not have
+them. If `./mvnw verify` fails on Docker discovery, either open a new shell or prefix
+the command with `direnv exec .`.
+
+If you use Docker Desktop elsewhere, a non-default Colima profile, or a remote daemon,
+set `DOCKER_HOST` yourself and the guard leaves it alone.
+
 ## Running the Application
 
 ### Backend (from repo root)

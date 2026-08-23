@@ -219,49 +219,41 @@
                      </execution>
                 </executions>
             </plugin>
-            <!-- The SEVENTH declared plugin, and the reason is worth stating because ADR-047
-                 declined failsafe for a different job on the grounds that seven was a cost.
-                 Here there is no cheaper option (EOP-164, ADR-056).
+            <!--
+                The SEVENTH declared plugin, and EOP-164 pays that cost deliberately. The
+                PostgreSQL migration tests must run under "mvnw verify" but not under
+                "mvnw test", and surefire alone cannot express that: both commands execute the
+                "test" phase with identical surefire configuration, so no JUnit tag and no
+                junit-platform.properties setting can make one run more tests than the other.
+                Only a plugin bound to a later phase separates them. ADR-047 weighed seven
+                declared plugins as a real cost; EOP-164's AC4 accepts it, and ADR-056 records
+                why.
 
-                 The requirement is that `./mvnw test` stays H2-only and sub-second while
-                 `./mvnw verify` additionally runs the Liquibase changelog against a real
-                 PostgreSQL 17 container. Both commands execute the `test` phase with the same
-                 surefire configuration, so no combination of JUnit tags, `junit-platform.properties`
-                 or `@EnabledIf*` conditions can make one run more tests than the other, and
-                 configuring surefire to exclude a tag would itself be a seventh plugin. Only a
-                 plugin bound to a LATER phase separates them, which is exactly what failsafe is.
-                 The acceptance criteria for EOP-164 permit this explicitly.
+                Do NOT delete this declaration as redundant. It was deleted once during EOP-164
+                because "mvnw help:effective-pom" appeared to show the Boot parent binding
+                failsafe by itself. It does not. The parent supplies the unnamed execution
+                through pluginManagement, and a pluginManagement entry materialises only when
+                the plugin is also declared here, so the effective POM had been computed with
+                this very declaration in place and the reading was circular. With it deleted,
+                "mvnw clean verify" ran 1360 tests, zero integration tests, and still reported
+                BUILD SUCCESS with every coverage check met. A green build that silently skips
+                the whole integration suite is the failure mode this declaration prevents.
 
-                 No <configuration> is needed and none is given:
+                No version and no configuration of our own: the parent's pluginManagement
+                supplies both, along with the integration-test and verify goal bindings. JaCoCo
+                needs no second prepare-agent because failsafe's argLine also defaults to
+                ${argLine}, and the integration-test phase precedes verify, so integration
+                coverage merges into target/jacoco.exec before jacoco:check reads it.
 
-                 - Class naming does the selection. Surefire's default includes are `Test*`,
-                   `*Test`, `*Tests` and `*TestCase`, so a class named `*IT` is invisible to
-                   `./mvnw test`. Failsafe's default includes are `IT*`, `*IT` and `*ITCase`.
-                   Rename an IT to `*Test` and it silently moves into the fast suite against H2.
-                 - JaCoCo needs no second `prepare-agent`. Its `prepare-agent` execution sets the
-                   project property `argLine`, and failsafe's `argLine` parameter defaults to
-                   `${argLine}` just as surefire's does, so both forks carry the same agent
-                   writing to the same `target/jacoco.exec` with JaCoCo's default `append=true`.
-                   `integration-test` precedes `verify`, so IT coverage is merged in before
-                   `jacoco:check` reads it.
-                 - The version comes from the Boot 4.1.0 parent (3.5.6).
-
-                 Declared HERE, ahead of javadoc/spotbugs/jacoco, deliberately. Maven runs
-                 same-phase goals in POM declaration order, so `failsafe:verify` reports a failed
-                 integration test before a coverage or static-analysis gate can fail first and
-                 bury it. -->
+                What selects between the two suites is class naming alone, enforced by nothing:
+                surefire's default includes are Test*, *Test, *Tests and *TestCase, so a *IT class
+                is invisible to "mvnw test"; failsafe's are IT*, *IT and *ITCase. Renaming a
+                migration IT to *Test silently moves it into the fast suite and points it at H2,
+                which is the very gap EOP-164 closed. Keep the *IT suffix.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>integration-tests</id>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
