@@ -259,9 +259,16 @@ jobs:
       # Run k6 performance regression canary as per ADR-055
       # This check uses relaxed CI-specific thresholds to account for 2-vCPU runner jitter
       # while still catching gross regressions (N+1, missing index, 50x slowdown).
-      # Results are uploaded as artifacts for debugging regressions, not for trend analysis.
-      # Do NOT append CI results to docs/performance/TRENDS.md - that file tracks local
-      # development baselines measured on a developer Mac via Colima against a t3.small-bound topology.
+      # Raw results are uploaded as an artifact for debugging a specific regression.
+      # The per-run headline figures are rendered into the run summary by the step
+      # after this one, and pushes to `main` additionally append one row to the
+      # trend series in the `perf-trend` job below (ADR-055 as amended by EOP-169).
+      #
+      # Do NOT append CI results to docs/performance/TRENDS.md. These are two
+      # separate populations and mixing them would make both meaningless: TRENDS.md
+      # tracks hand-curated baselines measured on a developer Mac via Colima against
+      # a t3.small-bound topology, whereas everything below is measured on a 2-vCPU
+      # shared GitHub runner. The CI series is only ever comparable with itself.
       - name: Run k6 performance regression canary
         run: |
           set -euo pipefail
@@ -367,6 +374,54 @@ jobs:
 
           echo "All $EXPECTED_THRESHOLD_COUNT k6 thresholds passed"
 
+      # Rendered in a step of its own rather than appended to the step above, and
+      # deliberately `if: always()`. The k6 step `exit 1`s the instant a threshold
+      # is breached, so anything appended after that gate would be skipped in
+      # precisely the run whose numbers someone needs to see. The `-s` guard keeps
+      # this step green and quiet when k6 never got as far as writing a summary
+      # (stack failed to come up, image pull failed), because a missing summary is
+      # already reported as a hard error by the step above -- failing here as well
+      # would only add noise to a run that has already gone red for the real reason.
+      - name: Render k6 metrics to the run summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          SUMMARY="${{ github.workspace }}/test/k6/results/summary.json"
+
+          if [[ ! -s "$SUMMARY" ]]; then
+            echo "No k6 summary export found -- nothing to render"
+            exit 0
+          fi
+
+          # Key spellings verified against a real export before use: the document
+          # is flat, with no `.values` wrapper at any level. `http_req_failed` is
+          # an inverted Rate whose real figure is `.value` -- its `passes`/`fails`
+          # read 0/221 on a fully healthy run, so those two are never rendered.
+          # `p(50)`/`p(95)`/`p(99)` exist only because health-check.js asks for
+          # them in `summaryTrendStats`; they are not k6 defaults.
+          jq -r '
+            .metrics as $m
+            | "### k6 performance canary",
+              "",
+              "| Metric | Value |",
+              "| --- | --- |",
+              "| p50 latency | \($m.http_req_duration["p(50)"] * 100 | round / 100) ms |",
+              "| p95 latency | \($m.http_req_duration["p(95)"] * 100 | round / 100) ms |",
+              "| p99 latency | \($m.http_req_duration["p(99)"] * 100 | round / 100) ms |",
+              "| max latency | \($m.http_req_duration.max * 100 | round / 100) ms |",
+              "| Requests / sec | \($m.http_reqs.rate * 100 | round / 100) |",
+              "| Error rate | \($m.http_req_failed.value * 10000 | round / 100)% |",
+              "| Iterations | \($m.iterations.count) |",
+              "| Checks passed | \($m.checks.passes)/\($m.checks.passes + $m.checks.fails) |"
+          ' "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+
+          {
+            echo ""
+            echo "Measured on a 2-vCPU GitHub runner against the Compose stack through Caddy."
+            echo "Not comparable with the local baselines in \`docs/performance/TRENDS.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload k6 results
         if: always()
         uses: actions/upload-artifact@v4
@@ -429,6 +484,213 @@ jobs:
 
           echo "Published $repo:${{ github.sha }}"
           echo "Published $repo-ui:${{ github.sha }}"
+
+  # Appends one row per merged commit to a long-lived k6 trend series and
+  # republishes the static page that renders it (EOP-169, amending ADR-055
+  # section 5, which originally stopped at "artifact only, not for trend
+  # analysis"). The artifact answers "why is this build slow?"; this job
+  # answers "when did it get slow?", which an artifact expiring in 90 days
+  # and downloadable one zip at a time cannot.
+  #
+  # A separate job rather than a step in `image`, for one hard reason:
+  # `permissions` in GitHub Actions is job-scoped, with no per-step
+  # granularity. Appending from inside `image` would mean widening that
+  # job's `contents: read` to `contents: write` for every step in it,
+  # including the two that authenticate to GHCR and push published images.
+  # Splitting keeps this the only job in the workflow that can write to the
+  # repository, and it holds no `packages` scope at all (security.md, least
+  # privilege). It also costs nothing: it consumes the `k6-results` artifact
+  # the `image` job already uploads, so k6 still runs exactly once, in the
+  # place ADR-055 section 1 put it, against the already-running stack.
+  #
+  # `needs: image` means a red canary never records a data point, so a
+  # breached threshold cannot enter the series and depress the baseline.
+  perf-trend:
+    name: perf-trend
+    needs: image
+    # Pushes to `main` only. `github.event_name == 'push'` is load-bearing
+    # and not redundant with the ref test: `workflow_dispatch` and the weekly
+    # `schedule` trigger both report `refs/heads/main` too, and a scheduled
+    # re-run of unchanged code would otherwise append a duplicate point for
+    # a commit already in the series. A pull request must never append -
+    # the code is unmerged, so a point recorded against it describes a state
+    # of the tree that may never exist on `main`.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The only job in this workflow that can write to the repository, and it
+    # writes to exactly one branch that holds no code.
+    permissions:
+      contents: write
+    # Serialise, and never cancel. Two merges in quick succession would race
+    # on the push to `perf-history`; `cancel-in-progress: false` because the
+    # queued run carries a data point that is not recoverable if dropped -
+    # the artifact it reads is scoped to its own workflow run.
+    concurrency:
+      group: perf-trend
+      cancel-in-progress: false
+    steps:
+      # Needed only for tools/perf/trend-page.html. The trend series itself
+      # lives on the orphan branch and is fetched separately below.
+      - uses: actions/checkout@v4
+
+      - name: Download k6 results
+        uses: actions/download-artifact@v4
+        with:
+          name: k6-results
+          path: k6-results
+
+      # Reads the artifact, never the workspace. `test/k6/results/` is
+      # gitignored (.gitignore:83), so it is absent from a fresh checkout -
+      # looking for the summary there would make the guard below always
+      # false and this job green while recording nothing, which is the
+      # exact failure mode ADR-016 documents for the InfluxDB writes.
+      - name: Extract trend row
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          SUMMARY="k6-results/summary.json"
+
+          if [[ ! -s "$SUMMARY" ]]; then
+            echo "::error::$SUMMARY missing or empty in the k6-results artifact -- the canary passed but exported nothing, so the trend series cannot be appended to"
+            ls -R k6-results || true
+            exit 1
+          fi
+
+          # Key spellings verified against a real export before use. The
+          # document is flat: there is no `.values` wrapper at any level.
+          # `error_rate` reads `.value` because `http_req_failed` is an
+          # inverted Rate whose `passes`/`fails` are 0/221 on a fully
+          # healthy run -- using those would record a 100% error rate for
+          # every green build.
+          row="$(jq -c \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg sha "$COMMIT_SHA" \
+            --arg run_id "$RUN_ID" '
+              .metrics as $m
+              | {
+                  date:       $date,
+                  sha:        $sha,
+                  run_id:     $run_id,
+                  p50:        $m.http_req_duration["p(50)"],
+                  p95:        $m.http_req_duration["p(95)"],
+                  p99:        $m.http_req_duration["p(99)"],
+                  max:        $m.http_req_duration.max,
+                  rps:        $m.http_reqs.rate,
+                  error_rate: $m.http_req_failed.value,
+                  iterations: $m.iterations.count,
+                  checks:     "\($m.checks.passes)/\($m.checks.passes + $m.checks.fails)"
+                }
+            ' "$SUMMARY")"
+
+          # Fail loudly on a partial row rather than committing nulls. jq
+          # emits `null` for a key that has moved or been renamed, and a
+          # series quietly filling with nulls looks healthy in CI and is
+          # useless by the time anyone reads the chart.
+          #
+          # The numeric fields are wrapped in an array and tested with
+          # `all(...)` deliberately. The obvious spelling - a bare
+          # `(.p50, .p95, ... | type == "number")` - is a jq *stream* of one
+          # boolean per field, and `jq -e` derives its exit status from the
+          # LAST value only, so a null in any position but the final one
+          # exits 0. That was verified by negative test: nulling `.p95`
+          # passed the comma form and is correctly rejected by this one.
+          if ! printf '%s' "$row" | jq -e '
+                ([.p50, .p95, .p99, .max, .rps, .error_rate, .iterations]
+                  | all(type == "number" and (isnan or isinfinite | not)))
+                and (.checks | test("^[0-9]+/[0-9]+$"))
+                and (.sha | test("^[0-9a-f]{40}$"))
+                and (.run_id | test("^[0-9]+$"))
+                and (.date | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+              ' >/dev/null; then
+            echo "::error::extracted row failed validation -- a metric key has probably moved in the k6 summary export"
+            printf '%s\n' "$row"
+            exit 1
+          fi
+
+          printf '%s\n' "$row" > "$RUNNER_TEMP/row.json"
+          echo "Row to append:"
+          cat "$RUNNER_TEMP/row.json"
+
+      - name: Append to trend series and publish page
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          WORK="$RUNNER_TEMP/perf-history"
+          # Token in the remote URL is the documented pattern for the
+          # built-in GITHUB_TOKEN. Never echo this, and never `set -x` in
+          # this step; Actions masks the value but the URL form makes it
+          # trivially easy to leak into an unmasked context.
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+
+          pushed=0
+          for attempt in 1 2 3 4 5; do
+            rm -rf "$WORK"
+
+            # Bootstrap without a chicken-and-egg: `actions/checkout` with
+            # `ref: perf-history` hard-fails when the branch does not exist,
+            # which is the state of every repository before this job has
+            # ever run. Probe first, then either clone it or start an empty
+            # history locally and let the push create it.
+            if git ls-remote --exit-code --heads "$REMOTE" perf-history >/dev/null 2>&1; then
+              git clone --quiet --branch perf-history --single-branch --depth 1 "$REMOTE" "$WORK"
+            else
+              echo "perf-history does not exist yet -- creating it"
+              mkdir -p "$WORK"
+              git -C "$WORK" init --quiet --initial-branch perf-history
+              git -C "$WORK" remote add origin "$REMOTE"
+            fi
+
+            git -C "$WORK" config user.name "github-actions[bot]"
+            git -C "$WORK" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            cat "$RUNNER_TEMP/row.json" >> "$WORK/ci-history.jsonl"
+
+            # Copied unconditionally so the page tracks `main`. This is why
+            # the page must be edited at tools/perf/trend-page.html and never
+            # on the orphan branch.
+            cp tools/perf/trend-page.html "$WORK/index.html"
+            # Pages serves through Jekyll unless told not to, which would
+            # drop any future underscore-prefixed file without explanation.
+            touch "$WORK/.nojekyll"
+
+            git -C "$WORK" add ci-history.jsonl index.html .nojekyll
+            git -C "$WORK" commit --quiet \
+              -m "[EOP-169] chore: record k6 trend point for ${COMMIT_SHA}"
+
+            if git -C "$WORK" push --quiet origin "HEAD:refs/heads/perf-history"; then
+              pushed=1
+              break
+            fi
+
+            # Reached when a concurrent run pushed first. The whole clone
+            # and append is inside the loop, so the retry replays onto the
+            # new tip instead of trying to rebase a detached commit.
+            echo "push attempt $attempt failed -- refetching and replaying"
+            sleep "$((attempt * 3))"
+          done
+
+          if [[ "$pushed" -ne 1 ]]; then
+            echo "::error::could not push to perf-history after 5 attempts"
+            exit 1
+          fi
+
+          points="$(wc -l < "$WORK/ci-history.jsonl" | tr -d ' ')"
+          echo "perf-history now holds $points data point(s)"
+
+          {
+            echo "### k6 trend updated"
+            echo ""
+            echo "Recorded one data point for \`${COMMIT_SHA}\`. The series now holds $points point(s)."
+            echo ""
+            echo "Trend page: https://$(echo "$REPO" | cut -d/ -f1).github.io/$(echo "$REPO" | cut -d/ -f2)/"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Supply-chain tripwire for the OpenCode plugin roster. This job exists
   # because the prose version of it did not work: SETUP.md carried a

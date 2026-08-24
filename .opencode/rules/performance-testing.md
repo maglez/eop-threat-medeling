@@ -110,4 +110,25 @@ k6 writes metrics to the `k6` database in InfluxDB:
 2. **Never hardcode a URL in a test script** — read it from the `BASE_URL` env var. `run.sh` defaults it to `http://localhost:8080`; set it explicitly for anything that is not local dev
 3. **Compare against baseline** — check the Grafana dashboard with a wider time range to see if performance regressed
 4. **Check JSON results** — `docs/performance/history/` contains timestamped JSON output for offline analysis
-5. **Document regressions** — append results to `docs/performance/TRENDS.md` after each meaningful test run
+5. **Document regressions** — append results to `docs/performance/TRENDS.md` after each meaningful test run. **Local runs only.** CI results have their own series and must never be appended here — see the next section for why the two populations cannot be mixed
+
+## Two populations of measurement, and never one series (ADR-055 §5 as amended by EOP-169)
+
+Performance figures in this repository come from two sources that are **individually comparable and mutually incomparable**. Keep them apart; a single trend line mixing them would show step changes caused by hardware rather than by code.
+
+- **Local baselines** — everything above. Measured by hand on a developer Mac through Colima against a t3.small-bound topology, streamed to InfluxDB by `test/k6/run.sh`, viewed in Grafana on `:3000`, and curated into `docs/performance/TRENDS.md`. This is the only population the SLOs in this file (p95 < 200 ms, max < 1000 ms, error rate < 0.1%) are stated against
+- **The CI canary series** — measured on a 2-vCPU shared GitHub Actions runner by the `Run k6 performance regression canary` step, against the relaxed `THRESHOLDS_CI` in `test/k6/config/options-ci.js` (p95 < 500 ms, max < 2000 ms, error rate unchanged). It is a smoke canary catching gross regressions — an N+1, a missing index, a 50× slowdown — not a load test, and its absolute numbers mean nothing next to a local figure
+
+**Neither `run.sh` nor Grafana is involved in CI, and CI never writes to InfluxDB.** The local stack binds InfluxDB to loopback, and a hosted endpoint would need a repository secret the pipeline deliberately does not have. CI results reach a human three ways instead:
+
+1. **The run summary** — every run, pull requests included, renders a metrics table into `$GITHUB_STEP_SUMMARY`. This is a separate `if: always()` step, so the numbers appear even when a threshold breach fails the canary — which is exactly when they are wanted
+2. **The `k6-results` artifact** — `raw.json` plus `summary.json` for one run, for debugging a specific failure
+3. **The trend** — on a push to `main` whose `image` job went green, the `perf-trend` job appends one flat JSON line to `ci-history.jsonl` on the orphan `perf-history` branch and republishes `tools/perf/trend-page.html` beside it as `index.html`. GitHub Pages serves that branch root
+
+Rules for the CI series:
+
+- **`tools/perf/trend-page.html` is the tracked source of the page.** Edit it there and never on `perf-history`, where CI overwrites `index.html` unconditionally on the next push
+- **A row carries `date`, `sha`, `run_id`, `p50`, `p95`, `p99`, `max`, `rps`, `error_rate`, `iterations`, `checks`** — flat, one JSON object per line. `sha` and `run_id` are what tie a point to a commit and its logs, so a shape without them defeats the purpose
+- **Read `error_rate` from `.metrics.http_req_failed.value`, never from `.passes`/`.fails`** — that Rate reports `passes: 0, fails: 221` on a fully healthy run, so the obvious reading records 100% errors
+- **A missing or empty `summary.json` is a hard failure, never a skip.** k6 exits 0 even when every InfluxDB write fails (see ADR-016), and the first attempt at this job passed green while appending nothing at all because it read a gitignored workspace path instead of the artifact. Silence is the failure mode to design against
+- Only a push to `main` appends. `workflow_dispatch` and the weekly `schedule` also report `refs/heads/main`, so the event type is checked as well as the ref

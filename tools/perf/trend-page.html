@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<!--
+  k6 CI performance trend, published to GitHub Pages from the root of the
+  orphan `perf-history` branch (EOP-169, amending ADR-055 section 5).
+
+  This file is TRACKED ON `main` and copied verbatim onto `perf-history` by the
+  `perf-trend` job in .github/workflows/ci.yml. Edit it here, never there -- an
+  edit made directly on the orphan branch is overwritten by the next push to
+  `main`, silently, because the job copies unconditionally.
+
+  Deliberately dependency-free. The locked design called this "a Chart.js page";
+  the chart is hand-rolled SVG instead, and the deviation is intentional. A
+  <script src> to a CDN would put third-party code, fetched at view time, on a
+  public page in a repository whose CI has zero third-party GitHub Actions and
+  whose npm plugin roster is digest-audited (tools/supply-chain/). Subresource
+  Integrity would pin the bytes but still leaves a network dependency and a hash
+  to maintain, for a line chart that is ~60 lines of SVG. So: no CDN, no SRI to
+  keep current, no build step, and nothing to audit. It renders offline from a
+  file:// checkout of the branch, which also makes it testable without Pages.
+
+  The two populations must not be conflated: everything plotted here is measured
+  on a 2-vCPU shared GitHub runner and is comparable only with itself.
+  docs/performance/TRENDS.md holds hand-curated local baselines from a developer
+  Mac via Colima and is a different measurement entirely.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>k6 CI performance trend &mdash; Elevation of Privilege</title>
+<style>
+  :root { --ink: #0b0c0c; --mute: #505a5f; --line: #b1b4b6; --p95: #1d70b8; --p50: #00703c; --p99: #d4351c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 2rem 1.25rem 4rem; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  main { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .5rem; }
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 .75rem; }
+  p { margin: 0 0 1rem; max-width: 46rem; }
+  .lede { color: var(--mute); }
+  .panel { border: 1px solid var(--line); padding: 1rem; margin: 0 0 1.5rem; }
+  .caveat { border-left: 5px solid var(--mute); padding: .25rem 0 .25rem 1rem; color: var(--mute); }
+  figure { margin: 0; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 1.25rem; margin: .75rem 0 0; padding: 0; list-style: none; font-size: .875rem; }
+  .legend span { display: inline-block; width: .75rem; height: .75rem; margin-right: .375rem; vertical-align: baseline; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  caption { text-align: left; color: var(--mute); padding: 0 0 .5rem; }
+  th, td { text-align: left; padding: .5rem .625rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .status { padding: 1rem; border: 1px solid var(--line); color: var(--mute); }
+  .status[data-kind="error"] { border-color: var(--p99); color: var(--p99); }
+  a { color: var(--p95); }
+</style>
+</head>
+<body>
+<main>
+  <h1>k6 CI performance trend</h1>
+  <p class="lede">
+    One data point per push to <code>main</code>, recorded by the performance canary
+    in GitHub Actions. Newest on the right.
+  </p>
+
+  <div class="panel caveat">
+    <p style="margin:0">
+      These figures come from a shared 2-vCPU GitHub runner and are useful only
+      relative to each other &mdash; for spotting a step change, not for absolute
+      latency. They are a different population from the hand-curated local
+      baselines in <code>docs/performance/TRENDS.md</code> and the two must never
+      be compared or merged.
+    </p>
+  </div>
+
+  <div id="status" class="status" role="status">Loading trend data&hellip;</div>
+
+  <figure id="chart-wrap" hidden>
+    <svg id="chart" viewBox="0 0 960 380" role="img" aria-labelledby="chart-title chart-desc" preserveAspectRatio="xMidYMid meet">
+      <title id="chart-title">Response time percentiles per build</title>
+      <desc id="chart-desc">Line chart of p50, p95 and p99 request duration in milliseconds across successive pushes to main.</desc>
+    </svg>
+    <ul class="legend">
+      <li><span style="background:var(--p50)"></span>p50</li>
+      <li><span style="background:var(--p95)"></span>p95</li>
+      <li><span style="background:var(--p99)"></span>p99</li>
+    </ul>
+    <figcaption class="legend" style="color:var(--mute)">
+      Full data table below. The underlying series is
+      <a href="ci-history.jsonl">ci-history.jsonl</a>.
+    </figcaption>
+  </figure>
+
+  <h2 id="runs-heading" hidden>Recent builds</h2>
+  <table id="runs" hidden>
+    <caption>Most recent 30 builds, newest first.</caption>
+    <thead>
+      <tr>
+        <th scope="col">Date (UTC)</th>
+        <th scope="col">Commit</th>
+        <th scope="col" class="num">p50 ms</th>
+        <th scope="col" class="num">p95 ms</th>
+        <th scope="col" class="num">p99 ms</th>
+        <th scope="col" class="num">max ms</th>
+        <th scope="col" class="num">req/s</th>
+        <th scope="col" class="num">errors</th>
+        <th scope="col" class="num">checks</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // Fixed rather than derived from location.*, which would break the moment the
+  // page is opened from a file:// checkout or a custom domain.
+  var REPO = "maglez/eop-threat-medeling";
+  var SERIES = ["p50", "p95", "p99"];
+  var COLOUR = { p50: "#00703c", p95: "#1d70b8", p99: "#d4351c" };
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  var statusEl = document.getElementById("status");
+
+  function fail(message) {
+    statusEl.hidden = false;
+    statusEl.setAttribute("data-kind", "error");
+    statusEl.textContent = message;
+  }
+
+  function el(name, attrs) {
+    var node = document.createElementNS(SVGNS, name);
+    Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+    return node;
+  }
+
+  function isFiniteNumber(v) { return typeof v === "number" && isFinite(v); }
+
+  // Everything below is drawn from a file the CI job writes, so it is not
+  // attacker-controlled in the usual sense -- but it is data being turned into
+  // DOM and a URL, so it is validated as if it were. Values are only ever set
+  // via textContent, and a sha is only linked once it matches /^[0-9a-f]{7,40}$/.
+  function isSha(v) { return typeof v === "string" && /^[0-9a-f]{7,40}$/.test(v); }
+
+  function parseRow(line) {
+    var row;
+    try { row = JSON.parse(line); } catch (e) { return null; }
+    if (!row || typeof row !== "object" || Array.isArray(row)) { return null; }
+    for (var i = 0; i < SERIES.length; i++) {
+      if (!isFiniteNumber(row[SERIES[i]])) { return null; }
+    }
+    return row;
+  }
+
+  function niceCeil(value) {
+    if (value <= 0) { return 1; }
+    var mag = Math.pow(10, Math.floor(Math.log(value) / Math.LN10));
+    return Math.ceil(value / mag) * mag;
+  }
+
+  function draw(rows) {
+    var svg = document.getElementById("chart");
+    var W = 960, H = 380, padL = 62, padR = 18, padT = 18, padB = 52;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var peak = 0;
+    rows.forEach(function (r) {
+      SERIES.forEach(function (k) { if (r[k] > peak) { peak = r[k]; } });
+    });
+    var yMax = niceCeil(peak || 1);
+
+    // A single build would otherwise divide by zero; centre it instead.
+    var xOf = function (i) {
+      return rows.length === 1 ? padL + plotW / 2
+                               : padL + (i / (rows.length - 1)) * plotW;
+    };
+    var yOf = function (v) { return padT + plotH - (v / yMax) * plotH; };
+
+    var ticks = 5, t;
+    for (t = 0; t <= ticks; t++) {
+      var val = (yMax / ticks) * t;
+      var y = yOf(val);
+      svg.appendChild(el("line", {
+        x1: padL, y1: y, x2: W - padR, y2: y,
+        stroke: t === 0 ? "#0b0c0c" : "#e7e8e9", "stroke-width": 1
+      }));
+      var label = el("text", { x: padL - 10, y: y + 4, "text-anchor": "end", "font-size": 12, fill: "#505a5f" });
+      label.textContent = String(Math.round(val * 100) / 100);
+      svg.appendChild(label);
+    }
+
+    var axisLabel = el("text", {
+      x: padL, y: H - 14, "font-size": 12, fill: "#505a5f"
+    });
+    axisLabel.textContent = "milliseconds \u2014 " + rows.length +
+      (rows.length === 1 ? " build" : " builds") + ", oldest left";
+    svg.appendChild(axisLabel);
+
+    SERIES.forEach(function (key) {
+      var d = rows.map(function (r, i) {
+        return (i === 0 ? "M" : "L") + xOf(i).toFixed(2) + " " + yOf(r[key]).toFixed(2);
+      }).join(" ");
+      svg.appendChild(el("path", {
+        d: d, fill: "none", stroke: COLOUR[key], "stroke-width": 2,
+        "stroke-linejoin": "round", "stroke-linecap": "round"
+      }));
+      rows.forEach(function (r, i) {
+        var dot = el("circle", { cx: xOf(i), cy: yOf(r[key]), r: rows.length > 80 ? 1.5 : 3, fill: COLOUR[key] });
+        var tip = el("title");
+        tip.textContent = key + " " + (Math.round(r[key] * 100) / 100) + " ms" +
+          (isSha(r.sha) ? " \u2014 " + r.sha.slice(0, 7) : "") +
+          (typeof r.date === "string" ? " \u2014 " + r.date : "");
+        dot.appendChild(tip);
+        svg.appendChild(dot);
+      });
+    });
+
+    document.getElementById("chart-wrap").hidden = false;
+  }
+
+  function tableCell(row, text, numeric) {
+    var td = document.createElement("td");
+    if (numeric) { td.className = "num"; }
+    td.textContent = text;
+    row.appendChild(td);
+    return td;
+  }
+
+  function fmt(v, dp) {
+    if (!isFiniteNumber(v)) { return "\u2014"; }
+    var f = Math.pow(10, dp === undefined ? 2 : dp);
+    return String(Math.round(v * f) / f);
+  }
+
+  function fill(rows) {
+    var body = document.querySelector("#runs tbody");
+    rows.slice().reverse().slice(0, 30).forEach(function (r) {
+      var tr = document.createElement("tr");
+      tableCell(tr, typeof r.date === "string" ? r.date : "\u2014", false);
+
+      var shaCell = tableCell(tr, "", false);
+      if (isSha(r.sha)) {
+        var a = document.createElement("a");
+        a.href = "https://github.com/" + REPO + "/commit/" + r.sha;
+        a.rel = "noopener";
+        var code = document.createElement("code");
+        code.textContent = r.sha.slice(0, 7);
+        a.appendChild(code);
+        shaCell.appendChild(a);
+      } else {
+        shaCell.textContent = "\u2014";
+      }
+
+      tableCell(tr, fmt(r.p50), true);
+      tableCell(tr, fmt(r.p95), true);
+      tableCell(tr, fmt(r.p99), true);
+      tableCell(tr, fmt(r.max), true);
+      tableCell(tr, fmt(r.rps), true);
+      tableCell(tr, isFiniteNumber(r.error_rate) ? fmt(r.error_rate * 100, 2) + "%" : "\u2014", true);
+      tableCell(tr, typeof r.checks === "string" && /^[0-9]+\/[0-9]+$/.test(r.checks) ? r.checks : "\u2014", true);
+      body.appendChild(tr);
+    });
+    document.getElementById("runs-heading").hidden = false;
+    document.getElementById("runs").hidden = false;
+  }
+
+  // Cache-bust so a viewer refreshing after a merge does not read a stale copy
+  // from the Pages CDN.
+  fetch("ci-history.jsonl?t=" + Date.now(), { cache: "no-store" })
+    .then(function (res) {
+      if (!res.ok) { throw new Error("ci-history.jsonl responded " + res.status); }
+      return res.text();
+    })
+    .then(function (text) {
+      var lines = text.split("\n").filter(function (l) { return l.trim() !== ""; });
+      var total = lines.length;
+      var rows = lines.map(parseRow).filter(function (r) { return r !== null; });
+
+      if (rows.length === 0) {
+        fail(total === 0
+          ? "No builds recorded yet. The series is written on the first push to main after this page was published."
+          : "Found " + total + " line(s) in ci-history.jsonl but none carried finite p50, p95 and p99 values.");
+        return;
+      }
+
+      statusEl.hidden = true;
+      if (rows.length < total) {
+        statusEl.hidden = false;
+        statusEl.textContent = "Skipped " + (total - rows.length) +
+          " malformed line(s) of " + total + " in ci-history.jsonl.";
+      }
+      draw(rows);
+      fill(rows);
+    })
+    .catch(function (err) {
+      fail("Could not load ci-history.jsonl: " + err.message);
+    });
+})();
+</script>
+</body>
+</html>
