@@ -230,9 +230,11 @@ became eleven when EOP-163 landed a new changelog.
 
 **A worked composition, to show what neither the XSD nor an empty-database round trip sees.**
 Liquibase unwinds in reverse execution order, so a *full* unwind of `002-real-deck.xml` is
-harmless. A two-step partial one is not. `rollbackCount=2` from the top of that file targets the
-state after `002-seed-placeholder-deck` and before `003-remove-placeholder-deck` — the six
-placeholder rows present. Step one runs `004-seed-real-deck`'s rollback,
+harmless. A two-step partial one is not. `rollbackCount` unwinds the last *n* changesets applied
+across the whole changelog rather than anything scoped to a file, so with this file's two
+changesets applied last, `rollbackCount=2` targets the state after `002-seed-placeholder-deck`
+and before `003-remove-placeholder-deck` — the six placeholder rows present. Step one runs
+`004-seed-real-deck`'s rollback,
 `002-real-deck.xml:737-741` (anchor: `suit_order`), which empties the table. Step two runs
 `003-remove-placeholder-deck`'s comment-only rollback, which re-inserts nothing. The result is an
 empty table where the faithful inverse holds six rows. Every element involved is schema-valid.
@@ -276,4 +278,6 @@ above does, rather than a number counted by hand.
 - [ADR-002: Spring Boot Walking Skeleton](ADR-002-spring-boot-bootstrap.md)
 - [ADR-007: Versioning Strategy](ADR-007-versioning-strategy.md)
 - [ADR-043: Liquibase contexts are not used](ADR-043-liquibase-contexts-are-not-used.md)
+- [ADR-056: Liquibase Migration Tests Against PostgreSQL 17 via Testcontainers](ADR-056-postgres-migration-tests-via-testcontainers.md)
+- [ADR-057: Honest Join-Code Rollback — Refusing to Truncate Live Data](ADR-057-honest-join-code-rollback.md)
 - `.opencode/rules/database.md`
