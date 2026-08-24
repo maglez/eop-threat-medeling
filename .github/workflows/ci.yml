@@ -259,9 +259,16 @@ jobs:
       # Run k6 performance regression canary as per ADR-055
       # This check uses relaxed CI-specific thresholds to account for 2-vCPU runner jitter
       # while still catching gross regressions (N+1, missing index, 50x slowdown).
-      # Results are uploaded as artifacts for debugging regressions, not for trend analysis.
-      # Do NOT append CI results to docs/performance/TRENDS.md - that file tracks local
-      # development baselines measured on a developer Mac via Colima against a t3.small-bound topology.
+      # Raw results are uploaded as an artifact for debugging a specific regression.
+      # The per-run headline figures are rendered into the run summary by the step
+      # after this one, and pushes to `main` additionally append one row to the
+      # trend series in the `perf-trend` job below (ADR-055 as amended by EOP-169).
+      #
+      # Do NOT append CI results to docs/performance/TRENDS.md. These are two
+      # separate populations and mixing them would make both meaningless: TRENDS.md
+      # tracks hand-curated baselines measured on a developer Mac via Colima against
+      # a t3.small-bound topology, whereas everything below is measured on a 2-vCPU
+      # shared GitHub runner. The CI series is only ever comparable with itself.
       - name: Run k6 performance regression canary
         run: |
           set -euo pipefail
@@ -366,6 +373,54 @@ jobs:
           fi
 
           echo "All $EXPECTED_THRESHOLD_COUNT k6 thresholds passed"
+
+      # Rendered in a step of its own rather than appended to the step above, and
+      # deliberately `if: always()`. The k6 step `exit 1`s the instant a threshold
+      # is breached, so anything appended after that gate would be skipped in
+      # precisely the run whose numbers someone needs to see. The `-s` guard keeps
+      # this step green and quiet when k6 never got as far as writing a summary
+      # (stack failed to come up, image pull failed), because a missing summary is
+      # already reported as a hard error by the step above -- failing here as well
+      # would only add noise to a run that has already gone red for the real reason.
+      - name: Render k6 metrics to the run summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          SUMMARY="${{ github.workspace }}/test/k6/results/summary.json"
+
+          if [[ ! -s "$SUMMARY" ]]; then
+            echo "No k6 summary export found -- nothing to render"
+            exit 0
+          fi
+
+          # Key spellings verified against a real export before use: the document
+          # is flat, with no `.values` wrapper at any level. `http_req_failed` is
+          # an inverted Rate whose real figure is `.value` -- its `passes`/`fails`
+          # read 0/221 on a fully healthy run, so those two are never rendered.
+          # `p(50)`/`p(95)`/`p(99)` exist only because health-check.js asks for
+          # them in `summaryTrendStats`; they are not k6 defaults.
+          jq -r '
+            .metrics as $m
+            | "### k6 performance canary",
+              "",
+              "| Metric | Value |",
+              "| --- | --- |",
+              "| p50 latency | \($m.http_req_duration["p(50)"] * 100 | round / 100) ms |",
+              "| p95 latency | \($m.http_req_duration["p(95)"] * 100 | round / 100) ms |",
+              "| p99 latency | \($m.http_req_duration["p(99)"] * 100 | round / 100) ms |",
+              "| max latency | \($m.http_req_duration.max * 100 | round / 100) ms |",
+              "| Requests / sec | \($m.http_reqs.rate * 100 | round / 100) |",
+              "| Error rate | \($m.http_req_failed.value * 10000 | round / 100)% |",
+              "| Iterations | \($m.iterations.count) |",
+              "| Checks passed | \($m.checks.passes)/\($m.checks.passes + $m.checks.fails) |"
+          ' "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+
+          {
+            echo ""
+            echo "Measured on a 2-vCPU GitHub runner against the Compose stack through Caddy."
+            echo "Not comparable with the local baselines in \`docs/performance/TRENDS.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload k6 results
         if: always()
