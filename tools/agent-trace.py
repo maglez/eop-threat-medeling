@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sqlite3
 import subprocess
@@ -64,6 +65,14 @@ DB_PATH = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
 # and more coffee breaks alike, which is why the figure is cutoff-sensitive and
 # the flag exists rather than the number being buried. See active_time.
 DEFAULT_IDLE_CUTOFF_MINUTES = 2.0
+
+# Upper bound on --idle-cutoff. A silence longer than a day does not describe a
+# break in a working session, it disables the measurement: every message in the
+# database collapses into one block and `active time` converges on the calendar
+# span the whole change exists to stop reporting. Bounding it also keeps the
+# millisecond conversion in `main` inside a range int() can represent, which an
+# unbounded float cannot promise.
+MAX_IDLE_CUTOFF_MINUTES = 1440.0
 
 # Tools that change the working tree. An agent declaring `edit: deny` that shows
 # up here has violated its contract; whether it also defeated the permission
@@ -414,25 +423,18 @@ def sessionise(stamps: list[int], cutoff: int) -> list[tuple[int, int]]:
     return blocks
 
 
-def active_time(connection: sqlite3.Connection, project: str, cutoff: int) -> dict:
-    """Worked time for this project, measured from message timestamps.
+def message_stamps(connection: sqlite3.Connection, project: str) -> list[int]:
+    """Every message timestamp for this project, oldest first.
 
-    Every other duration this script reports is derived from `session`, whose two
-    timestamps are only first-message-to-last-touch. That made `total time` read
-    as most of the calendar: three root sessions left open accounted for eleven
-    days between them, and a session opened at night and touched the next morning
-    contributed the intervening sleep. The disclaimer under the footer was true
-    and useless, because nobody reads a figure labelled as time as meaning "how
-    long a tab was open".
+    Selects `time_created` and nothing else. `message.data` holds the message
+    body, so widening this to `m.*` would pull conversation content - prompts,
+    tool output, whatever was pasted into a session - into a reporting tool that
+    has no business seeing it. Take the one column.
 
-    `message` carries one row per message with its own `time_created`, which is
-    the evidence that was missing. Sessionising those with a short cutoff gives
-    hands-on time, and it came out at roughly a quarter of the span-based figure.
-
-    Days are bucketed in UTC, like every other timestamp here, so a session run
-    late in a positive-offset timezone can land on the following day.
+    The ORDER BY is belt-and-braces: `sessionise` sorts its own input, so this
+    only keeps the SQL honest about what it means to return.
     """
-    stamps = [
+    return [
         row[0]
         for row in connection.execute(
             """
@@ -445,6 +447,31 @@ def active_time(connection: sqlite3.Connection, project: str, cutoff: int) -> di
             (project_pattern(project),),
         )
     ]
+
+
+def active_stats(stamps: list[int], cutoff: int) -> dict:
+    """Worked time for this project, measured from message timestamps.
+
+    Every other duration this script reports is derived from `session`, whose two
+    timestamps are only first-message-to-last-touch. That made the figure now
+    printed as `calendar span` read as most of the calendar: three root sessions
+    left open accounted for eleven days between them, and a session opened at
+    night and touched the next morning contributed the intervening sleep. The
+    disclaimer under the footer was true and useless, because nobody reads a
+    figure labelled as time as meaning "how long a tab was open".
+
+    `message` carries one row per message with its own `time_created`, which is
+    the evidence that was missing. Sessionising those with a short cutoff gives
+    hands-on time, and it came out at roughly a quarter of the span-based figure.
+
+    Takes stamps rather than a connection so the arithmetic can be exercised
+    without a database; `message_stamps` is the I/O half.
+
+    Days are bucketed in UTC, like every other timestamp here, so a session run
+    late in a positive-offset timezone can land on the following day. A block
+    spanning midnight is counted only against the day it began, so `active_days`
+    is a count of days on which work *started*, not of days touched.
+    """
     blocks = sessionise(stamps, cutoff)
     days = {
         datetime.fromtimestamp(start / 1000, tz=timezone.utc).date()
@@ -533,7 +560,7 @@ def project_totals(
     not been refreshed yet. Re-run the check rather than trusting this paragraph.
     Three figures are reported:
 
-      active   - from `active_time`, i.e. from message timestamps rather than
+      active   - from `active_stats`, i.e. from message timestamps rather than
                  session spans. The one to quote. It is the only figure here that
                  excludes idle time, and it came out far below the other two.
       elapsed  - overlapping spans merged. Because of the containment above this
@@ -581,7 +608,8 @@ def project_totals(
         "first": min((start for start, _ in spans), default=None),
         "last": max((end for _, end in spans), default=None),
         "cutoff": cutoff,
-        **active_time(connection, project, cutoff),
+        # Injects: active, blocks, messages, active_days.
+        **active_stats(message_stamps(connection, project), cutoff),
         "gates": gate_breakdown(rows, elapsed),
     }
 
@@ -607,13 +635,15 @@ def print_gate_totals(totals: dict) -> None:
         print(f"  {gate['agent']:<24}{gate['sessions']:>9}"
               f"{format_span(gate['elapsed']):>18}{gate['share']:>8.1%}"
               f"{cost:>13}")
-    print(
-        "\n  The gates run in parallel, so their times and shares overlap and do"
-        " not add up\n  to the merged row - only the costs do. A share is"
-        " occupancy: how much of the\n  window had that gate in flight."
-        " architecture-guardian is also dispatched\n  outside the gate stage,"
-        " so its row includes ADR work as well as reviews."
-    )
+    print()
+    print("  The gates run in parallel, so their times and shares overlap and"
+          " do not add up")
+    print("  to the merged row - only the costs do. A share is occupancy: how"
+          " much of the")
+    print("  window had that gate in flight. architecture-guardian is also"
+          " dispatched")
+    print("  outside the gate stage, so its row includes ADR work as well as"
+          " reviews.")
 
 
 def format_cutoff(cutoff: int) -> str:
@@ -646,23 +676,29 @@ def print_project_totals(
                     if totals["undated_roots"] else "")
         print(f"  undated      : {totals['undated']} session(s) with unusable"
               f" timestamps{of_which}, counted in cost but in no time figure")
-    print(
-        f"\n  active time is the one to quote. It reads {totals['messages']:,}"
-        f" message timestamps and\n  counts a silence longer than {gap} as a"
-        " break, so it spans"
-        f" {totals['active_days']} days\n  rather than the whole calendar."
-        " Raise or lower it with --idle-cutoff MINUTES;\n  a larger cutoff"
-        " absorbs more thinking time and more coffee breaks alike."
-    )
-    print(
-        "\n  The two figures under it are coverage, not work: a session left open"
-        " overnight\n  counts the night. They are kept because the per-gate"
-        " shares below divide one\n  span-derived duration by another, which"
-        " mixing in the activity figure would\n  break. The"
-        f" {totals['subagents']} subagent sessions are in neither of them, on"
-        " purpose:\n  each runs inside the session that dispatched it, so its"
-        " parent's span covers it."
-    )
+    # One print per output line. Building these as concatenated f-string
+    # fragments with embedded newlines hid where the terminal would actually
+    # break, so a reworded sentence silently reflowed the output.
+    print()
+    print(f"  active time is the one to quote. It reads {totals['messages']:,}"
+          " message timestamps")
+    print(f"  and counts a silence longer than {gap} as a break, so it covers"
+          f" {totals['active_days']} days")
+    print("  rather than the whole calendar. Raise or lower it with"
+          " --idle-cutoff MINUTES;")
+    print("  a larger cutoff absorbs more thinking time and more coffee breaks"
+          " alike.")
+    print()
+    print("  The two figures under it are coverage, not work: a session left"
+          " open overnight")
+    print("  counts the night. They are kept because the per-gate shares below"
+          " divide one")
+    print("  span-derived duration by another, which mixing in the activity"
+          " figure would")
+    print(f"  break. The {totals['subagents']} subagent sessions are in neither"
+          " of them, on purpose:")
+    print("  each runs inside the session that dispatched it, so its parent's"
+          " span covers it.")
     print_gate_totals(totals)
 
 
@@ -969,8 +1005,17 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="emit JSON")
     args = parser.parse_args()
 
-    if args.idle_cutoff <= 0:
-        parser.error("--idle-cutoff must be greater than zero")
+    # `type=float` accepts inf and nan, and neither is caught by a `<= 0` test:
+    # `nan <= 0` is False, so both used to reach int() and abort with a raw
+    # OverflowError or ValueError traceback. Check finiteness explicitly and
+    # reject out of range rather than truncating silently.
+    if not math.isfinite(args.idle_cutoff):
+        parser.error("--idle-cutoff must be a finite number of minutes")
+    if not 0 < args.idle_cutoff <= MAX_IDLE_CUTOFF_MINUTES:
+        parser.error(
+            "--idle-cutoff must be greater than zero and at most"
+            f" {MAX_IDLE_CUTOFF_MINUTES:g} minutes"
+        )
 
     project = args.project or repo_root()
     connection = connect()
