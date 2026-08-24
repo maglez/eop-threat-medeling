@@ -1,6 +1,6 @@
 # ADR-006: Build Quality Gates
 
-**Status:** Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20 and 2026-08-23)
+**Status:** Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20, 2026-08-23 and 2026-08-24)
 **Date:** 2026-07-26
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -150,6 +150,22 @@ Plugins pinned to specific versions for reproducible builds.
 > **What the gate found on arrival.** Seventeen live citations across six documents were repaired in the same commit, and each repaired one was anchored. Most were simple drift, including three copies of one claim about where `CARD_PLAYED` is published while a fourth document already carried the correct line — the same fact under two contradicting numbers. One was not drift at all: a citation had carried a **false architectural claim**, naming `Trick.reconstitute` as the only caller of `winningPlay()` when that method takes the winner as a parameter and never calls it, the real caller being `Trick.resolved`. No existing gate could have seen that, and it is the clearest argument for the anchored subset.
 >
 > **Related:** `.opencode/rules/build-quality.md`, whose prose-gate bullet gains this gate and the corrected roster; [ADR-044](ADR-044-changelog-file-naming-is-dated.md) and [ADR-054](ADR-054-openapi-contract-drift-gate.md) for the sibling pattern of a convention held by a test rather than by review.
+
+> **Amended 2026-08-24 (EOP-167): a ninth documentation-integrity gate, and the first that guards a diagram rather than prose.**
+>
+> **Decision.** `src/test/java/org/maglez/eop/docs/DbSchemaDiagramTest` joins the documentation-integrity gates as the **ninth**, and the roster is now `AdrIndexConsistencyTest`, `DbSchemaDiagramTest`, `DeckArithmeticClaimsTest`, `EnumMirrorParityTest`, `JoinCodeSpaceClaimsTest`, `MermaidSequenceTextTest`, `OpenApiContractDriftTest`, `SourceCitationAnchorTest` and `TrickPlayExceptionOriginTest`. The count of eight in the EOP-130 amendment above is frozen where it stands, exactly as that amendment froze the three and six before it, and this list supersedes it. The new gate holds the `erDiagram` in `docs/architecture/db-schema.md` against the Liquibase changelogs in **both** directions — every table name a changelog creates must have an entity block, and every entity block must name a table some changelog creates — and adds three structural checks: every entity block closes, no relationship endpoint names an entity the diagram does not declare, and a `MINIMUM_ENTITIES` floor so no rule can pass over an empty list.
+>
+> **Why the two directions and the three structural checks are not padding.** Each catches a failure Mermaid renders *silently*, which is the property that makes a diagram worse than absent documentation. A missing entity still renders and still looks authoritative. A relationship naming an undeclared entity makes Mermaid invent an empty box rather than fail, so a typo on one side of a cardinality token yields a diagram with a phantom table in it. An unclosed brace stops the whole fence rendering. `MermaidSequenceTextTest` is scoped to `sequenceDiagram` fences by construction and never sees this file, so before this gate nothing in the build looked at an `erDiagram` at all.
+>
+> **How it arrived is part of the record.** The diagram merged first and the gate followed, because the gate round on the diagram's own pull request rejected it for precisely this absence: a hand-maintained mirror of a machine-readable artefact with no gate, against five standing precedents in this ADR for the opposite. The gate was then verified by mutation rather than by assertion — renaming one entity fails three of its rules, and renaming an endpoint on a relationship line alone fails the dangling-endpoint rule. That second case is why both identifier patterns admit upper case: while they were lower-case-only the mutated line failed to match, was silently discarded, and the whole build stayed green. Widening the character class adds no rule; it lets the existing rule see the line.
+>
+> **Three limits, stated because a green run must not be read as more than it is.**
+>
+> - **Not a syntax check.** A malformed column line, an invalid cardinality token or a stray character can still fail to render and will still pass `./mvnw verify`. The gate reads structure, not Mermaid's grammar.
+> - **Column detail is reviewer-enforced.** Types, nullability, the PK/UK/FK markers and the `ON DELETE` annotations on every relationship are read by a person. The `ON DELETE` behaviours are the security-relevant half of the diagram, so this limit is the one worth remembering.
+> - **Extraction reads `createTable` only.** A table created by a raw `<sql>` or `<sqlFile>` changeset carries no such element and is invisible; none exists in this tree today, since raw `<sql>` is used only for check constraints and indexes. The same narrowness means a genuinely dropped table would leave its historic `createTable` behind and the gate would keep accepting a stale entity — at which point dropped names read *outside* `<rollback>` blocks must be subtracted, since every `dropTable` here is currently a rollback inverse.
+>
+> **Related:** `docs/architecture/db-schema.md`, the diagram this gate guards; `.opencode/rules/build-quality.md`, whose prose-gate bullet gains this gate; [ADR-008](ADR-008-database-migration-liquibase.md), which makes the changelogs the sole schema truth the diagram is derived from.
 
 ## Consequences
 
