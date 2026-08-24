@@ -635,4 +635,138 @@ describe('GameScreen', () => {
       expect(playCardSpy).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * Follow-suit hint (EOP-168).
+   *
+   * These tests drive the hint through GameScreen rather than through
+   * FollowSuitHint in isolation, because the wiring is the part that can break:
+   * FollowSuitHint.test.tsx already covers the prop logic, but only GameScreen
+   * reads `import.meta.env`, so this is the only place `vi.stubEnv` can reach
+   * the flag. The flag is stubbed explicitly in every test — a developer's
+   * .env.local may set VITE_FOLLOW_SUIT_HINT_ENABLED either way, and an
+   * unstubbed test would silently assert whatever position that file holds
+   * (ADR-037).
+   */
+  describe('follow-suit hint', () => {
+    const tamperingLed: api.TrickStateDto = {
+      complete: false,
+      handComplete: false,
+      seatToPlay: 0,
+      trick: {
+        trickId: 'trick1',
+        sequence: 1,
+        leaderSeat: 1,
+        ledSuit: 'TAMPERING',
+        plays: [
+          {
+            trickPlayId: 'play1',
+            playerId: 'player2',
+            seatOrder: 1,
+            card: tamperingKing,
+            threatLinked: false,
+            components: [],
+            playedAt: '2023-01-01T00:00:00Z',
+          },
+        ],
+      },
+    };
+
+    const renderWith = async (
+      trickState: api.TrickStateDto,
+      cards: api.CardDto[],
+    ): Promise<void> => {
+      vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand(cards));
+      vi.spyOn(api, 'getTrickState').mockResolvedValue(trickState);
+      vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+      vi.spyOn(api, 'subscribeToSession').mockReturnValue({
+        abort: vi.fn(),
+      } as unknown as AbortController);
+
+      render(<GameScreen {...defaultProps} />);
+      await waitFor(() => {
+        expect(api.getTrickState).toHaveBeenCalled();
+      });
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    describe('when the flag is on', () => {
+      beforeEach(() => {
+        vi.stubEnv('VITE_FOLLOW_SUIT_HINT_ENABLED', 'true');
+      });
+
+      it('names the led suit when it is my turn and I can follow', async () => {
+        await renderWith(tamperingLed, [tamperingKing, spoofingKing]);
+
+        expect(
+          await screen.findByText(/you must play a tampering card/i),
+        ).toBeInTheDocument();
+      });
+
+      it('renders the hint as a status region so screen readers announce it', async () => {
+        await renderWith(tamperingLed, [tamperingKing]);
+
+        expect(await screen.findByRole('status')).toHaveTextContent(/follow suit/i);
+      });
+
+      it('does not show the hint when I hold no card of the led suit', async () => {
+        // The domain rule is follow-suit-*if-able* (Trick#play), so a hint
+        // demanding a suit the hand cannot supply would state a falsehood.
+        await renderWith(tamperingLed, [spoofingKing, repudiationQueen]);
+
+        await waitFor(() => {
+          expect(screen.getByRole('group', { name: 'Your hand' })).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/you must play a/i)).not.toBeInTheDocument();
+      });
+
+      it('does not show the hint when I am leading the trick', async () => {
+        // idleTrickState carries no trick, so no suit has been led yet.
+        await renderWith(idleTrickState, [tamperingKing]);
+
+        await waitFor(() => {
+          expect(screen.getByRole('group', { name: 'Your hand' })).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/you must play a/i)).not.toBeInTheDocument();
+      });
+
+      it('does not show the hint when it is not my turn', async () => {
+        await renderWith({ ...tamperingLed, seatToPlay: 1 }, [tamperingKing]);
+
+        await waitFor(() => {
+          expect(screen.getByRole('group', { name: 'Your hand' })).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/you must play a/i)).not.toBeInTheDocument();
+      });
+    });
+
+    describe('when the flag is off', () => {
+      it('renders no hint even though every other condition holds', async () => {
+        vi.stubEnv('VITE_FOLLOW_SUIT_HINT_ENABLED', 'false');
+        await renderWith(tamperingLed, [tamperingKing]);
+
+        await waitFor(() => {
+          expect(screen.getByRole('group', { name: 'Your hand' })).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/you must play a/i)).not.toBeInTheDocument();
+      });
+    });
+
+    describe('when the flag is unset', () => {
+      it('fails closed', async () => {
+        // ADR-037: the `=== 'true'` comparison means an absent variable
+        // disables the feature rather than enabling it.
+        vi.stubEnv('VITE_FOLLOW_SUIT_HINT_ENABLED', '');
+        await renderWith(tamperingLed, [tamperingKing]);
+
+        await waitFor(() => {
+          expect(screen.getByRole('group', { name: 'Your hand' })).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/you must play a/i)).not.toBeInTheDocument();
+      });
+    });
+  });
 });

@@ -14,6 +14,7 @@ import {
 } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 import { CardLens, useCardMagnifier } from './CardMagnifier';
+import { FollowSuitHint } from './FollowSuitHint';
 import { cardImagePath } from '../utils/cardImagePath';
 import './GameScreen.css';
 
@@ -389,6 +390,12 @@ export function GameScreen({
   // .env.local happens to hold. The `=== 'true'` comparison is what makes an
   // unset variable fail closed (ADR-037).
   const isCardMagnifierEnabled = import.meta.env.VITE_CARD_MAGNIFIER_ENABLED === 'true';
+
+  // Feature flag — same contract as above: component scope, not module scope,
+  // and compared with === 'true' so that an unset variable fails closed
+  // (ADR-037). Threaded into FollowSuitHint rather than used to decide whether
+  // to render it, so the gate lives at the single point the feature is entered.
+  const isFollowSuitHintEnabled = import.meta.env.VITE_FOLLOW_SUIT_HINT_ENABLED === 'true';
   const [session, setSession] = useState<SessionStateDto>(initialSession);
   const [hand, setHand] = useState<HandDto | null>(null);
   const [trickState, setTrickState] = useState<TrickStateDto | null>(null);
@@ -807,6 +814,18 @@ export function GameScreen({
               <span className="govuk-hint">No cards remaining</span>
             )}
           </div>
+
+          {/* Follow-suit hint (EOP-168) — tells the active player which suit
+              they must follow before they attempt an illegal play. The domain
+              rule is follow-suit-*if-able* ({@code Trick#play}), so the hint is
+              suppressed when the hand holds none of the led suit; the component
+              also owns the feature-flag gate. */}
+          <FollowSuitHint
+            enabled={isFollowSuitHintEnabled}
+            isMyTurn={isMyTurn}
+            ledSuit={trickState.trick?.ledSuit}
+            canFollowLedSuit={hand.cards.some(card => card.suit === trickState.trick?.ledSuit)}
+          />
 
           {/* Keyboard fallback: play selected card button */}
           {selectedCardId && isMyTurn && (
