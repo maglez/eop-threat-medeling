@@ -1,0 +1,554 @@
+[
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-12",
+    "to": "EOP-14",
+    "link_id": "10000"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-12",
+    "to": "EOP-15",
+    "link_id": "10001"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-14",
+    "to": "EOP-15",
+    "link_id": "10003"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-49",
+    "to": "EOP-14",
+    "link_id": "10074"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-17",
+    "to": "EOP-25",
+    "link_id": "10036"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-18",
+    "to": "EOP-25",
+    "link_id": "10037"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-19",
+    "to": "EOP-25",
+    "link_id": "10038"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-20",
+    "to": "EOP-25",
+    "link_id": "10039"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-21",
+    "to": "EOP-25",
+    "link_id": "10040"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-22",
+    "to": "EOP-25",
+    "link_id": "10041"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-54",
+    "to": "EOP-25",
+    "link_id": "10080"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-55",
+    "to": "EOP-25",
+    "link_id": "10081"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-56",
+    "to": "EOP-25",
+    "link_id": "10082"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-51",
+    "to": "EOP-26",
+    "link_id": "10076"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-52",
+    "to": "EOP-26",
+    "link_id": "10077"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-53",
+    "to": "EOP-26",
+    "link_id": "10078"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-114",
+    "to": "EOP-29",
+    "link_id": "10337"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-115",
+    "to": "EOP-29",
+    "link_id": "10338"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-30",
+    "to": "EOP-117",
+    "link_id": "10335"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-120",
+    "to": "EOP-31",
+    "link_id": "10264"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-104",
+    "to": "EOP-35",
+    "link_id": "10160"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-105",
+    "to": "EOP-40",
+    "link_id": "10193"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-106",
+    "to": "EOP-40",
+    "link_id": "10194"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-107",
+    "to": "EOP-40",
+    "link_id": "10195"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-52",
+    "to": "EOP-45",
+    "link_id": "10079"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-47",
+    "to": "EOP-97",
+    "link_id": "10300"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-50",
+    "to": "EOP-48",
+    "link_id": "10075"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-57",
+    "to": "EOP-117",
+    "link_id": "10336"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-83",
+    "to": "EOP-82",
+    "link_id": "10115"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-84",
+    "to": "EOP-82",
+    "link_id": "10116"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-85",
+    "to": "EOP-82",
+    "link_id": "10117"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-86",
+    "to": "EOP-82",
+    "link_id": "10118"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-87",
+    "to": "EOP-82",
+    "link_id": "10119"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-88",
+    "to": "EOP-82",
+    "link_id": "10120"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-89",
+    "to": "EOP-82",
+    "link_id": "10121"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-90",
+    "to": "EOP-82",
+    "link_id": "10122"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-91",
+    "to": "EOP-82",
+    "link_id": "10123"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-92",
+    "to": "EOP-83",
+    "link_id": "10124"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-152",
+    "to": "EOP-88",
+    "link_id": "10352"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-146",
+    "to": "EOP-89",
+    "link_id": "10346"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-147",
+    "to": "EOP-89",
+    "link_id": "10347"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-148",
+    "to": "EOP-89",
+    "link_id": "10348"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-149",
+    "to": "EOP-89",
+    "link_id": "10349"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-150",
+    "to": "EOP-89",
+    "link_id": "10350"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-151",
+    "to": "EOP-89",
+    "link_id": "10351"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-93",
+    "to": "EOP-92",
+    "link_id": "10125"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-94",
+    "to": "EOP-92",
+    "link_id": "10126"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-95",
+    "to": "EOP-92",
+    "link_id": "10127"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-116",
+    "to": "EOP-97",
+    "link_id": "10301"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-143",
+    "to": "EOP-97",
+    "link_id": "10334"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-103",
+    "to": "EOP-104",
+    "link_id": "10340"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-108",
+    "to": "EOP-105",
+    "link_id": "10196"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-109",
+    "to": "EOP-105",
+    "link_id": "10197"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-110",
+    "to": "EOP-105",
+    "link_id": "10198"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-111",
+    "to": "EOP-106",
+    "link_id": "10231"
+  },
+  {
+    "type": "Duplicate",
+    "outward_description": "duplicates",
+    "inward_description": "is duplicated by",
+    "from": "EOP-119",
+    "to": "EOP-138",
+    "link_id": "10339"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-121",
+    "to": "EOP-120",
+    "link_id": "10265"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-126",
+    "to": "EOP-122",
+    "link_id": "10266"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-127",
+    "to": "EOP-122",
+    "link_id": "10267"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-128",
+    "to": "EOP-144",
+    "link_id": "10341"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-129",
+    "to": "EOP-144",
+    "link_id": "10342"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-133",
+    "to": "EOP-144",
+    "link_id": "10343"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-134",
+    "to": "EOP-144",
+    "link_id": "10344"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-135",
+    "to": "EOP-144",
+    "link_id": "10345"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-154",
+    "to": "EOP-155",
+    "link_id": "10385"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-161",
+    "to": "EOP-154",
+    "link_id": "10418"
+  },
+  {
+    "type": "Blocks",
+    "outward_description": "blocks",
+    "inward_description": "is blocked by",
+    "from": "EOP-164",
+    "to": "EOP-163",
+    "link_id": "10420"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-165",
+    "to": "EOP-163",
+    "link_id": "10421"
+  },
+  {
+    "type": "Relates",
+    "outward_description": "relates to",
+    "inward_description": "relates to",
+    "from": "EOP-165",
+    "to": "EOP-164",
+    "link_id": "10422"
+  }
+]

@@ -1,0 +1,502 @@
+{
+  "export": {
+    "started_at": "2026-08-23T20:25:01.383957+00:00",
+    "finished_at": "2026-08-23T20:25:20.750684+00:00",
+    "jira_base_url": "https://maglez.atlassian.net",
+    "project_key": "EOP",
+    "issue_count": 164,
+    "comment_count": 96,
+    "link_pair_count": 69,
+    "story": "EOP-166",
+    "tool": "tools/jira-migration/dump_jira.py"
+  },
+  "project": {
+    "expand": "description,lead,issueTypes,url,projectKeys,permissions,insight",
+    "self": "https://maglez.atlassian.net/rest/api/3/project/10000",
+    "id": "10000",
+    "key": "EOP",
+    "description": "",
+    "lead": {
+      "self": "https://maglez.atlassian.net/rest/api/3/user?accountId=557058:42c7f317-64b5-4621-9177-c96b49d75aba",
+      "accountId": "557058:42c7f317-64b5-4621-9177-c96b49d75aba",
+      "avatarUrls": {
+        "48x48": "https://secure.gravatar.com/avatar/47878f7f54bb1d1512f9c0f0f06a15b3?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FMG-3.png",
+        "24x24": "https://secure.gravatar.com/avatar/47878f7f54bb1d1512f9c0f0f06a15b3?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FMG-3.png",
+        "16x16": "https://secure.gravatar.com/avatar/47878f7f54bb1d1512f9c0f0f06a15b3?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FMG-3.png",
+        "32x32": "https://secure.gravatar.com/avatar/47878f7f54bb1d1512f9c0f0f06a15b3?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FMG-3.png"
+      },
+      "displayName": "Miguel Gonzalez",
+      "active": true
+    },
+    "components": [],
+    "issueTypes": [
+      {
+        "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10001",
+        "id": "10001",
+        "description": "A collection of related bugs, stories, and tasks.",
+        "iconUrl": "https://maglez.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10307?size=medium",
+        "name": "Epic",
+        "subtask": false,
+        "avatarId": 10307,
+        "hierarchyLevel": 1
+      },
+      {
+        "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10002",
+        "id": "10002",
+        "description": "Subtasks track small pieces of work that are part of a larger task.",
+        "iconUrl": "https://maglez.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10316?size=medium",
+        "name": "Subtask",
+        "subtask": true,
+        "avatarId": 10316,
+        "hierarchyLevel": -1
+      },
+      {
+        "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10003",
+        "id": "10003",
+        "description": "A small, distinct piece of work.",
+        "iconUrl": "https://maglez.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10318?size=medium",
+        "name": "Task",
+        "subtask": false,
+        "avatarId": 10318,
+        "hierarchyLevel": 0
+      },
+      {
+        "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10004",
+        "id": "10004",
+        "description": "Created by Jira Agile - do not edit or delete. Issue type for a user story.",
+        "iconUrl": "https://maglez.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10315?size=medium",
+        "name": "Story",
+        "subtask": false,
+        "avatarId": 10315,
+        "hierarchyLevel": 0
+      }
+    ],
+    "assigneeType": "UNASSIGNED",
+    "versions": [],
+    "name": "Elevation of Privilege",
+    "roles": {
+      "atlassian-addons-project-access": "https://maglez.atlassian.net/rest/api/3/project/10000/role/10008",
+      "Administrator": "https://maglez.atlassian.net/rest/api/3/project/10000/role/10004",
+      "jira-guest-member": "https://maglez.atlassian.net/rest/api/3/project/10000/role/10007",
+      "Viewer": "https://maglez.atlassian.net/rest/api/3/project/10000/role/10006",
+      "Member": "https://maglez.atlassian.net/rest/api/3/project/10000/role/10005"
+    },
+    "avatarUrls": {
+      "48x48": "https://maglez.atlassian.net/rest/api/3/universal_avatar/view/type/project/avatar/10416",
+      "24x24": "https://maglez.atlassian.net/rest/api/3/universal_avatar/view/type/project/avatar/10416?size=small",
+      "16x16": "https://maglez.atlassian.net/rest/api/3/universal_avatar/view/type/project/avatar/10416?size=xsmall",
+      "32x32": "https://maglez.atlassian.net/rest/api/3/universal_avatar/view/type/project/avatar/10416?size=medium"
+    },
+    "projectTypeKey": "software",
+    "simplified": true,
+    "style": "next-gen",
+    "isPrivate": false,
+    "properties": {},
+    "entityId": "6957889e-9356-4cce-b547-9689ab81300c",
+    "uuid": "6957889e-9356-4cce-b547-9689ab81300c"
+  },
+  "statuses": [
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10001",
+      "id": "10001",
+      "name": "Epic",
+      "subtask": false,
+      "statuses": [
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10001",
+          "description": "This work item is being actively worked on at the moment by the assignee.",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "In Progress",
+          "untranslatedName": "In Progress",
+          "id": "10001",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/4",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "yellow",
+            "name": "In Progress"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10000",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "untranslatedName": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10002",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "Done",
+          "untranslatedName": "Done",
+          "id": "10002",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/3",
+            "id": 3,
+            "key": "done",
+            "colorName": "green",
+            "name": "Done"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10002",
+      "id": "10002",
+      "name": "Subtask",
+      "subtask": true,
+      "statuses": [
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10001",
+          "description": "This work item is being actively worked on at the moment by the assignee.",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "In Progress",
+          "untranslatedName": "In Progress",
+          "id": "10001",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/4",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "yellow",
+            "name": "In Progress"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10000",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "untranslatedName": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10002",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "Done",
+          "untranslatedName": "Done",
+          "id": "10002",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/3",
+            "id": 3,
+            "key": "done",
+            "colorName": "green",
+            "name": "Done"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10003",
+      "id": "10003",
+      "name": "Task",
+      "subtask": false,
+      "statuses": [
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10001",
+          "description": "This work item is being actively worked on at the moment by the assignee.",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "In Progress",
+          "untranslatedName": "In Progress",
+          "id": "10001",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/4",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "yellow",
+            "name": "In Progress"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10000",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "untranslatedName": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10002",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "Done",
+          "untranslatedName": "Done",
+          "id": "10002",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/3",
+            "id": 3,
+            "key": "done",
+            "colorName": "green",
+            "name": "Done"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/issuetype/10004",
+      "id": "10004",
+      "name": "Story",
+      "subtask": false,
+      "statuses": [
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10001",
+          "description": "This work item is being actively worked on at the moment by the assignee.",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "In Progress",
+          "untranslatedName": "In Progress",
+          "id": "10001",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/4",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "yellow",
+            "name": "In Progress"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10000",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "untranslatedName": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        },
+        {
+          "self": "https://maglez.atlassian.net/rest/api/3/status/10002",
+          "description": "",
+          "iconUrl": "https://maglez.atlassian.net/images/icons/statuses/generic.png",
+          "name": "Done",
+          "untranslatedName": "Done",
+          "id": "10002",
+          "statusCategory": {
+            "self": "https://maglez.atlassian.net/rest/api/3/statuscategory/3",
+            "id": 3,
+            "key": "done",
+            "colorName": "green",
+            "name": "Done"
+          },
+          "scope": {
+            "type": "PROJECT",
+            "project": {
+              "id": "10000"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "priorities": [
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/priority/1",
+      "statusColor": "#d04437",
+      "description": "This problem will block progress.",
+      "iconUrl": "https://maglez.atlassian.net/images/icons/priorities/highest_new.svg",
+      "name": "Highest",
+      "id": "1"
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/priority/2",
+      "statusColor": "#f15C75",
+      "description": "Serious problem that could block progress.",
+      "iconUrl": "https://maglez.atlassian.net/images/icons/priorities/high_new.svg",
+      "name": "High",
+      "id": "2"
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/priority/3",
+      "statusColor": "#f79232",
+      "description": "Has the potential to affect progress.",
+      "iconUrl": "https://maglez.atlassian.net/images/icons/priorities/medium_new.svg",
+      "name": "Medium",
+      "id": "3"
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/priority/4",
+      "statusColor": "#707070",
+      "description": "Minor problem or easily worked around.",
+      "iconUrl": "https://maglez.atlassian.net/images/icons/priorities/low_new.svg",
+      "name": "Low",
+      "id": "4"
+    },
+    {
+      "self": "https://maglez.atlassian.net/rest/api/3/priority/5",
+      "statusColor": "#999999",
+      "description": "Trivial problem with little or no impact on progress.",
+      "iconUrl": "https://maglez.atlassian.net/images/icons/priorities/lowest_new.svg",
+      "name": "Lowest",
+      "id": "5"
+    }
+  ],
+  "link_types": {
+    "issueLinkTypes": [
+      {
+        "id": "10000",
+        "name": "Blocks",
+        "inward": "is blocked by",
+        "outward": "blocks",
+        "self": "https://maglez.atlassian.net/rest/api/3/issueLinkType/10000"
+      },
+      {
+        "id": "10001",
+        "name": "Cloners",
+        "inward": "is cloned by",
+        "outward": "clones",
+        "self": "https://maglez.atlassian.net/rest/api/3/issueLinkType/10001"
+      },
+      {
+        "id": "10002",
+        "name": "Duplicate",
+        "inward": "is duplicated by",
+        "outward": "duplicates",
+        "self": "https://maglez.atlassian.net/rest/api/3/issueLinkType/10002"
+      },
+      {
+        "id": "10003",
+        "name": "Relates",
+        "inward": "relates to",
+        "outward": "relates to",
+        "self": "https://maglez.atlassian.net/rest/api/3/issueLinkType/10003"
+      }
+    ]
+  },
+  "derived": {
+    "labels": {
+      "eop-card-game": 22,
+      "session-lifecycle": 15,
+      "tech-debt": 13,
+      "security": 11,
+      "flag-gate": 9,
+      "defect": 6,
+      "documentation": 6,
+      "api": 3,
+      "game-rules": 3,
+      "maintenance": 3,
+      "multiplayer": 3,
+      "tooling": 3,
+      "feature-flags": 2,
+      "frontend": 2,
+      "nice-to-have": 2,
+      "observability": 2,
+      "process": 2,
+      "arc42": 1,
+      "architecture": 1,
+      "blocked-on-owner": 1,
+      "bugfix": 1,
+      "build-quality": 1,
+      "devops": 1,
+      "first-slice": 1,
+      "flag-flip": 1,
+      "gameplay": 1,
+      "spike": 1,
+      "trick-play": 1
+    },
+    "issue_types": {
+      "Task": 110,
+      "Story": 51,
+      "Epic": 3
+    },
+    "statuses": {
+      "Done": 85,
+      "To Do": 77,
+      "In Progress": 2
+    },
+    "first_key": "EOP-3",
+    "last_key": "EOP-166"
+  }
+}
