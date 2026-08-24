@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -46,7 +47,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Surefire runs with the working directory set to the project base directory, so the relative paths resolve.
  *
- * @see <a href="../../../../../../../docs/adr/ADR-059-sixth-model-tier-for-code-review.md">ADR-059</a>
+ * @see <a href="../../../../../../../docs/adr/ADR-059-code-review-gate-on-its-own-model-tier.md">ADR-059</a>
  */
 @DisplayName("The Separation Invariant over the agent model pins")
 class SeparationInvariantTest {
@@ -85,12 +86,14 @@ class SeparationInvariantTest {
      * What each authoring agent produces, per ADR-022 rule 5's enumeration of artefact classes.
      *
      * <p>{@code @tech-lead} is included because it authors Java directly rather than always delegating — the
-     * primary-agent case Blueprint §3.2 records. {@code @product-owner} and the four expert advisers are absent
+     * primary-agent case Blueprint §3.2 records. {@code @ui-builder} is credited with test code as well as
+     * production code, because the front-end Vitest suites under {@code ui/src} are its work too.
+     * {@code @product-owner} and the four expert advisers are absent
      * deliberately: they author requirements and advice, which sit outside the review path.
      */
     private static final Map<String, Set<ArtefactClass>> AGENT_AUTHORS = Map.of(
             "tech-lead", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
-            "ui-builder", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
+            "ui-builder", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.TEST_CODE),
             "db-designer", EnumSet.of(ArtefactClass.INFRASTRUCTURE),
             "devops-engineer", EnumSet.of(ArtefactClass.INFRASTRUCTURE),
             "performance-engineer", EnumSet.of(ArtefactClass.INFRASTRUCTURE),
@@ -271,12 +274,12 @@ class SeparationInvariantTest {
      */
     private static List<Overlap> detectOverlaps(final Map<String, String> agentModels) {
         final List<Overlap> overlaps = new ArrayList<>();
-        for (final Map.Entry<String, Set<ArtefactClass>> gate : new java.util.TreeMap<>(GATE_REVIEWS).entrySet()) {
+        for (final Map.Entry<String, Set<ArtefactClass>> gate : new TreeMap<>(GATE_REVIEWS).entrySet()) {
             final String gateModel = agentModels.get(gate.getKey());
             if (gateModel == null) {
                 continue;
             }
-            for (final Map.Entry<String, Set<ArtefactClass>> author : new java.util.TreeMap<>(AGENT_AUTHORS).entrySet()) {
+            for (final Map.Entry<String, Set<ArtefactClass>> author : new TreeMap<>(AGENT_AUTHORS).entrySet()) {
                 if (author.getKey().equals(gate.getKey()) || !gateModel.equals(agentModels.get(author.getKey()))) {
                     continue;
                 }
