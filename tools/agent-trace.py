@@ -23,11 +23,14 @@ Usage:
     tools/agent-trace.py --last --json      Machine-readable form.
 
 The listing ends with project-wide totals covering every session ever recorded
-for this directory - subagent sessions included, not just the ones listed above -
-and then a per-gate breakdown of the five Definition-of-Done gates: how many
-times each was dispatched, how long it was in flight, what share of the project
-window that is, and what it cost. Read the share as occupancy rather than as a
-slice of a budget, and see print_gate_totals for why the rows do not add up.
+for this directory - subagent sessions included, not just the ones listed above.
+Cost counts every session. The two time figures count only root sessions, since
+a subagent runs inside the span of the session that dispatched it and would
+otherwise be counted twice. Then comes a per-gate breakdown of the five
+Definition-of-Done gates: how many times each was dispatched, how long it was
+in flight, what share of the project window that is, and what it cost. Read the
+share as occupancy rather than as a slice of a budget, and see print_gate_totals
+for why the rows do not add up.
 
 Options:
     --project PATH   Filter by working directory (default: this repository).
@@ -426,14 +429,23 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
     Time is the awkward half. Each row carries only `time_created` and
     `time_updated`, so a session's span is first-message-to-last-touch: idle
     minutes count, and a session reopened a week later counts the whole week.
-    Worse, a subagent runs *inside* its parent's span, so adding all 1,186 rows
-    up double-counts every dispatch. Two figures are therefore reported:
 
-      elapsed  - overlapping spans merged, so concurrent and nested sessions are
-                 counted once. The honest answer to "how long was this project
-                 being worked on", modulo the idle-time caveat above.
-      summed   - every session's own span added up, the literal reading. Larger
-                 than elapsed by exactly the nesting and overlap.
+    A subagent runs *inside* the session that dispatched it, and the database
+    bears that out exactly: every subagent row for this project falls entirely
+    within its own parent's span, and nesting is one level deep - a subagent
+    never dispatches a subagent. So merging every row gives a result identical
+    to merging only the root sessions, segment for segment. Subagent spans add
+    no coverage their parent does not already have, which is why adding them up
+    is the one thing that cannot be done. Two figures are reported:
+
+      elapsed  - overlapping spans merged. Because of the containment above this
+                 is the root sessions' own coverage, with no subagent time added
+                 on top, so it is the real time this project was worked on -
+                 modulo the idle-time caveat above.
+      summed   - the root sessions added up one by one, ignoring their subagents.
+                 The literal reading of "how much time did my sessions take".
+                 It exceeds elapsed only where two root sessions overlap, which
+                 happens whenever two OpenCode windows are open at once.
 
     Neither is effort. Both are calendar coverage, and the caller says so.
     """
@@ -449,6 +461,9 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
 
     spans = valid_spans(rows)
     elapsed = merge_spans(spans)
+    # Root sessions only. A subagent's span sits inside its parent's, so adding
+    # subagents in here would count the same wall clock once per dispatch.
+    root_spans = valid_spans([row for row in rows if row["parent_id"] is None])
 
     return {
         "sessions": len(rows),
@@ -457,7 +472,7 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
         "undated": len(rows) - len(spans),
         "cost": sum(row["cost"] or 0.0 for row in rows),
         "elapsed": elapsed,
-        "summed": sum(end - start for start, end in spans),
+        "summed": sum(end - start for start, end in root_spans),
         "first": min((start for start, _ in spans), default=None),
         "last": max((end for _, end in spans), default=None),
         "gates": gate_breakdown(rows, elapsed),
@@ -502,9 +517,9 @@ def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
           f" ({totals['roots']} root + {totals['subagents']} subagent)\n")
     print(f"  total cost   : ${totals['cost']:,.2f}")
     print(f"  total time   : {format_span(totals['elapsed'])}"
-          "   elapsed, overlapping and nested sessions merged")
-    print(f"  summed spans : {format_span(totals['summed'])}"
-          "   every session added up separately")
+          f"   real time worked, the {totals['roots']} sessions with overlap merged")
+    print(f"  sessions sum : {format_span(totals['summed'])}"
+          f"   those {totals['roots']} added up one by one")
     print(f"  first / last : {when(totals['first'])} -> {when(totals['last'])}")
     if totals["undated"]:
         print(f"  undated      : {totals['undated']} session(s) with unusable"
@@ -512,6 +527,9 @@ def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
     print(
         "\n  A span is first message to last touch, so idle time counts."
         " Read these as\n  calendar coverage, not effort or billed time."
+        f" The {totals['subagents']} subagent sessions are in\n  neither time"
+        " figure, on purpose: each one runs inside the session that\n"
+        "  dispatched it, so its parent's span already covers it."
     )
     print_gate_totals(totals)
 
