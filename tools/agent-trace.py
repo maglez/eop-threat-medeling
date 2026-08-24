@@ -430,13 +430,16 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
     `time_updated`, so a session's span is first-message-to-last-touch: idle
     minutes count, and a session reopened a week later counts the whole week.
 
-    A subagent runs *inside* the session that dispatched it, and the database
-    bears that out exactly: every subagent row for this project falls entirely
-    within its own parent's span, and nesting is one level deep - a subagent
-    never dispatches a subagent. So merging every row gives a result identical
-    to merging only the root sessions, segment for segment. Subagent spans add
-    no coverage their parent does not already have, which is why adding them up
-    is the one thing that cannot be done. Two figures are reported:
+    A subagent runs *inside* the session that dispatched it, so its span adds no
+    coverage its parent does not already have, and adding it on top counts the
+    same wall clock a second time. That containment was checked against this
+    project's whole history when the roots-only figure was introduced - every
+    completed subagent row fell inside its own parent, nesting one level deep -
+    but it is a property of the data, not an invariant this tool enforces, and it
+    holds only for sessions that have finished: a subagent still in flight can
+    briefly report a `time_updated` past its parent's, because the parent's has
+    not been refreshed yet. Re-run the check rather than trusting this paragraph.
+    Two figures are reported:
 
       elapsed  - overlapping spans merged. Because of the containment above this
                  is the root sessions' own coverage, with no subagent time added
@@ -462,14 +465,18 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
     spans = valid_spans(rows)
     elapsed = merge_spans(spans)
     # Root sessions only. A subagent's span sits inside its parent's, so adding
-    # subagents in here would count the same wall clock once per dispatch.
-    root_spans = valid_spans([row for row in rows if row["parent_id"] is None])
+    # subagents in here would count the same wall clock a second time.
+    root_rows = [row for row in rows if row["parent_id"] is None]
+    root_spans = valid_spans(root_rows)
 
     return {
         "sessions": len(rows),
-        "roots": sum(1 for row in rows if row["parent_id"] is None),
-        "subagents": sum(1 for row in rows if row["parent_id"] is not None),
+        "roots": len(root_rows),
+        "subagents": len(rows) - len(root_rows),
         "undated": len(rows) - len(spans),
+        # Split out, because only an undated *root* is missing from `summed` -
+        # an undated subagent was never a candidate for it.
+        "undated_roots": len(root_rows) - len(root_spans),
         "cost": sum(row["cost"] or 0.0 for row in rows),
         "elapsed": elapsed,
         "summed": sum(end - start for start, end in root_spans),
@@ -517,19 +524,25 @@ def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
           f" ({totals['roots']} root + {totals['subagents']} subagent)\n")
     print(f"  total cost   : ${totals['cost']:,.2f}")
     print(f"  total time   : {format_span(totals['elapsed'])}"
-          f"   real time worked, the {totals['roots']} sessions with overlap merged")
+          "   real time worked, concurrent sessions counted once")
     print(f"  sessions sum : {format_span(totals['summed'])}"
-          f"   those {totals['roots']} added up one by one")
+          f"   the {totals['roots']} root sessions added up, overlap and all")
     print(f"  first / last : {when(totals['first'])} -> {when(totals['last'])}")
     if totals["undated"]:
+        # Only an undated root is missing from the sum, so name that count when
+        # there is one rather than leaving the reader to wonder.
+        of_which = (f", {totals['undated_roots']} of them root sessions"
+                    if totals["undated_roots"] else "")
         print(f"  undated      : {totals['undated']} session(s) with unusable"
-              " timestamps, counted in cost but in no time figure")
+              f" timestamps{of_which}, counted in cost but in no time figure")
     print(
         "\n  A span is first message to last touch, so idle time counts."
         " Read these as\n  calendar coverage, not effort or billed time."
-        f" The {totals['subagents']} subagent sessions are in\n  neither time"
-        " figure, on purpose: each one runs inside the session that\n"
-        "  dispatched it, so its parent's span already covers it."
+    )
+    print(
+        f"  The {totals['subagents']} subagent sessions are in neither time"
+        " figure, on purpose:\n  each one runs inside the session that"
+        " dispatched it, so its parent's span\n  already covers it."
     )
     print_gate_totals(totals)
 
