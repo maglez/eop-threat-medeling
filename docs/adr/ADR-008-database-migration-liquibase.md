@@ -1,6 +1,6 @@
 # ADR-008: Database Migration Strategy with Liquibase
 
-- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; amended 2026-08-19 — the "Context labels" comparison row records a capability this project has decided not to use, see ADR-043; amended 2026-08-23 — XML over formatted-SQL rationale, centred on rollback; all in Amendments)
+- **Status:** Accepted (amended 2026-08-10 — the H2 console consequence was never true; amended 2026-08-19 — the "Context labels" comparison row records a capability this project has decided not to use, see ADR-043; amended 2026-08-23 — XML over formatted-SQL rationale, centred on rollback; amended 2026-08-23 — the schema-validation, "silently" and file-forking claims in that rationale are narrowed, and rollback trust is grounded in executing the inverse; all in Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, DevOps Engineer, Security Auditor
@@ -163,6 +163,113 @@ element covers the operation, all of them in `005-seat-and-sequence-bounds.xml` 
 `006-session-expiry.xml`. XML confines dialect-specific text rather than eliminating it, on top
 of the learning curve already conceded under **Negative** above. XML was the right choice for
 this project's rollback requirements, and the row now records why.
+
+**Amendment, 2026-08-23 (EOP-165).** Three claims in the EOP-162 block above are narrowed here:
+argument 2 ("Schema-validated rollback") overstates what the XSD buys, argument 1's "silently"
+overstates the formatted-SQL failure mode, and the worked example's closing sentence about
+forking the file is wrong. The EOP-162 text is left exactly as written. A dated amendment is
+history; editing one in place would erase the record of what was claimed and when, which is the
+only thing that makes a correction like this legible.
+
+**Argument 2, narrowed: the XSD validates form, not meaning.** It rejects a rollback that is
+not well-formed or not schema-legal. It has nothing to say about a rollback that is entirely
+legal and does the wrong thing — and both failures already exist in this repository:
+
+- `002-real-deck.xml:90-96` (anchor: `002-seed-placeholder-deck`) is a `<rollback>` whose only
+  child is a `<comment>`. It parses, it validates, and it restores nothing. Its own comment
+  text concedes the point in prose the XSD cannot read.
+- `001-card-catalogue.xml:125-127` (anchor: `tableName="card"`) gives an unqualified
+  `<delete tableName="card"/>` as the inverse of a changeset that inserted six specific rows.
+  Schema-valid, and a whole-table delete rather than the inverse of six inserts.
+
+So the distinction the EOP-162 text collapses is between a *malformed* rollback, which the XSD
+does catch at parse time, and a *semantically wrong* rollback, which it cannot catch at all.
+@expert-uncle-bod put it best, and the formulation is worth keeping: *"A schema stops you
+writing nonsense; it never stops you writing the wrong thing correctly."* @expert-alex-xu was
+blunter about the cost of publishing the claim as written — presenting XSD validation as a
+rollback safety property *"is worse than not claiming it, because it converts a green build into
+false confidence."* That is the reason to narrow it rather than merely soften it: the parse-time
+guarantee is real, but it covers the failure mode nobody makes twice, and stating it under the
+heading "rollback" invites the reader to believe the covered set is larger than it is.
+
+**What actually makes a rollback trustworthy is executing the inverse in a test.** Three
+round-trip tests do that on H2 — `DeckTrimMigrationRoundTripTest`, `SessionExpiryMigrationTest`
+and `TrickPlaySchemaRoundTripTest` — each applying a changelog, rolling it back by a computed
+changeset count, and asserting the resulting state. Since EOP-164 and EOP-163 there is also
+`PostgresRollbackRoundTripIT` and `JoinCodeRollbackGuardTest`. Reading that coverage takes two
+figures rather than one, and conflating them is how a false sense of safety gets built:
+
+- **Executability** — every rollback runs without error and the changelog re-applies — is
+  covered for all 27 changesets across all eleven changelogs on PostgreSQL 17, by
+  `PostgresRollbackRoundTripIT.java:156` (anchor: `entire changelog`) unwinding
+  `PostgresRollbackRoundTripIT.java:85` (anchor: `EXPECTED_CHANGESET_ROWS`) changesets in one
+  pass.
+- **State restoration** — the rollback puts the database back — is covered for six of the eleven
+  changelogs: `004-trick-play-schema.xml`, `006-session-expiry.xml`,
+  `2026-08-17--trim-deck-to-74-printed-cards.xml`, `2026-08-18--remove-ace-cards.xml`,
+  `2026-08-22--widen-join-code-to-8-characters.xml` and
+  `2026-08-23--guard-join-code-rollback.xml`. The remaining five —
+  `001-card-catalogue.xml`, `002-real-deck.xml`, `003-session-lifecycle.xml`,
+  `005-seat-and-sequence-bounds.xml` and `2026-08-16--game-result.xml` — have none, and both
+  counterexamples above sit in that uncovered set.
+
+A whole-changelog rollback cannot substitute for the second figure, because it terminates at an
+empty database — and at an empty database a no-op rollback and an over-broad truncation are both
+indistinguishable from a correct one. EOP-163 is the empirical proof: a schema-valid rollback
+that reported "Rollback command completed successfully" while silently truncating live join
+codes, whose changelog records that "a rehearsal against an empty database passes and the same
+rollback fails against production". It was found by executing the inverse against two real
+engines with data present. It was never going to be found by the XSD.
+
+EOP-165 was filed asking for the figure "3 of 10 changelog files have rollback round-trip
+coverage". That figure is wrong in both terms and is deliberately not published: it counted
+three *test class names* as three changelogs, but `DeckTrimMigrationRoundTripTest` covers two —
+`DeckTrimMigrationRoundTripTest.java:71` (anchor: `CHANGELOG_ACE_REMOVAL`) and
+`DeckTrimMigrationRoundTripTest.java:77` (anchor: `CHANGELOG_DECK_TRIM`) — and the denominator
+became eleven when EOP-163 landed a new changelog.
+
+**A worked composition, to show what neither the XSD nor an empty-database round trip sees.**
+Liquibase unwinds in reverse execution order, so a *full* unwind of `002-real-deck.xml` is
+harmless. A two-step partial one is not. `rollbackCount=2` from the top of that file targets the
+state after `002-seed-placeholder-deck` and before `003-remove-placeholder-deck` — the six
+placeholder rows present. Step one runs `004-seed-real-deck`'s rollback,
+`002-real-deck.xml:737-741` (anchor: `suit_order`), which empties the table. Step two runs
+`003-remove-placeholder-deck`'s comment-only rollback, which re-inserts nothing. The result is an
+empty table where the faithful inverse holds six rows. Every element involved is schema-valid.
+Relatedly, the unqualified delete in `001-card-catalogue.xml` is correct today only because
+those two rollbacks happen to run before it and leave the table empty. Nothing in the file, the
+schema or the build records that dependency, and following the precedent `003` already sets —
+replacing a rollback body with a comment — would turn it into a live whole-table truncation
+while remaining fully schema-valid.
+
+**Argument 1, narrowed: "silently" is too strong.** A mistyped `--rollback` directive in
+formatted SQL does not produce a *wrong* rollback that runs quietly. It produces *no* rollback,
+and Liquibase then refuses the operation with a rollback-impossible error rather than proceeding.
+The accurate claim is narrower and still favours XML: the mistake is invisible until someone
+attempts a rollback, at which point it surfaces loudly but too late — during the incident, not
+in CI. Note the same timing applies to the XML counterexamples above, which are also accepted at
+parse time; what closes the gap in either format is a test that executes the inverse.
+
+**The worked example's closing sentence is wrong.** "Formatted SQL would require forking the file
+entirely" is not true: formatted SQL carries the same `dbms` attribute inline on the changeset
+line — `--changeset eop:001-add-expires-at-postgresql dbms:postgresql` — so it would fork the
+same two changesets inside the same one file. Same structure, different syntax. What survives of
+that argument is smaller: XML confines the divergence to one `defaultValueComputed` attribute per
+changeset, where formatted SQL restates each `ALTER TABLE` in full per dialect.
+
+**Two figures in the EOP-162 block have since drifted, and are restated rather than edited.**
+"26 `<rollback>` blocks across ten changelogs" (argument 1) and "five of the 26 rollbacks fall
+back to raw `<sql>`" (the cost paragraph) were correct when written. EOP-163 then added
+`2026-08-23--guard-join-code-rollback.xml`, whose rollback is itself raw `<sql>`
+(`2026-08-23--guard-join-code-rollback.xml:116-141`), and did not touch this ADR. The current
+figures are **27 `<rollback>` blocks across eleven changelogs**, of which **6 use raw `<sql>`** —
+three in `005-seat-and-sequence-bounds.xml`, two in `006-session-expiry.xml` and one in the
+guard. Both are corroborated by `PostgresRollbackRoundTripIT.java:85`. When recounting, anchor
+the pattern: `005-seat-and-sequence-bounds.xml:28` (anchor: `rollback`) mentions `<rollback>`
+inside a file-header comment, so an unanchored `grep -c '<rollback>'` overcounts by one. Nothing
+in the build holds a figure in this ADR against the tree, so this drift is a review concern —
+which is itself an argument for citing a constant a test already asserts, as the restatement
+above does, rather than a number counted by hand.
 
 ## Related
 

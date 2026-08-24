@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        EOP-163. Makes the rollback of the 2026-08-22 join code widening changelog refuse
+        instead of destroying live join codes.
+
+        A note on style before anything else: this header cannot name the file it protects,
+        because that filename contains a double hyphen and XML forbids a double hyphen inside
+        a comment. The rollback comment below is a Liquibase <comment> element rather than an
+        XML comment, so it can and does name it in full.
+
+        This changeset adds no schema. It exists only so that its own rollback runs, and
+        Liquibase unwinds changesets in reverse execution order, so a guard placed here
+        executes before the two rollbacks it protects. That is the only lever available: a
+        merged changeset is immutable (id plus author plus filepath is its identity), so the
+        widening's own rollbacks cannot be edited to add the guard in place.
+
+        WHAT WAS WRONG
+
+        The widening rolls back in two steps, in this order:
+
+          1. its changeset 002 rollback:  UPDATE game_session
+                                          SET join_code = SUBSTRING(join_code, 1, 6)
+                                          WHERE LENGTH(join_code) = 8 AND join_code LIKE '%00'
+          2. its changeset 001 rollback:  narrow join_code from VARCHAR(8) back to VARCHAR(6)
+
+        Both steps lose data once real eight character codes exist, and they lose it
+        differently on each engine. Measured on PostgreSQL 17 and H2 2.4 under EOP-164 and
+        EOP-163:
+
+          * PostgreSQL, step 2. Liquibase narrows with an explicit cast, and an explicit cast
+            to varchar(n) truncates in PostgreSQL rather than raising "value too long". So
+            every live eight character code is silently rewritten to its first six characters
+            and Liquibase reports "Rollback command completed successfully." Silent data loss
+            reported as success is the primary defect, and it is not confined to codes ending
+            in two zeros.
+          * PostgreSQL, step 2. That truncation can also collide two sessions whose codes
+            share a six character prefix on uq_game_session_join_code, aborting the rollback.
+            The abort is data dependent, so a rehearsal against an empty database passes and
+            the same rollback fails against production.
+          * H2, step 2. Narrowing hard fails with "Value too long for column" instead of
+            truncating, which is louder but is still an aborted rollback.
+          * H2, step 1. H2 is not safe either, because step 1 runs first and silently
+            truncates a genuine code ending in two zeros. On H2 that rollback then completes,
+            so the outcome for such a code is the same clean looking report and destroyed
+            data that PostgreSQL produces for every code.
+
+        WHY REFUSING IS THE FIX RATHER THAN A BETTER PREDICATE
+
+        Tightening step 1's LIKE predicate cannot help. After the forward migration a padded
+        code (QRSTUV becomes QRSTUV00) is byte for byte indistinguishable from a genuinely
+        generated code that happens to end in two zeros. The forward migration destroyed the
+        distinction, and nothing in the schema records which rows it touched. So no rollback
+        can be lossless on populated data. The honest behaviour is to refuse before anything
+        is modified, and to recover by rolling forward.
+
+        HOW THE GUARD WORKS
+
+        The rollback adds a CHECK constraint asserting that every join code still fits in
+        VARCHAR(6), then immediately drops it again. Adding a validated CHECK constraint
+        fails if and only if a violating row exists, so:
+
+          * a join code too wide to survive the narrowing gives a failed ALTER TABLE, the
+            whole rollback aborts, and no row and no column type has been touched;
+          * no such code (an empty database, or one holding only six character codes) gives
+            two successful statements, the schema is left exactly as it was, and the widening
+            unwinds losslessly as before.
+
+        The guard is deliberately plain ANSI DDL rather than a PostgreSQL DO block with
+        RAISE EXCEPTION, a Liquibase stop change, or a Java customChange:
+
+          * preConditions is not a legal child of rollback in the Liquibase schema, and a
+            changeSet level precondition is evaluated on forward update too, where the
+            widening's changeset 002 deliberately creates the very eight character codes it
+            would assert against. So the obvious mechanism does not exist.
+          * the stop change throws unconditionally, which would also refuse the two rollbacks
+            that are legitimately lossless: an empty database and a six character only one.
+          * a DO block with RAISE EXCEPTION gives a friendlier message but has no H2
+            equivalent, and as the H2 findings above show the guard is needed on both engines.
+          * a customChange would work on both engines but would make the rollback depend on
+            application classes being on the classpath, which is exactly what a DBA unwinding
+            with the Liquibase CLI does not have.
+
+        OPERATIONAL NOTES
+
+        This changeset executes after the widening, so it is unwound before it. Fully
+        unwinding the widening therefore needs rollbackCount=3, not 2.
+
+        The guard only runs first because includeAll orders changes/ alphabetically and this
+        filename sorts after the widening's. A new changelog dated before 2026-08-23 dropped
+        into changes/ would sort between the two and silently defeat the guard. Nothing in
+        the build detects that, so it is a review concern.
+
+        Refusing is conservative in one respect worth recording: a database whose only wide
+        codes are ones this migration itself padded is in fact losslessly reversible, and the
+        guard refuses it anyway, because as explained above nothing can tell those rows from
+        genuine ones. Padded sessions are bounded by the 24 hour expires_at TTL added in
+        006-session-expiry.xml, so that window closes on its own.
+
+        Changesets are immutable once merged. Later stories add files.
+    -->
+
+    <changeSet id="001" author="miguel">
+        <comment>
+            Marker changeset for EOP-163. Applies no schema change; exists so that its rollback can
+            refuse to unwind the join code widening when doing so would destroy live join codes.
+        </comment>
+
+        <empty/>
+
+        <rollback>
+            <comment>
+                Rolling back 2026-08-22--widen-join-code-to-8-characters.xml is NOT reversible on
+                populated data, and this guard refuses rather than pretending otherwise. Once that
+                forward migration has run, a padded code (QRSTUV becomes QRSTUV00) is byte for byte
+                indistinguishable from a genuinely generated eight character code, so narrowing the
+                column back either truncates real join codes, silently on PostgreSQL, or aborts on
+                uq_game_session_join_code. Recovery from a bad widening is a forward migration, not
+                a rollback. The two statements below add a CHECK constraint and immediately drop it
+                again: adding it fails if any join code is too wide to survive the narrowing, which
+                aborts the rollback before that changelog's changeset 002 UPDATE or its changeset
+                001 narrowing can modify anything; if every code still fits, both succeed and leave
+                the schema untouched.
+            </comment>
+
+            <sql>
+                ALTER TABLE game_session
+                    ADD CONSTRAINT ck_eop163_join_code_fits_varchar6
+                    CHECK (LENGTH(join_code) &lt;= 6)
+            </sql>
+
+            <sql>
+                ALTER TABLE game_session
+                    DROP CONSTRAINT ck_eop163_join_code_fits_varchar6
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -205,6 +205,15 @@ here: `tools/artifact/assert-no-h2-in-jar.sh` still works and still runs in CI, 
 this story forces it to change. The seventh plugin remains a real cost — what changed is that a
 future story wanting that IT no longer has to pay it, not that the constraint disappeared.
 
+**2026-08-23 — EOP-163 has landed, and the DEFECT tests are inverted, not deleted.** The guard changeset `2026-08-23--guard-join-code-rollback.xml` runs first on rollback (alphabetically last on forward), adding a CHECK constraint `LENGTH(join_code) <= 6` that aborts the rollback if any violating row exists. The three `DEFECT (EOP-163)` tests in `PostgresRollbackRoundTripIT` are now inverted — they assert the guard **refuses** the rollback rather than asserting the truncation succeeds. Their new names are:
+- `refusesToRollBackTheWideningWhenAGenuineEightCharacterCodeExists`
+- `refusesToRollBackTheWideningBeforeTwoSessionsCanCollide`
+- `refusesToRollBackTheWideningWhenAGenuineCodeEndingInZerosExists`
+
+The middle one asserts the error message names the guard constraint and does **not** name `uq_game_session_join_code`, proving the refusal happens before the collision rather than the collision being what saved us. `roundTripsASixCharacterSessionWithoutLoss` is unchanged and still green, which is the proof the guard is data-conditional rather than a blanket refusal. A new `JoinCodeRollbackGuardTest` covers the same four scenarios against H2 in the fast suite.
+
+The changeset total is now **27**, not the 26 this document's body states, because the guard changelog contributes one more changeset. Both `EXPECTED_CHANGESET_ROWS` constants — the one in `PostgresChangelogIT` and the one in `PostgresRollbackRoundTripIT` — were bumped from 26 to 27 accordingly. That constant cannot drift silently: `PostgresChangelogIT.changesetTotalMatchesTheChangelogFiles()` counts the `<changeSet>` elements in the changelog files and compares the sum to the constant in both directions, so adding a changeset without bumping the constant fails the build, and bumping the constant without adding a changeset fails it too. Read every 26 earlier in this document as the figure at the time of writing.
+
 ## Alternatives Considered
 
 **Keep H2 only, and review PostgreSQL changesets by eye.** This was the status quo. It is what left

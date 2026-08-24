@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -81,12 +82,12 @@ class PostgresChangelogIT {
     /**
      * The number of {@code DATABASECHANGELOG} rows the full changelog must produce.
      *
-     * <p>26, not 25. Only 25 changesets <em>execute</em> on any one engine, because
+     * <p>27, not 26. Only 26 changesets <em>execute</em> on any one engine, because
      * {@code 006-session-expiry.xml}'s two branches are mutually exclusive -- but a changeset
      * skipped by an {@code onFail="MARK_RAN"} precondition still records a row, so the row count is
      * the same on both engines and it is the total in the files that this must equal.
      */
-    private static final int EXPECTED_CHANGESET_ROWS = 26;
+    private static final int EXPECTED_CHANGESET_ROWS = 27;
 
     private static final String CHANGESET_POSTGRES_BRANCH = "001-add-expires-at-postgresql";
 
@@ -347,8 +348,8 @@ class PostgresChangelogIT {
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT " + attribute + " FROM information_schema.columns "
                         + "WHERE table_schema = 'public' AND table_name = ? AND column_name = ?")) {
-            statement.setString(1, table.toLowerCase());
-            statement.setString(2, column.toLowerCase());
+            statement.setString(1, table.toLowerCase(Locale.ROOT));
+            statement.setString(2, column.toLowerCase(Locale.ROOT));
             try (ResultSet rows = statement.executeQuery()) {
                 assertThat(rows.next()).as("information_schema row for %s.%s", table, column).isTrue();
                 return rows.getString(1);
