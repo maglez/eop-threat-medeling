@@ -138,6 +138,77 @@ Re-adding an `env:` block was considered and rejected. It would hand PostgreSQL 
 
 Recorded honestly: **all five Definition-of-Done gates and the Tech Lead missed this defect** in the round before it reached a runner. It was unreachable locally, because local verification executed the k6 step's script directly and never the surrounding Compose lifecycle. The generalisable point is about the limits of the local loop rather than about any one reviewer — a step that only ever runs in CI is only ever proven in CI.
 
+**2026-08-24 — EOP-169 adds CI performance trend tracking:**
+
+### 1. What this amendment supersedes
+
+Section 5 ("Where results go") currently says results go to a GitHub Actions artifact only, that they are **not** appended to `docs/performance/TRENDS.md`, and that "the CI artifact is for debugging regressions, not for long-term trend analysis."
+
+This amendment supersedes the second half of that statement. The separation from `TRENDS.md` is **retained and reaffirmed** — what was wrong was the conclusion that CI results therefore have no trend worth keeping. The canary runs on every push to `main`, so its data has a series even if the canary itself is a smoke test.
+
+### 2. Three additions
+
+#### (a) Run summary step
+
+A new `Render k6 metrics to the run summary` step in the `image` job, between the canary and `Upload k6 results`, carrying `if: always()`. It renders p50/p95/p99/max, requests per second, error rate, iterations and checks as a Markdown table into `$GITHUB_STEP_SUMMARY` on every run, pull requests included.
+
+This is a separate step rather than lines appended to the canary because the canary `exit 1`s the moment a threshold is breached, so trailing code there would never run — the numbers would vanish in exactly the case they are wanted. A missing summary makes it a no-op rather than a failure, because the canary already hard-fails on that and failing twice is noise.
+
+#### (b) perf-trend job
+
+A new job appending one flat JSON line per build to `ci-history.jsonl` on an orphan `perf-history` branch. Configuration:
+
+- `needs: image` — so a red canary records no point. Consequence: a build bad enough to breach a threshold leaves a *gap* in the series rather than a visible spike, and the run summary is where those numbers are found.
+- `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` — the event check is **not redundant**; `workflow_dispatch` and the weekly `schedule` also report `refs/heads/main`.
+- `permissions: contents: write` only — no repository secret added; the push uses the built-in `GITHUB_TOKEN`.
+- `concurrency: {group: perf-trend, cancel-in-progress: false}` — because a dropped run's data point is unrecoverable; its artifact is run-scoped.
+
+Row shape: `date`, `sha`, `run_id`, `p50`, `p95`, `p99`, `max`, `rps`, `error_rate`, `iterations`, `checks`.
+
+#### (c) Trend page
+
+`tools/perf/trend-page.html` republished beside the series as `index.html`, served by GitHub Pages from the `perf-history` branch root.
+
+### 3. Decisions and their reasons
+
+- **A separate job, not a step in `image`.** GitHub Actions scopes `permissions` per job with no per-step granularity, so appending from inside `image` would widen its `contents: read` to `contents: write` for the GHCR-publishing steps too. This does **not** conflict with §1 of the original ADR, which constrains where the k6 *run* lives (reusing the already-running Compose stack); it constrains nothing about where results are published.
+
+- **Publishing by pushing to the branch rather than `actions/configure-pages` + `deploy-pages`.** The Pages API would need `pages: write` and `id-token: write`. Pages is pointed at the branch by a one-off manual settings change — explicitly the same class of manual action §4 already records for promoting the canary to a required status check. **That promotion is still not done and remains out of scope**, so §4 stands unchanged.
+
+- **§2's zero-third-party-Action property is preserved.** Only `actions/checkout@v4` and `actions/download-artifact@v4` were added, both first-party.
+
+- **The page is deliberately not Chart.js.** Roughly sixty lines of hand-rolled SVG, no build step, no CDN: a `<script src>` would put third-party view-time code on a public page in a repository whose CI uses zero third-party Actions and whose npm roster is digest-audited, and SRI would pin the bytes while still leaving a network dependency and a hash to maintain. It also renders from a `file://` checkout, which is what made it testable without Pages.
+
+### 4. Four findings from implementation, three of which fail silently
+
+#### (a) First attempt read a gitignored path
+
+A first attempt read `test/k6/results/summary.json` from a fresh checkout — a `.gitignore`d path, so the `-f` test was always false and the job exited **0** having appended nothing. This is the same green-while-broken class ADR-016 records for k6's own InfluxDB writes. The fix: download the artifact and assert its presence. A missing or empty summary is now a hard `::error::` with an `ls -R`, never a skip.
+
+#### (b) actions/checkout fails on absent branch
+
+`actions/checkout` with `ref: perf-history` hard-fails on a branch that does not exist yet, making a later "create if missing" step unreachable on the first run. The fix: probe with `git ls-remote --exit-code --heads` and bootstrap with `git init --initial-branch`.
+
+#### (c) jq stream took exit status from last value only
+
+The row guard was first written as a comma-separated jq stream, `(.p50, .p95, … | type == "number")`. `jq -e` takes its exit status from the **last** value only, so a null `p95` passed. Confirmed empirically, rewritten as `[…] | all(…)`, covered by a fourteen-case negative battery.
+
+#### (d) error_rate reads the right field
+
+`error_rate` reads `.metrics.http_req_failed.value`. The `.passes`/`.fails` pair is an inverted Rate reporting `0` and `221` on a fully healthy run, so the obvious reading records every green build as a 100% failure.
+
+### 5. Evidence
+
+- Publishing logic rehearsed against a local `file://` origin over five scenarios, 23 assertions: bootstrap onto an absent branch (true orphan, exactly one commit, three-file tree), append onto an existing branch, a genuine `--depth 1` shallow clone, a genuinely rejected concurrent push whose replay preserved the rival's point and appended ours after it, and an exhausted five-attempt retry exiting non-zero. Note `file://` rather than a bare path was necessary because git silently ignores `--depth` for local-path clones.
+- Page rendered in jsdom over seven scenarios, 30 assertions: healthy series, single point (no `NaN`, genuinely centred), empty file, all-lines-invalid, partially malformed, HTTP and network failure, and an XSS battery. Security posture: all text via `textContent`, `sha` linked only if `/^[0-9a-f]{7,40}$/`, `checks` printed only if `/^[0-9]+\/[0-9]+$/`.
+- `ruby -ryaml` parses the workflow; jobs are `[build, ui, image, perf-trend, supply-chain, dependency-cve]`.
+
+### 6. Limits
+
+- **GitHub Pages must be enabled by hand once** (Settings → Pages → branch `perf-history`, folder `/`). It is currently **not** enabled — `gh api repos/:owner/:repo/pages` returns 404. The repo is public so Pages is free. Until then the series accumulates with nothing serving it.
+- **The canary is still a smoke test** of `GET /health` under `SMOKE_STAGES`, so the trend tracks one endpoint, not behaviour under load. `LOAD_STAGES` and `STRESS_STAGES` remain local-only.
+- **Nothing prunes `ci-history.jsonl`**; it grows one line per push to `main` indefinitely. Revisit when the file reaches a size that matters (roughly 1 MB per 10,000 pushes), or add a retention policy then.
+
 ## Related
 
 - ADR-016 (Colima as local container runtime)
