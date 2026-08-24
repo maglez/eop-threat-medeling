@@ -112,9 +112,14 @@ MULTI_STAGE_AGENTS = {
 # footer. Derived from PIPELINE rather than hand-listed, following
 # MULTI_STAGE_AGENTS above, so a sixth gate added to the roster cannot be
 # reported by `conformance` while going missing from the cost and time report.
-# AUDITOR_AGENTS below is the same five by construction; it is kept separate
-# because it answers a different question (who must not self-review) and ADR-022
-# records deriving it from the agent frontmatter as its preferred long-term form.
+# AUDITOR_AGENTS below holds the identical five *today* - not merely "the same
+# by construction", they are the same members - so do not read the two names as
+# evidence of different rosters. They are kept apart because they answer
+# different questions, and are expected to diverge: ADR-022 records deriving
+# AUDITOR_AGENTS from the agent frontmatter (`permission.edit: deny`) as its
+# preferred long-term form, which would make it a property of the agents rather
+# than of the pipeline. Until then, a gate that must be reported here but not
+# treated as an auditor - or the reverse - is the case that splits them.
 GATE_AGENTS = set(PIPELINE["2 gateways"])
 
 # Agents whose job is to judge someone else's work. If one of these ran on the
@@ -397,9 +402,12 @@ def gate_breakdown(rows: list[sqlite3.Row], window: int) -> list[dict]:
 
     every = [row for row in rows if canonical(row["agent"]) in GATE_AGENTS]
     if every:
+        # Count the gates actually present rather than hardcoding "five". A gate
+        # in the roster that has never been dispatched is skipped above, so a
+        # literal would quietly overstate what the row covers.
         breakdown.append(
             {
-                "agent": "all five, merged",
+                "agent": f"all {len(breakdown)} gates, merged",
                 "sessions": len(every),
                 "elapsed": merge_spans(valid_spans(every)),
                 "cost": sum(row["cost"] or 0.0 for row in every),
@@ -460,9 +468,11 @@ def print_gate_totals(totals: dict) -> None:
     """The per-gate block that sits under the project totals.
 
     The closing caveat is not decoration. Percentages invite addition far more
-    strongly than durations do, and adding these five gives 28.8% against a true
-    merged 15.2% - so the line saying they do not add is what stops the table
-    being read wrongly.
+    strongly than durations do, and adding the per-gate shares comes to roughly
+    twice the true merged figure - so the line saying they do not add is what
+    stops the table being read wrongly. No exact ratio is quoted here on
+    purpose: it moves with the data, and a stale literal in a docstring is
+    exactly the drift this tool exists to expose elsewhere.
     """
     gates = totals["gates"]
     if not gates:
@@ -476,7 +486,7 @@ def print_gate_totals(totals: dict) -> None:
               f"{format_span(gate['elapsed']):>18}{gate['share']:>8.1%}"
               f"{cost:>13}")
     print(
-        "\n  The five run in parallel, so their times and shares overlap and do"
+        "\n  The gates run in parallel, so their times and shares overlap and do"
         " not add up\n  to the merged row - only the costs do. A share is"
         " occupancy: how much of the\n  window had that gate in flight."
         " architecture-guardian is also dispatched\n  outside the gate stage,"
