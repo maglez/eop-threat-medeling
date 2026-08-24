@@ -223,6 +223,14 @@ class SeparationInvariantTest {
                 .isNotEmpty()
                 .hasSizeGreaterThanOrEqualTo(MINIMUM_AGENTS);
 
+        assertThat(agentModels.keySet())
+                .as("GATE_REVIEWS or AGENT_AUTHORS names an agent that no longer appears in %s. detectOverlaps skips a "
+                        + "name it cannot resolve, so a renamed or removed agent would drop out of the comparison "
+                        + "silently and this guard would keep passing while no longer checking that agent at all. Fix "
+                        + "the map in the same change as the rename.", AGENT_CONFIGURATION)
+                .containsAll(GATE_REVIEWS.keySet())
+                .containsAll(AGENT_AUTHORS.keySet());
+
         assertThat(Set.copyOf(readAgentTiers().values()))
                 .as("Fewer distinct tier variables are in use than expected. If a tier was deliberately collapsed, lower "
                         + "MINIMUM_TIERS_IN_USE in the same change and say why; otherwise the agent block has lost a pin.")
