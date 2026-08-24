@@ -173,16 +173,29 @@ AUDITOR_AGENTS = {
 # detection over prevention, not detection standing in for prevention.
 #
 # This is deliberately NOT the same set as AUDITOR_AGENTS. Gate membership means
-# "this verdict must be independent of the author — family-independent where the
-# invariant holds, and in its two documented exceptions the strongest guarantee
-# still available, which is model-independence at best and neither degree where
-# the gate and the author resolve to one model ID (Blueprint §3.1)";
+# "this verdict must be independent of the author — family-independent for
+# production code, infrastructure and test code, where since 2026-08-24
+# (ADR-059) the Separation Invariant holds with zero exceptions and
+# SeparationInvariantTest fails the build if one reappears";
 # read-only membership means "this agent must never write". Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and
 # `/trace` documents a read-only RISK as a Sign-off Contract breach worth
 # fixing immediately.
+#
+# One model-identifier overlap survives, and a RISK line naming it is a TRUE
+# POSITIVE rather than noise. @security-auditor and @architecture-guardian both
+# sit on MODEL_F, so on a story where @architecture-guardian authors an ADR or a
+# C4 model and @security-auditor reviews it, the two resolve to one model ID and
+# the review of that ARCHITECTURE DOCUMENTATION is neither model- nor family-
+# independent (Blueprint §3.1). It is carried as the single declared, justified,
+# self-retiring allow-list entry in SeparationInvariantTest. Zero exceptions for
+# production code, infrastructure and test code is NOT the same as
+# unconditional, and the qualifier must never be dropped. By contrast, a story
+# where a tester writes a test and @code-reviewer reviews it no longer produces
+# a self-review RISK: @code-reviewer moved to MODEL_G (zai.glm-5) on 2026-08-24,
+# a family no authoring tier occupies.
 #
 # Scope: the DoD gates that declare `permission.edit: deny`, and only those. The
 # four advisory experts declare it too but are not gates and never carry a

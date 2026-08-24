@@ -127,7 +127,6 @@
     "tech-lead": { "model": "{env:MODEL_A}" },
     "expert-dave-farley": { "model": "{env:MODEL_B}" },
     "expert-kent-beck": { "model": "{env:MODEL_B}" },
-    "code-reviewer": { "model": "{env:MODEL_B}" },
     "product-owner": { "model": "{env:MODEL_B}" },
     "tester-api": { "model": "{env:MODEL_B}" },
     "tester-unit-and-quality": { "model": "{env:MODEL_B}" },
@@ -136,6 +135,7 @@
     "performance-engineer": { "model": "{env:MODEL_C}" },
     "ui-builder": { "model": "{env:MODEL_E}" },
     "architecture-guardian": { "model": "{env:MODEL_F}" },
-    "security-auditor": { "model": "{env:MODEL_F}" }
+    "security-auditor": { "model": "{env:MODEL_F}" },
+    "code-reviewer": { "model": "{env:MODEL_G}" }
   }
 }

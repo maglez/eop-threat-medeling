@@ -1,6 +1,6 @@
 # ADR-046: A Definition-of-Done Gate Is Pinned By A Capability Floor And A Passing Probe, Not By Tier Name
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-08-24 by ADR-059)
 **Date:** 2026-08-21
 **Deciders:** operator, primary agent (`MODEL_A`)
 
@@ -228,6 +228,14 @@ ID*.
   local change, and nothing here detects that.
 - Tier changes take effect only after an OpenCode restart, unchanged from ADR-022. The pins in
   this change are not in force for the session that made them.
+
+## Amendments
+
+**Amendment, 2026-08-24 (EOP-179, [ADR-059](ADR-059-code-review-gate-on-its-own-model-tier.md)).** The original text stands. Two corrections.
+
+**"Nothing enforces any clause programmatically, so the wording is the mechanism" is no longer wholly true.** `SeparationInvariantTest` — the tenth repository-integrity gate, in `src/test/java/org/maglez/eop/docs/` — now mechanises clause 3, family-independence of the tiers that authored the artefact under review, for **production code, infrastructure and test code**. It reads the pins from `.opencode/opencode.json`, resolves each `{env:MODEL_X}` from the active block of the tracked `.env.example`, and fails the build on any Definition-of-Done gate sharing a model identifier with an agent authoring an artefact class that gate reviews. It fails loudly by `IllegalStateException` when a variable cannot be resolved, rather than skipping the assertion. The other clauses of the floor — reasoning capability, structured tool calls, the 40,000-output and 128,000-context minima, and clause 4's recorded probe verdict — remain prose that a reviewer enforces, because none of them is derivable from a config file. State the asymmetry that way, as [ADR-052](ADR-052-having-value-mandate-is-build-enforced.md) does for its own half-mechanised mandate; do not describe the floor as automated.
+
+**`MODEL_F` no longer holds every gate that needs family independence, and one overlap survives on it.** This ADR created `MODEL_F` for `@architecture-guardian` and `@security-auditor` and said that closed the second exception to the Separation Invariant. That remains accurate for `MODEL_A`-authored production code. But `@architecture-guardian` *authors* ADRs and C4 models while `@security-auditor` reviews them from the same tier at one model identifier, so **architecture documentation is reviewed by a tier-mate** — neither model- nor family-independent. ADR-059 records this as the single declared, justified allow-list entry in the new test rather than leaving it as undisclosed prose, and does **not** close it. Clause 4 also gained a stricter reading in the process: a probe verdict is screened for the *role* the gate will perform, so the 2026-08-21 `zai.glm-5` verdict for architecture and security work was **not** treated as transferable to code review, and a fresh two-stage code-review probe with a `MODEL_B` control was run and recorded in Blueprint §3.4.1 before `MODEL_G` was pinned.
 
 ## Related
 
