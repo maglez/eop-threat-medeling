@@ -10,6 +10,16 @@ file supersedes it as the complete picture.
 constraint must be reflected here in the same commit. The diagram is Mermaid `erDiagram` syntax
 so it version-controls and reviews as text.
 
+**Half of that rule is build-enforced, and it matters which half.** `DbSchemaDiagramTest`
+(EOP-167) derives the table set from every `createTable` in the changelogs and fails
+`./mvnw verify` when this diagram omits one, or names an entity no changelog creates; it also
+fails on an entity block that never closes and on a relationship naming an undeclared entity.
+It says nothing about **columns** — types, nullability and the PK/UK/FK markers are
+reviewer-enforced, so a changeset adding a column to an existing table can still leave this file
+quietly wrong. Nor is it a Mermaid syntax check: `MermaidSequenceTextTest` is scoped to
+`sequenceDiagram` fences, so a malformed attribute line here would still render broken and still
+pass the build.
+
 ---
 
 ## Full entity-relationship diagram
