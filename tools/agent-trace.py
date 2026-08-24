@@ -22,9 +22,12 @@ Usage:
     tools/agent-trace.py --last             Trace the most recent root session.
     tools/agent-trace.py --last --json      Machine-readable form.
 
+The listing ends with project-wide totals covering every session ever recorded
+for this directory - subagent sessions included, not just the ones listed above.
+
 Options:
     --project PATH   Filter by working directory (default: this repository).
-    --limit N        How many sessions to list (default: 20).
+    --limit N        How many sessions to list (default: 10).
     --json           Emit JSON instead of a report.
 """
 
@@ -215,6 +218,19 @@ def duration(row: sqlite3.Row) -> str:
     return f"{seconds / 60:.0f}m"
 
 
+def format_span(millis: int) -> str:
+    """Render a millisecond span as days, hours, minutes and seconds.
+
+    All four units are always printed, zeroes included, so two totals stay
+    column-comparable instead of shifting width when a unit drops out.
+    """
+    seconds = max(int(millis), 0) // 1000
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{days}d {hours:02d}h {minutes:02d}m {seconds:02d}s"
+
+
 def tool_counts(connection: sqlite3.Connection, session_id: str) -> Counter[str]:
     """Count tool invocations in a session.
 
@@ -280,6 +296,95 @@ def configured_models(project: str) -> dict[str, str]:
     return pinned
 
 
+def project_pattern(project: str) -> str:
+    """The LIKE pattern that decides what counts as "this project".
+
+    Factored out so the listing, the newest-root lookup and the totals footer
+    cannot drift apart: a footer that summed a different set of sessions than
+    the table above it would not reconcile, and nothing would say so.
+
+    Matching on the directory's basename is deliberately loose - it also picks
+    up sessions started from a subdirectory, including the `.opencode/agents`
+    phantom launch AGENTS.md warns about. Those are still this project's spend.
+    """
+    return f"%{Path(project).name}%"
+
+
+def project_totals(connection: sqlite3.Connection, project: str) -> dict:
+    """Total cost and elapsed time over *every* session for this project.
+
+    Root and subagent sessions alike, unbounded by --limit.
+
+    Time is the awkward half. Each row carries only `time_created` and
+    `time_updated`, so a session's span is first-message-to-last-touch: idle
+    minutes count, and a session reopened a week later counts the whole week.
+    Worse, a subagent runs *inside* its parent's span, so adding all 1,186 rows
+    up double-counts every dispatch. Two figures are therefore reported:
+
+      elapsed  - overlapping spans merged, so concurrent and nested sessions are
+                 counted once. The honest answer to "how long was this project
+                 being worked on", modulo the idle-time caveat above.
+      summed   - every session's own span added up, the literal reading. Larger
+                 than elapsed by exactly the nesting and overlap.
+
+    Neither is effort. Both are calendar coverage, and the caller says so.
+    """
+    rows = connection.execute(
+        """
+        SELECT parent_id, cost, time_created, time_updated
+        FROM session
+        WHERE directory LIKE ?
+        ORDER BY time_created
+        """,
+        (project_pattern(project),),
+    ).fetchall()
+
+    spans = [
+        (row["time_created"], row["time_updated"])
+        for row in rows
+        if row["time_created"]
+        and row["time_updated"]
+        and row["time_updated"] >= row["time_created"]
+    ]
+
+    # Merge overlapping and nested intervals. `rows` is already sorted by start.
+    merged: list[list[int]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+
+    return {
+        "sessions": len(rows),
+        "roots": sum(1 for row in rows if row["parent_id"] is None),
+        "subagents": sum(1 for row in rows if row["parent_id"] is not None),
+        "cost": sum(row["cost"] or 0.0 for row in rows),
+        "elapsed": sum(end - start for start, end in merged),
+        "summed": sum(end - start for start, end in spans),
+        "first": min((start for start, _ in spans), default=None),
+        "last": max((end for _, end in spans), default=None),
+    }
+
+
+def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
+    totals = project_totals(connection, project)
+    if not totals["sessions"]:
+        return
+    print(f"\nAll {totals['sessions']} sessions ever recorded for this project"
+          f" ({totals['roots']} root + {totals['subagents']} subagent)\n")
+    print(f"  total cost   : ${totals['cost']:,.2f}")
+    print(f"  total time   : {format_span(totals['elapsed'])}"
+          "   elapsed, overlapping and nested sessions merged")
+    print(f"  summed spans : {format_span(totals['summed'])}"
+          "   every session added up separately")
+    print(f"  first / last : {when(totals['first'])} -> {when(totals['last'])}")
+    print(
+        "\n  A span is first message to last touch, so idle time counts."
+        " Read these as\n  calendar coverage, not effort or billed time."
+    )
+
+
 def list_sessions(connection: sqlite3.Connection, project: str, limit: int) -> None:
     rows = connection.execute(
         """
@@ -289,7 +394,7 @@ def list_sessions(connection: sqlite3.Connection, project: str, limit: int) -> N
         ORDER BY s.time_created DESC
         LIMIT ?
         """,
-        (f"%{Path(project).name}%", limit),
+        (project_pattern(project), limit),
     ).fetchall()
     if not rows:
         sys.exit(f"No root sessions found for a directory matching {project!r}")
@@ -304,6 +409,7 @@ def list_sessions(connection: sqlite3.Connection, project: str, limit: int) -> N
             f" {row['kids']:>4} {row['cost'] or 0:>9.2f}  {row['id'][:24]}  {title}"
         )
     print("\nTrace one with: tools/agent-trace.py <id>")
+    print_project_totals(connection, project)
 
 
 def resolve(connection: sqlite3.Connection, wanted: str) -> sqlite3.Row:
@@ -329,7 +435,7 @@ def newest_root(connection: sqlite3.Connection, project: str) -> sqlite3.Row:
         WHERE parent_id IS NULL AND directory LIKE ?
         ORDER BY time_created DESC LIMIT 1
         """,
-        (f"%{Path(project).name}%",),
+        (project_pattern(project),),
     ).fetchone()
     if not row:
         sys.exit(f"No root session found for {project!r}")
@@ -568,7 +674,7 @@ def main() -> None:
     parser.add_argument("session", nargs="?", help="session id or unique prefix")
     parser.add_argument("--last", action="store_true", help="trace the newest session")
     parser.add_argument("--project", default=None, help="working directory to filter by")
-    parser.add_argument("--limit", type=int, default=20, help="sessions to list")
+    parser.add_argument("--limit", type=int, default=10, help="sessions to list")
     parser.add_argument("--json", action="store_true", help="emit JSON")
     args = parser.parse_args()
 
