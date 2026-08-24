@@ -37,7 +37,7 @@ Before a single line of code is written, the **Product Owner agent** conducts a 
 
 - Separate **what the business needs** from **how someone thinks it should be built** (a common source of wasted effort).
 - Surface **edge cases and constraints** that are easy to miss in a brief.
-- Validate the proposed solution against **accessibility standards** (GOV.UK / WCAG 2.2 AA) before any work begins.
+- Review the proposed solution against **accessibility standards** (GOV.UK Design System / WCAG 2.2 AA) at design time — a human-reviewed checkpoint, not an automated test.
 - Produce **precise, testable acceptance criteria** in plain language — so there is no ambiguity about whether a feature is done.
 
 Only once the requirements pass this review are they filed as formal stories in Jira and handed to the engineering team. This single step eliminates the most common cause of rework: building the wrong thing.
@@ -114,7 +114,9 @@ These advisors are available to any agent in the system for a second opinion on 
 
 ## Five Independent Review Gates
 
-No story can be declared complete until **five independent agents** have each issued an explicit approval. These agents are assigned to AI model families that are **different from the models that wrote the code** — a deliberate design choice that prevents the same blind spots from appearing in both the author and the reviewer.
+No story can be declared complete until **five independent agents** have each issued an explicit approval. These reviewers are deliberately assigned to a **different AI model family from the one that wrote the code**, so that a reviewer does not inherit the author's blind spots.
+
+There is one documented exception, and the fact that it is documented is the point: **test code** is reviewed by an agent from the same model family that wrote it. That is a weaker form of independence, and the project records it openly as a known limitation rather than presenting the guarantee as universal.
 
 | Gate | What It Approves |
 |---|---|
@@ -124,7 +126,7 @@ No story can be declared complete until **five independent agents** have each is
 | `@code-reviewer` | Code is clean, maintainable, and follows SOLID principles |
 | `@architecture-guardian` | Architectural integrity is preserved |
 
-A sixth automated backstop — the **Goal Plugin auditor** — independently verifies that all five approvals are genuine before archiving the story as done.
+A sixth automated backstop then checks that all five approvals are genuinely present and evidenced before a story can be archived as done. It is described here as a safety net rather than an independent review, because it runs on the same underlying model as the orchestrator whose work it is checking — another limitation the project documents rather than overstates.
 
 ---
 
@@ -162,7 +164,7 @@ Business approves release → Feature flag ON → Users see the feature
 | **"Performance has degraded without warning before"** | Nightly performance tests with historical trend tracking catch regressions before users do. |
 | **"We've accumulated a lot of technical debt"** | Architecture is reviewed on every PR. Debt is caught at the point of introduction. |
 | **"We don't know why past decisions were made"** | Every architectural decision is documented in a permanent, searchable ADR log. |
-| **"We want confidence that AI isn't just making things up"** | Five independent review gates, using different AI model families, must all approve before anything ships. |
+| **"We want confidence that AI isn't just making things up"** | Five independent review gates, drawn from different AI model families than the author (with one documented exception, noted above), must all approve before anything ships. |
 
 ---
 
