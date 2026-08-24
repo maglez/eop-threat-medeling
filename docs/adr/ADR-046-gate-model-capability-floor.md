@@ -1,6 +1,6 @@
 # ADR-046: A Definition-of-Done Gate Is Pinned By A Capability Floor And A Passing Probe, Not By Tier Name
 
-**Status:** Accepted
+**Status:** Accepted (clause 5 superseded 2026-08-24 by ADR-058)
 **Date:** 2026-08-21
 **Deciders:** operator, primary agent (`MODEL_A`)
 
@@ -121,16 +121,28 @@ any of this still requires a superseding ADR.
    under clauses 2 and 3, and the `MODEL_C`/`MODEL_E` precedent for duplicating a variable exists
    to permit independent repointing of front-end work, which is not a need either gate has. Each
    additional variable multiplies the number of documented tables that can drift.
+
+   > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).**
+   > `MODEL_F` holds **three** gates, not two: `@code-reviewer` joined it on that date. The
+   > reasoning in clause 5 is unchanged and is in fact what admitted the third occupant — one
+   > tier rather than a new `MODEL_G`, because `@code-reviewer`'s requirements under clauses 2
+   > and 3 are identical to the other two gates', and a seventh variable would multiply the
+   > drift surface for no gain. What does change is the *stated purpose* of the tier: it is no
+   > longer "the two gates that review `MODEL_A`'s own output" but the audit tier for **any**
+   > gate that must be family-independent of every tier that authored the artefact it reviews.
+   > `@code-reviewer` reviews test code authored on `MODEL_B` as well as production code
+   > authored on `MODEL_A`/`MODEL_C`/`MODEL_E`, so clause 3 has to hold against both classes,
+   > and MiniMax is family-independent of each.
 6. Clause 4 binds every future gate pin, including a repoint of `MODEL_A` or `MODEL_B` themselves.
    A tier that is currently eligible does not stay eligible when its value changes.
 
 ```mermaid
 flowchart LR
-    subgraph gates_f["MODEL_F — review gates over MODEL_A output"]
-        G1["@architecture-guardian<br/>@security-auditor"]
+    subgraph gates_f["MODEL_F — audit tier, family-independent of every authoring tier"]
+        G1["@architecture-guardian<br/>@code-reviewer<br/>@security-auditor"]
     end
-    subgraph gates_b["MODEL_B — review gates over delegated output"]
-        G2["@code-reviewer<br/>@tester-api<br/>@tester-unit-and-quality"]
+    subgraph gates_b["MODEL_B — the two tester gates"]
+        G2["@tester-api<br/>@tester-unit-and-quality"]
     end
     subgraph authors["author tiers"]
         TL["primary agent / @tech-lead<br/>MODEL_A"]
@@ -139,10 +151,11 @@ flowchart LR
     A1 -->|"delegated production code<br/>and infrastructure"| PROD["Production artefacts"]
     TL -.->|"production code authored<br/>instead of delegated"| PROD
     G2 -->|"test code"| TEST["Test artefacts"]
+    G1 -->|"ADRs and C4 models"| DOCS["Architecture documentation"]
     PROD -->|"reviewed by — family-independent<br/>on both paths, as of this ADR"| G1
     PROD -->|"reviewed by — family-independent<br/>only for the delegated path"| G2
     TEST -->|"reviewed by — family-independent"| G1
-    TEST -.->|"same model ID —<br/>neither degree"| G2
+    DOCS -.->|"same model ID —<br/>neither degree"| G1
 ```
 
 Compare this against ADR-022's diagram to read what changed. There, the solid `PROD --> G1` edge
@@ -153,6 +166,19 @@ from model-independent to family-independent for the same reason. The single rem
 exception is `TEST -.-> G2`, where `@code-reviewer` and the two testers resolve to the *same model
 ID*.
 
+> **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** The
+> diagram above has been redrawn and the paragraph before it now describes it incorrectly in two
+> places. `@code-reviewer` sits in `G1`, so `G2` holds only the two testers, and the dashed
+> `TEST -.-> G2` edge is **gone** — no gate reviews test code from inside the tier that authored
+> it, and `TEST --> G1` is now the only review edge test artefacts have. Do not read that as a
+> diagram with no dashed edges left: a new one appears at `DOCS -.-> G1`, because
+> `@architecture-guardian` authors this project's ADRs and C4 models on `MODEL_F` and
+> `@code-reviewer` now reviews them from the same model ID. The overlap was **relocated from
+> test code to architecture documentation, not eliminated**, and ADR-058 records why that trade
+> was accepted. The surviving qualifier on `PROD --> G2` is unrelated to either: it marks a
+> *degree* of independence — the testers are family-adjacent to `MODEL_A`, not identical to it —
+> rather than an exception to the invariant, which is stated in terms of shared weights.
+
 ## Consequences
 
 **Accepted gains.**
@@ -161,6 +187,12 @@ ID*.
   `@tech-lead` authors itself is now reviewed family-independently by two of the five gates. The
   Separation Invariant retains exactly one exception — test code — and every citation of it must
   now say *one* rather than *two*.
+
+  > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** The
+  > count is now **zero**, and production code the primary agent authors itself is reviewed
+  > family-independently by **three** of the five gates rather than two. From that date the
+  > Separation Invariant is cited unconditionally: a citation saying *one* is as stale as one
+  > saying *two*.
 - Test code gains a family-independent reviewer for the first time. ADR-022 stated plainly that
   *"no reviewer of a tester-authored test sits outside the author's family, so for test code the
   family-level guarantee §3.1 asks for is absent entirely"*. That sentence is now false:
@@ -170,7 +202,7 @@ ID*.
   further ADR merely to be permitted.
 - Gate work gets substantially cheaper. `MODEL_F` costs 0.3/1.2 per million tokens against
   `MODEL_A`'s 5.5/27.5 — an order of magnitude and more on output, across two gates on every
-  story. ADR-022 accepted rising gate cost as a consequence; this reduces it while strengthening
+  story (three from 2026-08-24, per ADR-058). ADR-022 accepted rising gate cost as a consequence; this reduces it while strengthening
   the guarantee, which is the rare case where the two do not trade against each other.
 - Clause 4 converts a habit into a rule. The probe method was already documented in
   `.env.example`, and it was documented as advice — which is exactly the shape of the failure
@@ -197,7 +229,21 @@ ID*.
   `verify` — so a weaker documentation author does not merely produce worse documents, it turns
   the build red. The blast radius is real and was accepted in preference to leaving the gate
   reviewing its own tier's output.
-- **The output ceiling drops for both gates**, from 128,000 to 98,304. That is well clear of the
+
+  > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** This
+  > cost has grown a second half. `@code-reviewer` now sits on `MODEL_F` too, so the ADRs and C4
+  > models `@architecture-guardian` authors here are reviewed by an agent on their author's exact
+  > model ID — the same shape of overlap that ADR-058 moved off test code, now landing on
+  > architecture documentation. That is a relocation, not an elimination, and ADR-058 states the
+  > three grounds on which it was traded rather than leaving the reader to infer them: prose
+  > neither executes nor ships nor carries a vulnerability, whereas a defective test silently
+  > withdraws a guarantee; the prose gates named above mean bad documentation fails the build
+  > rather than passing quietly; and `@code-reviewer`'s remit is source code, so its overlap with
+  > `@architecture-guardian`'s output covers a narrower surface than its overlap with the testers'
+  > did.
+- **The output ceiling drops for both gates**, from 128,000 to 98,304 (for all three from
+  2026-08-24 — but see ADR-058, where the move *raises* `@code-reviewer`'s ceiling, since it came
+  from `MODEL_B`'s 64,000 rather than from `MODEL_A`). That is well clear of the
   40,000 floor in clause 2 and above `MODEL_B`'s 64,000, so no current gate loses headroom
   relative to its peers — but it is a reduction against what these two gates had.
 - **`MODEL_F` is not EU-pinned, and this must not be described as though it were.** Only the ten
@@ -208,7 +254,8 @@ ID*.
   here. It is stated as unverified rather than resolved in either direction. This mattered enough
   to influence the choice: the rejected `global.openai.gpt-5.6-luna` would have required an
   explicitly cross-region profile, a change of posture rather than a continuation of it, for two
-  gates that read repository source and audit findings.
+  gates that read repository source and audit findings — three such gates from 2026-08-24, which
+  widens the unverified residency question rather than changing it.
 - **The Zen provider route is unprobed.** `.env.example` carries `#MODEL_F=opencode/minimax-m2.5`
   in the Zen block, because `switch-provider.sh` aborts if a variable is absent from the block it
   switches to. Same model, different provider, and clause 4 is about the route as much as the
@@ -220,6 +267,14 @@ ID*.
   root cause of the drift it was written to fix, and this decision adds one more row to each of
   them. The mitigation is that the rule now lives in an ADR while only the values live in the
   tables.
+
+  > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** This
+  > cost is **not** re-incurred. Moving `@code-reviewer` to `MODEL_F` adds no variable and no
+  > distinct model: the count stays six and five, so nothing that states the tier *count* goes
+  > stale. What does go stale is every table stating a tier's *occupants*, which is a smaller but
+  > still repository-wide edit — `AGENTS.md`, `.env.example`, four Blueprint tables and the ADR
+  > index all name `MODEL_F`'s two gates and were updated to three in the same change. The
+  > paragraph above is the reason ADR-058 declined to create a `MODEL_G`.
 - Clause 4 makes changing a gate's model slower. A repoint that used to be a one-line edit now
   requires two probes and a Blueprint entry before it is compliant. That cost is the point, and
   the probe campaign recorded above is what a single skipped probe would have cost instead.
@@ -234,6 +289,10 @@ ID*.
 - [ADR-022](ADR-022-agent-model-tier-governance.md) — the decision this supersedes in part. Its
   rule 1 is replaced; rules 2 through 6 stand, and its Context remains the authoritative account
   of why gate tiering exists at all
+- [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) — supersedes clause 5's occupancy by
+  adding `@code-reviewer` to `MODEL_F`. Clauses 1 through 4 and 6 of this ADR are what that
+  change had to satisfy, and clause 4 is why it carries its own probe verdict rather than
+  inheriting the one recorded here
 - [ADR-006](ADR-006-build-quality-gates.md) — the mechanical build gates, including the
   documentation-integrity tests that make `@architecture-guardian`'s output a build concern
 - `.opencode/docs/OpenCode_Autonomous_Engineering_System_Blueprint.md` §3.1 for the two degrees of

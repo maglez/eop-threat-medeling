@@ -1,6 +1,6 @@
 # ADR-022: Model Tiers Are Allocated By Definition-of-Done Role, Not By Artefact Type
 
-**Status:** Accepted (rule 1 superseded 2026-08-21 by ADR-046)
+**Status:** Accepted (rule 1 superseded 2026-08-21 by ADR-046; rule 2 superseded 2026-08-24 by ADR-058)
 **Date:** 2026-08-11
 **Deciders:** @architecture-guardian, @tech-lead
 
@@ -114,13 +114,29 @@ emits files.
    > so no gate shares a family with the tier that authors production code directly. **One
    > exception remains — test code — and from that date onward the invariant must be cited with
    > one exception, not two.**
+
+   > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** The remaining exception is **closed**. `@code-reviewer`
+   > moved from `MODEL_B` to `MODEL_F`, so tester-authored test code is now reviewed
+   > family-independently by all three of the gates that read it, and no gate anywhere shares a
+   > model family with the tier that authored the artefact it is reviewing. **From this date the
+   > Separation Invariant has no exceptions and must be cited unconditionally for every artefact
+   > class — not with one, and not with two.** Two things that did *not* change, and that anyone
+   > citing this clause should keep straight. The invariant still binds only what it always bound:
+   > production code, infrastructure and test code. And closing the exception moved a same-model-ID
+   > overlap rather than eliminating the last one in the repository — `@code-reviewer` now sits on
+   > `MODEL_F` beside `@architecture-guardian`, so ADR prose and C4 models this project authors are
+   > reviewed by an agent on their author's exact model ID. That cluster is not new (ADR-046 put
+   > `@security-auditor` there in 2026-08-21) and this decision enlarges it from two members to
+   > three; it is recorded as an accepted cost in
+   > [ADR-046](ADR-046-gate-model-capability-floor.md) rather than left implicit.
 6. Reversing any part of this allocation requires a superseding ADR. It may not be done by
    editing the tier tables, which is how the previous classification came to contradict a rule
    the project had already written down.
 
 The diagram below depicts the allocation as decided on 2026-08-11 and is retained as the
 historical record, not as a description of the current pins. For the arrangement in force since
-2026-08-21, see the diagram in [ADR-046](ADR-046-gate-model-capability-floor.md).
+2026-08-24, see the diagram in [ADR-046](ADR-046-gate-model-capability-floor.md) as amended by
+[ADR-058](ADR-058-code-reviewer-moves-to-model-f.md).
 
 ```mermaid
 flowchart LR
@@ -194,10 +210,27 @@ are at best model-independent: `@tech-lead`/primary-agent production code shares
   > first time. And the final clause about a test authored by the primary agent on `MODEL_A` is
   > obsolete, since neither gate sits on `MODEL_A` any more. What survives unchanged is the
   > overlap the next bullet describes: `@code-reviewer` and both testers still share one model ID.
+
+  > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** The one claim both blocks above still relied on is now
+  > false too. `@code-reviewer` moved from `MODEL_B` to `MODEL_F`, so it no longer shares a model
+  > ID — or a family — with either tester. Every reviewer of a tester-authored test now sits
+  > outside the author's family, and the exception count is **zero**. The trade in the final
+  > sentence of the bullet above no longer has to be made either: gate capability and review
+  > independence are now both satisfied, because `MODEL_F` cleared the ADR-046 capability floor
+  > for code-review work on its own two-stage probe (recorded in Blueprint §3.4.1) rather than
+  > being accepted as a compromise between the two.
 - `/trace` will report that overlap as a `RISK … self-review` line on any story where a tester
   writes a test. **That finding is a true positive and must not be silenced.** It is the
   visible price of this decision, and suppressing it would restore the blindness this ADR was
   written to remove.
+
+  > **Amended 2026-08-24 by [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) (EOP-178).** This bullet is **retired, not reinterpreted.** With
+  > `@code-reviewer` on `MODEL_F` no tier overlap remains between a test's author and any of its
+  > reviewers, so `/trace` has nothing to report on that path — and a `RISK … self-review` line
+  > for test code would now be a **false** positive signalling a stale pin or a stale tier table
+  > in `tools/agent-trace.py`, to be investigated rather than accepted. The general instruction
+  > survives: wherever `/trace` does find a genuine overlap, it must not be silenced. What has
+  > gone away is the specific overlap this bullet was written about.
 - `AUDITOR_AGENTS` in `tools/agent-trace.py` was consumed for two different purposes: detecting
   same-model review, and detecting an agent that edited files when its role forbids it. The two
   testers belong in the first check and not in the second, because they legitimately author
@@ -222,6 +255,10 @@ are at best model-independent: `@tech-lead`/primary-agent production code shares
   the tier-name whitelist with a capability floor, a family requirement and a mandatory probe,
   and closes the second exception to the Separation Invariant by moving both `MODEL_A` gates to
   `MODEL_F`
+- [ADR-058](ADR-058-code-reviewer-moves-to-model-f.md) — supersedes rule 2 of this ADR by moving
+  `@code-reviewer` from `MODEL_B` to `MODEL_F`, closing the last exception and making the
+  Separation Invariant unconditional. Rule 6 of this ADR is why that change is a new ADR rather
+  than an edit to the tier tables above
 - [ADR-006](ADR-006-build-quality-gates.md) — mechanical build gates; this ADR governs the
   agent gates that sit alongside them, and the same reasoning applies: a gate that cannot fail
   is not a gate

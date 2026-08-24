@@ -116,7 +116,7 @@ These advisors are available to any agent in the system for a second opinion on 
 
 No story can be declared complete until **five independent agents** have each issued an explicit approval. These reviewers are deliberately assigned to a **different AI model family from the one that wrote the code**, so that a reviewer does not inherit the author's blind spots.
 
-There is one documented exception, and the fact that it is documented is the point: **test code** is reviewed by an agent from the same model family that wrote it. That is a weaker form of independence, and the project records it openly as a known limitation rather than presenting the guarantee as universal.
+For code, that separation is now **complete**. It was not always: until August 2026 test code was reviewed by an agent sharing its author's model, and the project recorded that openly as a known limitation rather than presenting the guarantee as universal. Closing it took a reasoned decision, a capability test of the replacement model, and an update to every document that described the old arrangement — which is how a limitation is meant to be retired. One narrower overlap is retained and disclosed: the project's own **architecture documents** are written and reviewed within the same model tier. That is accepted deliberately, because a flawed document is caught by the automated checks that read the repository's text, whereas a flawed test silently withdraws a guarantee.
 
 | Gate | What It Approves |
 |---|---|
@@ -164,7 +164,7 @@ Business approves release → Feature flag ON → Users see the feature
 | **"Performance has degraded without warning before"** | Nightly performance tests with historical trend tracking catch regressions before users do. |
 | **"We've accumulated a lot of technical debt"** | Architecture is reviewed on every PR. Debt is caught at the point of introduction. |
 | **"We don't know why past decisions were made"** | Every architectural decision is documented in a permanent, searchable ADR log. |
-| **"We want confidence that AI isn't just making things up"** | Five independent review gates, drawn from different AI model families than the author (with one documented exception, noted above), must all approve before anything ships. |
+| **"We want confidence that AI isn't just making things up"** | Five independent review gates, drawn from different AI model families than the author, must all approve before anything ships. |
 
 ---
 

@@ -173,11 +173,16 @@ AUDITOR_AGENTS = {
 # detection over prevention, not detection standing in for prevention.
 #
 # This is deliberately NOT the same set as AUDITOR_AGENTS. Gate membership means
-# "this verdict must be independent of the author — family-independent where the
-# invariant holds, and in its two documented exceptions the strongest guarantee
-# still available, which is model-independence at best and neither degree where
-# the gate and the author resolve to one model ID (Blueprint §3.1)";
-# read-only membership means "this agent must never write". Three
+# "this verdict must be independent of the author — family-independent, which
+# since 2026-08-24 the Separation Invariant asserts unconditionally, with zero
+# exceptions (ADR-058; it had one until that date and two until 2026-08-21)";
+# read-only membership means "this agent must never write". Closing the last
+# exception did not end same-model-ID review as such, so this check still earns
+# its keep: @architecture-guardian authors ADRs and C4 models on MODEL_F and
+# @code-reviewer now reviews them from the same model ID, so the self-review
+# finding this script emits has moved from test code to architecture
+# documentation. A test-code self-review line is now a FALSE positive and means
+# a stale pin in .opencode/opencode.json (Blueprint §3.1). Three
 # of the five gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and
