@@ -58,6 +58,7 @@ echo "==> [2/4] Building frontend image: eop-ui:local"
 docker build \
   --build-arg VITE_GAME_SCREEN_ENABLED=true \
   --build-arg VITE_CARD_MAGNIFIER_ENABLED=true \
+  --build-arg VITE_FOLLOW_SUIT_HINT_ENABLED=true \
   -t eop-ui:local "$REPO_ROOT/ui"
 
 echo "==> [3/4] Restarting eop-app and eop-caddy (postgres is left untouched)"
