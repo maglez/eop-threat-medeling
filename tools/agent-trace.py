@@ -24,18 +24,21 @@ Usage:
 
 The listing ends with project-wide totals covering every session ever recorded
 for this directory - subagent sessions included, not just the ones listed above.
-Cost counts every session. The two time figures count only root sessions, since
-a subagent runs inside the span of the session that dispatched it and would
-otherwise be counted twice. Then comes a per-gate breakdown of the five
+Cost counts every session. Three durations are reported and only the first is
+worked time: `active time` is measured from individual message timestamps, with
+any silence longer than the idle cutoff treated as a break, while `calendar span`
+and `sessions sum` come from session start/end timestamps and therefore include
+every night a session was left open. Then comes a per-gate breakdown of the five
 Definition-of-Done gates: how many times each was dispatched, how long it was
 in flight, what share of the project window that is, and what it cost. Read the
 share as occupancy rather than as a slice of a budget, and see print_gate_totals
 for why the rows do not add up.
 
 Options:
-    --project PATH   Filter by working directory (default: this repository).
-    --limit N        How many sessions to list (default: 10).
-    --json           Emit JSON instead of a report.
+    --project PATH        Filter by working directory (default: this repository).
+    --limit N             How many sessions to list (default: 10).
+    --idle-cutoff MINUTES Silence that ends a block of work (default: 2).
+    --json                Emit JSON instead of a report.
 """
 
 from __future__ import annotations
@@ -51,6 +54,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 DB_PATH = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+
+# How long a silence has to be before it stops counting as work. Two minutes was
+# chosen by measurement, not taste: the whole cutoff range was compared against
+# the operator's own recollection of their working days, and two minutes was the
+# one whose per-day figures matched it. It is deliberately tight - it counts the
+# pause while a subagent runs, because that is genuinely working time, and drops
+# almost everything else. Every larger cutoff absorbs more real thinking time
+# and more coffee breaks alike, which is why the figure is cutoff-sensitive and
+# the flag exists rather than the number being buried. See active_time.
+DEFAULT_IDLE_CUTOFF_MINUTES = 2.0
 
 # Tools that change the working tree. An agent declaring `edit: deny` that shows
 # up here has violated its contract; whether it also defeated the permission
@@ -370,6 +383,81 @@ def merge_spans(spans: list[tuple[int, int]]) -> int:
     return sum(end - start for start, end in merged)
 
 
+def sessionise(stamps: list[int], cutoff: int) -> list[tuple[int, int]]:
+    """Group individual message timestamps into blocks of continuous activity.
+
+    A new block starts wherever the silence between two consecutive messages
+    exceeds `cutoff`. This is the only honest way to get worked time out of this
+    database: a session's own span says nothing about whether anything was
+    happening inside it, whereas a gap between messages is direct evidence that
+    nothing was.
+
+    Two properties are worth knowing before trusting the result. A block holding
+    a single message has zero duration, which is right - one message with silence
+    either side is not a measurable stretch of work, though it did happen and is
+    counted in the message total. And because this looks only at the gaps, it
+    needs no interval merging and no parent/child reasoning: messages from a
+    subagent and from the session that dispatched it interleave in one ordered
+    stream, so nesting and concurrent windows both collapse for free.
+    """
+    blocks: list[tuple[int, int]] = []
+    ordered = sorted(stamps)
+    if not ordered:
+        return blocks
+    start = previous = ordered[0]
+    for stamp in ordered[1:]:
+        if stamp - previous > cutoff:
+            blocks.append((start, previous))
+            start = stamp
+        previous = stamp
+    blocks.append((start, previous))
+    return blocks
+
+
+def active_time(connection: sqlite3.Connection, project: str, cutoff: int) -> dict:
+    """Worked time for this project, measured from message timestamps.
+
+    Every other duration this script reports is derived from `session`, whose two
+    timestamps are only first-message-to-last-touch. That made `total time` read
+    as most of the calendar: three root sessions left open accounted for eleven
+    days between them, and a session opened at night and touched the next morning
+    contributed the intervening sleep. The disclaimer under the footer was true
+    and useless, because nobody reads a figure labelled as time as meaning "how
+    long a tab was open".
+
+    `message` carries one row per message with its own `time_created`, which is
+    the evidence that was missing. Sessionising those with a short cutoff gives
+    hands-on time, and it came out at roughly a quarter of the span-based figure.
+
+    Days are bucketed in UTC, like every other timestamp here, so a session run
+    late in a positive-offset timezone can land on the following day.
+    """
+    stamps = [
+        row[0]
+        for row in connection.execute(
+            """
+            SELECT m.time_created
+            FROM message m
+            JOIN session s ON s.id = m.session_id
+            WHERE s.directory LIKE ? AND m.time_created IS NOT NULL
+            ORDER BY m.time_created
+            """,
+            (project_pattern(project),),
+        )
+    ]
+    blocks = sessionise(stamps, cutoff)
+    days = {
+        datetime.fromtimestamp(start / 1000, tz=timezone.utc).date()
+        for start, _ in blocks
+    }
+    return {
+        "active": sum(end - start for start, end in blocks),
+        "blocks": len(blocks),
+        "messages": len(stamps),
+        "active_days": len(days),
+    }
+
+
 def gate_breakdown(rows: list[sqlite3.Row], window: int) -> list[dict]:
     """Time, occupancy share and cost per Definition-of-Done gate.
 
@@ -421,14 +509,18 @@ def gate_breakdown(rows: list[sqlite3.Row], window: int) -> list[dict]:
     return breakdown
 
 
-def project_totals(connection: sqlite3.Connection, project: str) -> dict:
+def project_totals(
+    connection: sqlite3.Connection, project: str, cutoff: int
+) -> dict:
     """Total cost and elapsed time over *every* session for this project.
 
     Root and subagent sessions alike, unbounded by --limit.
 
-    Time is the awkward half. Each row carries only `time_created` and
-    `time_updated`, so a session's span is first-message-to-last-touch: idle
-    minutes count, and a session reopened a week later counts the whole week.
+    Time is the awkward half, and there are two different measurements of it
+    here because the `session` table cannot answer the obvious question. Each row
+    carries only `time_created` and `time_updated`, so a session's span is
+    first-message-to-last-touch: idle minutes count, and a session reopened a
+    week later counts the whole week.
 
     A subagent runs *inside* the session that dispatched it, so its span adds no
     coverage its parent does not already have, and adding it on top counts the
@@ -439,18 +531,24 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
     holds only for sessions that have finished: a subagent still in flight can
     briefly report a `time_updated` past its parent's, because the parent's has
     not been refreshed yet. Re-run the check rather than trusting this paragraph.
-    Two figures are reported:
+    Three figures are reported:
 
+      active   - from `active_time`, i.e. from message timestamps rather than
+                 session spans. The one to quote. It is the only figure here that
+                 excludes idle time, and it came out far below the other two.
       elapsed  - overlapping spans merged. Because of the containment above this
                  is the root sessions' own coverage, with no subagent time added
-                 on top, so it is the real time this project was worked on -
-                 modulo the idle-time caveat above.
+                 on top, so it is how much of the calendar this project was open
+                 across - not how long it was worked on.
       summed   - the root sessions added up one by one, ignoring their subagents.
                  The literal reading of "how much time did my sessions take".
                  It exceeds elapsed only where two root sessions overlap, which
                  happens whenever two OpenCode windows are open at once.
 
-    Neither is effort. Both are calendar coverage, and the caller says so.
+    Only `active` is worked time. The other two are calendar coverage, and the
+    caller says so. `elapsed` stays because the per-gate shares are measured
+    against it: a gate's own duration is span-derived too, so dividing it by the
+    activity figure would mix two bases and could exceed 100%.
     """
     rows = connection.execute(
         """
@@ -482,6 +580,8 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
         "summed": sum(end - start for start, end in root_spans),
         "first": min((start for start, _ in spans), default=None),
         "last": max((end for _, end in spans), default=None),
+        "cutoff": cutoff,
+        **active_time(connection, project, cutoff),
         "gates": gate_breakdown(rows, elapsed),
     }
 
@@ -500,7 +600,7 @@ def print_gate_totals(totals: dict) -> None:
     if not gates:
         return
     print(f"\n  Definition-of-Done gates, against the"
-          f" {format_span(totals['elapsed'])} total time above\n")
+          f" {format_span(totals['elapsed'])} calendar span above\n")
     print(f"  {'gate':<24}{'sessions':>9}{'time':>18}{'share':>8}{'cost':>13}")
     for gate in gates:
         cost = f"${gate['cost']:,.2f}"
@@ -516,15 +616,26 @@ def print_gate_totals(totals: dict) -> None:
     )
 
 
-def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
-    totals = project_totals(connection, project)
+def format_cutoff(cutoff: int) -> str:
+    """Render the idle cutoff the way it was typed, not in milliseconds."""
+    minutes = cutoff / 60_000
+    return f"{minutes:g}m" if minutes >= 1 else f"{cutoff / 1000:g}s"
+
+
+def print_project_totals(
+    connection: sqlite3.Connection, project: str, cutoff: int
+) -> None:
+    totals = project_totals(connection, project, cutoff)
     if not totals["sessions"]:
         return
+    gap = format_cutoff(totals["cutoff"])
     print(f"\nAll {totals['sessions']} sessions ever recorded for this project"
           f" ({totals['roots']} root + {totals['subagents']} subagent)\n")
     print(f"  total cost   : ${totals['cost']:,.2f}")
-    print(f"  total time   : {format_span(totals['elapsed'])}"
-          "   real time worked, concurrent sessions counted once")
+    print(f"  active time  : {format_span(totals['active'])}"
+          f"   worked time, silences over {gap} dropped")
+    print(f"  calendar span: {format_span(totals['elapsed'])}"
+          "   first message to last touch, idle included")
     print(f"  sessions sum : {format_span(totals['summed'])}"
           f"   the {totals['roots']} root sessions added up, overlap and all")
     print(f"  first / last : {when(totals['first'])} -> {when(totals['last'])}")
@@ -536,18 +647,28 @@ def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
         print(f"  undated      : {totals['undated']} session(s) with unusable"
               f" timestamps{of_which}, counted in cost but in no time figure")
     print(
-        "\n  A span is first message to last touch, so idle time counts."
-        " Read these as\n  calendar coverage, not effort or billed time."
+        f"\n  active time is the one to quote. It reads {totals['messages']:,}"
+        f" message timestamps and\n  counts a silence longer than {gap} as a"
+        " break, so it spans"
+        f" {totals['active_days']} days\n  rather than the whole calendar."
+        " Raise or lower it with --idle-cutoff MINUTES;\n  a larger cutoff"
+        " absorbs more thinking time and more coffee breaks alike."
     )
     print(
-        f"  The {totals['subagents']} subagent sessions are in neither time"
-        " figure, on purpose:\n  each one runs inside the session that"
-        " dispatched it, so its parent's span\n  already covers it."
+        "\n  The two figures under it are coverage, not work: a session left open"
+        " overnight\n  counts the night. They are kept because the per-gate"
+        " shares below divide one\n  span-derived duration by another, which"
+        " mixing in the activity figure would\n  break. The"
+        f" {totals['subagents']} subagent sessions are in neither of them, on"
+        " purpose:\n  each runs inside the session that dispatched it, so its"
+        " parent's span covers it."
     )
     print_gate_totals(totals)
 
 
-def list_sessions(connection: sqlite3.Connection, project: str, limit: int) -> None:
+def list_sessions(
+    connection: sqlite3.Connection, project: str, limit: int, cutoff: int
+) -> None:
     rows = connection.execute(
         """
         SELECT s.*, (SELECT count(*) FROM session c WHERE c.parent_id = s.id) AS kids
@@ -571,7 +692,7 @@ def list_sessions(connection: sqlite3.Connection, project: str, limit: int) -> N
             f" {row['kids']:>4} {row['cost'] or 0:>9.2f}  {row['id'][:24]}  {title}"
         )
     print("\nTrace one with: tools/agent-trace.py <id>")
-    print_project_totals(connection, project)
+    print_project_totals(connection, project, cutoff)
 
 
 def resolve(connection: sqlite3.Connection, wanted: str) -> sqlite3.Row:
@@ -837,8 +958,19 @@ def main() -> None:
     parser.add_argument("--last", action="store_true", help="trace the newest session")
     parser.add_argument("--project", default=None, help="working directory to filter by")
     parser.add_argument("--limit", type=int, default=10, help="sessions to list")
+    parser.add_argument(
+        "--idle-cutoff",
+        type=float,
+        default=DEFAULT_IDLE_CUTOFF_MINUTES,
+        metavar="MINUTES",
+        help="silence that ends a block of work"
+             f" (default: {DEFAULT_IDLE_CUTOFF_MINUTES:g})",
+    )
     parser.add_argument("--json", action="store_true", help="emit JSON")
     args = parser.parse_args()
+
+    if args.idle_cutoff <= 0:
+        parser.error("--idle-cutoff must be greater than zero")
 
     project = args.project or repo_root()
     connection = connect()
@@ -848,7 +980,9 @@ def main() -> None:
         elif args.last:
             root = newest_root(connection, project)
         else:
-            list_sessions(connection, project, args.limit)
+            list_sessions(
+                connection, project, args.limit, int(args.idle_cutoff * 60_000)
+            )
             return
         trace = build_trace(connection, root, project)
         if args.json:
