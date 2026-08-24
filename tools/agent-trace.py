@@ -23,7 +23,11 @@ Usage:
     tools/agent-trace.py --last --json      Machine-readable form.
 
 The listing ends with project-wide totals covering every session ever recorded
-for this directory - subagent sessions included, not just the ones listed above.
+for this directory - subagent sessions included, not just the ones listed above -
+and then a per-gate breakdown of the five Definition-of-Done gates: how many
+times each was dispatched, how long it was in flight, what share of the project
+window that is, and what it cost. Read the share as occupancy rather than as a
+slice of a budget, and see print_gate_totals for why the rows do not add up.
 
 Options:
     --project PATH   Filter by working directory (default: this repository).
@@ -103,6 +107,15 @@ MULTI_STAGE_AGENTS = {
     for agent in {name for stage in PIPELINE.values() for name in stage}
     if sum(agent in stage for stage in PIPELINE.values()) > 1
 }
+
+# The five Definition-of-Done gates, for the per-gate breakdown in the totals
+# footer. Derived from PIPELINE rather than hand-listed, following
+# MULTI_STAGE_AGENTS above, so a sixth gate added to the roster cannot be
+# reported by `conformance` while going missing from the cost and time report.
+# AUDITOR_AGENTS below is the same five by construction; it is kept separate
+# because it answers a different question (who must not self-review) and ADR-022
+# records deriving it from the agent frontmatter as its preferred long-term form.
+GATE_AGENTS = set(PIPELINE["2 gateways"])
 
 # Agents whose job is to judge someone else's work. If one of these ran on the
 # same model as whoever authored the code, the review was self-review.
@@ -310,6 +323,93 @@ def project_pattern(project: str) -> str:
     return f"%{Path(project).name}%"
 
 
+def valid_spans(rows: list[sqlite3.Row]) -> list[tuple[int, int]]:
+    """The (start, end) span of every row whose timestamps are usable.
+
+    A row with a missing or inverted timestamp cannot contribute a duration, so
+    it is dropped here while still counting towards session totals and cost.
+    `project_totals` reports how many were dropped, so the gap between the
+    session count and the date range is visible rather than silent.
+    """
+    return [
+        (row["time_created"], row["time_updated"])
+        for row in rows
+        if row["time_created"]
+        and row["time_updated"]
+        and row["time_updated"] >= row["time_created"]
+    ]
+
+
+def merge_spans(spans: list[tuple[int, int]]) -> int:
+    """Milliseconds covered by `spans`, counting any overlap once.
+
+    Two independent effects make plain addition wrong and this collapses both.
+    A subagent runs *inside* its parent's span, and the five Definition-of-Done
+    gates are dispatched in parallel with each other, so adding spans up
+    multi-counts the same wall clock - by 89% for the five gates measured
+    together. Merging first is what makes one duration comparable to another.
+
+    Sorts its own input rather than trusting the caller's ORDER BY: the sweep
+    below is silently wrong on unsorted spans, and a second caller should not
+    have to know that.
+    """
+    merged: list[list[int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return sum(end - start for start, end in merged)
+
+
+def gate_breakdown(rows: list[sqlite3.Row], window: int) -> list[dict]:
+    """Time, occupancy share and cost per Definition-of-Done gate.
+
+    Computed from the same `rows` as the project totals, so a share's numerator
+    and denominator can never come from two different reads of a live database.
+    Rows are grouped by `canonical()`, so pre-rename `team-member-*` history
+    lands under the modern name instead of being reported as a separate agent.
+
+    `share` is occupancy, not a slice of a budget. A gate's span sits inside its
+    dispatcher's span, so the non-gate sessions already cover the whole project
+    window on their own and these shares are not a partition of anything. Read
+    one as "this much of the project's window had that gate in flight".
+
+    The trailing entry merges all five, which is the only honest combined
+    figure: the five run concurrently, so their individual times must not be
+    added. Costs are per session and *do* add, hence the asymmetry the caller
+    spells out.
+    """
+    breakdown = []
+    for name in GATE_AGENTS:
+        gate_rows = [row for row in rows if canonical(row["agent"]) == name]
+        if not gate_rows:
+            continue
+        breakdown.append(
+            {
+                "agent": name,
+                "sessions": len(gate_rows),
+                "elapsed": merge_spans(valid_spans(gate_rows)),
+                "cost": sum(row["cost"] or 0.0 for row in gate_rows),
+            }
+        )
+    breakdown.sort(key=lambda gate: gate["elapsed"], reverse=True)
+
+    every = [row for row in rows if canonical(row["agent"]) in GATE_AGENTS]
+    if every:
+        breakdown.append(
+            {
+                "agent": "all five, merged",
+                "sessions": len(every),
+                "elapsed": merge_spans(valid_spans(every)),
+                "cost": sum(row["cost"] or 0.0 for row in every),
+            }
+        )
+    for gate in breakdown:
+        gate["share"] = gate["elapsed"] / window if window else 0.0
+    return breakdown
+
+
 def project_totals(connection: sqlite3.Connection, project: str) -> dict:
     """Total cost and elapsed time over *every* session for this project.
 
@@ -331,7 +431,7 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
     """
     rows = connection.execute(
         """
-        SELECT parent_id, cost, time_created, time_updated
+        SELECT agent, parent_id, cost, time_created, time_updated
         FROM session
         WHERE directory LIKE ?
         ORDER BY time_created
@@ -339,32 +439,49 @@ def project_totals(connection: sqlite3.Connection, project: str) -> dict:
         (project_pattern(project),),
     ).fetchall()
 
-    spans = [
-        (row["time_created"], row["time_updated"])
-        for row in rows
-        if row["time_created"]
-        and row["time_updated"]
-        and row["time_updated"] >= row["time_created"]
-    ]
-
-    # Merge overlapping and nested intervals. `rows` is already sorted by start.
-    merged: list[list[int]] = []
-    for start, end in spans:
-        if merged and start <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], end)
-        else:
-            merged.append([start, end])
+    spans = valid_spans(rows)
+    elapsed = merge_spans(spans)
 
     return {
         "sessions": len(rows),
         "roots": sum(1 for row in rows if row["parent_id"] is None),
         "subagents": sum(1 for row in rows if row["parent_id"] is not None),
+        "undated": len(rows) - len(spans),
         "cost": sum(row["cost"] or 0.0 for row in rows),
-        "elapsed": sum(end - start for start, end in merged),
+        "elapsed": elapsed,
         "summed": sum(end - start for start, end in spans),
         "first": min((start for start, _ in spans), default=None),
         "last": max((end for _, end in spans), default=None),
+        "gates": gate_breakdown(rows, elapsed),
     }
+
+
+def print_gate_totals(totals: dict) -> None:
+    """The per-gate block that sits under the project totals.
+
+    The closing caveat is not decoration. Percentages invite addition far more
+    strongly than durations do, and adding these five gives 28.8% against a true
+    merged 15.2% - so the line saying they do not add is what stops the table
+    being read wrongly.
+    """
+    gates = totals["gates"]
+    if not gates:
+        return
+    print(f"\n  Definition-of-Done gates, against the"
+          f" {format_span(totals['elapsed'])} total time above\n")
+    print(f"  {'gate':<24}{'sessions':>9}{'time':>18}{'share':>8}{'cost':>13}")
+    for gate in gates:
+        cost = f"${gate['cost']:,.2f}"
+        print(f"  {gate['agent']:<24}{gate['sessions']:>9}"
+              f"{format_span(gate['elapsed']):>18}{gate['share']:>8.1%}"
+              f"{cost:>13}")
+    print(
+        "\n  The five run in parallel, so their times and shares overlap and do"
+        " not add up\n  to the merged row - only the costs do. A share is"
+        " occupancy: how much of the\n  window had that gate in flight."
+        " architecture-guardian is also dispatched\n  outside the gate stage,"
+        " so its row includes ADR work as well as reviews."
+    )
 
 
 def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
@@ -379,10 +496,14 @@ def print_project_totals(connection: sqlite3.Connection, project: str) -> None:
     print(f"  summed spans : {format_span(totals['summed'])}"
           "   every session added up separately")
     print(f"  first / last : {when(totals['first'])} -> {when(totals['last'])}")
+    if totals["undated"]:
+        print(f"  undated      : {totals['undated']} session(s) with unusable"
+              " timestamps, counted in cost but in no time figure")
     print(
         "\n  A span is first message to last touch, so idle time counts."
         " Read these as\n  calendar coverage, not effort or billed time."
     )
+    print_gate_totals(totals)
 
 
 def list_sessions(connection: sqlite3.Connection, project: str, limit: int) -> None:
