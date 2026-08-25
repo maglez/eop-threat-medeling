@@ -227,12 +227,10 @@ All 1,658 pass with zero failures, errors or skips.
 
 The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
 
-Wall-clock timings on a developer workstation are sensitive to background load — the same Java suite has been observed spanning 42 s to 5 min 28 s depending on contention — so CI job durations should be treated as the authoritative measure. The figures above were taken at a load average of roughly 3.5.
-
 ### Delivery volume
 
 | Metric | Count |
 |---|---|
-| Jira tickets delivered or planned | 177 (EOP-3 → EOP-179, contiguous) |
+| Jira tickets delivered or planned | 177 tickets |
 
 The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
