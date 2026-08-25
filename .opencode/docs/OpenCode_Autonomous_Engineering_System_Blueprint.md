@@ -450,7 +450,7 @@ Graphify turns the repository into a queryable graph, so an agent can ask a targ
 </div>
 
 <div style="text-align:center; margin-bottom:8px;">
-  <a href="graph-screenshot.png"><img src="graph-screenshot.png" alt="Knowledge graph, current capture: the graphify studio export, light theme, 4254 nodes in 291 generically-labelled communities" style="width:100%;"></a>
+  <a href="graph-screenshot.png"><img src="graph-screenshot.png" alt="Knowledge graph, current capture: the graphify studio export, dark theme, 4254 nodes in 291 generically-labelled communities" style="width:100%;"></a>
   <p><strong>Current — 2026-08-25</strong> · 4,254 nodes · 17,843 edges · 291 communities · <code>graphify studio</code> export</p>
 </div>
 
@@ -458,7 +458,7 @@ Graphify turns the repository into a queryable graph, so an agent can ask a targ
 >
 > - **First, `2b3039d`.** The graph on the day Graphify was wired in, drawn by the `graph.html` viewer shipped before 0.17. All ten of its communities are documentation and configuration — `Non-Negotiable Rules`, `Language-Specific Standards`, `tech-lead.md`, `opencode.json`, `atlassian`, `README.md` — and not one is code, which is unsurprising: the repository was 41 files at that commit, of which two were Java.
 > - **Previous, `861e625`.** The same viewer ten hours later, five times the size. Still built when a semantic extraction pass was in play, so it still carries documentation-derived nodes and 53 *curated* community names — which is why it went stale in a way worth preserving: it shows **six** advisory experts, where §4 now lists four.
-> - **Current, 2026-08-25.** `graphify update . --no-description --no-label` then `graphify studio export --full-offline`, served locally and rendered headless at 1920×1080. This is what the documented commands actually produce here: code and git history only, with **no documentation nodes at all** (§5.1 — a consequence of ADR-011, not a misconfiguration) and Graphify's generic `Community N` labels rather than curated ones (§5.4).
+> - **Current, 2026-08-25.** `graphify update . --no-description --no-label` then `graphify studio export --full-offline`, served locally and rendered headless at 1920×1080 with dark-theme CSS overrides. This is what the documented commands actually produce here: code and git history only, with **no documentation nodes at all** (§5.1 — a consequence of ADR-011, not a misconfiguration) and Graphify's generic `Community N` labels rather than curated ones (§5.4).
 >
 > So the jump is mostly a change of *what gets extracted*, layered on a month of genuine commits: the first two graphs are made of prose and the third is made of code. `graph-screenshot.png` is always the current capture; the dated, SHA-suffixed filenames are the archive, and the two 2026-07-26 files carry a SHA because they share a date. The one comparison that is sound is structural, and it inverts: the first two graphs could describe this document, and the third cannot — no Markdown file, and no agent definition, is a node any more.
 
