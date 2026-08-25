@@ -438,9 +438,15 @@ Early iterations included dozens of expert profiles from YouTube educators, spec
 
 Graphify turns the repository into a queryable graph, so an agent can ask a targeted question instead of grepping the whole tree. It is a CLI plus a small OpenCode plugin — no service, no daemon, no account.
 
-<table style="font-size: 65%;"><tr>
-<td align="center" width="50%"><a href="graph-screenshot-2026-07-26-2b3039d.png"><img src="graph-screenshot-2026-07-26-2b3039d.png" alt="Knowledge graph, first capture: the pre-0.17 graph.html viewer, dark theme, 97 nodes in 10 documentation-derived communities" width="100%"></a><br><strong>First — 2026-07-26, 10:32</strong><br>97 nodes · 87 edges · 10 communities<br><code>2b3039d</code>, pre-0.17 <code>graph.html</code> viewer</td>
-<td align="center" width="50%"><a href="graph-screenshot-2026-07-26-861e625.png"><img src="graph-screenshot-2026-07-26-861e625.png" alt="Knowledge graph, second capture: the same viewer later the same day, 486 nodes in 53 communities including six advisory experts" width="100%"></a><br><strong>Previous — 2026-07-26, 20:41</strong><br>486 nodes · 458 edges · 53 communities<br><code>861e625</code>, same viewer</td>
+<table><tr>
+<td align="center" width="50%">
+  <a href="graph-screenshot-2026-07-26-2b3039d.png"><img src="graph-screenshot-2026-07-26-2b3039d.png" alt="Knowledge graph, first capture: the pre-0.17 graph.html viewer, dark theme, 97 nodes in 10 documentation-derived communities" width="100%"></a><br>
+  <sub><strong>First — 2026-07-26, 10:32</strong><br>97 nodes · 87 edges · 10 communities<br><code>2b3039d</code>, pre-0.17 <code>graph.html</code> viewer</sub>
+</td>
+<td align="center" width="50%">
+  <a href="graph-screenshot-2026-07-26-861e625.png"><img src="graph-screenshot-2026-07-26-861e625.png" alt="Knowledge graph, second capture: the same viewer later the same day, 486 nodes in 53 communities including six advisory experts" width="100%"></a><br>
+  <sub><strong>Previous — 2026-07-26, 20:41</strong><br>486 nodes · 458 edges · 53 communities<br><code>861e625</code>, same viewer</sub>
+</td>
 </tr></table>
 
 <div align="center"><a href="graph-screenshot.png"><img src="graph-screenshot.png" alt="Knowledge graph, current capture: the graphify studio export, dark theme, 4254 nodes in 291 generically-labelled communities" width="100%"></a><br><strong>Current — 2026-08-25</strong> · 4,254 nodes · 17,843 edges · 291 communities · <code>graphify studio</code> export</div>
