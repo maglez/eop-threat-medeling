@@ -449,8 +449,8 @@ Graphify turns the repository into a queryable graph, so an agent can ask a targ
 </td>
 </tr></table>
 
-<div align="center"><a href="graph-screenshot.png"><img src="graph-screenshot.png" alt="Knowledge graph, current capture: the graphify studio export, dark theme, 4254 nodes in 291 generically-labelled communities" width="100%"></a><br><strong>Current — 2026-08-25</strong> · 4,254 nodes · 17,843 edges · 291 communities</div>
->
+<div align="center"><a href="graph-screenshot.png"><img src="graph-screenshot.png" alt="Knowledge graph, current capture: the graphify studio export, dark theme, 4254 nodes in 291 generically-labelled communities" width="100%"></a><br><strong>Current — 2026-08-25</strong> · 4,254 nodes · 17,843 edges · 291 communities</div><br>
+
 > **Three captures, and they are not a like-for-like measurement of growth.** Read the sequence as a history of the *integration*, not as a repository that grew 44×. The figures under each image are the ones its own viewer reported, and each is a snapshot of one day — `.graphify/GRAPH_REPORT.md` is the live source, per the note in §5.3.
 >
 > - **First, `2b3039d`.** The graph on the day Graphify was wired in, drawn by the `graph.html` viewer shipped before 0.17. All ten of its communities are documentation and configuration — `Non-Negotiable Rules`, `Language-Specific Standards`, `tech-lead.md`, `opencode.json`, `atlassian`, `README.md` — and not one is code, which is unsurprising: the repository was 41 files at that commit, of which two were Java.
