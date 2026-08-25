@@ -172,4 +172,4 @@ Business approves release → Feature flag ON → Users see the feature
 
 This system delivers software with the discipline of a senior engineering team, the consistency of an automated pipeline, and the breadth of expertise that no single team could sustain. It does not replace human judgement — it amplifies it, by ensuring that every decision is informed, every change is verified, and every release is intentional.
 
-**The engineer's role becomes what it should always have been: setting direction, making strategic decisions, and reviewing work that has already been tested, secured, and validated before it reaches their desk.**
+**The engineer's role becomes setting direction, making strategic decisions, and reviewing work that has already been tested, secured, and validated before it reaches their desk.**
