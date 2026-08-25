@@ -22,6 +22,11 @@ Usage:
     tools/agent-trace.py --last             Trace the most recent root session.
     tools/agent-trace.py --last --json      Machine-readable form.
 
+Both the listing and `--last` rank sessions by *last activity* rather than by
+creation time, so a session still being worked in stays at the top instead of
+being pushed out of the window by shorter sessions started after it. See
+list_sessions.
+
 The listing ends with project-wide totals covering every session ever recorded
 for this directory - subagent sessions included, not just the ones listed above.
 Cost counts every session. Three durations are reported and only the first is
@@ -718,12 +723,32 @@ def print_project_totals(
 def list_sessions(
     connection: sqlite3.Connection, project: str, limit: int, cutoff: int
 ) -> None:
+    """List the `limit` most recently active root sessions.
+
+    Ordered by *last activity*, not by creation. Ordering by `time_created`
+    answered a different question than the one being asked of this listing, and
+    the difference is not cosmetic: a session that is still being worked in gets
+    pushed out of the window by every short-lived session started after it. When
+    this was changed, two of the ten most recently active root sessions in this
+    project were missing from the created-order list, one of them touched
+    seconds earlier and still open. An ongoing session is the *most* likely thing
+    to be looked for here, so it must not be the thing most easily hidden.
+
+    `max(time_updated, time_created)` rather than `time_updated` alone so that a
+    row whose timestamps are inverted - which `valid_spans` already tolerates
+    elsewhere - sorts by the later of the two instead of sinking to the bottom.
+    Neither column is nullable, so no coalesce is needed.
+
+    The sort key is printed as the first column. It was previously implicit, and
+    a listing whose visible leading column no longer descends monotonically
+    reads as unsorted rather than as sorted by something else.
+    """
     rows = connection.execute(
         """
         SELECT s.*, (SELECT count(*) FROM session c WHERE c.parent_id = s.id) AS kids
         FROM session s
         WHERE s.parent_id IS NULL AND s.directory LIKE ?
-        ORDER BY s.time_created DESC
+        ORDER BY max(s.time_updated, s.time_created) DESC
         LIMIT ?
         """,
         (project_pattern(project), limit),
@@ -731,15 +756,25 @@ def list_sessions(
     if not rows:
         sys.exit(f"No root sessions found for a directory matching {project!r}")
 
-    print(f"Root sessions in {project}\n")
-    print(f"{'created':<17} {'agent':<16} {'sub':>4} {'cost':>9}  id / title")
-    print("-" * 100)
+    header = (f"{'last active':<17} {'created':<17} {'agent':<16} {'sub':>4}"
+              f" {'cost':>9}  id / title")
+    lines = []
     for row in rows:
-        title = (row["title"] or "").replace("\n", " ")[:44]
-        print(
-            f"{when(row['time_created']):<17} {canonical(row['agent'])[:16]:<16}"
+        title = (row["title"] or "").replace("\n", " ")[:34]
+        latest = max(row["time_updated"] or 0, row["time_created"] or 0)
+        lines.append(
+            f"{when(latest):<17} {when(row['time_created']):<17}"
+            f" {canonical(row['agent'])[:16]:<16}"
             f" {row['kids']:>4} {row['cost'] or 0:>9.2f}  {row['id'][:24]}  {title}"
         )
+    print(f"Root sessions in {project}, most recently active first\n")
+    print(header)
+    # Measured rather than a hand-counted literal. The previous constant was
+    # narrower than the rows it underlined, and any column change silently
+    # widened that gap.
+    print("-" * max([len(header)] + [len(line) for line in lines]))
+    for line in lines:
+        print(line)
     print("\nTrace one with: tools/agent-trace.py <id>")
     print_project_totals(connection, project, cutoff)
 
@@ -761,11 +796,19 @@ def resolve(connection: sqlite3.Connection, wanted: str) -> sqlite3.Row:
 
 
 def newest_root(connection: sqlite3.Connection, project: str) -> sqlite3.Row:
+    """The root session worked in most recently - what `--last` means.
+
+    Ordered by last activity for the same reason as `list_sessions`, and the two
+    must agree: `--last` tracing a session that the listing does not even show
+    at the top would be a contradiction between two views of one database. The
+    session you were last in is the one you want traced, not the one you most
+    recently happened to open.
+    """
     row = connection.execute(
         """
         SELECT * FROM session
         WHERE parent_id IS NULL AND directory LIKE ?
-        ORDER BY time_created DESC LIMIT 1
+        ORDER BY max(time_updated, time_created) DESC LIMIT 1
         """,
         (project_pattern(project),),
     ).fetchone()
