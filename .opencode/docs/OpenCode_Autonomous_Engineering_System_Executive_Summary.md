@@ -210,21 +210,24 @@ Test code accounts for **65%** of the codebase — a **1.90:1** test-to-producti
 
 | Metric | Count |
 |---|---|
-| Java tests executed | 1,386 |
+| Java unit tests executed | 1,386 |
+| Java integration tests executed (Testcontainers, PostgreSQL 17) | 13 |
 | Front-end tests executed (Vitest, 11 files) | 259 |
-| **Total automated tests** | **1,645** |
+| **Total automated tests** | **1,658** |
 
-All 1,645 pass with zero failures, errors or skips.
+All 1,658 pass with zero failures, errors or skips.
 
 ### Test execution time
 
 | Suite | Duration |
 |---|---|
-| Java (`./mvnw test`) | 46.6 s |
+| Java unit tests (`./mvnw test`) | 46.6 s |
 | Front end (`vitest run`) | 3.8 s |
-| **Combined** | **≈50 s** |
+| **Full quality gate (`./mvnw verify`)** | **1 min 11 s** |
 
-Both figures were taken on a lightly loaded machine. Wall-clock timings on a developer workstation are sensitive to background load — the same Java suite has been observed taking anything from 42 s to 5 min 28 s depending on contention — so CI job durations should be treated as the authoritative measure. These figures cover the test phase only; the full `./mvnw verify` gate additionally runs Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement.
+The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
+
+Wall-clock timings on a developer workstation are sensitive to background load — the same Java suite has been observed spanning 42 s to 5 min 28 s depending on contention — so CI job durations should be treated as the authoritative measure. The figures above were taken at a load average of roughly 3.5.
 
 ### Delivery volume
 
