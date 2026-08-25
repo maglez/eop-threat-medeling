@@ -1,6 +1,6 @@
 # ADR-022: Model Tiers Are Allocated By Definition-of-Done Role, Not By Artefact Type
 
-**Status:** Accepted (rule 1 superseded 2026-08-21 by ADR-046)
+**Status:** Accepted (rule 1 superseded 2026-08-21 by ADR-046; amended 2026-08-24 by ADR-059)
 **Date:** 2026-08-11
 **Deciders:** @architecture-guardian, @tech-lead
 
@@ -215,6 +215,16 @@ are at best model-independent: `@tech-lead`/primary-agent production code shares
   without editing a single agent definition.
 - Tier changes take effect only after an OpenCode restart, because configuration is read at
   session start. A pin corrected mid-session is not in force for that session.
+
+## Amendments
+
+**Amendment, 2026-08-24 (EOP-179, [ADR-059](ADR-059-code-review-gate-on-its-own-model-tier.md)).** Everything above is left standing as the record of what was decided in August 2026. Two things about it are now out of date.
+
+**Rule 5's surviving exception for test code is closed.** Rule 5 disclosed that `@code-reviewer`, `@tester-api` and `@tester-unit-and-quality` all resolved to one model identifier, so a tester-authored test reviewed by `@code-reviewer` was identical weights judging identical weights — neither degree of independence in §3.1. ADR-059 moves `@code-reviewer` alone onto a seventh variable, `MODEL_G` = `amazon-bedrock/zai.glm-5`, a sixth model family. **The invariant now holds with zero exceptions for production code, infrastructure and test code.** It is *not* unconditional, and rule 5 must never be cited as though it were: `@security-auditor` remains on `MODEL_F` alongside `@architecture-guardian`, which *authors* ADRs and C4 models, so **architecture documentation is still reviewed by a tier-mate at one model identifier** — neither model- nor family-independent. This amendment is itself an instance of that overlap. Any restatement of rule 5 that drops the "for production code, infrastructure and test code" qualifier is a defect a reviewer must reject.
+
+An earlier attempt to close the same exception, allocated ADR-058 under EOP-178, moved `@code-reviewer` onto the existing `MODEL_F` instead. It passed every gate and was then **withdrawn before merge** (PR #305 closed unmerged; `main` never carried it) because `MODEL_F` already held an authoring agent, so the change relocated the same-model-ID overlap onto architecture documentation rather than eliminating it. 058 is left permanently unused, per step 1 of `docs/adr/README.md`.
+
+**Rule 5 is no longer only prose.** `SeparationInvariantTest`, the tenth repository-integrity gate in `src/test/java/org/maglez/eop/docs/`, resolves every pin in `.opencode/opencode.json` against the active block of `.env.example` and fails `./mvnw verify` when a Definition-of-Done gate shares a model identifier with an agent that authored an artefact class that gate reviews. The mechanised classes are exactly production code, infrastructure and test code; the architecture-documentation overlap is carried as a single declared, justified, self-retiring allow-list entry, which the test deletes pressure onto by failing if the entry no longer describes a real overlap. What stays reviewer-enforced is the *semantics* — which agent authors and reviews which artefact class is declared in the test, not derived from any config file — so the maps can go stale even while the build is green. Rule 6 still applies, and now covers seven variables rather than six.
 
 ## Related
 
