@@ -173,3 +173,66 @@ Business approves release → Feature flag ON → Users see the feature
 This system delivers software with the discipline of a senior engineering team, the consistency of an automated pipeline, and the breadth of expertise that no single team could sustain. It does not replace human judgement — it amplifies it, by ensuring that every decision is informed, every change is verified, and every release is intentional.
 
 **The engineer's role becomes setting direction, making strategic decisions, and reviewing work that has already been tested, secured, and validated before it reaches their desk.**
+
+---
+
+## Some Metrics
+
+*Measured 2026-08-25 against `main`.*
+
+### Codebase size
+
+| Scope | Files | Total lines | Non-blank |
+|---|---|---|---|
+| Java — production (`src/main/java`) | 164 | 17,886 | 16,411 |
+| Java — tests (`src/test/java`) | 136 | 36,956 | 32,090 |
+| Front end — production (`ui/src`) | 17 | 3,784 | 3,410 |
+| Front end — tests (`ui/src`) | 11 | 4,140 | 3,485 |
+| Load-test scripts (`test/k6`) | 3 | 87 | — |
+| **Total including tests** | **331** | **62,853** | **≈55,400** |
+| **Total excluding tests** | **181** | **21,670** | **19,821** |
+
+Test code accounts for **65%** of the codebase — a **1.90:1** test-to-production ratio. A further 2,942 lines of configuration (12 Liquibase changelogs plus Spring profile files) sit outside both totals.
+
+### Documentation
+
+| Metric | Count |
+|---|---|
+| Markdown documents under `docs/` | 66 (18,275 lines) |
+| All tracked Markdown documents | 110 |
+| Architecture Decision Records | 57 |
+| Mermaid diagrams (under `docs/`) | 22, across 6 files |
+| Mermaid diagrams (repository-wide) | 23, across 7 files |
+| Reference PDFs | 4 |
+| Total tracked files | 706 |
+
+### Test suite
+
+| Metric | Count |
+|---|---|
+| Java unit tests executed | 1,386 |
+| Java integration tests executed (Testcontainers, PostgreSQL 17) | 13 |
+| Front-end tests executed (Vitest, 11 files) | 259 |
+| **Total automated tests** | **1,658** |
+
+All 1,658 pass with zero failures, errors or skips.
+
+### Test execution time
+
+| Suite | Duration |
+|---|---|
+| Java unit tests (`./mvnw test`) | 46.6 s |
+| Front end (`vitest run`) | 3.8 s |
+| **Full quality gate (`./mvnw verify`)** | **1 min 11 s** |
+
+The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
+
+Wall-clock timings on a developer workstation are sensitive to background load — the same Java suite has been observed spanning 42 s to 5 min 28 s depending on contention — so CI job durations should be treated as the authoritative measure. The figures above were taken at a load average of roughly 3.5.
+
+### Delivery volume
+
+| Metric | Count |
+|---|---|
+| Jira tickets delivered or planned | 177 (EOP-3 → EOP-179, contiguous) |
+
+The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
