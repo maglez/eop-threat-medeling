@@ -116,7 +116,7 @@ These advisors are available to any agent in the system for a second opinion on 
 
 No story can be declared complete until **five independent agents** have each issued an explicit approval. These reviewers are deliberately assigned to a **different AI model family from the one that wrote the code**, so that a reviewer does not inherit the author's blind spots.
 
-For **production code, infrastructure and test code** there are now zero exceptions, and since 2026-08-24 a build gate fails the build if one reappears. That is not the same as saying the guarantee is universal, and the project does not say so. One documented exception remains: **architecture documentation** — the ADRs and C4 models — is reviewed by an agent running the same model identifier as the agent that wrote it, because the architecture and security reviewers share a tier. The project records that openly as a known limitation, and the qualifier is never dropped.
+For **production code, infrastructure and test code** there are zero exceptions, a build gate fails the build if one reappears. One documented exception remains: **architecture documentation** — the ADRs and C4 models — is reviewed by an agent running the same model identifier as the agent that wrote it, because the architecture and security reviewers share a tier.
 
 | Gate | What It Approves |
 |---|---|
