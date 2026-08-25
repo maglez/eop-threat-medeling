@@ -438,9 +438,30 @@ Early iterations included dozens of expert profiles from YouTube educators, spec
 
 Graphify turns the repository into a queryable graph, so an agent can ask a targeted question instead of grepping the whole tree. It is a CLI plus a small OpenCode plugin — no service, no daemon, no account.
 
-![Knowledge Graph](graph-screenshot.png)
+<table>
+<tr>
+<td width="50%" valign="top"><a href="graph-screenshot-2026-07-26-2b3039d.png"><img src="graph-screenshot-2026-07-26-2b3039d.png" alt="Knowledge graph, first capture: the pre-0.17 graph.html viewer, dark theme, 97 nodes in 10 documentation-derived communities"></a></td>
+<td width="50%" valign="top"><a href="graph-screenshot-2026-07-26-861e625.png"><img src="graph-screenshot-2026-07-26-861e625.png" alt="Knowledge graph, second capture: the same viewer later the same day, 486 nodes in 53 communities including six advisory experts"></a></td>
+</tr>
+<tr>
+<td align="center"><strong>First — 2026-07-26, 10:32</strong><br>97 nodes · 87 edges · 10 communities<br><em><code>2b3039d</code>, pre-0.17 <code>graph.html</code> viewer</em></td>
+<td align="center"><strong>Previous — 2026-07-26, 20:41</strong><br>486 nodes · 458 edges · 53 communities<br><em><code>861e625</code>, same viewer</em></td>
+</tr>
+<tr>
+<td colspan="2"><a href="graph-screenshot.png"><img src="graph-screenshot.png" alt="Knowledge graph, current capture: the graphify studio export, light theme, 4254 nodes in 291 generically-labelled communities"></a></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><strong>Current — 2026-08-25</strong><br>4,254 nodes · 17,843 edges · 291 communities<br><em><code>graphify studio</code> export</em></td>
+</tr>
+</table>
 
-> **The screenshot is a `graphify studio` export, dated 2026-08-25.** It is the studio SPA served locally and rendered headless at 1920×1080, after `graphify update . --no-description --no-label` and `graphify studio export --full-offline`. So it shows what the documented commands actually produce in this repository: a graph built from code and git history with **no documentation nodes at all** (§5.1), and communities carrying Graphify's generic `Community N` labels rather than curated names (§5.4). Any figure legible in the image is a snapshot of that one day and will age — `.graphify/GRAPH_REPORT.md` is the live source, per the note in §5.3. It replaces an image from the `graph.html` viewer Graphify shipped before 0.17, which no longer exists and whose graph had drifted far enough to show six advisory experts where §4 now lists four.
+> **Three captures, and they are not a like-for-like measurement of growth.** Read the sequence as a history of the *integration*, not as a repository that grew 44×. The figures under each image are the ones its own viewer reported, and each is a snapshot of one day — `.graphify/GRAPH_REPORT.md` is the live source, per the note in §5.3.
+>
+> - **First, `2b3039d`.** The graph on the day Graphify was wired in, drawn by the `graph.html` viewer shipped before 0.17. All ten of its communities are documentation and configuration — `Non-Negotiable Rules`, `Language-Specific Standards`, `tech-lead.md`, `opencode.json`, `atlassian`, `README.md` — and not one is code, which is unsurprising: the repository was 41 files at that commit, of which two were Java.
+> - **Previous, `861e625`.** The same viewer ten hours later, five times the size. Still built when a semantic extraction pass was in play, so it still carries documentation-derived nodes and 53 *curated* community names — which is why it went stale in a way worth preserving: it shows **six** advisory experts, where §4 now lists four.
+> - **Current, 2026-08-25.** `graphify update . --no-description --no-label` then `graphify studio export --full-offline`, served locally and rendered headless at 1920×1080. This is what the documented commands actually produce here: code and git history only, with **no documentation nodes at all** (§5.1 — a consequence of ADR-011, not a misconfiguration) and Graphify's generic `Community N` labels rather than curated ones (§5.4).
+>
+> So the jump is mostly a change of *what gets extracted*, layered on a month of genuine commits: the first two graphs are made of prose and the third is made of code. `graph-screenshot.png` is always the current capture; the dated, SHA-suffixed filenames are the archive, and the two 2026-07-26 files carry a SHA because they share a date. The one comparison that is sound is structural, and it inverts: the first two graphs could describe this document, and the third cannot — no Markdown file, and no agent definition, is a node any more.
 
 ### 5.1 Cost Optimisation Through Graphify
 
