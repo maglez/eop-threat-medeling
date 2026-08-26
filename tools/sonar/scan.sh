@@ -100,7 +100,8 @@ case "$status" in
     *) die "SonarQube at $SONAR_URL is not ready yet: $status" ;;
 esac
 
-server_version=$(printf '%s' "$status" | python3 -c 'import sys,json; print(json.load(sys.stdin)["version"])')
+server_version=$(printf '%s' "$status" | python3 -c 'import sys,json; print(json.load(sys.stdin)["version"])') ||
+    die "could not read the version out of $SONAR_URL/api/system/status"
 echo "sonar-scan: server $server_version at $SONAR_URL"
 
 # ---------------------------------------------------------------------------
@@ -186,8 +187,13 @@ echo "sonar-scan: waiting for compute engine task $ce_task"
 
 ce_status=""
 for _ in $(seq 1 60); do
+    # `|| die` rather than letting the pipeline's own status escape: under
+    # `pipefail` a curl failure surfaces as 22 and a JSON shape change as 1,
+    # and 1 is the code this script's header reserves for a gating finding it
+    # never issues. Both mean "the gate could not run", which is 2.
     ce_status=$(api "/api/ce/task?id=$ce_task" |
-        python3 -c 'import sys,json; print(json.load(sys.stdin)["task"]["status"])')
+        python3 -c 'import sys,json; print(json.load(sys.stdin)["task"]["status"])') ||
+        die "could not read the status of compute engine task $ce_task"
     case "$ce_status" in
         SUCCESS) break ;;
         FAILED | CANCELED) die "compute engine task $ce_task ended $ce_status" ;;
@@ -235,8 +241,9 @@ for i in d["issues"]:
         comp = comp[len(prefix):]
     qualities = ",".join(sorted(im["softwareQuality"] for im in i.get("impacts", [])))
     print("{}|{}|{}|{}".format(qualities, i["rule"], comp, i.get("hash", "-")))
-' >>"$inventory_file"
-    total=$(printf '%s' "$page_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["paging"]["total"])')
+' >>"$inventory_file" || die "could not parse the issue page $page returned by SonarQube"
+    total=$(printf '%s' "$page_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["paging"]["total"])') ||
+        die "could not read paging.total from the issue page $page returned by SonarQube"
     seen=$(wc -l <"$inventory_file" | tr -d ' ')
     [ "$seen" -ge "$total" ] && break
     page=$((page + 1))
@@ -252,6 +259,18 @@ source_hash=$(sonar_source_hash)
 file_count=$(sonar_source_file_count)
 
 echo "sonar-scan: writing $REPORT"
+# Write to a temporary file and move it into place, rather than redirecting
+# straight at $REPORT. The shell truncates a `>` target *before* the process
+# runs, so a crash inside write-report.py would leave the committed
+# sonar-report.json empty in the working tree - turning a failed scan into an
+# unrelated-looking dirty file the developer then has to recognise and revert.
+# A move is atomic on the same filesystem, so the report is either the previous
+# one or the new one, never a truncated nothing. The temporary file is created
+# beside the report rather than in $TMPDIR precisely so that "same filesystem"
+# is guaranteed rather than merely likely - a cross-device mv degrades to
+# copy-then-unlink and loses the atomicity this is here for.
+report_tmp=$(mktemp "$REPORT.XXXXXX")
+trap 'rm -f "$inventory_file" "$report_tmp"' EXIT
 SONAR_SERVER_VERSION="$server_version" \
     SONAR_SOURCE_HASH="$source_hash" \
     SONAR_FILE_COUNT="$file_count" \
@@ -260,7 +279,9 @@ SONAR_SERVER_VERSION="$server_version" \
     SONAR_TEST="$test_json" \
     SONAR_INVENTORY_FILE="$inventory_file" \
     SONAR_SCANNER_GAV="$SCANNER_GAV" \
-    python3 tools/sonar/write-report.py >"$REPORT"
+    python3 tools/sonar/write-report.py >"$report_tmp" ||
+    die "write-report.py failed - $REPORT left as it was"
+mv "$report_tmp" "$REPORT"
 
 # Tighten through the same entry point CI uses, rather than calling the Python
 # directly. If the ratchet ever disagrees with itself between "the developer's
