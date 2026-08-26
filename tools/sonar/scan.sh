@@ -142,7 +142,12 @@ api() {
     # Pipeline call sites are not covered by this (with `pipefail` the rightmost
     # non-zero status wins, so a downstream `grep -q` or python returning 1 would
     # mask the 2) and each therefore carries its own `|| die`; there are two, at
-    # the token validation and the compute-engine poll, and both do.
+    # the token validation and the compute-engine poll, and both do. Nor would a
+    # condition context be covered - `set -e` is suspended inside `if`, `&&` and
+    # `||`, so `if api ...` would take the else branch on a dead server rather
+    # than exiting. There is no such site today; the general rule is that the
+    # syntactic context decides, and only a plain assignment or a bare call gets
+    # the contract for free.
     curl -fsS --max-time 60 -u "$SONAR_TOKEN:" "$SONAR_URL$1" ||
         die "$SONAR_URL$1 did not answer - is the SonarQube container still healthy?"
 }

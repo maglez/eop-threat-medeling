@@ -109,8 +109,9 @@ __pycache__/
 # a mktemp sibling and renames it over the real file, so that a crash mid-write
 # cannot leave the tracked sonar-report.json truncated (a plain `>` redirect
 # truncates its target before the writing process even starts). Its EXIT trap
-# removes the temporary on every signal a trap can catch, so this pattern only
-# ever matches after a SIGKILL or a power loss - but when it does match, the
-# stray is named like the report it protects, which is exactly the confusion the
-# rename was introduced to remove. See ADR-060.
+# removes the temporary on almost every signal a trap can catch, so this pattern
+# rarely matches: it needs a SIGKILL, a power loss, or a signal delivered in the
+# one-line window between the mktemp and the trap being re-armed to name it - but
+# when it does match, the stray is named like the report it protects, which is
+# exactly the confusion the rename was introduced to remove. See ADR-060.
 tools/sonar/sonar-report.json.*
