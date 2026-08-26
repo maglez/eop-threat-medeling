@@ -53,7 +53,9 @@ PROJECT_NAME="Elevation of Privilege Threat Modeling"
 SCANNER_GAV="org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751"
 
 REPORT="tools/sonar/sonar-report.json"
-BASELINE="tools/sonar/sonar-baseline.json"
+# No BASELINE variable here on purpose: this script never reads or writes the
+# baseline itself, it delegates that entirely to ratchet.sh --tighten at the
+# end. An unused path constant would read as though it did.
 
 SKIP_BUILD=0
 for arg in "$@"; do
@@ -172,7 +174,14 @@ export SONAR_TOKEN
 # Compute Engine task to completion before reading anything.
 task_file="target/sonar/report-task.txt"
 [ -f "$task_file" ] || die "no $task_file - the scanner did not report a task id"
-ce_task=$(grep '^ceTaskId=' "$task_file" | cut -d= -f2)
+# The `|| die` is load-bearing rather than defensive garnish. Without it a
+# report-task.txt that exists but has no ceTaskId line leaves grep returning 1,
+# which pipefail and `set -e` turn into a silent exit 1 - the code this script
+# reserves for a gating finding, which it never issues. Exit 2 is the honest
+# answer: the scan could not run.
+ce_task=$(grep '^ceTaskId=' "$task_file" | cut -d= -f2) ||
+    die "no ceTaskId in $task_file - the scanner wrote a task file we cannot read"
+[ -n "$ce_task" ] || die "empty ceTaskId in $task_file"
 echo "sonar-scan: waiting for compute engine task $ce_task"
 
 ce_status=""

@@ -257,14 +257,27 @@ def main() -> int:
             for fingerprint in added:
                 print(_describe(fingerprint))
             print()
-            # The two lists can disagree with the count delta, and saying so is
-            # more useful than hiding it. An issue whose line content changed
-            # gets a new hash, so a pure edit to an already-flagged line shows
-            # up here as one added and one removed with no change in count.
-            if len(added) != sum(found - ceiling for _q, ceiling, found in regressions):
+            # The list length and the count delta can disagree in BOTH directions,
+            # and each direction has a different cause, so we must branch rather
+            # than narrate one of them and hope. Getting this wrong sends the
+            # reader hunting for something that is not there.
+            delta = sum(found - ceiling for _q, ceiling, found in regressions)
+            if len(added) > delta:
+                # More fingerprints than new issues: editing the content of an
+                # already-flagged line changes its hash, so a pure edit shows up
+                # as one added and one removed with no change in count.
                 print("  Note: the added-findings list is longer than the count increase. Editing")
                 print("  the content of an already-flagged line changes its fingerprint without")
                 print("  adding an issue, so some entries above are moved rather than new.")
+                print()
+            elif len(added) < delta:
+                # Fewer fingerprints than new issues: one issue can carry several
+                # software qualities, and it counts once against each. A single
+                # finding tagged [MAINTAINABILITY,RELIABILITY] raises two counts
+                # by one apiece while adding one line above.
+                print("  Note: the added-findings list is shorter than the count increase. One")
+                print("  finding counts once against every software quality it carries, so a")
+                print("  single entry above tagged with two qualities raises two counts.")
                 print()
         else:
             print("  No new fingerprints, which means an existing finding gained a software")

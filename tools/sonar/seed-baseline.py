@@ -15,8 +15,12 @@ the very numbers ratchet.py checks against. Had we spelled it
 `ratchet.py --seed`, one mistyped argument in a workflow file would replace
 the gate with a rubber stamp, and the run would go green while doing so. A
 distinct filename means the dangerous operation cannot be reached by accident
-from the safe one, and `grep -rn seed-baseline .github/` stays empty as
-evidence CI never performs it.
+from the safe one, and it makes the absence greppable: `grep -rn seed-baseline
+.github/` matches only comments, never a `run:` line. State the claim that way
+round rather than as "stays empty" - documenting the invariant in ci.yml is
+itself enough to put the string in that directory, so the stronger phrasing
+falsifies itself and invites a reader who checks to distrust the rest of this
+argument. The safety property is unchanged; only the wording of the evidence is.
 
 WHAT IT REFUSES TO DO
 
