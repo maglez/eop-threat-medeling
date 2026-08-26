@@ -1,0 +1,111 @@
+# SonarQube Community Build — local static-analysis server.
+#
+# This stack exists so a developer can run a full SonarQube analysis on their own
+# machine and read the results in a dashboard. It is a LOCAL DEVELOPMENT TOOL and
+# nothing in CI ever starts it. See docs/adr/ADR-060-sonarqube-issue-ratchet.md for
+# why the CI gate reads a committed report instead of talking to a server.
+#
+#   colima start                                   # if the runtime is not up
+#   docker compose -f compose.sonar.yml up -d
+#   tools/sonar/scan.sh                            # waits for readiness, then scans
+#   open http://localhost:9000                     # admin / admin on first boot
+#
+# Deliberately separate from docker-compose.yml (k6 / InfluxDB / Grafana) and from
+# compose.app.yml (application + Postgres + Caddy). All three are independent and
+# any combination can run at once — subject to the memory note below.
+#
+# Shut it down when you are done. It is the heaviest of the three stacks by a wide
+# margin and there is no reason to leave it running between scans:
+#
+#   docker compose -f compose.sonar.yml down       # keeps the volumes
+#
+# MEMORY. SonarQube embeds Elasticsearch, which is why this asks for more RAM than
+# everything else in the repository combined. On the Colima default of 4 CPUs and
+# ~5.9 GB this stack fits alongside compose.app.yml but is tight; if the container
+# dies during startup with exit code 137 the VM ran out of memory, and the fix is
+# `colima stop && colima start --memory 8` rather than trimming the heaps below.
+
+# Project namespace, set explicitly. Without it Compose derives the project name
+# from the directory, all three files collide, and each stack reports the others'
+# containers as orphans - so `docker compose down --remove-orphans` on one file
+# would destroy the other stacks.
+name: eop-sonar
+
+services:
+  sonarqube:
+    # Pinned by digest, not by the `community` tag, and this is the only image in
+    # the repository that is. The other stacks pin tags (`influxdb:1.8`,
+    # `postgres:17-alpine`) because a wrong version there produces a loud failure:
+    # the application will not start or k6 writes nothing. Here a version drift is
+    # SILENT AND DIRECTIONAL — a SonarQube upgrade ships new and retuned rules, so
+    # the issue counts in tools/sonar/sonar-baseline.json change without a line of
+    # our source moving. Every developer must therefore measure against the same
+    # analyser as every other developer, or the ratchet compares two populations.
+    #
+    # This is a multi-arch OCI index digest, so the same pin resolves on arm64
+    # (Apple silicon via Colima) and amd64. Children of this index, recorded so a
+    # future reader can tell whether a local image matches:
+    #   amd64  sha256:4152a10d90904b97a29e82c964f7eba0c6d587ca118a0320e7dfdaf5d1a99760
+    #   arm64  sha256:c5090fd9ded4310f7ddad82b34ea2c4c64875d913a85c72bb8bee79bb53017c7
+    # Built 2026-08-21, base eclipse-temurin:25-jdk-noble.
+    #
+    # MOVING THIS PIN IS A BASELINE-INVALIDATING CHANGE, not a version bump. Bump
+    # it and re-measure the baseline in the same commit, with the new counts and
+    # the analyser version in the message — never bump it and let the next
+    # developer absorb the delta as though they had written the issues.
+    image: sonarqube@sha256:9026624a61cd25542a402a9e7213dd7dbb39724ac9597e331e6b85362558c079
+    container_name: eop-sonarqube
+    ports:
+      # Bound to 127.0.0.1, following the InfluxDB precedent in docker-compose.yml.
+      # This server holds an unauthenticated-by-default dashboard and, after a
+      # scan, a browsable copy of our source code; it has no business being
+      # reachable from the network. The scanner runs on this same host.
+      - "127.0.0.1:9000:9000"
+    environment:
+      # Embedded H2. SonarQube logs a warning that this is for evaluation only and
+      # cannot be upgraded in place, and both are acceptable here: this database is
+      # a scratch cache of one project's analysis, the durable artifacts are the
+      # committed JSON files under tools/sonar/, and if it is ever lost the fix is
+      # `docker compose -f compose.sonar.yml down -v` and one more scan. Adding
+      # Postgres would double the stack's footprint to protect data we are happy
+      # to throw away. See ADR-060.
+      #
+      # Elasticsearch bootstrap checks are left ON. They are the thing that fails
+      # loudly if vm.max_map_count is too low, and on Colima it is already
+      # 1048576 - far above the 262144 floor - so no sysctl and no sudo is needed.
+      # If you meet that failure, do not disable the check; raise the limit.
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "false"
+    volumes:
+      # data/ holds the embedded database and the Elasticsearch indices,
+      # extensions/ holds installed plugins, logs/ is kept because a failed boot
+      # is diagnosed from es.log and web.log rather than from `docker logs`.
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    ulimits:
+      # Elasticsearch requirements. Without these the container fails its own
+      # bootstrap checks on some hosts.
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc: 8192
+    healthcheck:
+      # /api/system/status returns {"status":"UP"} only once the web server, the
+      # compute engine and Elasticsearch are all ready. Polling the root URL
+      # instead reports success while the platform is still migrating, which is
+      # exactly the window in which a scan fails with a confusing error.
+      #
+      # start_period is generous because a first boot creates the database schema
+      # and can take well over a minute on a cold volume. tools/sonar/scan.sh does
+      # not rely on this healthcheck - it polls the same endpoint itself, so it
+      # gives a useful message when the server never comes up.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
