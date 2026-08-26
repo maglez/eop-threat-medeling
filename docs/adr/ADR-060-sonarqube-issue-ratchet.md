@@ -232,6 +232,24 @@ See Consequences.
   not require a rescan, and the scanner does not analyse those files. If Sonar's scope is
   ever widened, the hash set must widen in the same commit or the freshness check silently
   stops covering what is scanned.
+- **The gate's own tooling has no automated tests.** Nothing under `tools/sonar/` is
+  exercised by `./mvnw verify`: Checkstyle, SpotBugs and JaCoCo see only `src/main/java`,
+  and the 95.1% figure this ADR quotes says nothing about the six scripts that produce it.
+  Their behaviour was verified by hand — the at-ceiling pass, a real added code smell, a
+  stale report, a failing run leaving the baseline byte-identical, an end-to-end tighten,
+  and three determinism samples — and that evidence is real but it is not repeatable by a
+  machine. It is recorded here because the asymmetry matters: a gate that wrongly *fails*
+  is loud and gets fixed within the hour, whereas a gate that wrongly *passes* is
+  indistinguishable from a clean tree, and `ratchet.py` is the half that decides. During
+  review, nine defects of a single class were found in `scan.sh` by successive human
+  passes, which is a fair picture of what an untested shell script looks like under review
+  rather than under test. The judgement is that this is acceptable **while the job is not a
+  required check** — it advises rather than blocks, and the scripts it advises with are
+  developer-local and fail loudly — and that it becomes a prerequisite rather than a
+  nice-to-have at the moment `sonar-ratchet` is promoted, because from then on this code
+  decides whether other people's pull requests merge. Adding a shell-test harness is
+  itself an ADR-sized decision, which is why it is a named follow-up and not a quiet
+  addition to this story.
 
 ### Two deviations from the ticket, both deliberate
 

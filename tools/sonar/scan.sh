@@ -127,7 +127,24 @@ fi
 api() {
     # Token as the basic-auth username with an empty password is SonarQube's
     # documented scheme. Note the trailing colon - without it curl prompts.
-    curl -fsS --max-time 60 -u "$SONAR_TOKEN:" "$SONAR_URL$1"
+    #
+    # The `|| die` is here rather than at each call site on purpose, and it is
+    # what holds this script to the 0/1/2 contract in the header. `curl -f`
+    # reports transport and HTTP failures in its own vocabulary - 22 for a 5xx,
+    # 28 for a --max-time timeout, 7 for a refused connection - and a bare
+    # `x=$(api ...)` propagates that verbatim under `set -e`. So an overloaded
+    # local SonarQube used to abort this script with 22, a number the contract
+    # never allocates, and 1 was reachable too: the code the header reserves for
+    # a gating finding this script does not issue. Dying at the seam converts
+    # every one of them to 2 and names the endpoint. It works through a command
+    # substitution because `die` exits the subshell 2, the assignment then fails
+    # under `set -e`, and the script exits 2 - verified rather than assumed.
+    # Pipeline call sites are not covered by this (with `pipefail` the rightmost
+    # non-zero status wins, so a downstream `grep -q` or python returning 1 would
+    # mask the 2) and each therefore carries its own `|| die`; there are two, at
+    # the token validation and the compute-engine poll, and both do.
+    curl -fsS --max-time 60 -u "$SONAR_TOKEN:" "$SONAR_URL$1" ||
+        die "$SONAR_URL$1 did not answer - is the SonarQube container still healthy?"
 }
 
 api '/api/authentication/validate' | grep -q '"valid":true' ||
