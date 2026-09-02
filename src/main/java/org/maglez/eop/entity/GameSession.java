@@ -221,6 +221,21 @@ public final class GameSession {
      * @throws TooFewPlayersException       if fewer than {@link #MINIMUM_PLAYERS_TO_START} are seated
      */
     public GameSession start(final UUID requestedBy, final Instant now) {
+        // SECURITY: identity checks MUST precede state checks. This ordering is load-bearing
+        // and must not be changed without a security review (EOP-23).
+        //
+        // An unrecognised caller must not be able to infer session state from the error code.
+        // If state were checked first, a caller outside the table could distinguish a lobby
+        // (409 "session not in lobby") from an in-progress game (403 "not recognised") by
+        // probing the start endpoint — leaking whether a session is joinable without holding
+        // an identity token. Identity first means every unrecognised caller receives 403
+        // regardless of what state the session is in.
+        //
+        // Guard order:
+        //   1. Is the caller at this table?          → 403 PlayerNotRecognisedException
+        //   2. Is the caller the facilitator?        → 403 NotFacilitatorException
+        //   3. Is the session still in the lobby?    → 409 SessionNotJoinableException
+        //   4. Are there enough players to start?    → 409 TooFewPlayersException
         final Player requester = playerById(requestedBy).orElseThrow(() -> new PlayerNotRecognisedException(sessionId));
         if (!requester.canStartPlay()) {
             throw new NotFacilitatorException(sessionId, requestedBy);

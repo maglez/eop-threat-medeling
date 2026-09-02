@@ -9,3 +9,4 @@
 - `application.yml` holds defaults; `prod` overrides go in `application-prod.yml`
 - Secrets use env vars resolved via `${VARIABLE_NAME}` in yml — never literal values
 - Keep config classes in `org.maglez.eop.config` package (interface adapter layer)
+- On Spring Boot 4, autoconfiguration for optional features lives in standalone `spring-boot-*` modules. A `spring.*` property whose owning module is not a declared dependency is **inert** — nothing reads it and nothing fails. Confirm the module is in `pom.xml` before trusting any property. Precedents: `spring-boot-liquibase` (migrations silently skipped), `spring-boot-h2console` (console property present but never active — see EOP-27)
