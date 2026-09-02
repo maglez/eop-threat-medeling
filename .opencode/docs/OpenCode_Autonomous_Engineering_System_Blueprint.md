@@ -306,7 +306,7 @@ To use Bedrock, map the six abstract model names to Bedrock model IDs in `.env`.
 
 | Abstract | Bedrock ID | Family | Role |
 |---|---|---|---|
-| `MODEL_A` | `amazon-bedrock/eu.anthropic.claude-opus-5` | Anthropic | Global default, orchestration, expert advice. **No gate sits here since 2026-08-21** |
+| `MODEL_A` | `amazon-bedrock/global.anthropic.claude-opus-5` | Anthropic | Default agent model, orchestration, expert advice. **No gate sits here since 2026-08-21**. The only `global.` cross-region entry — see the profile note below |
 | `MODEL_B` | `amazon-bedrock/eu.anthropic.claude-sonnet-4-6` | Anthropic | Requirements, the two tester gates, experts |
 | `MODEL_C` | `amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0` | Qwen | **Authoring** — DB, DevOps, Performance |
 | `MODEL_D` | `amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0` | Anthropic | `small_model` only — titles, compaction. No agent uses it. |
@@ -315,6 +315,15 @@ To use Bedrock, map the six abstract model names to Bedrock model IDs in `.env`.
 | `MODEL_G` | `amazon-bedrock/zai.glm-5` | Z.AI | **Audit** — the code-review gate, family-independent of every authoring tier |
 
 Note the Anthropic IDs carry **no** `-v1:0` suffix, while most third-party IDs do (and several, such as `qwen.qwen3-coder-next` and `zai.glm-5`, carry none). Copy IDs verbatim from `~/.cache/opencode/models.json` rather than inferring a suffix; a wrong suffix presents as `The provided model identifier is invalid`, indistinguishable from a missing entitlement.
+
+> **`MODEL_A` moved from `eu.` to `global.` on 2026-09-02, and the reason is which inference profile this AWS account can actually invoke — not data residency.** Get that the right way round before citing it. The `eu.` prefix on the three Anthropic tiers was never a residency *commitment* in this project; it was the profile the account happened to be able to call from London, and the operator confirmed on 2026-09-02 that EU-only inference is not a requirement here ([ADR-062](../../docs/adr/ADR-062-model-a-on-the-global-inference-profile.md)). So do not read this row as a regression against a promise, and equally do not read the two tiers still on `eu.` as a promise either — they are on `eu.` because it works, and `MODEL_B`/`MODEL_D` would move the same way the moment it stopped working.
+>
+> What *is* true, and must be stated rather than glossed: `global.` is an **explicitly** cross-region profile, so a request issued from `eu-west-2` may be served from any region. That is accepted knowingly. Until this date three tiers carried an EU inference profile; **two do now**, and the tier that sees every message and every file in the repository is no longer one of them. Only the `eu.`-prefixed Anthropic entries carry an EU profile at all — `MODEL_C`, `MODEL_E`, `MODEL_F` and `MODEL_G` are bare identifiers whose in-region behaviour [ADR-046](../../docs/adr/ADR-046-gate-model-capability-floor.md) records as *unverified rather than resolved in either direction*. ADR-046 §Consequences used the `eu.` / bare / `global.` distinction to reject `global.openai.gpt-5.6-luna` for two audit gates, and **that reasoning stands as written** — this change does not overturn it. It is a different tier under a different constraint: there, a `global.` profile was one option among several for a gate that could equally take a bare identifier; here, it is the only option that keeps the primary tier working without freezing the toolchain.
+>
+> **The forcing reason is a client-side payload incompatibility, not a preference.** OpenCode `1.18.26` (binary updated 2026-09-01) sends `thinking.adaptive.block_binding.prefix_mismatch_behavior` inside `additionalModelRequestFields` for every model in its adaptive-thinking list — which includes `claude-opus-5` — and the `eu.anthropic.claude-opus-5` profile rejects the unknown field with `Extra inputs are not permitted`, failing every request. `claude-sonnet-4-6` and `claude-haiku-4-5` are **not** in that list, which is why `MODEL_B` and `MODEL_D` are unaffected and must stay on `eu.`. Three options existed: pin an older binary, drop to a bare `anthropic.` identifier, or take the `global.` profile. The `global.` profile is the only one that neither freezes the toolchain nor leaves the primary tier on an identifier whose routing is unverified.
+>
+> `AWS_REGION` stays `eu-west-2` and is unrelated: it selects the runtime endpoint a request is *sent to*, not where inference is *served*, so leaving it alone neither restores nor undermines anything about routing. Two consequences. **Never describe this project as EU-resident** — it was not verifiably so before this change (four tiers were already bare identifiers) and it is one tier further from it now. And if EU-only inference ever does become a requirement, the fix is to pin the OpenCode binary below `1.18.26` and revert this row, not to change `AWS_REGION`, which would do nothing.
+
 
 ##### Verifying a Bedrock model before using it
 
@@ -412,7 +421,7 @@ MODEL_F=opencode/minimax-m2.5
 MODEL_G=opencode/glm-5
 
 # === Bedrock === (needs AWS_BEARER_TOKEN_BEDROCK and AWS_REGION)
-# MODEL_A=amazon-bedrock/eu.anthropic.claude-opus-5
+# MODEL_A=amazon-bedrock/global.anthropic.claude-opus-5
 # MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6
 # MODEL_C=amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0
 # MODEL_D=amazon-bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0
