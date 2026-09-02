@@ -933,3 +933,120 @@ jobs:
       # published against dependencies we have not touched.
       - name: Scan application dependency trees for known CVEs
         run: tools/supply-chain/scan-dependencies.sh
+
+  # A ratchet on SonarQube's issue counts: the three Clean Code software
+  # qualities (RELIABILITY, MAINTAINABILITY, SECURITY) may go down or stay
+  # level, never up. It exists because the project had no static-analysis
+  # trend at all - Checkstyle, SpotBugs and JaCoCo each gate an absolute
+  # threshold, which catches the individual violation and says nothing about
+  # whether the total is drifting upward one tolerated finding at a time.
+  # The measured starting point was 11 / 232 / 0 (EOP-181), so the ceiling
+  # is where the code actually is rather than an aspiration, and the job is
+  # green on arrival - a gate that is red the day it appears gets switched
+  # off rather than fixed.
+  #
+  # The striking thing about this job is what it does NOT do: it never talks
+  # to a SonarQube server. There is no service container, no `sonar-scanner`,
+  # no `SONAR_TOKEN`, and no network call of any kind. That is not a
+  # simplification, it is the design, and it was chosen after establishing
+  # that the two obvious alternatives are both worse here. An offline
+  # scanner CLI does not exist any more - SonarQube removed dry-run/preview
+  # mode in 5.2, so a modern scanner must reach a server to fetch quality
+  # profiles and submit its analysis. Booting an ephemeral SonarQube inside
+  # the job does work, and was measured at roughly 60-120 s of startup
+  # before the scan even begins, for a total in the 5-6 minute range on
+  # every pull request. Instead the analysis happens once, locally, on the
+  # machine of whoever changed the code, and its result is committed:
+  # `tools/sonar/sonar-report.json` is the scan output and
+  # `tools/sonar/sonar-baseline.json` is the ceiling. This job only compares
+  # two JSON files, which is why it needs neither a JDK nor Node nor a
+  # container runtime and finishes in about a second.
+  #
+  # That design has one obvious hole and one non-obvious consequence, and
+  # both are worth stating plainly rather than discovering later.
+  #
+  # The hole is staleness. A committed report describes the tree it was
+  # generated from, so a developer who edits code and never rescans would
+  # otherwise keep a permanently green gate - the gate would be theatre.
+  # `tools/sonar/source-hash.sh` closes it: the report carries a
+  # `sourceHash` over `pom.xml` plus every `*.java` under `src/main/java`
+  # and `src/test/java`, this job recomputes it from the checked-out tree,
+  # and a mismatch fails with the rescan recipe. The single definition lives
+  # in that one sourced file precisely so the local and CI sides cannot
+  # drift into disagreeing about what the token is.
+  #
+  # The consequence is that any change under those paths requires a local
+  # rescan before this job passes. We judged that inherent to the
+  # requirement rather than an artifact of the design - a developer has to
+  # scan to know whether they added an issue - and it has a pleasant
+  # corollary: a docs-only, workflow-only or `ui/`-only pull request leaves
+  # the hash untouched and passes instantly, because none of those paths is
+  # scanned. The `ui` job above owns TypeScript, and extending Sonar to it
+  # is deliberately deferred.
+  #
+  # What this job does not prove, in three parts. It does not prove the code
+  # is good; it proves three integers did not increase. It does not prove
+  # the report is honest - a hand-edited `sonar-report.json` would pass, and
+  # the hash closes the *accident* of forgetting to rescan rather than the
+  # *intent* to lie, exactly as `tools/supply-chain/accepted-cves.json`
+  # leaves intent to review. And it does not prove SonarQube's opinion is
+  # stable: an upgrade ships retuned rules, which moves the counts silently
+  # and directionally, which is why `compose.sonar.yml` pins the image by
+  # digest and the report records the server version. Moving that pin is a
+  # baseline-invalidating change and needs a re-measure in the same commit.
+  #
+  # Note the division of labour with the `build` job, which is not redundant
+  # with this one and must not absorb it. `build` runs `./mvnw verify` and
+  # owns Checkstyle, SpotBugs, JaCoCo and the documentation-integrity tests.
+  # Sonar is deliberately NOT wired into `verify`: `sonar-maven-plugin` is
+  # invoked fully qualified from `tools/sonar/scan.sh` and appears nowhere in
+  # `pom.xml`, so a local build stays fast and a source edit cannot turn
+  # `./mvnw verify` red for want of a rescan.
+  #
+  # Deliberately NOT a required status check when it lands, and for a reason
+  # specific to this gate rather than inherited from its neighbours. The
+  # failure mode we have not yet lived with is the stale-report block: the
+  # first few times someone pushes a one-line Java fix and is told to boot a
+  # container and rescan, we want that to be an annoyance rather than a
+  # merge blocker, so the friction can be measured before it is mandatory.
+  # The same two honest caveats as the job above apply: branch protection is
+  # configured outside this file, so no comment here can make the job
+  # required or stop it being required; and the job exits non-zero and shows
+  # red on a regression either way, so "not required" affects whether a
+  # merge is blocked, never whether the regression is visible.
+  #
+  # The exit-code contract (0 clean, 1 regression or stale report, 2 could
+  # not run) and the whole comparison live in the script, so the same one
+  # command reproduces a failure locally with no container and no secrets.
+  # See ADR-060.
+  sonar-ratchet:
+    name: sonar-ratchet
+    runs-on: ubuntu-latest
+    # Reads two committed JSON files and the source tree it hashes. Writes
+    # nothing anywhere, and contacts nothing over the network.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `setup-java`, no `setup-node`, no cache, and no service
+      # container. This job reads JSON and hashes files; `python3` and
+      # `sha256sum` are both already on the runner. If a future step here
+      # ever needs a JDK, that is a strong signal the job has started doing
+      # analysis rather than comparison, which belongs in `scan.sh` instead.
+      #
+      # `--tighten` is deliberately absent and must stay absent. Lowering
+      # the ceiling when a pull request fixes an issue is a local operation
+      # that the developer commits, because a PR-triggered job pushing a bot
+      # commit back to a contributor branch - a fork, potentially - is a
+      # security and a usability hazard for a benefit we can get for free by
+      # having `scan.sh` do it before the commit is even made. An
+      # improvement is still detected and printed here, it is simply
+      # reported rather than written. `tools/sonar/seed-baseline.py` is the
+      # only thing that can raise a ceiling and it is never invoked from
+      # CI - `grep -rn seed-baseline .github/` matches this comment and
+      # nothing else, never a `run:` line, and keeping it a separate file
+      # from `ratchet.py` rather than a `ratchet.py --seed` flag is what
+      # makes that difference visible to grep at all.
+      - name: Compare SonarQube issue counts against the committed baseline
+        run: tools/sonar/ratchet.sh
