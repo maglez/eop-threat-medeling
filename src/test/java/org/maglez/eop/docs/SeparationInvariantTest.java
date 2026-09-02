@@ -74,13 +74,20 @@ class SeparationInvariantTest {
      * <p>The two tester gates verify production code by writing tests against it; they do not review another agent's
      * test code, which is {@code @code-reviewer}'s remit. {@code @architecture-guardian} reviews design and the
      * documentation of it. {@code @security-auditor} is the broadest, auditing everything.
+     *
+     * <p>{@code @sonarqube-expert} reviews both production and test code because the SonarQube ratchet gates one set
+     * of counts over both trees, and 211 of the 243 findings ADR-060 measured sit under {@code src/test/java}.
+     * {@code @dependency-vulnerability} reviews production code and infrastructure because its subject is the two
+     * shipped dependency manifests, {@code pom.xml} and {@code ui/package-lock.json}.
      */
     private static final Map<String, Set<ArtefactClass>> GATE_REVIEWS = Map.of(
             "code-reviewer", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.INFRASTRUCTURE, ArtefactClass.TEST_CODE),
             "security-auditor", EnumSet.allOf(ArtefactClass.class),
             "architecture-guardian", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.ARCHITECTURE_DOCUMENTATION),
             "tester-unit-and-quality", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
-            "tester-api", EnumSet.of(ArtefactClass.PRODUCTION_CODE));
+            "tester-api", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
+            "sonarqube-expert", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.TEST_CODE),
+            "dependency-vulnerability", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.INFRASTRUCTURE));
 
     /**
      * What each authoring agent produces, per ADR-022 rule 5's enumeration of artefact classes.
@@ -123,11 +130,11 @@ class SeparationInvariantTest {
 
     /**
      * A floor on the number of agents read out of the configuration, so this test cannot pass by parsing nothing.
-     * Fifteen agents are pinned at the time of writing: three on MODEL_A, five on MODEL_B, three on MODEL_C, one on
-     * MODEL_E, two on MODEL_F and one on MODEL_G. Raise it when agents are added; lower it only alongside a
+     * Seventeen agents are pinned at the time of writing: three on MODEL_A, five on MODEL_B, three on MODEL_C, one on
+     * MODEL_E, four on MODEL_F and one on MODEL_G. Raise it when agents are added; lower it only alongside a
      * deliberate decision to remove one.
      */
-    private static final int MINIMUM_AGENTS = 15;
+    private static final int MINIMUM_AGENTS = 17;
 
     /**
      * A floor on the number of distinct tier variables the agent block references. Six at the time of writing —
@@ -138,10 +145,12 @@ class SeparationInvariantTest {
 
     /**
      * A floor on the number of gate-against-author comparisons actually performed, so neither the invariant rule nor
-     * the allow-list rules can pass by comparing nothing. Twenty-one meaningful comparisons exist at the time of
-     * writing. Raise it when a gate or an authoring agent is added.
+     * the allow-list rules can pass by comparing nothing. Thirty meaningful comparisons exist at the time of writing,
+     * up from twenty-one before {@code @sonarqube-expert} and {@code @dependency-vulnerability} became gates. The
+     * floor sits a little below that count so removing one authoring agent does not fail this check for the wrong
+     * reason. Raise it when a gate or an authoring agent is added.
      */
-    private static final int MINIMUM_COMPARISONS = 18;
+    private static final int MINIMUM_COMPARISONS = 27;
 
     /** The shortest justification accepted on a declared overlap, so a placeholder cannot stand in for a reason. */
     private static final int MINIMUM_JUSTIFICATION_LENGTH = 80;
