@@ -86,11 +86,26 @@ no `external_directory` permission grant, whereas `/tmp` prompts on every touch 
 
 ## 3. Key External Dependencies
 
-| Dependency | Role | Notes |
+Every non-Boot dependency the project declares, in the order `pom.xml` declares them. The first cell is
+the artifactId exactly as the pom spells it — not a prose label — because `ModuleInventoryTest` compares
+this column against `/project/dependencies` in both directions, and a label such as "H2 (runtime)" names
+no artifact and so compares clean against every pom there has ever been.
+
+| Artifact | Role | Notes |
 |---|---|---|
-| H2 (runtime) | In-memory RDBMS for local dev and tests | Schema managed by Liquibase, not `ddl-auto` |
-| Liquibase Core | Database migration engine | Changelogs under `src/main/resources/db/changelog/`. Declared with no `<version>` of ours — the Boot parent's `liquibase.version` owns it, so read the number off `./mvnw help:effective-pom` rather than quoting one here (`database.md`) |
-| Springdoc OpenAPI | API documentation (`/swagger-ui.html`) | Contract-first: `docs/api/openapi.yml` is authoritative |
+| `springdoc-openapi-starter-webmvc-ui` | API documentation (`/swagger-ui.html`) | Contract-first: `docs/api/openapi.yml` is authoritative |
+| `liquibase-core` | Database migration engine | Changelogs under `src/main/resources/db/changelog/`. Declared with no `<version>` of ours — the Boot parent's `liquibase.version` owns it, so read the number off `./mvnw help:effective-pom` rather than quoting one here (`database.md`) |
+| `h2` | In-memory RDBMS for local development and the test suite (`runtime` scope) | Schema managed by Liquibase, not `ddl-auto`. Excluded from the repackaged jar by the Boot plugin, so it cannot reach a deployed artifact (ADR-047) |
+| `postgresql` | JDBC driver for the deployed database (`runtime` scope) | The `prod` profile is the one that uses it; there is no `dev` profile (`configuration.md`) |
+| `testcontainers-postgresql` | Real PostgreSQL for integration tests (`test` scope) | Keeps migration and repository tests off H2's SQL dialect |
+| `testcontainers-junit-jupiter` | Testcontainers lifecycle for JUnit 5 (`test` scope) | Container start and stop bound to the test lifecycle |
+
+> **`commons-text` is deliberately not a row here.** It appears in `pom.xml` only inside
+> `<dependencyManagement>`, which pins the version of a transitive without declaring a dependency on
+> it. `ModuleInventoryTest` reads only the direct children of `/project/dependencies` for exactly this
+> reason, so adding a row for it would fail the build as an artifact the pom does not declare. The same
+> scoping excludes the `<parent>` coordinates, this project's own artifactId, and the second `h2` that
+> appears inside an `<exclude>` in the Boot plugin's repackage configuration.
 
 > **Resilience4j is not a dependency of this project and must not be listed here.**
 > An earlier draft of this file claimed it provided retry, circuit-breaker and time-limiter
@@ -103,5 +118,10 @@ no `external_directory` permission grant, whereas `/tmp` prompts on every touch 
 
 ---
 
-*Last updated: 2026-09-02. Sections 2.3 and 3 were re-verified against `pom.xml` on that date;
-regenerate section 2 whenever `pom.xml` changes. Originally authored under EOP-33 (2026-08-19).*
+*Last updated: 2026-09-03. Sections 2.3, 2.4 and 3 are build-enforced against `pom.xml` in both
+directions by `ModuleInventoryTest`, so a dependency added without a row — or a row naming a dependency
+that is not declared — fails `./mvnw verify` rather than sitting here untrue. That gate reads the first
+cell of each row only; the Role and Notes columns are still reviewer-enforced, as is section 2.3's claim
+about which autoconfiguration a module activates. Regenerate section 2 whenever `pom.xml` changes, using
+the recipe in 2.2. Originally authored under EOP-33 (2026-08-19); section 3 restructured to carry
+artifactIds under EOP-000 (2026-09-03).*
