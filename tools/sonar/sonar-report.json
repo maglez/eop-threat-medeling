@@ -26,7 +26,7 @@
     "SECURITY": 0
   },
   "coverage": 95.1,
-  "generatedAt": "2026-09-02T08:49:03Z",
+  "generatedAt": "2026-09-02T19:41:35Z",
   "issues": [
     "MAINTAINABILITY|java:S1068|src/test/java/org/maglez/eop/config/ForwardHeadersStrategyPinnedIntegrationTest.java|89e4592939b1e6176f5db0ca74809376",
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/PlayerJpaEntity.java|fa6ce9e24507b54e004c9a9f51b35f8f",
@@ -294,6 +294,6 @@
   },
   "sonarQubeVersion": "26.8.0.126808",
   "sourceFileCount": 301,
-  "sourceHash": "4d09263351214cf5e78c96a63dba9b50e93f6e83bb2d3ac315d4b9f6c4b35515",
+  "sourceHash": "427344adc05821350592ae35ca7db8a993ab752721dcd09b7395f9fac7139f97",
   "tests": 1386
 }
