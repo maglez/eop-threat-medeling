@@ -51,7 +51,7 @@ This project uses a multi-agent team defined in `.opencode/agents/`. Thirteen de
 - `@tester-api` — API integration tests
 - `@security-auditor` — security and vulnerability audits
 - `@code-reviewer` — static code review and SOLID compliance
-- `@sonarqube-expert` — adjudicates the SonarQube issue ratchet against the committed baseline
+- `@sonarqube-expert` — adjudicates the SonarQube issue ratchet over production code against the committed baseline
 - `@dependency-vulnerability` — adjudicates the Trivy CVE scan over the shipped dependency trees
 - `@performance-engineer` — benchmarks and load testing
 

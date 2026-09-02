@@ -75,9 +75,14 @@ class SeparationInvariantTest {
      * test code, which is {@code @code-reviewer}'s remit. {@code @architecture-guardian} reviews design and the
      * documentation of it. {@code @security-auditor} is the broadest, auditing everything.
      *
-     * <p>{@code @sonarqube-expert} reviews both production and test code because the SonarQube ratchet gates one set
-     * of counts over both trees, and 211 of the 243 findings ADR-060 measured sit under {@code src/test/java}.
-     * {@code @dependency-vulnerability} reviews production code and infrastructure because its subject is the two
+     * <p>{@code @sonarqube-expert} reviews production code only. It reviewed test code as well until 2026-09-02, when
+     * the SonarQube ratchet narrowed to the MAIN scope (EOP-000, ADR-060 as amended): the gate now adjudicates three
+     * counts over {@code src/main/java} alone, so a test-code finding is measured and recorded but never gated, and
+     * there is nothing in that tree for this gate to adjudicate. Before the narrowing 211 of the 243 findings sat
+     * under {@code src/test/java} against a ceiling with no headroom, which is what let a routine new test file
+     * redden a gate that had nothing to say about the product.
+     *
+     * <p>{@code @dependency-vulnerability} reviews production code and infrastructure because its subject is the two
      * shipped dependency manifests, {@code pom.xml} and {@code ui/package-lock.json}.
      */
     private static final Map<String, Set<ArtefactClass>> GATE_REVIEWS = Map.of(
@@ -86,7 +91,7 @@ class SeparationInvariantTest {
             "architecture-guardian", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.ARCHITECTURE_DOCUMENTATION),
             "tester-unit-and-quality", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
             "tester-api", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
-            "sonarqube-expert", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.TEST_CODE),
+            "sonarqube-expert", EnumSet.of(ArtefactClass.PRODUCTION_CODE),
             "dependency-vulnerability", EnumSet.of(ArtefactClass.PRODUCTION_CODE, ArtefactClass.INFRASTRUCTURE));
 
     /**
@@ -145,12 +150,15 @@ class SeparationInvariantTest {
 
     /**
      * A floor on the number of gate-against-author comparisons actually performed, so neither the invariant rule nor
-     * the allow-list rules can pass by comparing nothing. Thirty meaningful comparisons exist at the time of writing,
-     * up from twenty-one before {@code @sonarqube-expert} and {@code @dependency-vulnerability} became gates. The
-     * floor sits a little below that count so removing one authoring agent does not fail this check for the wrong
+     * the allow-list rules can pass by comparing nothing. Twenty-seven meaningful comparisons exist at the time of
+     * writing. That is down from thirty: on 2026-09-02 the SonarQube ratchet narrowed to production code, so
+     * {@code @sonarqube-expert} stopped reviewing test code (EOP-000, ADR-060 as amended), which retired its three
+     * comparisons against the three {@code TEST_CODE} authors — {@code @ui-builder} and the two tester gates. It was
+     * twenty-one before {@code @sonarqube-expert} and {@code @dependency-vulnerability} became gates at all. The
+     * floor sits a little below the true count so removing one authoring agent does not fail this check for the wrong
      * reason. Raise it when a gate or an authoring agent is added.
      */
-    private static final int MINIMUM_COMPARISONS = 27;
+    private static final int MINIMUM_COMPARISONS = 24;
 
     /** The shortest justification accepted on a declared overlap, so a placeholder cannot stand in for a reason. */
     private static final int MINIMUM_JUSTIFICATION_LENGTH = 80;

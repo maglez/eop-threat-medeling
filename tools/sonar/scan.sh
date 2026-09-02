@@ -227,32 +227,47 @@ done
 # ---------------------------------------------------------------------------
 # Harvest
 # ---------------------------------------------------------------------------
-# Three headline counts come from /api/measures/component rather than from an
-# issue-search facet. Both agree today (232/11/0 either way), and we could use
-# either, but the measures are the same numbers the project overview page
-# shows - so when a developer disputes the baseline against what they can see
-# in the browser, they are looking at the same source we recorded.
+# Three whole-tree counts come from /api/measures/component. Since EOP-000
+# (2026-09-02) they are recorded as context and are NOT what the gate compares -
+# the ratchet is production-scoped, and the gated numbers come from the MAIN
+# facet below. These are kept because they are the same numbers the project
+# overview page shows, so when a developer disputes the baseline against what
+# they can see in the browser, the report holds both figures and the difference
+# between them is the test-code side, spelled out in scope.TEST.
 measures_json=$(api "/api/measures/component?component=$PROJECT_KEY&metricKeys=software_quality_reliability_issues,software_quality_maintainability_issues,software_quality_security_issues,coverage,ncloc,tests")
 
-# The MAIN/TEST split is recorded as context, never gated on. It matters for
-# reading a regression: 211 of the 243 issues on this project live in test
-# code, so "maintainability went up by one" is a very different conversation
-# depending on which side it landed, and the split saves the reader a trip to
-# the dashboard.
+# The MAIN facet is the gated quantity. The TEST facet beside it is context, and
+# keeping both is what makes the narrowing auditable rather than a quiet
+# deletion: MAIN + TEST must reconcile with the whole-tree measures above, so a
+# reader can see exactly what the gate is declining to count.
+#
+# Test code is still analysed and still hashed. Excluding it from analysis would
+# have bought nothing on coverage - SonarQube already classifies src/test/java
+# under sonar.tests, which is why coverage reads 95.1% with test code fully in
+# scope - while making 66% of the codebase invisible even in the browser. What
+# needed narrowing was the gate, not the analysis. See ADR-060 as amended.
 main_json=$(api "/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=1&scopes=MAIN&facets=impactSoftwareQualities")
 test_json=$(api "/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=1&scopes=TEST&facets=impactSoftwareQualities")
 
-# Full issue inventory, paginated. We record a fingerprint per issue so that
-# ratchet.sh can name what changed instead of only saying a number went up.
+# Production issue inventory, paginated. Scoped to MAIN because these
+# fingerprints are the gated set: ratchet.sh diffs them to name what changed
+# instead of only saying a number went up, so a test-code entry in this list
+# would be a finding the gate reports as gated while not gating it.
+#
+# The filter is applied at the server rather than by matching a src/main/java
+# prefix here, so "production" keeps exactly one definition - SonarQube's own
+# scope classification, the same one behind the MAIN facet above - instead of a
+# third copy of it in this repository alongside source-hash.sh.
+#
 # Sonar's own `hash` field is a digest of the line's content, so a fingerprint
 # survives the issue moving up or down the file - which is what stops an
 # unrelated insertion above a finding from reading as a new finding.
-echo "sonar-scan: harvesting issue inventory"
+echo "sonar-scan: harvesting production issue inventory"
 inventory_file=$(mktemp)
 trap 'rm -f "$inventory_file"' EXIT
 page=1
 while :; do
-    page_json=$(api "/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500&p=$page")
+    page_json=$(api "/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500&scopes=MAIN&p=$page")
     printf '%s' "$page_json" | python3 -c '
 import sys, json
 d = json.load(sys.stdin)

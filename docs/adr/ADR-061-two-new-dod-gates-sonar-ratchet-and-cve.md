@@ -38,6 +38,15 @@ So both new roles needed probing even though `MODEL_F` and `MODEL_G` are already
 
 **The `MODEL_B` control passed cleanly, and is structurally ineligible.** It read both exit codes correctly and located both findings exactly. It cannot hold this gate: `MODEL_B` carries `@tester-api` and `@tester-unit-and-quality`, both of which author test code, and this gate reviews test code — 211 of the 243 measured findings sit under `src/test/java`. Pinning it there would recreate exactly the same-identifier overlap that ADR-059 was written to close.
 
+> **Amended 2026-09-02 (EOP-000):** the second half of this justification no longer holds.
+> On the same day, [ADR-060](ADR-060-sonarqube-issue-ratchet.md) was amended to narrow the
+> ratchet to production code, so this gate no longer reviews test code and `GATE_REVIEWS`
+> records it as `PRODUCTION_CODE` alone. `MODEL_B` authors no production code, so the
+> separation invariant would not forbid the pin today. `@sonarqube-expert` stays on
+> `MODEL_F` on the grounds that survive: the ADR-046 capability floor and the recorded
+> two-stage probe. `MODEL_B` has no probe for this role, and a gate pin with no recorded
+> passing verdict is non-compliant regardless of which tier it sits on.
+
 ### One of the two failures was partly the probe's fault
 
 `MODEL_F` observed, correctly, that the issue fingerprint `QUALITIES|rule|path|hash` carries **no line numbers**. The hash is SonarQube's digest of the offending line's *content*, not its position. The probe brief had demanded a `file:line` citation for every finding — evidence the tooling does not emit and the gate therefore cannot be asked for.
@@ -86,6 +95,15 @@ Two imprecisions are recorded rather than smoothed over. On the CVE role `MODEL_
 `.opencode/agents/tech-lead.md` now requires seven sign-offs, and `tools/agent-trace.py` carries both new names in `PIPELINE["2 gateways"]`, `AUDITOR_AGENTS` and — because both author nothing at any stage — `READ_ONLY_AGENTS`.
 
 `SeparationInvariantTest` gains two `GATE_REVIEWS` entries: `@sonarqube-expert` reviews production and test code, `@dependency-vulnerability` reviews production code and infrastructure. `MINIMUM_AGENTS` rises from 15 to 17 and `MINIMUM_COMPARISONS` from 18 to 27, the true comparison count having risen from 21 to 30.
+
+> **Amended 2026-09-02 (EOP-000):** `@sonarqube-expert`'s entry narrowed to
+> `PRODUCTION_CODE` when the ratchet narrowed to production code
+> ([ADR-060](ADR-060-sonarqube-issue-ratchet.md) as amended). That retired its three
+> comparisons against the three test-code authors — `@ui-builder` and the two tester gates
+> — taking the true comparison count from thirty to twenty-seven, so `MINIMUM_COMPARISONS`
+> was lowered from 27 to 24 to restore the margin its own Javadoc requires. `MINIMUM_AGENTS`
+> stays at 17 and `ALLOWED_OVERLAPS` stays at exactly one entry: the narrowing removes a
+> review relationship rather than creating an exception.
 
 `AGENT_AUTHORS` is unchanged at eight entries, because neither new agent authors anything. **`ALLOWED_OVERLAPS` is unchanged at exactly one entry**: the only author on `MODEL_F` is `@architecture-guardian`, which authors architecture documentation, and neither new gate reviews that class. Adding two agents to that tier therefore introduces no new overlap and requires no new declared exception.
 

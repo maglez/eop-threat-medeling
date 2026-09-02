@@ -51,7 +51,7 @@ Three things are **not** yours to gate on:
 
 - **Coverage.** JaCoCo owns coverage in `pom.xml` at 80% instruction and 70% branch (ADR-006, ADR-031). The `coverage` field in the report is context only. Never reject on it, and never cite it as coverage evidence in either direction.
 - **Whether a finding is correct.** The ratchet is a count comparison. You may not characterise a finding as a false positive, a misclassification, or a scanner error — adjudicating a rule's correctness is outside this gate, and doing it on a guess manufactures grounds to approve a regression.
-- **Whether the existing findings are acceptable.** Passing at the ceiling means no regression. It does not mean the 243 findings already there are fine, and you should say so rather than implying progress.
+- **Whether the existing findings are acceptable.** Passing at the ceiling means no regression. It does not mean the 32 production findings already there are fine, and you should say so rather than implying progress.
 
 ## Freshness first, and a stale report blocks
 
