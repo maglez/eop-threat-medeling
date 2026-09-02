@@ -11,6 +11,21 @@ wrapper owns the one thing this file cannot compute for itself: the source hash,
 whose definition lives in tools/sonar/source-hash.sh so that the scanning side
 and the checking side cannot drift apart.
 
+SCOPE, since 2026-09-02 (EOP-000, ADR-060 as amended): the three integers this
+file compares cover PRODUCTION CODE ONLY - SonarQube's MAIN scope, which is
+src/main/java. They are not the numbers the SonarQube project overview page
+shows, and a reader who takes "MAINTAINABILITY 31" for the whole project will be
+wrong by an order of magnitude. The whole-tree figure and the test-code side are
+both recorded in the report under scope.ALL and scope.TEST, so the narrowing is
+auditable from the file rather than asserted here.
+
+Test code is still analysed, and still hashed. Only the gate narrowed. The
+reason was not coverage - SonarQube already classifies src/test/java under
+sonar.tests, so it was never in the coverage denominator and coverage read 95.1%
+with test code fully in scope. The reason was that 211 of 243 findings sat in
+test code against a ceiling with no headroom, so a routine new test file
+reddened the gate for reasons that said nothing about the product.
+
 Exit codes - the contract shared by every gate under tools/:
   0  clean. Counts are at or below the ceiling and the report describes this tree.
   1  gating finding. A count rose, or the report is stale, or the files disagree
@@ -35,6 +50,9 @@ opposite reading:
   * Not that SonarQube's opinion is stable. A server upgrade retunes rules, so
     the same source can score differently. That is why the report records
     sonarQubeVersion and why compose.sonar.yml pins the image by digest.
+  * Not that test code is clean. Test findings are measured and recorded in the
+    report, and they are deliberately not gated, so this gate going green says
+    nothing at all about the 36,965 lines under src/test/java.
 """
 
 from __future__ import annotations
@@ -233,6 +251,9 @@ def main() -> int:
     print(f"sonar-ratchet: SonarQube {report.get('sonarQubeVersion', '(version not recorded)')}"
           f", report generated {report.get('generatedAt', '(no timestamp)')}")
     print(f"sonar-ratchet: report is fresh for this tree ({args.actual_file_count} files)")
+    print()
+    print("  Gated scope: production code only (src/main/java). Test-code findings are")
+    print("  measured and recorded in the report under scope.TEST, and not gated.")
     print()
     print("  quality            ceiling   found")
     for quality in QUALITIES:

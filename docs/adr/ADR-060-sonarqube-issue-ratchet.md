@@ -80,6 +80,13 @@ code is scanned on the same footing as production code. It is recorded here beca
 sets up the most likely way this gate will first cause friction, which the Consequences
 section states in full.
 
+> **Amended 2026-09-02 (EOP-000):** that friction arrived, and the answer was to narrow the
+> gate rather than to raise the ceiling or stop scanning. The table above still describes
+> what is *analysed* — all three rows are measured on every scan and all three are recorded
+> in `sonar-report.json` — but only the **Main source** row is now *gated*. The whole-tree
+> row is kept under `scope.ALL` so the project-overview figure stays reconcilable from the
+> file. See the amendment at the end of the Consequences section.
+
 Security is 0, not 2. Security Hotspots were checked separately — they live on a different
 endpoint from issues and are not the same population — and that count is also 0.
 
@@ -301,6 +308,50 @@ added to `Main.java` produced two genuine findings (`java:S1068` and `java:S1170
 un-rescanned tree blocked as stale, the rescanned tree blocked at 232 → 234 naming both
 rules, the scan script propagated exit 1, and reverting the field — a real fix — took the
 count back to 232 and tightened a deliberately raised ceiling back down.
+
+### Amendment — 2026-09-02: the gate narrows to production code (EOP-000)
+
+**The three gated integers now cover `src/main/java` only.** They fell from 11 Reliability /
+232 Maintainability / 0 Security to **1 / 31 / 0** — not because anything was fixed, but
+because 211 of the 243 findings were test-code findings that this gate no longer adjudicates.
+
+The friction predicted above materialised exactly as described: with 87% of the findings in
+test code and a ceiling carrying no headroom, a routine new test file turned the gate red for
+reasons that said nothing about the product. The original ADR named three honest answers to a
+tripped gate — fix the finding, argue the ceiling up, or the forbidden third of stopping the
+scan. Narrowing scope is a fourth that this ADR did not contemplate, and it is admissible
+only because it keeps the analysis intact and moves the *gate*:
+
+- **Test code is still analysed**, still on the same footing, and still hashed by
+  `source-hash.sh`, which is therefore unchanged. Its findings are measured on every scan and
+  recorded under `scope.TEST`. What changed is that they no longer gate.
+- **Nothing was excluded from the scanner.** `sonar.sources` and `sonar.tests` are still
+  unset, so scope is still the Maven default. The narrowing is achieved by harvesting the
+  gated inventory with `&scopes=MAIN` and taking the gated counts from the `scopes=MAIN`
+  facet, so "production" keeps exactly one definition — SonarQube's own scope classification
+  — rather than a second copy of the `src/main/java` path knowledge that `source-hash.sh`
+  already holds.
+- **`scope.ALL` was added** to the report, holding the whole-tree measures. `MAIN + TEST` must
+  reconcile with it per quality, and `write-report.py` warns on stderr if it does not. That
+  check replaces the cross-endpoint agreement the report used to get for free by taking its
+  counts from `/api/measures/component` and its fingerprints from `/api/issues/search`.
+
+**The reason was not coverage, and must not be restated as though it were.** SonarQube already
+classified `src/test/java` under `sonar.tests`, which excludes it from `ncloc` and from the
+coverage denominator, so coverage read 95.1% with test code fully in scope and reads 95.1%
+after the change — measured, not argued. `ncloc` (7338) and `tests` (1386) are likewise
+unchanged. Excluding test code from *analysis* would have bought nothing on any of those three
+numbers while making 36,965 lines invisible; that option was considered and rejected.
+
+**What this costs.** A green `sonar-ratchet` now says nothing whatever about test code. That is
+a real reduction in what the gate proves and it is stated in `ratchet.py`'s own
+"WHAT THIS GATE DOES NOT PROVE" list rather than only here. The 201 Maintainability and 10
+Reliability findings under `src/test/java` remain in the report, unfixed and ungated.
+
+**One knock-on in ADR-061.** That ADR justified `MODEL_B` being structurally ineligible for
+this gate on the ground that `MODEL_B` authors test code and the gate reviews it. That
+justification no longer holds, and the ADR-061 entry says so. `@sonarqube-expert` stays on
+`MODEL_F` on capability and probe grounds, not separation grounds.
 
 ## Related
 

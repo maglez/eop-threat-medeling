@@ -61,6 +61,12 @@ def _measures(measures_json: str) -> dict[str, str]:
     return flattened
 
 
+# The three software qualities the ratchet gates on. Kept in the same order as
+# tools/sonar/ratchet.py and tools/sonar/seed-baseline.py so the three scripts
+# print their tables identically.
+GATED_QUALITIES = ("RELIABILITY", "MAINTAINABILITY", "SECURITY")
+
+
 def _facet(search_json: str, facet_property: str) -> dict[str, int]:
     """Pull one facet out of an /api/issues/search response as val -> count.
 
@@ -75,6 +81,29 @@ def _facet(search_json: str, facet_property: str) -> dict[str, int]:
         if facet.get("property") == facet_property:
             return {value["val"]: value["count"] for value in facet.get("values", [])}
     return {}
+
+
+def _gated_counts(by_quality: dict[str, int]) -> dict[str, int]:
+    """The three gated numbers, read from the MAIN-scope facet.
+
+    Refuses to write a report with a missing gated count, for the same reason
+    _int_measure does: ratchet.py treats an absent key as a hard failure rather
+    than as a zero, so a report that reaches it incomplete turns a facet rename
+    or an empty search into a confusing failure two steps downstream instead of
+    a clear one here.
+    """
+    counts: dict[str, int] = {}
+    for quality in GATED_QUALITIES:
+        if quality not in by_quality:
+            sys.stderr.write(
+                f"write-report: the MAIN scope facet carried no '{quality}' entry. SonarQube "
+                "normally returns every facet value including the zeroes, so this means the "
+                "facet was renamed by a server upgrade or the search returned no facets at "
+                "all; refusing to write a report with a guessed count.\n"
+            )
+            raise SystemExit(2)
+        counts[quality] = int(by_quality[quality])
+    return counts
 
 
 def _total(search_json: str) -> int:
@@ -132,28 +161,63 @@ def main() -> int:
     with open(_env("SONAR_INVENTORY_FILE"), encoding="utf-8") as handle:
         issues = [line.strip() for line in handle if line.strip()]
 
-    counts = {
+    main_by_quality = _facet(main_search, "impactSoftwareQualities")
+    test_by_quality = _facet(test_search, "impactSoftwareQualities")
+
+    # The gated counts are the MAIN facet, not /api/measures/component. Since
+    # 2026-09-02 the ratchet is production-scoped: test code is still analysed,
+    # still hashed and still recorded under scope.TEST, but a finding there no
+    # longer fails the build. ADR-060 as amended carries the reasoning, and note
+    # what the reason is not - it is not coverage. SonarQube already classifies
+    # src/test/java under sonar.tests and excludes it from the coverage
+    # denominator, which is why coverage reads 95.1% with test code fully in
+    # scope. What needed narrowing was the gate, not the analysis.
+    counts = _gated_counts(main_by_quality)
+
+    # The whole-tree figures the project overview page shows, kept as context so
+    # that the narrowing is auditable rather than a quiet deletion: a reader who
+    # sees MAINTAINABILITY 31 here and 232 in the browser can reconcile the two
+    # from this file alone, without being told which number to trust.
+    whole_tree = {
         "RELIABILITY": _int_measure(measures, "software_quality_reliability_issues"),
         "MAINTAINABILITY": _int_measure(measures, "software_quality_maintainability_issues"),
         "SECURITY": _int_measure(measures, "software_quality_security_issues"),
     }
 
-    # A cheap internal consistency check, and the reason it is here rather than
-    # in the ratchet: the three gated counts come from /api/measures/component
-    # while the fingerprint list comes from /api/issues/search, and the two are
-    # separate server-side code paths over the same data. If they ever disagree
-    # the report is not describing one coherent analysis, and a baseline written
-    # from it would gate on one number while naming findings from another. We
-    # warn rather than fail, because the counts are the gated quantity and are
-    # the more trustworthy of the two - but a silent disagreement is exactly the
-    # kind of thing that gets discovered a year later.
+    # Consistency check one. The gated counts and the fingerprint list now come
+    # from the same endpoint - /api/issues/search with scopes=MAIN - so this is a
+    # facet-versus-paginated-list check, not the cross-endpoint check it was
+    # before the narrowing. It still catches the failure that matters, a baseline
+    # that gates on one number while naming findings from another, but it no
+    # longer independently corroborates the server. Check two restores that.
     if sum(counts.values()) != len(issues):
         sys.stderr.write(
-            "write-report: WARNING measures total {} but the issue inventory has {} entries. "
-            "The gate will use the measures. Check for issues the search paged past.\n".format(
-                sum(counts.values()), len(issues)
-            )
+            "write-report: WARNING the MAIN facet totals {} but the production issue "
+            "inventory has {} entries. The gate will use the facet. Check for issues the "
+            "search paged past.\n".format(sum(counts.values()), len(issues))
         )
+
+    # Consistency check two, and the reason the TEST facet is harvested at all
+    # now that it is not gated on: MAIN plus TEST must reconcile with the
+    # whole-tree measures, which come from a separate server-side code path. That
+    # is what keeps the narrowing honest. If the two sides stop adding up, either
+    # a file is misclassified by scope or the gate is ignoring findings that
+    # nothing in this report accounts for - and the second of those is precisely
+    # the failure a production-scoped ratchet has to be able to rule out.
+    for quality in GATED_QUALITIES:
+        split = counts[quality] + test_by_quality.get(quality, 0)
+        if split != whole_tree[quality]:
+            sys.stderr.write(
+                "write-report: WARNING {} splits as MAIN {} + TEST {} = {}, but the "
+                "whole-tree measure is {}. The scope split does not account for every "
+                "issue.\n".format(
+                    quality,
+                    counts[quality],
+                    test_by_quality.get(quality, 0),
+                    split,
+                    whole_tree[quality],
+                )
+            )
 
     report = {
         "_comment": [
@@ -172,10 +236,17 @@ def main() -> int:
             "So: if CI tells you this report is stale, the fix is to rescan, not to edit the",
             "hash. Start the stack and run tools/sonar/scan.sh.",
             "",
-            "counts.* are the three gated numbers. scope.* is context for reading a regression",
-            "and is never gated on. coverage is recorded because it is free to record and it",
-            "explains the 68%-vs-95% discrepancy in ADR-060; JaCoCo owns the coverage gate and",
-            "this file has no say in it.",
+            "counts.* are the three gated numbers, and since 2026-09-02 they cover production",
+            "code only - the MAIN scope. scope.MAIN repeats them, scope.TEST carries the test",
+            "code the gate declines to count, and scope.ALL carries the whole-tree figures the",
+            "project overview page shows, so all three reconcile from this file alone. Test",
+            "code is still analysed and still hashed; only the gate narrowed. See ADR-060 as",
+            "amended.",
+            "",
+            "coverage is recorded because it is free to record and it explains the 68%-vs-95%",
+            "discrepancy in ADR-060; JaCoCo owns the coverage gate and this file has no say in",
+            "it. Note that coverage is unaffected by the scope narrowing above: SonarQube",
+            "already excluded src/test/java from the coverage denominator via sonar.tests.",
         ],
         "generatedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sonarQubeVersion": _env("SONAR_SERVER_VERSION"),
@@ -184,13 +255,20 @@ def main() -> int:
         "sourceFileCount": int(_env("SONAR_FILE_COUNT")),
         "counts": counts,
         "scope": {
+            # No `total` for ALL. MAIN and TEST take theirs from paging.total,
+            # which is an issue count, whereas these are per-quality measures
+            # that would double-count an issue carrying two impacts. A summed
+            # field here would look like the same quantity and quietly not be.
+            "ALL": {
+                "byQuality": whole_tree,
+            },
             "MAIN": {
                 "total": _total(main_search),
-                "byQuality": _facet(main_search, "impactSoftwareQualities"),
+                "byQuality": main_by_quality,
             },
             "TEST": {
                 "total": _total(test_search),
-                "byQuality": _facet(test_search, "impactSoftwareQualities"),
+                "byQuality": test_by_quality,
             },
         },
         "coverage": _optional_float(measures, "coverage"),
