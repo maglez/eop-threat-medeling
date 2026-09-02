@@ -199,7 +199,7 @@ Roles alone do not constrain delegation. By default every agent can invoke every
 
 The flow is one-directional, and the hop from requirements to delivery goes **through the Prompter**: the Product Owner discovers requirements and writes stories, hands the frozen batch back to the human, who presses **Tab** to make the Tech Lead the session's primary agent, and the Tech Lead orchestrates the delivery agents from there. A delegate's findings return to its invoker as the Task result — which is why, for example, the Security Auditor needs no route *back* to the Tech Lead. When the Tech Lead invokes it, the verdict lands where it is needed by construction, with no agent-to-agent messaging mechanism to build and no possibility of a Tech Lead ↔ Auditor invocation loop.
 
-> **Why the human relays instead of the Product Owner dispatching.** A `task` dispatch creates a *child session with fresh context*, so a Tech Lead invoked that way would see only the handoff text the Product Owner composes — not the discovery interview — and could never come back to ask the Prompter a question. Worse, it would sit outside the session: `/goal` binds `tech-lead` as the **session's** primary agent, and the turn/duration/token budgets and the `completionAudit` gate are all session-scoped, so a child-session Tech Lead would run with no goal, no budget and no audit, silently bypassing the five-agent sign-off required by §12.8. Tab preserves the whole message history, so relaying costs one keypress and loses nothing. The Product Owner keeps `tech-lead: allow` only for the bounded advisory round-trip — asking for a specialist trade-off comparison — which is exactly the one-prompt-in, one-answer-out shape a subagent dispatch handles well.
+> **Why the human relays instead of the Product Owner dispatching.** A `task` dispatch creates a *child session with fresh context*, so a Tech Lead invoked that way would see only the handoff text the Product Owner composes — not the discovery interview — and could never come back to ask the Prompter a question. Worse, it would sit outside the session: `/goal` binds `tech-lead` as the **session's** primary agent, and the turn/duration/token budgets and the `completionAudit` gate are all session-scoped, so a child-session Tech Lead would run with no goal, no budget and no audit, silently bypassing the seven-agent sign-off required by §12.8. Tab preserves the whole message history, so relaying costs one keypress and loses nothing. The Product Owner keeps `tech-lead: allow` only for the bounded advisory round-trip — asking for a specialist trade-off comparison — which is exactly the one-prompt-in, one-answer-out shape a subagent dispatch handles well.
 
 > **`task: deny` is enforcement, not documentation — and it does not restrict you.** A denied subagent is removed from the Task tool description entirely, so the model never sees it and cannot attempt to invoke it; contrast a prompt instruction, which a model may simply ignore. A human is unaffected: every agent remains directly invocable from the `@` autocomplete menu regardless of `task` permissions. Note the flip side — an agent cannot be *forced* to delegate, so the Tech Lead's prompt still has to say what to dispatch and when.
 
@@ -711,7 +711,7 @@ The controls above are enforced by Jira itself and apply to *every* agent equall
 
 Rules live in the `permission` block of `.opencode/opencode.json` (global default) and in `permission:` frontmatter of individual `.opencode/agents/*.md` files (per-agent override). Agent rules take precedence over global ones. Every per-agent rule lives in frontmatter and nowhere else — the JSON `agent` block carries model assignments only; see *Orchestration Topology* in §3.3 for why.
 
-Three profiles are in force across the 15 agents:
+Three profiles are in force across the 17 agents:
 
 | Profile | Agents | Jira reads | Jira writes |
 |---|---|---|---|
@@ -739,9 +739,9 @@ Neither trap is visible by inspection. When adding rules, enumerate every `atlas
 
 #### Why Agents Share One Jira Identity
 
-Every ticket, comment and transition made by any of the 15 agents is attributed to the single `OpenCode Bot` account. A reasonable instinct is to give the Tech Lead its own Jira account so that its actions are distinguishable from the Product Owner's. Resist it — and understand precisely *why*, because the obvious reason is not the real one.
+Every ticket, comment and transition made by any of the 17 agents is attributed to the single `OpenCode Bot` account. A reasonable instinct is to give the Tech Lead its own Jira account so that its actions are distinguishable from the Product Owner's. Resist it — and understand precisely *why*, because the obvious reason is not the real one.
 
-**The mechanical reason (weak, and surmountable).** The `mcp.atlassian` entry holds exactly one credential pair — a single `JIRA_USERNAME` / `JIRA_API_TOKEN` — and one `uvx mcp-atlassian` subprocess serves all 15 agents. That is a property of *this configuration*, **not a limit imposed by Atlassian**: any account may mint multiple tokens, and separate accounts may each hold their own. Binding one agent to a different identity needs only a second MCP server entry with its own environment variables; tools are namespaced by server name, so a `atlassian-tl` server would expose `atlassian-tl_jira_*` alongside `atlassian_jira_*`, gated by the same permission globs. That is roughly ten minutes of configuration. **Shared identity is therefore not the blocker.**
+**The mechanical reason (weak, and surmountable).** The `mcp.atlassian` entry holds exactly one credential pair — a single `JIRA_USERNAME` / `JIRA_API_TOKEN` — and one `uvx mcp-atlassian` subprocess serves all 17 agents. That is a property of *this configuration*, **not a limit imposed by Atlassian**: any account may mint multiple tokens, and separate accounts may each hold their own. Binding one agent to a different identity needs only a second MCP server entry with its own environment variables; tools are namespaced by server name, so a `atlassian-tl` server would expose `atlassian-tl_jira_*` alongside `atlassian_jira_*`, gated by the same permission globs. That is roughly ten minutes of configuration. **Shared identity is therefore not the blocker.**
 
 **The real reason (decisive).** The only split that would meaningfully separate a Tech Lead from a Product Owner is *"may create Subtasks but not Stories"* — and **Jira cannot express it.** Of the 48 permission keys in `GET /rest/api/3/permissions`, the only create-related ones are `CREATE_ISSUES` (project-scoped), `CREATE_ATTACHMENTS` (project-scoped), and the global `CREATE_PROJECT` / `CREATE_SHARED_OBJECTS`. There is **no per-issue-type create permission anywhere in Jira's model, in either project style.** Migrating from team-managed to company-managed would not change this; it would only add per-account differences on EDIT / DELETE / TRANSITION / ADMINISTER, plus the possibility of a role validator on a per-issue-type workflow's create transition — workflow surgery, not permissions, and untested here. Two accounts would carry **identical effective permissions**, leaving enforcement client-side in OpenCode's `permission` rules, exactly where it already lives.
 
@@ -990,13 +990,17 @@ Two of those entries deserve explanation. `rm *` replaced the original pair `rm 
 
 #### edit — deny for the agents that only audit
 
-Six agents exist to produce findings, not changes. A reviewer that can silently rewrite the code it reviews defeats the review, so they carry `edit: deny` in frontmatter:
+Eight agents exist to produce findings, not changes. A reviewer that can silently rewrite the code it reviews defeats the review, so they carry `edit: deny` in frontmatter:
 
 | Agent | Why |
 |---|---|
 | `code-reviewer` | audits code; must not fix what it flags |
 | `security-auditor` | audits security; same reasoning |
+| `sonarqube-expert` | adjudicates the SonarQube issue ratchet; a gate able to edit `tools/sonar/sonar-baseline.json` could raise the ceiling it is judging |
+| `dependency-vulnerability` | adjudicates the Trivy CVE scan; a gate able to edit `tools/supply-chain/accepted-cves.json`, `pom.xml` or `ui/package-lock.json` could suppress the finding it is judging |
 | the 4 `expert-*` advisers | advisory by definition — they answer questions, they do not touch the repository |
+
+> **For the two 2026-09-02 gates, `edit: deny` is what makes the separation meaningful (ADR-061).** Both adjudicate a *committed artefact* — a baseline of three integers, an allowlist of CVE suppressions — where the cheapest way to turn a red gate green is to edit the artefact rather than the code. Neither agent is the enforcement in any case: the `sonar-ratchet` and `dependency-cve` CI jobs fail mechanically with no model in the path, and what these two add is the judgement a script cannot make — whether a raised ceiling was actually argued, and whether an allowlist entry carries a real reachability trace. Denying `edit` is what keeps those two roles distinct.
 
 Every other agent keeps `edit`, because writing is their job: the Performance Engineer maintains `docs/performance/TRENDS.md`, the Architecture Guardian writes `docs/`, the DevOps Engineer authors workflows, the Product Owner writes PRDs, and the testers, DB Designer and UI Builder all produce code.
 
@@ -1043,7 +1047,7 @@ graph TB
     P3["Phase 3: Technical Design & Branching<br/>@tech-lead"]
     P4["Phase 4: Implementation & Flagging<br/>@ui-builder"]
     P5["Phase 5: Automated Verification<br/>@tester-unit-and-quality & @tester-api"]
-    P6["Phase 6: PR, Audit & Human Gate<br/>@security-auditor & @code-reviewer"]
+    P6["Phase 6: PR, Seven-Gate Audit & Human Gate<br/>@security-auditor & @code-reviewer<br/>@architecture-guardian<br/>@sonarqube-expert & @dependency-vulnerability"]
     P7["Phase 7: Continuous Deployment<br/>CI/CD via OIDC → AWS"]
 
     P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
@@ -1057,9 +1061,11 @@ graph TB
 
 **Phase 4 — Implementation & Flagging**: @ui-builder and core developers write solution logic, wrapping unreleased capabilities in feature flags.
 
-**Phase 5 — Automated Verification**: @tester-unit-and-quality and @tester-api run test suites, creating Bug Sub-tasks for any failing checks.
+**Phase 5 — Automated Verification**: @tester-unit-and-quality and @tester-api run test suites, creating Bug Sub-tasks for any failing checks. These are the first two of the seven Definition-of-Done gates.
 
-**Phase 6 — PR, Audit & Human Gate**: OpenCode opens a Pull Request. @security-auditor and @code-reviewer perform static audits. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
+**Phase 6 — PR, Seven-Gate Audit & Human Gate**: OpenCode opens a Pull Request, and the remaining five Definition-of-Done gates run. @security-auditor and @code-reviewer perform static audits, @architecture-guardian confirms the ADRs and C4 models were updated, @sonarqube-expert adjudicates the SonarQube issue ratchet against `tools/sonar/sonar-baseline.json`, and @dependency-vulnerability adjudicates the Trivy CVE scan over the shipped Maven and npm dependency trees. Automated CI runs linters and tests. A human engineer reviews and approves the PR.
+
+> **The last two gates adjudicate a CI job rather than replacing it (ADR-061, 2026-09-02).** `sonar-ratchet` and `dependency-cve` already fail mechanically — a comparison of committed JSON files with no model in the path — so a green job is never @sonarqube-expert's or @dependency-vulnerability's approval, and their approval is never a substitute for the job. What the two agents add is the judgement the scripts cannot make: whether a raised issue ceiling was actually argued in the commit that raised it, and whether a CVE allowlist entry carries a real reachability trace naming file, symbol and guard. Both carry `edit: deny` (§7.8), so neither can make its own gate pass by editing the artefact it is judging. Neither job is a required status check yet, which is precisely why the human gate in this phase still matters.
 
 **Phase 7 — Continuous Deployment**: PR merges to `main`. CI assumes the cloud IAM role via OIDC, executes infrastructure-as-code, and deploys to production.
 
@@ -1251,7 +1257,7 @@ Provides a `/goal` workflow for long-running autonomous sessions. Set a goal, th
 
 - **Package**: `opencode-goal-plugin` (npm), pinned at `0.8.1`
 - **Command**: `/goal` — configured in `opencode.json` under `"command"` with `"agent": "tech-lead"` for orchestrator-driven execution (budgets: max 48 turns, 75 min duration, 650k tokens — sized to survive implementation plus **seven** reviewer sign-offs and one remediation cycle. Raised from 40/60/500k on 2026-09-02 ([ADR-061](../../docs/adr/ADR-061-two-new-dod-gates-sonar-ratchet-and-cve.md)) when the Definition of Done grew by two gates; the old figures were sized for five and would have run the goal out of turns before the last gate reported, which is the failure mode where a story is *paused* rather than rejected and therefore reads as a tooling problem rather than as missing review)
-- **Config**: Plugin-level defaults passed as options array in `opencode.json`. One non-default is set deliberately: **`noContinueWhileChildrenActive: true`** (added upstream in `0.8.0`) defers auto-continue while the session has live child sessions, so the goal loop does not prompt the Tech Lead about work one of the five DoD reviewers is already doing. A deferral records a `deferred` history event and a `/goal status` line, which is what distinguishes "waiting on a subagent" from a hung loop; the child's own idle event re-drives the loop. It fails open on hosts that cannot enumerate children, so it can never wedge a goal permanently. Its sibling `noInterruptOnUserMessage` is deliberately **left off**: turning it on would make a typed message steer a running goal instead of pausing it, removing the only way to halt one by hand
+- **Config**: Plugin-level defaults passed as options array in `opencode.json`. One non-default is set deliberately: **`noContinueWhileChildrenActive: true`** (added upstream in `0.8.0`) defers auto-continue while the session has live child sessions, so the goal loop does not prompt the Tech Lead about work one of the seven DoD reviewers is already doing. A deferral records a `deferred` history event and a `/goal status` line, which is what distinguishes "waiting on a subagent" from a hung loop; the child's own idle event re-drives the loop. It fails open on hosts that cannot enumerate children, so it can never wedge a goal permanently. Its sibling `noInterruptOnUserMessage` is deliberately **left off**: turning it on would make a typed message steer a running goal instead of pausing it, removing the only way to halt one by hand
 - **Tools**: 11 agent-facing tools alongside the command — `set_goal`, `get_goal`, `get_goal_history`, `update_goal`, `clear_goal`, `goal_set`, `goal_status`, `goal_complete`, `goal_pause`, `goal_resume`, `goal_block`
 - **Status output**: since `0.7.0` `/goal status` prints explicit `State:` and `Completion audit:` lines alongside the original `Active goal:` header (kept for compatibility), and `/goal list` reports active/paused/blocked goals with the reason for each. `0.7.0` also added optional `lifecycleMessages` / `lifecycleMessenger` options for bounded transition-only notices; both are **left unset** here — they are advisory only and create no model turns, but the `deferred`/`paused` information they surface is already visible in `/goal status`
 - **State**: `stateFilePath` is configured as `.opencode/goals/state.json`, but since `0.6.6` state is **sharded per OpenCode session** into `state.json.sessions/<sha256-of-session-id>/state.json` (mode `0600`), each shard holding its own `state.json.lock/owner.json`. Migration from the older aggregate format preserves the original as `state.json.migrated.<epoch>.<uuid>` and drops a `.migration-v1-complete` marker to prevent re-migration. The whole `.opencode/goals/` directory is gitignored (`.gitignore:52`)

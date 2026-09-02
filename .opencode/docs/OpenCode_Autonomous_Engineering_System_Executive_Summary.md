@@ -1,7 +1,7 @@
 # OpenCode Autonomous Engineering System — Executive Summary
 
 > **Source document:** `OpenCode_Autonomous_Engineering_System_Blueprint.md`
-> **Last reviewed:** 2026-08-24
+> **Last reviewed:** 2026-09-02
 > **Audience:** Business stakeholders
 
 ---
@@ -10,7 +10,7 @@
 
 OpenCode Autonomous Engineering is a structured, AI-powered software delivery system that operates like a **senior engineering team working around the clock** — without the coordination overhead, the context-switching, or the risk of a single person's blind spots reaching production.
 
-Rather than using AI as a tool that writes individual snippets of code, this system organises AI into **fifteen specialised agents**, each with a distinct role, a defined scope of responsibility, and — critically — **independent review gates** that check each other's work before anything reaches users.
+Rather than using AI as a tool that writes individual snippets of code, this system organises AI into **seventeen specialised agents**, each with a distinct role, a defined scope of responsibility, and — critically — **independent review gates** that check each other's work before anything reaches users.
 
 The result: engineers spend their time on **strategy, architecture, and business decisions**, not on writing boilerplate or chasing down bugs that should never have shipped.
 
@@ -91,6 +91,15 @@ A dedicated **Security Auditor** agent — running on a completely different AI 
 
 Security is not a phase at the end of a project. It is a gate on every single change.
 
+### ✅ Code Quality and Third-Party Risk Are Ratcheted, Not Merely Measured
+
+Two further gates, added in September 2026, stop the two problems that quietly accumulate on every software project: code quality drifting downwards one shortcut at a time, and known vulnerabilities arriving inside third-party libraries nobody chose to change.
+
+- **The quality ratchet.** An automated scanner counts reliability, maintainability and security defects across the codebase, and those counts are held at a fixed ceiling. Any change that would raise a count — by even one — fails the build. The effect is that quality can improve but cannot silently degrade, which is a stronger guarantee than a dashboard nobody reads. A team may still choose to accept a specific finding, but that decision must be written down and argued in the same change, and the **SonarQube Expert** agent's role is to judge whether the argument is real.
+- **The dependency scan.** Every third-party library the product actually ships — both back-end and front-end — is scanned for published vulnerabilities on every change, and anything rated high or critical fails the build. Where a vulnerability genuinely cannot affect this product, that exemption must record *why*, tracing the specific reason the vulnerable code is unreachable. The **Dependency Vulnerability** agent checks that the trace holds, and that exemptions are deleted once they stop being needed rather than left to rot.
+
+Both scans fail mechanically, with no AI in the decision. The two agents exist because a script can count defects but cannot tell a considered engineering trade-off from an excuse. Neither agent can edit the files it is judging, so neither can approve its own way out.
+
 ### ✅ Performance Tested Continuously
 
 The **Performance Engineer** agent runs load tests nightly and after every significant deployment. Results are tracked over time so that **performance regressions are caught before users notice them**, not after.
@@ -112,11 +121,11 @@ These advisors are available to any agent in the system for a second opinion on 
 
 ---
 
-## Five Independent Review Gates
+## Seven Independent Review Gates
 
-No story can be declared complete until **five independent agents** have each issued an explicit approval. These reviewers are deliberately assigned to a **different AI model family from the one that wrote the code**, so that a reviewer does not inherit the author's blind spots.
+No story can be declared complete until **seven independent agents** have each issued an explicit approval. These reviewers are deliberately assigned to a **different AI model family from the one that wrote the code**, so that a reviewer does not inherit the author's blind spots.
 
-For **production code, infrastructure and test code** there are zero exceptions, a build gate fails the build if one reappears. One documented exception remains: **architecture documentation** — the ADRs and C4 models — is reviewed by an agent running the same model identifier as the agent that wrote it, because the architecture and security reviewers share a tier.
+For **production code, infrastructure and test code** there are zero exceptions, a build gate fails the build if one reappears. One documented exception remains: **architecture documentation** — the ADRs and C4 models — is reviewed by an agent running the same model identifier as the agent that wrote it, because the architecture and security reviewers share a tier. That tier now holds four agents, and the exception did not widen when it grew: the two reviewers added in September 2026 author nothing at all, so there is nothing either of them could be asked to review of its own making.
 
 | Gate | What It Approves |
 |---|---|
@@ -125,8 +134,12 @@ For **production code, infrastructure and test code** there are zero exceptions,
 | `@security-auditor` | No security regressions introduced |
 | `@code-reviewer` | Code is clean, maintainable, and follows SOLID principles |
 | `@architecture-guardian` | Architectural integrity is preserved |
+| `@sonarqube-expert` | Measured code-quality defects have not increased, and any deliberate allowance was argued for in writing |
+| `@dependency-vulnerability` | No new high or critical vulnerability in any third-party library the product ships |
 
-A sixth automated backstop then checks that all five approvals are genuinely present and evidenced before a story can be archived as done. It is described here as a safety net rather than an independent review, because it runs on the same underlying model as the orchestrator whose work it is checking — another limitation the project documents rather than overstates.
+The last two gates were added in September 2026 and work differently from the first five in a way worth understanding. Both sit in front of an automated scan that already fails the build on its own, with no AI involved in the decision. Their job is the judgement the scan cannot make: whether a team's decision to *accept* a known defect or a known vulnerability was genuinely reasoned and documented, rather than waved through to make a red light go green. Neither agent is permitted to edit the files it is judging, so neither can grant itself a pass.
+
+An eighth automated backstop then checks that all seven approvals are genuinely present and evidenced before a story can be archived as done. It is described here as a safety net rather than an independent review, because it runs on the same underlying model as the orchestrator whose work it is checking — another limitation the project documents rather than overstates.
 
 ---
 
@@ -145,7 +158,7 @@ Product Owner interviews stakeholder → Requirements frozen → Jira stories fi
       ↓
 Tech Lead orchestrates delivery team
       ↓
-Five independent review gates all approve
+Seven independent review gates all approve
       ↓
 Code deployed to production (feature flag OFF — invisible to users)
       ↓
@@ -164,7 +177,7 @@ Business approves release → Feature flag ON → Users see the feature
 | **"Performance has degraded without warning before"** | Nightly performance tests with historical trend tracking catch regressions before users do. |
 | **"We've accumulated a lot of technical debt"** | Architecture is reviewed on every PR. Debt is caught at the point of introduction. |
 | **"We don't know why past decisions were made"** | Every architectural decision is documented in a permanent, searchable ADR log. |
-| **"We want confidence that AI isn't just making things up"** | Five independent review gates, drawn from different AI model families than the author (with one documented exception, for architecture documentation, noted above), must all approve before anything ships. |
+| **"We want confidence that AI isn't just making things up"** | Seven independent review gates, drawn from different AI model families than the author (with one documented exception, for architecture documentation, noted above), must all approve before anything ships. |
 
 ---
 
