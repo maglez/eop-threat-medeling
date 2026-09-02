@@ -191,33 +191,33 @@ This system delivers software with the discipline of a senior engineering team, 
 
 ## Some Metrics
 
-*Measured 2026-08-25 against `main`.*
+*Measured 2026-09-02, against a working tree that carries the seven-gate Definition-of-Done work not yet merged to `main`.*
 
 ### Codebase size
 
 | Scope | Files | Total lines | Non-blank |
 |---|---|---|---|
 | Java — production (`src/main/java`) | 164 | 17,886 | 16,411 |
-| Java — tests (`src/test/java`) | 136 | 36,956 | 32,090 |
-| Front end — production (`ui/src`) | 17 | 3,784 | 3,410 |
-| Front end — tests (`ui/src`) | 11 | 4,140 | 3,485 |
+| Java — tests (`src/test/java`) | 136 | 36,965 | 32,099 |
+| Front end — production (`ui/src`) | 16 | 3,565 | 3,227 |
+| Front end — tests (`ui/src`) | 11 | 4,143 | 3,488 |
 | Load-test scripts (`test/k6`) | 3 | 87 | — |
-| **Total including tests** | **331** | **62,853** | **≈55,400** |
-| **Total excluding tests** | **181** | **21,670** | **19,821** |
+| **Total including tests** | **330** | **62,646** | **≈55,300** |
+| **Total excluding tests** | **180** | **21,451** | **19,638** |
 
-Test code accounts for **65%** of the codebase — a **1.90:1** test-to-production ratio. A further 2,942 lines of configuration (12 Liquibase changelogs plus Spring profile files) sit outside both totals.
+Test code accounts for **66%** of the codebase — a **1.92:1** test-to-production ratio. A further 3,003 lines of configuration (12 Liquibase changelogs plus Spring profile files) sit outside both totals.
 
 ### Documentation
 
 | Metric | Count |
 |---|---|
-| Markdown documents under `docs/` | 66 (18,275 lines) |
-| All tracked Markdown documents | 110 |
-| Architecture Decision Records | 57 |
-| Mermaid diagrams (under `docs/`) | 22, across 6 files |
-| Mermaid diagrams (repository-wide) | 23, across 7 files |
+| Markdown documents under `docs/` | 69 (18,827 lines) |
+| All tracked Markdown documents | 113 |
+| Architecture Decision Records | 60 |
+| Mermaid diagrams (under `docs/`) | 23, across 7 files |
+| Mermaid diagrams (repository-wide) | 26, across 10 files |
 | Reference PDFs | 4 |
-| Total tracked files | 706 |
+| Total tracked files | 720 |
 
 ### Test suite
 
@@ -234,9 +234,9 @@ All 1,658 pass with zero failures, errors or skips.
 
 | Suite | Duration |
 |---|---|
-| Java unit tests (`./mvnw test`) | 46.6 s |
-| Front end (`vitest run`) | 3.8 s |
-| **Full quality gate (`./mvnw verify`)** | **1 min 11 s** |
+| Java unit tests (`./mvnw test`) | 40.6 s |
+| Front end (`vitest run`) | 7.7 s |
+| **Full quality gate (`./mvnw clean verify`)** | **1 min 6 s** |
 
 The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
 
@@ -244,6 +244,10 @@ The `verify` figure is the one that matters, because it is what every commit mus
 
 | Metric | Count |
 |---|---|
-| Jira tickets delivered or planned | 177 tickets |
+| Jira tickets delivered or planned | 177 tickets (carried forward from 2026-08-25 — see note) |
+| Highest issue key referenced in git history | `EOP-181` |
+| Distinct issue keys referenced in commit subjects | 93 |
 
 The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
+
+Only the second and third figures were re-measured on 2026-09-02: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was unreachable when this section was refreshed, so it is the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-181`. The third figure is much lower than the first for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
