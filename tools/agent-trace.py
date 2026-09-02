@@ -102,12 +102,17 @@ BUILTIN_AGENTS = {
     "summary",
 }
 
-# The pipeline from .opencode/agents/tech-lead.md, by stage. Stage 2 is the five
+# The pipeline from .opencode/agents/tech-lead.md, by stage. Stage 2 is the seven
 # Definition-of-Done gates and nothing else: performance-engineer is advisory and
 # carries no Sign-off Contract, so dispatching it as a gate is unsupported.
 # architecture-guardian appears in both stages by design — it authors ADRs during
 # build and gates the PR. The roster is right, but the arithmetic below cannot
 # tell those two dispatches apart, so see MULTI_STAGE_AGENTS.
+#
+# sonarqube-expert and dependency-vulnerability joined stage 2 on 2026-09-02
+# (EOP-000, ADR-061). Neither appears in stage 1: both are strictly read-only and
+# author nothing, which is why they are also in READ_ONLY_AGENTS below while
+# three of their fellow gates are not.
 PIPELINE = {
     "0 requirements": ["product-owner"],
     "1 build": [
@@ -122,6 +127,8 @@ PIPELINE = {
         "security-auditor",
         "code-reviewer",
         "architecture-guardian",
+        "sonarqube-expert",
+        "dependency-vulnerability",
     ],
 }
 
@@ -138,11 +145,11 @@ MULTI_STAGE_AGENTS = {
     if sum(agent in stage for stage in PIPELINE.values()) > 1
 }
 
-# The five Definition-of-Done gates, for the per-gate breakdown in the totals
+# The seven Definition-of-Done gates, for the per-gate breakdown in the totals
 # footer. Derived from PIPELINE rather than hand-listed, following
-# MULTI_STAGE_AGENTS above, so a sixth gate added to the roster cannot be
+# MULTI_STAGE_AGENTS above, so an eighth gate added to the roster cannot be
 # reported by `conformance` while going missing from the cost and time report.
-# AUDITOR_AGENTS below holds the identical five *today* - not merely "the same
+# AUDITOR_AGENTS below holds the identical seven *today* - not merely "the same
 # by construction", they are the same members - so do not read the two names as
 # evidence of different rosters. They are kept apart because they answer
 # different questions, and are expected to diverge: ADR-022 records deriving
@@ -155,11 +162,11 @@ GATE_AGENTS = set(PIPELINE["2 gateways"])
 # Agents whose job is to judge someone else's work. If one of these ran on the
 # same model as whoever authored the code, the review was self-review.
 #
-# This set must stay in step with the five Definition-of-Done gates in
+# This set must stay in step with the seven Definition-of-Done gates in
 # AGENTS.md. Both testers belong here: they are gates first and authors second,
 # so a tester sharing a model with the author of the code under test is exactly
 # the condition this detector exists to catch. Omitting them left the check
-# blind to two of the five gates. `performance-engineer` is deliberately absent
+# blind to two of the gates. `performance-engineer` is deliberately absent
 # — it is not a DoD gate.
 AUDITOR_AGENTS = {
     "code-reviewer",
@@ -167,6 +174,8 @@ AUDITOR_AGENTS = {
     "architecture-guardian",
     "tester-api",
     "tester-unit-and-quality",
+    "sonarqube-expert",
+    "dependency-vulnerability",
 }
 
 # A *strictly* read-only agent: one whose definition declares `permission.edit:
@@ -183,7 +192,7 @@ AUDITOR_AGENTS = {
 # (ADR-059) the Separation Invariant holds with zero exceptions and
 # SeparationInvariantTest fails the build if one reappears";
 # read-only membership means "this agent must never write". Three
-# of the five gates legitimately author files — the two testers write tests and
+# of the seven gates legitimately author files — the two testers write tests and
 # @architecture-guardian writes ADRs — so folding them into the write check
 # would raise a false alarm on every story where a tester does its job, and
 # `/trace` documents a read-only RISK as a Sign-off Contract breach worth
@@ -207,9 +216,19 @@ AUDITOR_AGENTS = {
 # verdict, so they are out of scope here rather than missing. Keep this set in
 # step with the gate frontmatter in .opencode/agents/; ADR-022 records deriving
 # it from that frontmatter as the preferred long-term form.
+#
+# sonarqube-expert and dependency-vulnerability were added on 2026-09-02
+# (EOP-000, ADR-061). Both declare `permission.edit: deny` and author nothing at
+# any stage, so unlike the two testers and @architecture-guardian they belong in
+# this set as well as in AUDITOR_AGENTS. Their own definitions go further than
+# the frontmatter can: neither may pass `tools/sonar/ratchet.sh --tighten` nor
+# edit `sonar-baseline.json`, `accepted-cves.json`, `pom.xml` or
+# `ui/package-lock.json` to turn a red gate green.
 READ_ONLY_AGENTS = {
     "code-reviewer",
     "security-auditor",
+    "sonarqube-expert",
+    "dependency-vulnerability",
 }
 
 
