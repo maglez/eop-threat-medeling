@@ -159,9 +159,12 @@ class IdentityTokenHashTest {
         @DisplayName("is not equal to null or to another type")
         void shouldRejectForeignValues() {
             final IdentityTokenHash hash = new IdentityTokenHash(SHA256_OF_ABC);
+            // Held as Object so the assertion reads as "equals rejects a foreign type" rather than as a
+            // comparison of two unrelated static types, which is a different (and accidental) claim.
+            final Object sameDigestAsAPlainString = SHA256_OF_ABC;
 
             assertThat(hash).isNotEqualTo(null);
-            assertThat(hash).isNotEqualTo(SHA256_OF_ABC);
+            assertThat(hash).isNotEqualTo(sameDigestAsAPlainString);
         }
 
         @Test
