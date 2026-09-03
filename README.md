@@ -23,7 +23,7 @@ A threat modeling card game based on the STRIDE framework (Spoofing, Tampering, 
 
 ```bash
 colima start                                  # see ADR-016
-docker build -t eop-threat-medeling:local .
+docker build -t eop-threat-modeling:local .
 docker build -t eop-ui:local ui
 docker compose -f compose.app.yml up -d
 open https://localhost/

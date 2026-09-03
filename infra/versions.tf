@@ -36,7 +36,7 @@ provider "aws" {
       Project     = var.project_name
       Environment = var.environment
       ManagedBy   = "Terraform"
-      Repository  = "maglez/eop-threat-medeling"
+      Repository  = "maglez/eop-threat-modeling"
     }
   }
 }

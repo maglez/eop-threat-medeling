@@ -37,7 +37,7 @@ import time
 from adf_to_markdown import Converter, discover_adr_files
 from bodies import ADR_DIR, EXPORT_DIR, build_issue_body, issue_title, load_export
 
-REPO = "maglez/eop-threat-medeling"
+REPO = "maglez/eop-threat-modeling"
 MAPPING = EXPORT_DIR / "mapping.json"
 
 # GitHub's secondary rate limit is the binding constraint on content-creating requests,

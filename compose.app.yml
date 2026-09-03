@@ -13,7 +13,7 @@
 # There is no `build:` section on purpose. The deployment artifact is the image,
 # not this directory. Locally, build both images first:
 #
-#   docker build -t eop-threat-medeling:local .
+#   docker build -t eop-threat-modeling:local .
 #   docker build -t eop-ui:local ui
 #
 # On the instance, APP_IMAGE and UI_IMAGE point at immutable GHCR tags and
@@ -64,7 +64,7 @@ services:
       start_period: 20s
 
   app:
-    image: ${APP_IMAGE:-eop-threat-medeling:local}
+    image: ${APP_IMAGE:-eop-threat-modeling:local}
     container_name: eop-app
     restart: unless-stopped
     depends_on:

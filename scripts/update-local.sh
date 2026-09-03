@@ -6,7 +6,7 @@
 # WHY THIS SCRIPT EXISTS
 # ----------------------
 # CI builds and publishes images to GHCR on every push to `main`, but the
-# local compose.app.yml defaults to `eop-threat-medeling:local` and
+# local compose.app.yml defaults to `eop-threat-modeling:local` and
 # `eop-ui:local` — tags that are only updated when a developer manually runs
 # `docker build`.  There is no mechanism that keeps those local tags in sync
 # with `main`.
@@ -21,7 +21,7 @@
 #
 # WHAT THIS SCRIPT DOES
 # ---------------------
-# 1. Rebuilds `eop-threat-medeling:local` from the current working tree
+# 1. Rebuilds `eop-threat-modeling:local` from the current working tree
 #    (the backend Dockerfile at the repo root).
 # 2. Rebuilds `eop-ui:local` from the current working tree
 #    (the frontend Dockerfile under ui/).
@@ -51,8 +51,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "==> [1/4] Building backend image: eop-threat-medeling:local"
-docker build -t eop-threat-medeling:local "$REPO_ROOT"
+echo "==> [1/4] Building backend image: eop-threat-modeling:local"
+docker build -t eop-threat-modeling:local "$REPO_ROOT"
 
 echo "==> [2/4] Building frontend image: eop-ui:local"
 docker build \

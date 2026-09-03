@@ -101,7 +101,7 @@ the `desktop-linux` context was deleted.
 This is the honest cost of the decision. The development machine is **arm64**;
 the EC2 instance and the published GHCR image are **amd64**. A locally built
 image is therefore *not* the artifact that deploys. `compose.app.yml` already
-defaults `APP_IMAGE` to `eop-threat-medeling:local`, so no configuration changes
+defaults `APP_IMAGE` to `eop-threat-modeling:local`, so no configuration changes
 — but the local image and the published image are different builds of the same
 source and must not be conflated.
 
