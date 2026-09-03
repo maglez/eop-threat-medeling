@@ -95,7 +95,7 @@ Security is not a phase at the end of a project. It is a gate on every single ch
 
 Two further gates, added in September 2026, stop the two problems that quietly accumulate on every software project: code quality drifting downwards one shortcut at a time, and known vulnerabilities arriving inside third-party libraries nobody chose to change.
 
-- **The quality ratchet.** An automated scanner counts reliability, maintainability and security defects across the codebase, and those counts are held at a fixed ceiling. Any change that would raise a count — by even one — fails the build. The effect is that quality can improve but cannot silently degrade, which is a stronger guarantee than a dashboard nobody reads. A team may still choose to accept a specific finding, but that decision must be written down and argued in the same change, and the **SonarQube Expert** agent's role is to judge whether the argument is real.
+- **The quality ratchet.** An automated scanner counts reliability, maintainability and security defects across the codebase, and those counts are held at a fixed ceiling. Any change that would raise a count — by even one — fails the build. The effect is that quality can improve but cannot silently degrade, which is a stronger guarantee than a dashboard nobody reads. It runs as **two independent ratchets**, one over the back-end code and one over the front end, each with its own ceiling, so a new defect in one language cannot be paid for out of the other's headroom. A team may still choose to accept a specific finding, but that decision must be written down and argued in the same change, and the **SonarQube Expert** agent's role is to judge whether the argument is real.
 - **The dependency scan.** Every third-party library the product actually ships — both back-end and front-end — is scanned for published vulnerabilities on every change, and anything rated high or critical fails the build. Where a vulnerability genuinely cannot affect this product, that exemption must record *why*, tracing the specific reason the vulnerable code is unreachable. The **Dependency Vulnerability** agent checks that the trace holds, and that exemptions are deleted once they stop being needed rather than left to rot.
 
 Both scans fail mechanically, with no AI in the decision. The two agents exist because a script can count defects but cannot tell a considered engineering trade-off from an excuse. Neither agent can edit the files it is judging, so neither can approve its own way out.
@@ -134,7 +134,7 @@ For **production code, infrastructure and test code** there are zero exceptions,
 | `@security-auditor` | No security regressions introduced |
 | `@code-reviewer` | Code is clean, maintainable, and follows SOLID principles |
 | `@architecture-guardian` | Architectural integrity is preserved |
-| `@sonarqube-expert` | Measured code-quality defects have not increased, and any deliberate allowance was argued for in writing |
+| `@sonarqube-expert` | Measured code-quality defects have not increased in either the back-end or the front-end scan, and any deliberate allowance was argued for in writing |
 | `@dependency-vulnerability` | No new high or critical vulnerability in any third-party library the product ships |
 
 The last two gates were added in September 2026 and work differently from the first five in a way worth understanding. Both sit in front of an automated scan that already fails the build on its own, with no AI involved in the decision. Their job is the judgement the scan cannot make: whether a team's decision to *accept* a known defect or a known vulnerability was genuinely reasoned and documented, rather than waved through to make a red light go green. Neither agent is permitted to edit the files it is judging, so neither can grant itself a pass.
@@ -236,7 +236,11 @@ All 1,678 pass with zero failures, errors or skips. JaCoCo analysed 147 classes 
 
 ### Static analysis (SonarQube)
 
-Two columns, because the answer differs depending on what you count. **Whole project** is the figure the SonarQube dashboard shows, covering production and test code together. **Production code only** covers `src/main/java` — the code that actually ships, and the scope the CI ratchet gates.
+Since 2026-09-03 there are **two SonarQube projects rather than one**: `eop-threat-modeling` over the Java back end (`src/main/java` plus `src/test/java`) and `eop-threat-modeling-ui` over the front end (`ui/src`). Each has its own ceiling, its own committed evidence file and its own CI ratchet job, and the two fail independently. The split is deliberate — a single polyglot project would let a new front-end defect be paid for out of the Java project's headroom and vice versa, so one combined number would keep moving truthfully while saying nothing about either population.
+
+Each table carries two columns, because the answer differs depending on what you count. **Whole project** is the figure the SonarQube dashboard shows, covering production and test code together. **Production code only** covers the code that actually ships — `src/main/java` for the back end, the non-test TypeScript under `ui/src` for the front end — and is the scope each CI ratchet gates.
+
+#### Back end — Java (`eop-threat-modeling`)
 
 | Metric | Whole project | Production code only |
 |---|---|---|
@@ -247,17 +251,40 @@ Two columns, because the answer differs depending on what you count. **Whole pro
 | Coverage | 95.2% (97.1% line, 89.2% branch) | 95.2% — the same figure; see below |
 | Duplications | 0.2% — 42 lines in 2 blocks | 0.2% — the same 42 lines; see below |
 | Maintainability debt | 20.7 hours estimated remediation, 0.6% debt ratio | 3.2 hours estimated remediation |
+| Lines of code analysed | 7,339 across 302 files | — |
 
-The overall quality gate is **passing**. Two clarifications about the letters, because the scale does not apply uniformly:
+#### Front end — TypeScript (`eop-threat-modeling-ui`)
 
-- **Only four of these six metrics carry an A–E rating.** SonarQube rates Security, Reliability, Maintainability and Security Review (the hotspot rating). Coverage and Duplications have no letter — they are percentages the quality gate judges pass or fail, so the figures above are the percentages themselves rather than an invented grade.
-- **The Security hotspot A is vacuous, and should be read as such.** A rating of A on zero hotspots means there was nothing to review, not that a review found nothing. It is worth reporting only as evidence that no hotspot has been introduced and left unexamined.
+| Metric | Whole project | Production code only |
+|---|---|---|
+| Security | **A** — 0 issues | **A** — 0 issues |
+| Reliability | **B** — 9 issues (all low) | **B** — the same 9 issues; all sit in production |
+| Maintainability | **A** — 31 issues (2 high, 16 medium, 13 low) | **A** — 26 issues (2 high, 13 medium, 11 low) |
+| Security hotspots | **A** — 0 hotspots to review | **A** — 0 hotspots to review |
+| Coverage | 90.8% (91.4% line, 88.3% branch) | 90.8% — the same figure; see below |
+| Duplications | 1.9% — 72 lines in 4 blocks | 1.9% — the same 72 lines; see below |
+| Maintainability debt | 2.3 hours estimated remediation, 0.2% debt ratio | 2.0 hours estimated remediation |
+| Lines of code analysed | 2,814 across 30 files | — |
 
-Reliability is the one metric not at A. The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — which is enough to cap production reliability at C on its own, because SonarQube rates on the worst finding rather than on a count. No production reliability finding is worse than medium, and the whole tree carries no security issue at all; the blocker and the five high-severity findings are all maintainability ones. The seven remaining reliability findings are in test code — three regex-backtracking warnings and four assertion-precision ones.
+Both quality gates are **passing**. Two clarifications about the letters, because the scale does not apply uniformly:
 
-Two notes on how to read the last three rows. **Coverage is identical in both columns by construction** — SonarQube already excludes `src/test/java` from the coverage denominator, so its 95.2% has always been a production-code figure. **The 42 duplicated lines are all in production code**, both blocks in the use-case layer (`ResolveTrickUseCase`, `PlayCardUseCase`), so that row is also the same number twice. The debt figures diverge sharply, though — of the estimated 20.7 hours, only 3.2 hours sits in shipping code and the remaining 17.5 hours is in the test suite, which is the same asymmetry the CI ratchet was narrowed to production scope to avoid.
+- **Only four of these metrics carry an A–E rating.** SonarQube rates Security, Reliability, Maintainability and Security Review (the hotspot rating). Coverage and Duplications have no letter — they are percentages the quality gate judges pass or fail, so the figures above are the percentages themselves rather than an invented grade.
+- **The Security hotspot A is vacuous in both projects, and should be read as such.** A rating of A on zero hotspots means there was nothing to review, not that a review found nothing. It is worth reporting only as evidence that no hotspot has been introduced and left unexamined.
 
-These figures come from a local SonarQube server and are the only numbers in this section that cannot be reproduced offline. The committed `tools/sonar/sonar-report.json` carries the issue counts, coverage and lines of code, but not the letter ratings, the duplication figures, the hotspot count or the debt estimate — those exist only on the server, so refreshing this table means running `tools/sonar/scan.sh` against a running instance.
+Reliability is the one metric not at A in either project, and for different reasons — SonarQube rates on the *worst* finding rather than on a count, so a single finding sets the letter.
+
+- **Back end (C).** The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — and one medium finding caps production reliability at C on its own. No production reliability finding is worse than medium, and the blocker and five high-severity findings are all maintainability ones. The seven remaining reliability findings are in test code: three regex-backtracking warnings and four assertion-precision ones.
+- **Front end (B).** All nine reliability findings are **low** severity, which is what holds the letter at B rather than C: three `typescript:S6772` (`App.tsx`, `LobbyScreen.tsx` ×2) and six `typescript:S7781` (`GameScreen.tsx` ×4, `FollowSuitHint.tsx`, `GameOverScreen.tsx`). All nine sit in production code, and all nine are *also* counted as maintainability findings — so the front-end rows overlap rather than add: 31 distinct issues, not 40.
+
+Neither project carries a single security issue, and neither carries an unreviewed hotspot.
+
+How to read the last three rows in each table. **Coverage is identical in both columns by construction** — SonarQube excludes test files from the coverage denominator, so 95.2% and 90.8% have always been production-code figures. One caveat on the front-end number: `ui/src/main.tsx` is the React mount point, has no test, and is deliberately left in scope reporting 0% rather than excluded, so 90.8% is a little lower than the component tests alone would suggest. **The duplicated lines are all in production code in both projects** — the back end's two blocks are in the use-case layer (`ResolveTrickUseCase`, `PlayCardUseCase`), the front end's four are in `CreateSessionForm.tsx` and `JoinSessionForm.tsx` — so those rows are the same number twice. The debt figures are the ones that diverge, and much more sharply on the back end: of its 20.7 hours only 3.2 sits in shipping code and the balance is in the test suite, whereas the front end's 2.3 hours is almost all production (2.0 hours, against 17 minutes in tests). That back-end asymmetry is exactly what the CI ratchet was narrowed to production scope to avoid.
+
+One asymmetry between the two projects is worth stating plainly, because it is intentional rather than an oversight: **front-end coverage is measured and reported but never gated.** JaCoCo enforces floors on the Java side (80% instruction, 70% branch); there is no equivalent limit on the front end, so a change halving the 90.8% would pass provided it introduced no new issue.
+
+Unlike the rest of this section, these two tables were measured on `main` at commit `d293a28` rather than `344b182`. Both committed reports' freshness hashes match the current tree, so the figures are current for the code as it stands.
+
+These figures come from a local SonarQube server (26.8.0) and are the only numbers in this section that cannot be reproduced offline. The two committed evidence files — `tools/sonar/sonar-report.json` and `tools/sonar/sonar-ui-report.json` — carry the issue counts, coverage and lines of code, but not the letter ratings, the duplication figures, the hotspot count or the debt estimate; those exist only on the server. Refreshing these tables therefore means running `tools/sonar/scan.sh` (back end, via the Maven scanner) and `tools/sonar/scan-ui.sh` (front end, via a digest-pinned `sonar-scanner-cli` container) against a running instance.
 
 ### Test execution time
 
