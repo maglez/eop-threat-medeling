@@ -34,7 +34,7 @@
 
               postgresql       42.7.11 -> 42.7.12  CVE-2026-54291 (HIGH) SCRAM-SHA-256 MITM
                                                    protection bypass. The only HIGH, and the
-                                                   only directly-declared dependency of the six.
+                                                   only directly-declared dependency of the nine.
               jackson-2-bom    2.21.4  -> 2.21.5   CVE-2026-54515, CVE-2026-59889,
                                                    GHSA-mhm7-754m-9p8w (all MEDIUM). Jackson 2
                                                    is on the compile tree only via
@@ -45,6 +45,18 @@
                                                    via log4j-to-slf4j; note the enforcer's
                                                    bannedDependencies covers `log4j:log4j`,
                                                    the 1.x coordinates, so it never saw this.
+              tomcat           11.0.22 -> 11.0.25  CVE-2026-65182, CVE-2026-65905,
+                                                   CVE-2026-68525 (all CRITICAL). Security
+                                                   constraint bypass, DIGEST replay auth
+                                                   bypass, FORM auth bypass. This one property
+                                                   governs the whole org.apache.tomcat.embed
+                                                   family (core, el, websocket), reached via
+                                                   spring-boot-starter-web -> -starter-tomcat.
+                                                   Two of the three are unreachable here, as
+                                                   this app ships no authentication (ADR-015),
+                                                   but that is an exploitability argument and
+                                                   not grounds to allowlist a CRITICAL when the
+                                                   patch release is published.
 
             DELETE an entry once the Boot parent's own managed version reaches or passes it.
             Left in place they stop being fixes and become a ceiling, holding a library back
@@ -56,6 +68,7 @@
         <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
         <jackson-bom.version>3.1.5</jackson-bom.version>
         <log4j2.version>2.25.5</log4j2.version>
+        <tomcat.version>11.0.25</tomcat.version>
 
         <spotbugs.version>4.9.3.0</spotbugs.version>
         <jacoco.version>0.8.13</jacoco.version>
