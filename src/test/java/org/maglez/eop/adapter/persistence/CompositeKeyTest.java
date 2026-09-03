@@ -62,9 +62,12 @@ class CompositeKeyTest {
         @DisplayName("differs from null and from anything that is not a key")
         void differsFromNullAndOtherTypes() {
             final HandCardJpaEntity.Key key = new HandCardJpaEntity.Key(FIRST, SECOND);
+            // Held as Object so the assertion reads as "equals rejects a foreign type" rather than as a
+            // comparison of two unrelated static types, which is a different (and accidental) claim.
+            final Object oneOfTheIdsAsAPlainString = "00000000-0000-7000-8000-000000000001";
 
             assertThat(key).isNotEqualTo(null);
-            assertThat(key).isNotEqualTo("00000000-0000-7000-8000-000000000001");
+            assertThat(key).isNotEqualTo(oneOfTheIdsAsAPlainString);
         }
 
         @Test
@@ -119,9 +122,12 @@ class CompositeKeyTest {
         @DisplayName("differs from null and from anything that is not a key")
         void differsFromNullAndOtherTypes() {
             final TrickPlayComponentJpaEntity.Key key = new TrickPlayComponentJpaEntity.Key(FIRST, 3);
+            // Held as Object so the assertion reads as "equals rejects a foreign type" rather than as a
+            // comparison of two unrelated static types, which is a different (and accidental) claim.
+            final Object theOrdinalOnItsOwn = 3;
 
             assertThat(key).isNotEqualTo(null);
-            assertThat(key).isNotEqualTo(3);
+            assertThat(key).isNotEqualTo(theOrdinalOnItsOwn);
         }
 
         @Test
