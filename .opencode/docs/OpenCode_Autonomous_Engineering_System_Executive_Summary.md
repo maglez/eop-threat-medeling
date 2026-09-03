@@ -191,35 +191,35 @@ This system delivers software with the discipline of a senior engineering team, 
 
 ## Some Metrics
 
-*Measured 2026-09-03 on `main` at commit `344b182`, with a clean working tree.*
+*Measured 2026-09-03 on `main` at commit `3cdee01`, with a clean working tree.*
 
 ### Codebase size
 
 | Scope | Files | Total lines | Non-blank |
 |---|---|---|---|
-| Java — production (`src/main/java`) | 164 | 17,901 | 16,426 |
+| Java — production (`src/main/java`) | 164 | 17,905 | 16,430 |
 | Java — tests (`src/test/java`) | 137 | 37,750 | 32,799 |
 | Front end — production (`ui/src`) | 17 | 3,784 | 3,411 |
 | Front end — tests (`ui/src`) | 11 | 4,140 | 3,485 |
 | Load-test scripts (`test/k6`) | 3 | 87 | 78 |
-| **Total including tests** | **332** | **63,662** | **56,199** |
-| **Total excluding tests** | **181** | **21,685** | **19,837** |
+| **Total including tests** | **332** | **63,666** | **56,203** |
+| **Total excluding tests** | **181** | **21,689** | **19,841** |
 
 Test code accounts for **66%** of the codebase — a **1.94:1** test-to-production ratio. A further 3,078 lines of configuration (12 Liquibase changelogs plus Spring profile and test-resource files) sit outside both totals.
 
-The front-end rows count every `.ts`, `.tsx` and `.css` file under `ui/src`, split by the `*.test.*` filename convention — so the 11 test files here are the same 11 Vitest files counted below, while the 227-line stylesheet and the 41-line Vitest setup harness fall under production. The figures carried before this refresh (16 files, 3,752 lines) could not be reproduced by any counting rule, so they have been replaced rather than adjusted; the extension filter is necessary because `ui/src` also holds the tracked card images. The *excluding tests* row covers Java and front-end production code only, since the k6 scripts are themselves tests.
+The front-end rows count every `.ts`, `.tsx` and `.css` file under `ui/src`, split by the `*.test.*` filename convention — so the 11 test files here are the same 11 Vitest files counted below, while the 227-line stylesheet and the 41-line Vitest setup harness fall under production. The figures carried before the earlier 2026-09-03 refresh (16 files, 3,752 lines) could not be reproduced by any counting rule, so they were replaced rather than adjusted; the extension filter is necessary because `ui/src` also holds the tracked card images. The *excluding tests* row covers Java and front-end production code only, since the k6 scripts are themselves tests.
 
 ### Documentation
 
 | Metric | Count |
 |---|---|
-| Markdown documents under `docs/` | 70 (19,020 lines) |
-| All tracked Markdown documents | 114 |
-| Architecture Decision Records | 60 |
+| Markdown documents under `docs/` | 71 (19,280 lines) |
+| All tracked Markdown documents | 115 |
+| Architecture Decision Records | 61 |
 | Mermaid diagrams (under `docs/`) | 22, across 6 files |
 | Mermaid diagrams (repository-wide) | 23, across 7 files |
 | Reference PDFs | 4 |
-| Total tracked files | 722 |
+| Total tracked files | 727 |
 
 The two Mermaid rows are lower than the figures carried here on 2026-09-02 (23 across 7, and 26 across 10). They are a direct count of ```` ```mermaid ```` fences in tracked Markdown, so the earlier numbers were either measured by a looser method or have since gone stale; the count above is the reproducible one.
 
@@ -246,12 +246,12 @@ Each table carries two columns, because the answer differs depending on what you
 |---|---|---|
 | Security | **A** — 0 issues | **A** — 0 issues |
 | Reliability | **C** — 8 issues (4 medium, 4 low) | **C** — 1 issue (medium) |
-| Maintainability | **A** — 232 issues (1 blocker, 5 high, 147 medium, 79 low) | **A** — 31 issues (1 blocker, 5 high, 8 medium, 17 low) |
+| Maintainability | **A** — 231 issues (5 high, 147 medium, 79 low) | **A** — 30 issues (5 high, 8 medium, 17 low) |
 | Security hotspots | **A** — 0 hotspots to review | **A** — 0 hotspots to review |
 | Coverage | 95.2% (97.1% line, 89.2% branch) | 95.2% — the same figure; see below |
 | Duplications | 0.2% — 42 lines in 2 blocks | 0.2% — the same 42 lines; see below |
 | Maintainability debt | 20.7 hours estimated remediation, 0.6% debt ratio | 3.2 hours estimated remediation |
-| Lines of code analysed | 7,339 across 302 files | — |
+| Lines of code analysed | 7,338 across 302 files | — |
 
 #### Front end — TypeScript (`eop-threat-modeling-ui`)
 
@@ -273,16 +273,16 @@ Both quality gates are **passing**. Two clarifications about the letters, becaus
 
 Reliability is the one metric not at A in either project, and for different reasons — SonarQube rates on the *worst* finding rather than on a count, so a single finding sets the letter.
 
-- **Back end (C).** The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — and one medium finding caps production reliability at C on its own. No production reliability finding is worse than medium, and the blocker and five high-severity findings are all maintainability ones. The seven remaining reliability findings are in test code: three regex-backtracking warnings and four assertion-precision ones.
+- **Back end (C).** The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — and one medium finding caps production reliability at C on its own. No production reliability finding is worse than medium, and the five high-severity findings are all maintainability ones. The seven remaining reliability findings are in test code: three regex-backtracking warnings and four assertion-precision ones. The blocker-severity maintainability finding reported here previously (a `java:S3516` in `ReadRateLimitInterceptor`) has since been fixed, which is why both maintainability counts fall by one and no blocker appears in either column.
 - **Front end (B).** All nine reliability findings are **low** severity, which is what holds the letter at B rather than C: three `typescript:S6772` (`App.tsx`, `LobbyScreen.tsx` ×2) and six `typescript:S7781` (`GameScreen.tsx` ×4, `FollowSuitHint.tsx`, `GameOverScreen.tsx`). All nine sit in production code, and all nine are *also* counted as maintainability findings — so the front-end rows overlap rather than add: 31 distinct issues, not 40.
 
 Neither project carries a single security issue, and neither carries an unreviewed hotspot.
 
-How to read the last three rows in each table. **Coverage is identical in both columns by construction** — SonarQube excludes test files from the coverage denominator, so 95.2% and 90.8% have always been production-code figures. One caveat on the front-end number: `ui/src/main.tsx` is the React mount point, has no test, and is deliberately left in scope reporting 0% rather than excluded, so 90.8% is a little lower than the component tests alone would suggest. **The duplicated lines are all in production code in both projects** — the back end's two blocks are in the use-case layer (`ResolveTrickUseCase`, `PlayCardUseCase`), the front end's four are in `CreateSessionForm.tsx` and `JoinSessionForm.tsx` — so those rows are the same number twice. The debt figures are the ones that diverge, and much more sharply on the back end: of its 20.7 hours only 3.2 sits in shipping code and the balance is in the test suite, whereas the front end's 2.3 hours is almost all production (2.0 hours, against 17 minutes in tests). That back-end asymmetry is exactly what the CI ratchet was narrowed to production scope to avoid.
+How to read the last three rows in each table. **Coverage is identical in both columns by construction** — SonarQube excludes test files from the coverage denominator, so 95.2% and 90.8% have always been production-code figures. One caveat on the front-end number: `ui/src/main.tsx` is the React mount point, has no test, and is deliberately left in scope reporting 0% rather than excluded, so 90.8% is a little lower than the component tests alone would suggest. **The duplicated lines are all in production code in both projects** — the back end's two blocks are in the use-case layer (`ResolveTrickUseCase`, `PlayCardUseCase`), the front end's four are in `CreateSessionForm.tsx` and `JoinSessionForm.tsx` — so those rows are the same number twice. The debt figures are the ones that diverge, and much more sharply on the back end: of its 20.7 hours only 3.2 sits in shipping code and the balance is in the test suite, whereas the front end's 2.3 hours is almost all production (2.0 hours, against 17 minutes in tests). That back-end asymmetry is exactly what the CI ratchet was narrowed to production scope to avoid. Both back-end debt figures are carried forward from the previous scan and therefore do not yet reflect the blocker fix described above, so read them as a slight over-estimate.
 
 One asymmetry between the two projects is worth stating plainly, because it is intentional rather than an oversight: **front-end coverage is measured and reported but never gated.** JaCoCo enforces floors on the Java side (80% instruction, 70% branch); there is no equivalent limit on the front end, so a change halving the 90.8% would pass provided it introduced no new issue.
 
-Unlike the rest of this section, these two tables were measured on `main` at commit `d293a28` rather than `344b182`. Both committed reports' freshness hashes match the current tree, so the figures are current for the code as it stands.
+The two tables were measured at different commits, and unlike the rest of this section neither was re-measured in full. The back-end issue counts, coverage and lines-of-code were refreshed by a rescan at commit `f7f1df4`; the front-end table was last scanned at `d293a28` and is unchanged. Both committed reports' freshness hashes were recomputed against the current tree and match, so the counts in both tables are current for the code as it stands. The server-only figures — the letter ratings, duplications, hotspot counts and debt hours — were not re-measured for either project, because they exist only on the SonarQube server and not in the committed evidence files; a blocker fix does not move a letter, but see the debt caveat above.
 
 These figures come from a local SonarQube server (26.8.0) and are the only numbers in this section that cannot be reproduced offline. The two committed evidence files — `tools/sonar/sonar-report.json` and `tools/sonar/sonar-ui-report.json` — carry the issue counts, coverage and lines of code, but not the letter ratings, the duplication figures, the hotspot count or the debt estimate; those exist only on the server. Refreshing these tables therefore means running `tools/sonar/scan.sh` (back end, via the Maven scanner) and `tools/sonar/scan-ui.sh` (front end, via a digest-pinned `sonar-scanner-cli` container) against a running instance.
 
@@ -363,10 +363,10 @@ The `verify` figure is the one that matters, because it is what every commit mus
 | Metric | Count |
 |---|---|
 | Jira tickets delivered or planned | 177 tickets (carried forward from 2026-08-25 — see note) |
-| Highest issue key referenced in git history | `EOP-186` |
-| Distinct issue keys referenced in commit subjects | 96 |
-| Commits on the current branch | 619 |
+| Highest issue key referenced in git history | `EOP-189` |
+| Distinct issue keys referenced in commit subjects | 99 |
+| Commits on the current branch | 633 |
 
 The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
 
-Only the last three figures were re-measured on 2026-09-03: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was again unreachable when this section was refreshed, so it remains the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-186`. The distinct-key figure is much lower than the ticket total for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
+Only the last three figures were re-measured on 2026-09-03: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was again unreachable when this section was refreshed, so it remains the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-189`. The distinct-key figure is much lower than the ticket total for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
