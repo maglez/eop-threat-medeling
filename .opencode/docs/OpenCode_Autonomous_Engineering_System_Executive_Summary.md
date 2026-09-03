@@ -1,7 +1,7 @@
 # OpenCode Autonomous Engineering System — Executive Summary
 
 > **Source document:** `OpenCode_Autonomous_Engineering_System_Blueprint.md`
-> **Last reviewed:** 2026-09-02
+> **Last reviewed:** 2026-09-03
 > **Audience:** Business stakeholders
 
 ---
@@ -191,52 +191,79 @@ This system delivers software with the discipline of a senior engineering team, 
 
 ## Some Metrics
 
-*Measured 2026-09-02, against a working tree that carries the seven-gate Definition-of-Done work not yet merged to `main`.*
+*Measured 2026-09-03 on branch `eop-182-cover-cidr-mask-and-resolve-trick`, one commit ahead of `main`, with this section's own uncommitted changes in the tree.*
 
 ### Codebase size
 
 | Scope | Files | Total lines | Non-blank |
 |---|---|---|---|
-| Java — production (`src/main/java`) | 164 | 17,886 | 16,411 |
-| Java — tests (`src/test/java`) | 136 | 36,965 | 32,099 |
-| Front end — production (`ui/src`) | 16 | 3,565 | 3,227 |
+| Java — production (`src/main/java`) | 164 | 17,901 | 16,426 |
+| Java — tests (`src/test/java`) | 137 | 37,750 | 32,799 |
+| Front end — production (`ui/src`) | 16 | 3,752 | 3,385 |
 | Front end — tests (`ui/src`) | 11 | 4,143 | 3,488 |
 | Load-test scripts (`test/k6`) | 3 | 87 | — |
-| **Total including tests** | **330** | **62,646** | **≈55,300** |
-| **Total excluding tests** | **180** | **21,451** | **19,638** |
+| **Total including tests** | **331** | **63,633** | **≈56,100** |
+| **Total excluding tests** | **180** | **21,653** | **19,811** |
 
-Test code accounts for **66%** of the codebase — a **1.92:1** test-to-production ratio. A further 3,003 lines of configuration (12 Liquibase changelogs plus Spring profile files) sit outside both totals.
+Test code accounts for **66%** of the codebase — a **1.93:1** test-to-production ratio. A further 3,078 lines of configuration (12 Liquibase changelogs plus Spring profile and test-resource files) sit outside both totals.
 
 ### Documentation
 
 | Metric | Count |
 |---|---|
-| Markdown documents under `docs/` | 69 (18,827 lines) |
-| All tracked Markdown documents | 113 |
+| Markdown documents under `docs/` | 70 (19,023 lines) |
+| All tracked Markdown documents | 114 |
 | Architecture Decision Records | 60 |
-| Mermaid diagrams (under `docs/`) | 23, across 7 files |
-| Mermaid diagrams (repository-wide) | 26, across 10 files |
+| Mermaid diagrams (under `docs/`) | 22, across 6 files |
+| Mermaid diagrams (repository-wide) | 23, across 7 files |
 | Reference PDFs | 4 |
-| Total tracked files | 720 |
+| Total tracked files | 722 |
+
+The two Mermaid rows are lower than the figures carried here on 2026-09-02 (23 across 7, and 26 across 10). They are a direct count of ```` ```mermaid ```` fences in tracked Markdown, so the earlier numbers were either measured by a looser method or have since gone stale; the count above is the reproducible one.
 
 ### Test suite
 
 | Metric | Count |
 |---|---|
-| Java unit tests executed | 1,386 |
+| Java unit tests executed | 1,406 |
 | Java integration tests executed (Testcontainers, PostgreSQL 17) | 13 |
 | Front-end tests executed (Vitest, 11 files) | 259 |
-| **Total automated tests** | **1,658** |
+| **Total automated tests** | **1,678** |
 
-All 1,658 pass with zero failures, errors or skips.
+All 1,678 pass with zero failures, errors or skips. JaCoCo analysed 147 classes and every coverage threshold was met.
+
+### Static analysis (SonarQube)
+
+Two columns, because the answer differs depending on what you count. **Whole project** is the figure the SonarQube dashboard shows, covering production and test code together. **Production code only** covers `src/main/java` — the code that actually ships, and the scope the CI ratchet gates.
+
+| Metric | Whole project | Production code only |
+|---|---|---|
+| Security | **A** — 0 issues | **A** — 0 issues |
+| Reliability | **C** — 8 issues (4 medium, 4 low) | **C** — 1 issue (medium) |
+| Maintainability | **A** — 232 issues (1 blocker, 5 high, 147 medium, 79 low) | **A** — 31 issues (1 blocker, 5 high, 8 medium, 17 low) |
+| Security hotspots | **A** — 0 hotspots to review | **A** — 0 hotspots to review |
+| Coverage | 95.2% (97.1% line, 89.2% branch) | 95.2% — the same figure; see below |
+| Duplications | 0.2% — 42 lines in 2 blocks | 0.2% — the same 42 lines; see below |
+| Maintainability debt | 20.7 hours estimated remediation, 0.6% debt ratio | 3.2 hours estimated remediation |
+
+The overall quality gate is **passing**. Two clarifications about the letters, because the scale does not apply uniformly:
+
+- **Only four of these six metrics carry an A–E rating.** SonarQube rates Security, Reliability, Maintainability and Security Review (the hotspot rating). Coverage and Duplications have no letter — they are percentages the quality gate judges pass or fail, so the figures above are the percentages themselves rather than an invented grade.
+- **The Security hotspot A is vacuous, and should be read as such.** A rating of A on zero hotspots means there was nothing to review, not that a review found nothing. It is worth reporting only as evidence that no hotspot has been introduced and left unexamined.
+
+Reliability is the one metric not at A. The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — which is enough to cap production reliability at C on its own, because SonarQube rates on the worst finding rather than on a count. No production reliability finding is worse than medium, and the whole tree carries no security issue at all; the blocker and the five high-severity findings are all maintainability ones. The seven remaining reliability findings are in test code — three regex-backtracking warnings and four assertion-precision ones.
+
+Two notes on how to read the last three rows. **Coverage is identical in both columns by construction** — SonarQube already excludes `src/test/java` from the coverage denominator, so its 95.2% has always been a production-code figure. **The 42 duplicated lines are all in production code**, both blocks in the use-case layer (`ResolveTrickUseCase`, `PlayCardUseCase`), so that row is also the same number twice. The debt figures diverge sharply, though — of the estimated 20.7 hours, only 3.2 hours sits in shipping code and the remaining 17.5 hours is in the test suite, which is the same asymmetry the CI ratchet was narrowed to production scope to avoid.
+
+These figures come from a local SonarQube server and are the only numbers in this section that cannot be reproduced offline. The committed `tools/sonar/sonar-report.json` carries the issue counts, coverage and lines of code, but not the letter ratings, the duplication figures, the hotspot count or the debt estimate — those exist only on the server, so refreshing this table means running `tools/sonar/scan.sh` against a running instance.
 
 ### Test execution time
 
 | Suite | Duration |
 |---|---|
-| Java unit tests (`./mvnw test`) | 40.6 s |
-| Front end (`vitest run`) | 7.7 s |
-| **Full quality gate (`./mvnw clean verify`)** | **1 min 6 s** |
+| Java unit tests (`./mvnw test`) | 36.0 s |
+| Front end (`vitest run`) | 5.9 s |
+| **Full quality gate (`./mvnw clean verify`)** | **1 min 3 s** |
 
 The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
 
@@ -245,9 +272,10 @@ The `verify` figure is the one that matters, because it is what every commit mus
 | Metric | Count |
 |---|---|
 | Jira tickets delivered or planned | 177 tickets (carried forward from 2026-08-25 — see note) |
-| Highest issue key referenced in git history | `EOP-181` |
-| Distinct issue keys referenced in commit subjects | 93 |
+| Highest issue key referenced in git history | `EOP-182` |
+| Distinct issue keys referenced in commit subjects | 95 |
+| Commits on the current branch | 615 |
 
 The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
 
-Only the second and third figures were re-measured on 2026-09-02: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was unreachable when this section was refreshed, so it is the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-181`. The third figure is much lower than the first for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
+Only the last three figures were re-measured on 2026-09-03: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was again unreachable when this section was refreshed, so it remains the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-182`. The distinct-key figure is much lower than the ticket total for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
