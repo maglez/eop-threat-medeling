@@ -182,6 +182,114 @@ class TrustedProxiesTest {
 
             assertThat(proxies.includes(PROXY_ADDR)).isFalse();
         }
+
+        // Non-byte-aligned prefix tests — these exercise the mask arithmetic at lines 169-170
+        // of TrustedProxies.java, which is completely unexercised by the byte-aligned prefixes
+        // above (/0, /24, /32, /128 all give remainingBits==0 and return early at line 166).
+        // A wrong mask here silently widens the trust boundary for X-Forwarded-For, allowing
+        // an attacker to rotate their rate-limiter bucket — the exact defect EOP-26 closed.
+
+        @Test
+        @DisplayName("trusts an address inside a /25 block (lower half: 10.0.0.0–10.0.0.127)")
+        void shouldTrustAddressInsideLowerHalfSlash25() {
+            final var proxies = TrustedProxies.of(List.of("10.0.0.0/25"));
+
+            assertThat(proxies.includes("10.0.0.1")).isTrue();
+            assertThat(proxies.includes("10.0.0.127")).isTrue();
+        }
+
+        @Test
+        @DisplayName("rejects an address in the upper half of a /25 block — boundary: 10.0.0.127 in, 10.0.0.128 out")
+        void shouldRejectAddressAtBoundaryOfSlash25() {
+            final var proxies = TrustedProxies.of(List.of("10.0.0.0/25"));
+
+            assertThat(proxies.includes("10.0.0.127")).isTrue();
+            assertThat(proxies.includes("10.0.0.128")).isFalse();
+            assertThat(proxies.includes("10.0.0.255")).isFalse();
+        }
+
+        @Test
+        @DisplayName("trusts an address inside a /25 block (upper half: 10.0.0.128–10.0.0.255)")
+        void shouldTrustAddressInsideUpperHalfSlash25() {
+            final var proxies = TrustedProxies.of(List.of("10.0.0.128/25"));
+
+            assertThat(proxies.includes("10.0.0.128")).isTrue();
+            assertThat(proxies.includes("10.0.0.200")).isTrue();
+        }
+
+        @Test
+        @DisplayName("rejects an address in the lower half when the /25 block starts at 128 — boundary: 10.0.0.128 in, 10.0.0.127 out")
+        void shouldRejectAddressAtBoundaryOfUpperHalfSlash25() {
+            final var proxies = TrustedProxies.of(List.of("10.0.0.128/25"));
+
+            assertThat(proxies.includes("10.0.0.128")).isTrue();
+            assertThat(proxies.includes("10.0.0.127")).isFalse();
+            assertThat(proxies.includes("10.0.0.0")).isFalse();
+        }
+
+        @Test
+        @DisplayName("trusts an address inside a /12 block where the whole-byte loop runs before the mask decides")
+        void shouldTrustAddressInsideSlash12() {
+            // 10.16.0.0/12: wholeBytes=1 (loop checks byte[0]==10), remainingBits=4, mask=0xF0
+            // byte[1] of network is 0x10; candidate byte[1] & 0xF0 must equal 0x10
+            final var proxies = TrustedProxies.of(List.of("10.16.0.0/12"));
+
+            assertThat(proxies.includes("10.16.0.1")).isTrue();
+            assertThat(proxies.includes("10.31.255.255")).isTrue();
+        }
+
+        @Test
+        @DisplayName("rejects an address outside a /12 block — verifies the whole-byte loop and mask both contribute")
+        void shouldRejectAddressOutsideSlash12() {
+            // 10.32.0.0 has byte[1]=0x20; 0x20 & 0xF0 = 0x20 != 0x10 — mask rejects it
+            // 10.15.255.255 has byte[1]=0x0F; 0x0F & 0xF0 = 0x00 != 0x10 — mask rejects it
+            // 11.16.0.0 has byte[0]=11 != 10 — whole-byte loop rejects it
+            final var proxies = TrustedProxies.of(List.of("10.16.0.0/12"));
+
+            assertThat(proxies.includes("10.32.0.0")).isFalse();
+            assertThat(proxies.includes("10.15.255.255")).isFalse();
+            assertThat(proxies.includes("11.16.0.0")).isFalse();
+        }
+
+        @Test
+        @DisplayName("trusts an address inside a /30 block (mask 0xFC — narrow four-host range)")
+        void shouldTrustAddressInsideSlash30() {
+            // 192.168.1.0/30: wholeBytes=3, remainingBits=6, mask=0xFC
+            // Covers .0, .1, .2, .3 only
+            final var proxies = TrustedProxies.of(List.of("192.168.1.0/30"));
+
+            assertThat(proxies.includes("192.168.1.1")).isTrue();
+            assertThat(proxies.includes("192.168.1.2")).isTrue();
+            assertThat(proxies.includes("192.168.1.3")).isTrue();
+        }
+
+        @Test
+        @DisplayName("rejects an address just outside a /30 block — boundary: 192.168.1.3 in, 192.168.1.4 out")
+        void shouldRejectAddressJustOutsideSlash30() {
+            final var proxies = TrustedProxies.of(List.of("192.168.1.0/30"));
+
+            assertThat(proxies.includes("192.168.1.3")).isTrue();
+            assertThat(proxies.includes("192.168.1.4")).isFalse();
+        }
+
+        @Test
+        @DisplayName("trusts an address inside an IPv6 /49 block (mask 0x80 on byte 6)")
+        void shouldTrustAddressInsideIpv6Slash49() {
+            // 2001:db8::/49: wholeBytes=6, remainingBits=1, mask=0x80
+            // byte[6] of network is 0x00; candidate byte[6] & 0x80 must equal 0x00
+            final var proxies = TrustedProxies.of(List.of("2001:db8::/49"));
+
+            assertThat(proxies.includes("2001:db8::1")).isTrue();
+        }
+
+        @Test
+        @DisplayName("rejects an IPv6 address in the upper half of a /49 block — boundary: byte 6 high bit")
+        void shouldRejectAddressOutsideIpv6Slash49() {
+            // 2001:db8:0:8000::1 has byte[6]=0x80; 0x80 & 0x80 = 0x80 != 0x00 — mask rejects it
+            final var proxies = TrustedProxies.of(List.of("2001:db8::/49"));
+
+            assertThat(proxies.includes("2001:db8:0:8000::1")).isFalse();
+        }
     }
 
     @Nested
