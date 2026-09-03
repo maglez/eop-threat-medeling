@@ -30,7 +30,7 @@ import pathlib
 import subprocess
 import sys
 
-REPO = "maglez/eop-threat-medeling"
+REPO = "maglez/eop-threat-modeling"
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 META = ROOT / "docs" / "jira-export" / "meta.json"
 

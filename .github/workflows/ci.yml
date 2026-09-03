@@ -170,7 +170,7 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
-          tags: eop-threat-medeling:ci
+          tags: eop-threat-modeling:ci
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
 
@@ -204,7 +204,7 @@ jobs:
       # the walking skeleton honest.
       - name: Smoke test
         env:
-          APP_IMAGE: eop-threat-medeling:ci
+          APP_IMAGE: eop-threat-modeling:ci
           UI_IMAGE: eop-ui:ci
           POSTGRES_DB: eop
           POSTGRES_USER: eop
@@ -488,7 +488,7 @@ jobs:
           # deployed together and a mismatched pair is a class of bug worth
           # making impossible to express.
           for tag in "${{ github.sha }}" latest; do
-            docker tag eop-threat-medeling:ci "$repo:$tag"
+            docker tag eop-threat-modeling:ci "$repo:$tag"
             docker push "$repo:$tag"
 
             docker tag eop-ui:ci "$repo-ui:$tag"

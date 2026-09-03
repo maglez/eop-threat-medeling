@@ -69,7 +69,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-REPO = "maglez/eop-threat-medeling"
+REPO = "maglez/eop-threat-modeling"
 REPO_BLOB = f"https://github.com/{REPO}/blob/main"
 
 KEY_PATTERN = re.compile(r"\bEOP-\d+\b")

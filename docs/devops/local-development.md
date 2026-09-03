@@ -13,8 +13,8 @@
 
 ```bash
 # 1. Clone
-git clone git@github.com:maglez/eop-threat-medeling.git
-cd eop-threat-medeling
+git clone git@github.com:maglez/eop-threat-modeling.git
+cd eop-threat-modeling
 
 # 2. Allow direnv to load .env vars
 direnv allow

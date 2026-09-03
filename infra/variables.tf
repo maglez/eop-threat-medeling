@@ -156,7 +156,7 @@ variable "app_image" {
     about being able to reproduce.
   EOT
   type        = string
-  default     = "ghcr.io/maglez/eop-threat-medeling:latest"
+  default     = "ghcr.io/maglez/eop-threat-modeling:latest"
 }
 
 variable "ui_image" {
@@ -168,7 +168,7 @@ variable "ui_image" {
     and app_image on the same SHA.
   EOT
   type        = string
-  default     = "ghcr.io/maglez/eop-threat-medeling-ui:latest"
+  default     = "ghcr.io/maglez/eop-threat-modeling-ui:latest"
 }
 
 variable "app_port" {

@@ -47,7 +47,7 @@ from bodies import (
     load_export,
 )
 
-REPO = "maglez/eop-threat-medeling"
+REPO = "maglez/eop-threat-modeling"
 MAPPING = EXPORT_DIR / "mapping.json"
 
 # Progress lives next to the scripts, not in docs/jira-export/, because it is

@@ -11,7 +11,7 @@ server:
 
 spring:
   application:
-    name: eop-threat-medeling
+    name: eop-threat-modeling
   datasource:
     url: ${DB_URL}
     driver-class-name: org.h2.Driver
