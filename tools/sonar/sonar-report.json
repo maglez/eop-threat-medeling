@@ -28,12 +28,12 @@
     "already excluded src/test/java from the coverage denominator via sonar.tests."
   ],
   "counts": {
-    "MAINTAINABILITY": 31,
+    "MAINTAINABILITY": 30,
     "RELIABILITY": 1,
     "SECURITY": 0
   },
   "coverage": 95.2,
-  "generatedAt": "2026-09-03T20:05:34Z",
+  "generatedAt": "2026-09-03T21:31:45Z",
   "issues": [
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/PlayerJpaEntity.java|fa6ce9e24507b54e004c9a9f51b35f8f",
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/TrickPlayJpaEntity.java|fe1fa84d615bf6f12059ceb7a83f5eca",
@@ -64,27 +64,26 @@
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|3e709d1e6ea887bbf0e5ffd4a9c9d01a",
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|aa2bb258264b2afcd70495c7c174b68c",
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|b93b37d02812ef89d2dd7d164dbca921",
-    "MAINTAINABILITY|java:S3516|src/main/java/org/maglez/eop/adapter/web/ReadRateLimitInterceptor.java|4b47ba4927934fdff4e8ffa1c380715d",
     "MAINTAINABILITY|java:S3776|src/main/java/org/maglez/eop/usecase/PlayCardUseCase.java|832088137f60d88502a2e132d5962267",
     "RELIABILITY|java:S6218|src/main/java/org/maglez/eop/adapter/web/TrustedProxies.java|fb9503e79ba3740bac86eda902b058db"
   ],
-  "ncloc": 7339,
+  "ncloc": 7338,
   "scannerGav": "org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751",
   "scope": {
     "ALL": {
       "byQuality": {
-        "MAINTAINABILITY": 232,
+        "MAINTAINABILITY": 231,
         "RELIABILITY": 8,
         "SECURITY": 0
       }
     },
     "MAIN": {
       "byQuality": {
-        "MAINTAINABILITY": 31,
+        "MAINTAINABILITY": 30,
         "RELIABILITY": 1,
         "SECURITY": 0
       },
-      "total": 32
+      "total": 31
     },
     "TEST": {
       "byQuality": {
@@ -97,6 +96,6 @@
   },
   "sonarQubeVersion": "26.8.0.126808",
   "sourceFileCount": 302,
-  "sourceHash": "5a1cbb78ce8f28fdf431a015416f5301c6d505cb3422b2fcd1f4ced6906af37a",
+  "sourceHash": "2b42bda071477e7d036732f50f1b2f49da94db166017552be8da9fc04e95498d",
   "tests": 1406
 }

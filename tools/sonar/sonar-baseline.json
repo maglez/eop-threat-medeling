@@ -41,7 +41,7 @@
     "rather than passing it."
   ],
   "counts": {
-    "MAINTAINABILITY": 31,
+    "MAINTAINABILITY": 30,
     "RELIABILITY": 1,
     "SECURITY": 0
   },
@@ -75,7 +75,6 @@
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|3e709d1e6ea887bbf0e5ffd4a9c9d01a",
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|aa2bb258264b2afcd70495c7c174b68c",
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|b93b37d02812ef89d2dd7d164dbca921",
-    "MAINTAINABILITY|java:S3516|src/main/java/org/maglez/eop/adapter/web/ReadRateLimitInterceptor.java|4b47ba4927934fdff4e8ffa1c380715d",
     "MAINTAINABILITY|java:S3776|src/main/java/org/maglez/eop/usecase/PlayCardUseCase.java|832088137f60d88502a2e132d5962267",
     "RELIABILITY|java:S6218|src/main/java/org/maglez/eop/adapter/web/TrustedProxies.java|fb9503e79ba3740bac86eda902b058db"
   ],
@@ -85,7 +84,7 @@
     "sonarQubeVersion": "26.8.0.126808"
   },
   "tightenedFrom": {
-    "generatedAt": "2026-09-02T20:46:44Z",
+    "generatedAt": "2026-09-03T21:24:30Z",
     "sonarQubeVersion": "26.8.0.126808"
   }
 }

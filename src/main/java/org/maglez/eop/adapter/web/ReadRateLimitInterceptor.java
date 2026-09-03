@@ -94,16 +94,20 @@ public class ReadRateLimitInterceptor implements HandlerInterceptor {
      * @param response the response, unused — a refusal is signalled by an exception so that the single
      *                 {@code @ControllerAdvice} renders it
      * @param handler  the handler about to run, unused
-     * @return true to let the request proceed
+     * @return always true; a refusal is an exception, never a false. Returning false would abort the dispatch
+     *         with an empty body, which is why this method has one exit point and no branch yields false
      * @throws RateLimitedException if the caller has exhausted its allowance for the current window
      */
     @Override
     public boolean preHandle(
             final HttpServletRequest request, final HttpServletResponse response, final Object handler) {
-        if (!READ_METHODS.contains(request.getMethod())) {
-            return true;
+        // One exit point, deliberately. A refusal here is the throw out of admit, never a returned false, so
+        // do not replace this `return true` with `return false` on either path: false tells the
+        // DispatcherServlet the interceptor has already written the response, so the caller would get an
+        // empty 200 instead of the 429 problem+json that GlobalExceptionHandler renders from the throw.
+        if (READ_METHODS.contains(request.getMethod())) {
+            counter.admit(clientAddressResolver.of(request));
         }
-        counter.admit(clientAddressResolver.of(request));
         return true;
     }
 }
