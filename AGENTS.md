@@ -51,7 +51,7 @@ This project uses a multi-agent team defined in `.opencode/agents/`. Thirteen de
 - `@tester-api` — API integration tests
 - `@security-auditor` — security and vulnerability audits
 - `@code-reviewer` — static code review and SOLID compliance
-- `@sonarqube-expert` — adjudicates the SonarQube issue ratchet over production code against the committed baseline
+- `@sonarqube-expert` — adjudicates **both** SonarQube issue ratchets over production code against their committed baselines: the Java one over `src/main/java`, and since 2026-09-03 ([ADR-063](docs/adr/ADR-063-sonarqube-frontend-project.md)) a second, independent one over `ui/src`
 - `@dependency-vulnerability` — adjudicates the Trivy CVE scan over the shipped dependency trees
 - `@performance-engineer` — benchmarks and load testing
 

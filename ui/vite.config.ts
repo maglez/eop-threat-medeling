@@ -44,5 +44,34 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/setupTests.ts"],
     css: false,
+    // Coverage exists to feed the front-end SonarQube project (ADR-063), not to
+    // gate this build: there is no `thresholds` block here on purpose, because the
+    // ratchet in tools/sonar/ is what holds quality and a second, differently
+    // defined limit would be two numbers for one invariant.
+    //
+    // `lcov` is the reporter SonarQube reads (sonar.javascript.lcov.reportPaths);
+    // `text` is for the human running `npm run coverage`. The report lands in
+    // ui/coverage/, which is gitignored — it is a build output, and committing it
+    // would make every test change a diff in a generated file.
+    coverage: {
+      provider: "v8",
+      reporter: ["lcov", "text"],
+      reportsDirectory: "./coverage",
+      // `all` is what makes an untested file appear at 0% rather than not appear
+      // at all. Without it SonarQube reads coverage over only the files a test
+      // happened to import, so adding an unreferenced module would *raise* the
+      // percentage — the opposite of what the number is for.
+      all: true,
+      include: ["src/**/*.{ts,tsx}"],
+      // Excluded because they are not measurable product code: the test files
+      // themselves, the Testing Library setup shim, and the ambient declaration
+      // file (types only, zero emitted statements, so it would otherwise sit
+      // permanently at 0% and drag the figure down for no reachable reason).
+      exclude: [
+        "src/**/*.test.{ts,tsx}",
+        "src/setupTests.ts",
+        "src/vite-env.d.ts",
+      ],
+    },
   },
 });

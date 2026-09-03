@@ -6,18 +6,36 @@ this commit is allowed. This is the half of the gate that runs in CI, which is
 why it must have no network dependency at all - the requirement that produced
 this design was, verbatim, "compare in CI without a live server".
 
-Invoked through tools/sonar/ratchet.sh, never directly, because the shell
-wrapper owns the one thing this file cannot compute for itself: the source hash,
-whose definition lives in tools/sonar/source-hash.sh so that the scanning side
-and the checking side cannot drift apart.
+Invoked through tools/sonar/ratchet.sh or tools/sonar/ratchet-ui.sh, never
+directly, because the shell wrapper owns the one thing this file cannot compute
+for itself: the source hash, whose definition lives in tools/sonar/source-hash.sh
+so that the scanning side and the checking side cannot drift apart.
 
-SCOPE, since 2026-09-02 (EOP-000, ADR-060 as amended): the three integers this
-file compares cover PRODUCTION CODE ONLY - SonarQube's MAIN scope, which is
-src/main/java. They are not the numbers the SonarQube project overview page
-shows, and a reader who takes "MAINTAINABILITY 31" for the whole project will be
-wrong by an order of magnitude. The whole-tree figure and the test-code side are
-both recorded in the report under scope.ALL and scope.TEST, so the narrowing is
-auditable from the file rather than asserted here.
+TWO PROJECTS, ONE RATCHET (ADR-063). There are two SonarQube projects - Java
+(eop-threat-modeling) and the front end (eop-threat-modeling-ui) - and
+--flavour selects which one is being checked. It changes the log prefix, the
+default report and baseline paths, the commands named in every remedy message,
+and two paragraphs of printed prose describing what the gate covers. Nothing in
+the comparison logic branches on it: the multiset difference, the freshness
+short-circuit and the count table are identical, because the two projects differ
+in what they measure and not in how a ceiling works.
+
+Sharing one implementation is deliberate, for the reason tools/sonar/
+source-hash.sh gives about itself. The delicate logic here is the refusal to
+compare a stale report and the refusal to infer a missing count as zero, and two
+copies of a refusal is one copy that can rot unnoticed while the other is
+maintained. --flavour defaults to java so that ratchet.sh, the command in
+ADR-060 and every remedy message printed by the other scripts keep working
+unchanged; the front end is the addition, so the front end names itself.
+
+SCOPE, since 2026-09-02 (EOP-000, ADR-060 as amended): for the Java project the
+three integers this file compares cover PRODUCTION CODE ONLY - SonarQube's MAIN
+scope, which is src/main/java. They are not the numbers the SonarQube project
+overview page shows, and a reader who takes "MAINTAINABILITY 31" for the whole
+project will be wrong by an order of magnitude. The whole-tree figure and the
+test-code side are both recorded in the report under scope.ALL and scope.TEST,
+so the narrowing is auditable from the file rather than asserted here. The
+front-end project narrows the same way, for the same reason, over ui/src.
 
 Test code is still analysed, and still hashed. Only the gate narrowed. The
 reason was not coverage - SonarQube already classifies src/test/java under
@@ -52,7 +70,8 @@ opposite reading:
     sonarQubeVersion and why compose.sonar.yml pins the image by digest.
   * Not that test code is clean. Test findings are measured and recorded in the
     report, and they are deliberately not gated, so this gate going green says
-    nothing at all about the 36,965 lines under src/test/java.
+    nothing at all about the 36,965 lines under src/test/java - nor, on the
+    front-end flavour, about the test files under ui/src.
 """
 
 from __future__ import annotations
@@ -64,6 +83,58 @@ from pathlib import Path
 from typing import Any
 
 QUALITIES = ("RELIABILITY", "MAINTAINABILITY", "SECURITY")
+
+# ---------------------------------------------------------------------------
+# The two projects
+# ---------------------------------------------------------------------------
+# Everything that differs between the Java gate and the front-end gate is a row
+# in this table, so adding a third project would be a row rather than a new
+# branch in eight print statements. The prose entries are lists of already
+# indented lines because they are printed verbatim; keeping them here rather
+# than as CLI strings means the shell wrappers pass one flag instead of quoting
+# multi-line English through argv.
+FLAVOURS: dict[str, dict[str, Any]] = {
+    "java": {
+        "label": "sonar-ratchet",
+        "report": "tools/sonar/sonar-report.json",
+        "baseline": "tools/sonar/sonar-baseline.json",
+        "scan_command": "tools/sonar/scan.sh",
+        "seed_command": "python3 tools/sonar/seed-baseline.py",
+        "gated_scope": [
+            "  Gated scope: production code only (src/main/java). Test-code findings are",
+            "  measured and recorded in the report under scope.TEST, and not gated.",
+        ],
+        "hash_scope": [
+            "  The hash covers pom.xml and every .java file under src/main/java and",
+            "  src/test/java. A docs-only, workflow-only or ui/-only change leaves it",
+            "  untouched and needs no rescan - see tools/sonar/source-hash.sh.",
+        ],
+    },
+    "ui": {
+        "label": "sonar-ratchet-ui",
+        "report": "tools/sonar/sonar-ui-report.json",
+        "baseline": "tools/sonar/sonar-ui-baseline.json",
+        "scan_command": "tools/sonar/scan-ui.sh",
+        "seed_command": "python3 tools/sonar/seed-baseline.py --flavour ui",
+        "gated_scope": [
+            "  Gated scope: front-end production code only (ui/src, excluding *.test.ts",
+            "  and *.test.tsx). Test-file findings are measured and recorded in the report",
+            "  under scope.TEST, and not gated.",
+        ],
+        "hash_scope": [
+            "  The hash covers ui/package.json, ui/tsconfig.json, ui/vite.config.ts and",
+            "  every .ts/.tsx file under ui/src. A change to Java, docs or workflows leaves",
+            "  it untouched and needs no rescan - see tools/sonar/source-hash.sh.",
+        ],
+    },
+}
+
+# The log prefix every message carries. Set once from --flavour in main(), before
+# anything can print. A module-level name rather than a parameter threaded through
+# _load, _counts and _fingerprints: those three exist to refuse bad input, and
+# widening all of their signatures to carry a string used only for a prefix would
+# obscure what they are for. There is exactly one writer and it runs first.
+_LABEL = FLAVOURS["java"]["label"]
 
 
 def _load(path: Path, what: str, remedy: str) -> dict[str, Any]:
@@ -84,7 +155,7 @@ def _load(path: Path, what: str, remedy: str) -> dict[str, Any]:
 
 def _fail_hard(message: str) -> None:
     """Exit 2: the gate could not form an opinion."""
-    print(f"sonar-ratchet: cannot run - {message}", file=sys.stderr)
+    print(f"{_LABEL}: cannot run - {message}", file=sys.stderr)
     raise SystemExit(2)
 
 
@@ -155,9 +226,18 @@ def _describe(fingerprint: str) -> str:
 
 
 def main() -> int:
+    global _LABEL
+
     parser = argparse.ArgumentParser(add_help=True, description=__doc__)
-    parser.add_argument("--report", default="tools/sonar/sonar-report.json")
-    parser.add_argument("--baseline", default="tools/sonar/sonar-baseline.json")
+    # Defaults to java so ratchet.sh, ADR-060's recorded command and every remedy
+    # message printed by the other scripts keep working with no edit. --report and
+    # --baseline default per flavour rather than to the Java paths, so that
+    # "--flavour ui" on its own cannot check the front-end ceiling against the
+    # Java report. Cross-wiring them by hand still fails, because the two source
+    # hashes cover disjoint file sets and the freshness check runs first.
+    parser.add_argument("--flavour", choices=sorted(FLAVOURS), default="java")
+    parser.add_argument("--report", default=None)
+    parser.add_argument("--baseline", default=None)
     parser.add_argument(
         "--actual-hash",
         required=True,
@@ -176,24 +256,29 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    report_path = Path(args.report)
-    baseline_path = Path(args.baseline)
+    flavour = FLAVOURS[args.flavour]
+    _LABEL = flavour["label"]
+    scan_command = flavour["scan_command"]
+    seed_command = flavour["seed_command"]
+
+    report_path = Path(args.report or flavour["report"])
+    baseline_path = Path(args.baseline or flavour["baseline"])
     report = _load(
         report_path,
         "the scan report",
-        "Regenerate it with tools/sonar/scan.sh, which needs the local SonarQube stack up.",
+        f"Regenerate it with {scan_command}, which needs the local SonarQube stack up.",
     )
     baseline = _load(
         baseline_path,
         "the ratchet baseline",
-        # Deliberately not "run scan.sh": scan.sh writes the report, never the
-        # baseline. Bootstrapping the ceiling from whatever the current scan
+        # Deliberately not "run scan.sh": the scan script writes the report, never
+        # the baseline. Bootstrapping the ceiling from whatever the current scan
         # happens to say is a reviewed act - a script that silently recreated a
         # deleted baseline would turn "someone removed the gate" into "the gate
         # agrees with today's code", which is the one outcome a ratchet exists
         # to prevent. So the recipe is explicit and leaves a diff to review.
         "To bootstrap a ceiling deliberately, derive it from a fresh report:\n"
-        "    tools/sonar/scan.sh && python3 tools/sonar/seed-baseline.py\n"
+        f"    {scan_command} && {seed_command}\n"
         "  then read the resulting diff before committing it.",
     )
 
@@ -206,11 +291,11 @@ def main() -> int:
     # saying nothing. So staleness short-circuits.
     recorded_hash = report.get("sourceHash")
     if not isinstance(recorded_hash, str) or not recorded_hash:
-        _fail_hard("the scan report has no 'sourceHash' - it was not written by scan.sh")
+        _fail_hard(f"the scan report has no 'sourceHash' - it was not written by {scan_command}")
 
     if recorded_hash != args.actual_hash:
         recorded_count = report.get("sourceFileCount")
-        print("sonar-ratchet: FAIL - the committed scan report is stale.")
+        print(f"{_LABEL}: FAIL - the committed scan report is stale.")
         print()
         print("  The report describes a different source tree than the one in this commit,")
         print("  so it cannot tell us whether this change introduced a SonarQube issue.")
@@ -231,12 +316,11 @@ def main() -> int:
         print("  Fix it by rescanning - do not edit the hash:")
         print("    colima start                                  # if the VM is not running")
         print("    docker compose -f compose.sonar.yml up -d     # wait for (healthy)")
-        print("    tools/sonar/scan.sh")
-        print("    git add tools/sonar/sonar-report.json tools/sonar/sonar-baseline.json")
+        print(f"    {scan_command}")
+        print(f"    git add {report_path} {baseline_path}")
         print()
-        print("  The hash covers pom.xml and every .java file under src/main/java and")
-        print("  src/test/java. A docs-only, workflow-only or ui/-only change leaves it")
-        print("  untouched and needs no rescan - see tools/sonar/source-hash.sh.")
+        for line in flavour["hash_scope"]:
+            print(line)
         return 1
 
     # -----------------------------------------------------------------------
@@ -248,12 +332,12 @@ def main() -> int:
     regressions = [(q, baseline_counts[q], report_counts[q]) for q in QUALITIES if report_counts[q] > baseline_counts[q]]
     improvements = [(q, baseline_counts[q], report_counts[q]) for q in QUALITIES if report_counts[q] < baseline_counts[q]]
 
-    print(f"sonar-ratchet: SonarQube {report.get('sonarQubeVersion', '(version not recorded)')}"
+    print(f"{_LABEL}: SonarQube {report.get('sonarQubeVersion', '(version not recorded)')}"
           f", report generated {report.get('generatedAt', '(no timestamp)')}")
-    print(f"sonar-ratchet: report is fresh for this tree ({args.actual_file_count} files)")
+    print(f"{_LABEL}: report is fresh for this tree ({args.actual_file_count} files)")
     print()
-    print("  Gated scope: production code only (src/main/java). Test-code findings are")
-    print("  measured and recorded in the report under scope.TEST, and not gated.")
+    for line in flavour["gated_scope"]:
+        print(line)
     print()
     print("  quality            ceiling   found")
     for quality in QUALITIES:
@@ -264,7 +348,7 @@ def main() -> int:
     print()
 
     if regressions:
-        print("sonar-ratchet: FAIL - the SonarQube issue count increased.")
+        print(f"{_LABEL}: FAIL - the SonarQube issue count increased.")
         print()
         for quality, ceiling, found in regressions:
             print(f"  {quality}: {ceiling} -> {found}  (+{found - ceiling})")
@@ -313,7 +397,7 @@ def main() -> int:
         return 1
 
     if improvements:
-        print("sonar-ratchet: PASS - and this commit is cleaner than the ceiling.")
+        print(f"{_LABEL}: PASS - and this commit is cleaner than the ceiling.")
         for quality, ceiling, found in improvements:
             print(f"  {quality}: {ceiling} -> {found}  ({ceiling - found} fewer)")
         print()
@@ -337,7 +421,7 @@ def main() -> int:
             print("  so the ratchet keeps the ground you just gained.")
         else:
             print("  The baseline was NOT tightened, because this run is read-only (CI never")
-            print("  writes to the repository). Run tools/sonar/scan.sh locally to lower it.")
+            print(f"  writes to the repository). Run {scan_command} locally to lower it.")
         return 0
 
     # The fingerprint lists can differ while the counts match - a finding moved
@@ -352,12 +436,12 @@ def main() -> int:
             with baseline_path.open("w", encoding="utf-8") as handle:
                 json.dump(baseline, handle, indent=2, sort_keys=True, separators=(",", ": "))
                 handle.write("\n")
-            print("sonar-ratchet: counts unchanged, but the findings moved. Refreshed the")
+            print(f"{_LABEL}: counts unchanged, but the findings moved. Refreshed the")
             print(f"  fingerprint list in {baseline_path} so a future regression can still name")
             print("  what is new. Commit it with your change.")
             print()
 
-    print("sonar-ratchet: PASS - counts are at the ceiling, nothing new.")
+    print(f"{_LABEL}: PASS - counts are at the ceiling, nothing new.")
     return 0
 
 

@@ -1,0 +1,110 @@
+{
+  "_comment": [
+    "GENERATED FILE - written by tools/sonar/scan-ui.sh, do not hand-edit.",
+    "",
+    "This is the evidence half of the front-end SonarQube ratchet (ADR-063). It records",
+    "what a local scan of the TypeScript under ui/src found. tools/sonar/ratchet-ui.sh",
+    "compares it against tools/sonar/sonar-ui-baseline.json and runs in CI with no",
+    "server, in the sonar-ratchet-ui job.",
+    "",
+    "It is a SEPARATE SonarQube project from the Java one, key eop-threat-modeling-ui,",
+    "and that separation is the whole decision in ADR-063. One polyglot project would",
+    "add TypeScript findings to the Java ceiling seeded on 2026-09-02, so a front-end",
+    "regression could be paid for out of Java headroom and vice versa - two unrelated",
+    "populations behind one number. Two projects, two ceilings, two ratchets.",
+    "",
+    "sourceHash is the freshness token. CI recomputes it over ui/package.json,",
+    "ui/tsconfig.json, ui/vite.config.ts and every .ts/.tsx file under ui/src (see",
+    "sonar_ui_source_hash in tools/sonar/source-hash.sh) and fails if it differs from",
+    "the value here. ui/package-lock.json is deliberately NOT in that set: it changes",
+    "on every npm audit fix and cannot move these counts, because the TypeScript sensor",
+    "reads tsconfig and source rather than the lockfile.",
+    "",
+    "So: if CI tells you this report is stale, the fix is to rescan, not to edit the",
+    "hash. Start the stack and run tools/sonar/scan-ui.sh.",
+    "",
+    "counts.* are the three gated numbers over MAIN scope - the non-test TypeScript.",
+    "scope.TEST carries the findings in ui/src/**/*.test.ts(x), measured and recorded",
+    "but not gated, exactly as on the Java side. scope.ALL is the whole-tree figure the",
+    "project overview page shows, so all three reconcile from this file alone.",
+    "",
+    "coverage comes from ui/coverage/lcov.info, produced by `npm run coverage` in ui/",
+    "(Vitest v8 provider). It is recorded, not gated - there is no front-end equivalent",
+    "of JaCoCo's check goal, and ADR-063 declines to add a second coverage limit on top",
+    "of the issue ratchet. One number worth knowing before reading it: src/main.tsx is",
+    "the React mount point, has no test, and is deliberately left in scope reporting",
+    "0% rather than excluded, so this figure is a little lower than the component tests",
+    "alone would suggest. An exclusion would have been the more flattering choice and",
+    "the less honest one.",
+    "",
+    "`tests` is normally absent here. Vitest emits an LCOV coverage report but this",
+    "repository feeds SonarQube no test-execution report, so the server has no value",
+    "for that metric and the field reads null. That is not a broken scan."
+  ],
+  "counts": {
+    "MAINTAINABILITY": 26,
+    "RELIABILITY": 9,
+    "SECURITY": 0
+  },
+  "coverage": 90.8,
+  "generatedAt": "2026-09-03T17:35:43Z",
+  "issues": [
+    "MAINTAINABILITY,RELIABILITY|typescript:S6772|src/App.tsx|cfb0b5f8ccae71824d6eaeed9d5efb2c",
+    "MAINTAINABILITY,RELIABILITY|typescript:S6772|src/components/LobbyScreen.tsx|65c0dc1b6a60b6207972a8235df71e79",
+    "MAINTAINABILITY,RELIABILITY|typescript:S6772|src/components/LobbyScreen.tsx|94f4c77091f021f908889caa26640940",
+    "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/FollowSuitHint.tsx|f0c715412bbc4555cd76e5d6b664ffd4",
+    "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameOverScreen.tsx|5b89c7407eeb795475a0d05f003ccf72",
+    "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameScreen.tsx|39bda89d640442c8d0d2cbed212a2bc5",
+    "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameScreen.tsx|525a70733e50c1b6b863a19436f05128",
+    "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameScreen.tsx|bffbdf06aa5e659945cb6aa5ab9e46ec",
+    "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameScreen.tsx|c3ab6fd2f0b1abd1d2c1e70b17093b90",
+    "MAINTAINABILITY|typescript:S3358|src/components/GameOverScreen.tsx|92d5ea792040b3fb3cc445a8c61f46ba",
+    "MAINTAINABILITY|typescript:S3358|src/components/GameScreen.tsx|4c6c7c9026a41d653a74b6572744d355",
+    "MAINTAINABILITY|typescript:S3358|src/components/GameScreen.tsx|4c6c7c9026a41d653a74b6572744d355",
+    "MAINTAINABILITY|typescript:S3358|src/components/GameScreen.tsx|a56fc02a2c7725b46e7d56eb99e3da48",
+    "MAINTAINABILITY|typescript:S3358|src/components/GameScreen.tsx|c902549c1d32d0e960d07d495dedf35a",
+    "MAINTAINABILITY|typescript:S3358|src/components/JoinSessionForm.tsx|6661cd44b2d598011a841c0c916e1924",
+    "MAINTAINABILITY|typescript:S3735|src/components/GameScreen.tsx|5902c4d1eb6e957d74d23857a5e24b17",
+    "MAINTAINABILITY|typescript:S3776|src/components/GameScreen.tsx|ede2b910ae62add0ef53feb623def63d",
+    "MAINTAINABILITY|typescript:S3863|src/components/LobbyScreen.tsx|3a93b8cae378fd3b9e9b76e9e08424a8",
+    "MAINTAINABILITY|typescript:S3863|src/components/LobbyScreen.tsx|c16325c399c9f66d4951c9ab97d978fb",
+    "MAINTAINABILITY|typescript:S6479|src/components/ErrorSummary.tsx|d373a0f16fb27d7b7c903f13bfb36b6b",
+    "MAINTAINABILITY|typescript:S6767|src/components/GameScreen.tsx|af805f3fe512367df911612fd49910c5",
+    "MAINTAINABILITY|typescript:S6819|src/components/FollowSuitHint.tsx|76b57ea88200dae410201c3887d9cdce",
+    "MAINTAINABILITY|typescript:S6819|src/components/GameScreen.tsx|d90c26198ff23a5c54f81269ceed5c01",
+    "MAINTAINABILITY|typescript:S6819|src/components/GameScreen.tsx|d90c26198ff23a5c54f81269ceed5c01",
+    "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|eafafa7528a1cd60013fc495d933b241",
+    "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|ed86bc12f87ddb5d2c00df640ecd7b14"
+  ],
+  "ncloc": 2814,
+  "scannerImage": "sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
+  "scope": {
+    "ALL": {
+      "byQuality": {
+        "MAINTAINABILITY": 31,
+        "RELIABILITY": 9,
+        "SECURITY": 0
+      }
+    },
+    "MAIN": {
+      "byQuality": {
+        "MAINTAINABILITY": 26,
+        "RELIABILITY": 9,
+        "SECURITY": 0
+      },
+      "total": 26
+    },
+    "TEST": {
+      "byQuality": {
+        "MAINTAINABILITY": 5,
+        "RELIABILITY": 0,
+        "SECURITY": 0
+      },
+      "total": 5
+    }
+  },
+  "sonarQubeVersion": "26.8.0.126808",
+  "sourceFileCount": 30,
+  "sourceHash": "fb2fbae31fc2f3f9ff666e8d1ffd95f8e38ea03fccbdc942f826106b0a6e2b24",
+  "tests": null
+}

@@ -27,12 +27,20 @@
 #
 # What this hash does NOT cover, so that nobody reads more into a green gate
 # than it earns: resources under `src/main/resources` (the XML sensor runs
-# over them but produces no issue today), the front end under `ui/`, the
-# workflow files, and the shell scripts in this directory. If any of those
-# ever start producing SonarQube issues, they must be added here in the same
-# commit that widens `sonar.sources` - and adding them changes the hash for
-# everybody, which is a one-off forced rescan and the reason to do it
-# deliberately rather than as a drive-by.
+# over them but produces no issue today), the workflow files, and the shell
+# scripts in this directory. If any of those ever start producing SonarQube
+# issues, they must be added here in the same commit that widens
+# `sonar.sources` - and adding them changes the hash for everybody, which is a
+# one-off forced rescan and the reason to do it deliberately rather than as a
+# drive-by.
+#
+# The front end under `ui/` is NOT in `sonar_source_hash` either, but for a
+# different reason and with a different remedy: since ADR-063 it is a separate
+# SonarQube project with its own report, its own baseline and its own ratchet,
+# so it has its own fingerprint in `sonar_ui_source_hash` below. The two are
+# deliberately disjoint - that is what lets a Java-only change leave the front
+# end's report fresh and a front-end-only change leave the Java report fresh,
+# rather than forcing a rescan of a tree nobody touched.
 
 set -euo pipefail
 
@@ -88,4 +96,62 @@ sonar_source_file_count() {
         printf '%s\n' pom.xml
         find src/main/java src/test/java -type f -name '*.java'
     } | wc -l | tr -d ' '
+}
+
+# ---------------------------------------------------------------------------
+# Front end (ADR-063)
+# ---------------------------------------------------------------------------
+# The same fingerprint for the `eop-threat-modeling-ui` project. Separate
+# functions rather than a parameter on the pair above, because the two hashes
+# must be independently stale: the whole point of two SonarQube projects is
+# that a Java change does not invalidate the front end's report and vice
+# versa, and a single parameterised hash over both trees would reinstate
+# exactly the coupling the split removes.
+#
+# The file set is every `.ts`/`.tsx` under `ui/src` - which is what the scanner
+# analyses - plus three configuration files that decide *how* it is analysed:
+#
+#   ui/tsconfig.json   the compiler options SonarQube's TypeScript sensor
+#                      reads to resolve types. `strict` going false would
+#                      change which rules can fire without touching a source
+#                      line, so it belongs in the fingerprint for the same
+#                      reason `pom.xml` does on the Java side.
+#   ui/vite.config.ts  carries the `coverage` block. Changing an `exclude`
+#                      pattern moves the coverage measurement while every
+#                      source file stays byte-identical.
+#   ui/package.json    the dependency versions, and therefore which analyser
+#                      and which ESLint-adjacent rules are in play.
+#
+# `ui/package-lock.json` is deliberately NOT in the set. It is a large
+# generated file that changes on every `npm audit fix` and every transitive
+# bump, none of which alters what the TypeScript sensor sees - the sensor
+# reads `tsconfig.json` and source, not the lockfile. Including it would force
+# a full rescan for a class of change that provably cannot move the counts,
+# which trains people to rescan mechanically instead of reading why the gate
+# went red. The direct dependency versions that *can* matter are in
+# `package.json`, which is in the set.
+_sonar_ui_file_list() {
+    {
+        printf '%s\n' ui/package.json ui/tsconfig.json ui/vite.config.ts
+        find ui/src -type f \( -name '*.ts' -o -name '*.tsx' \)
+    } | LC_ALL=C sort
+}
+
+# Print the front-end source hash for the current working tree. Must be run
+# from the repository root.
+sonar_ui_source_hash() {
+    local file_list
+    file_list=$(_sonar_ui_file_list)
+
+    while IFS= read -r f; do
+        _sonar_sha256_file "$f"
+    done <<<"$file_list" | _sonar_sha256_stdin
+}
+
+# Count of files in the front-end hash set. Same purpose as the Java count
+# above: it turns "the hash moved" into "the hash moved and the tree is a
+# different shape", which is the difference between a forgotten rescan and a
+# comparison against the wrong commit.
+sonar_ui_source_file_count() {
+    _sonar_ui_file_list | wc -l | tr -d ' '
 }
