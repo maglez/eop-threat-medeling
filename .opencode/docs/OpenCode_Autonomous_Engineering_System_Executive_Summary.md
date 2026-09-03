@@ -286,6 +286,68 @@ Unlike the rest of this section, these two tables were measured on `main` at com
 
 These figures come from a local SonarQube server (26.8.0) and are the only numbers in this section that cannot be reproduced offline. The two committed evidence files — `tools/sonar/sonar-report.json` and `tools/sonar/sonar-ui-report.json` — carry the issue counts, coverage and lines of code, but not the letter ratings, the duplication figures, the hotspot count or the debt estimate; those exist only on the server. Refreshing these tables therefore means running `tools/sonar/scan.sh` (back end, via the Maven scanner) and `tools/sonar/scan-ui.sh` (front end, via a digest-pinned `sonar-scanner-cli` container) against a running instance.
 
+### Known vulnerabilities
+
+Vulnerability counts in this project come from **three separate populations**, and they must not be added together — they have different subjects, different scanners and different consequences. Two of the three are enforced in CI as jobs that can fail a merge; the third is the source-code security rating already reported above.
+
+#### 1. Shipped dependencies — the code that reaches a user
+
+Scanned by **Trivy 0.74.0** over the two manifests that describe what actually runs in production: `pom.xml` (the resolved Maven graph, walked transitively) and `ui/package-lock.json` (the front-end lockfile). Measured 2026-09-03.
+
+| Severity | Java back end | Front end | Fails the build? |
+|---|---|---|---|
+| **CRITICAL** | 0 | 0 | Yes |
+| **HIGH** | 0 | 0 | Yes |
+| **MEDIUM** | 0 | 0 | No — reported only |
+| **LOW** | 0 | 0 | No — reported only |
+| Packages examined | 103 | 6 | — |
+
+**Zero known vulnerabilities at every severity, in the code that ships.** Two things make that figure meaningful rather than merely reassuring:
+
+- **Nothing is suppressed.** The scan has an allowlist for advisories a human has traced and found unreachable (`tools/supply-chain/accepted-cves.json`), and it is **empty**. The clean result is on merit, not by exception. The allowlist is also fail-loud in both directions: an entry that is no longer reported turns the job red, so a suppression cannot quietly outlive the thing it suppressed.
+- **The scan is not empty.** 103 Maven packages and 6 front-end runtime packages were examined, spanning Spring Boot, Liquibase, the PostgreSQL driver and the React runtime.
+
+A second, **informational** pass adds the build-time and test-only dependencies — 374 front-end packages once devDependencies are included — and also finds **zero at every severity**. That pass never gates, because a defect in a test framework cannot be reached by a request to the deployed application. One honest gap: the informational pass adds no Maven packages (103 in both passes), so the Java test-scope libraries — JUnit, Testcontainers, Mockito, AssertJ — are not covered by either pass.
+
+One deliberate over-report worth knowing about: the scanner reads the *resolved* dependency graph rather than the final artifact, so H2 (a test-only database, excluded from the shipped jar) is in the 103. An H2 advisory would therefore fail the gate even though H2 never reaches production. Failing loudly in that direction is accepted.
+
+#### 2. Application source code — findings in code written here
+
+Already reported in the tables above, restated here because it is the question people usually mean by "how many vulnerabilities":
+
+| Project | Security rating | Security issues | Security hotspots |
+|---|---|---|---|
+| Java back end | **A** | 0 | 0 |
+| Front end | **A** | 0 | 0 |
+
+Neither project carries a single security issue, and neither carries a hotspot awaiting review. As noted above, an A on zero hotspots means there was nothing to review rather than that a review found nothing.
+
+#### 3. Developer tooling — the seven OpenCode plugins
+
+This is the one population with findings, and it is the one that **never reaches a user**. The seven OpenCode plugins run on a developer's machine, not in the deployed product; they are audited separately (`tools/supply-chain/audit-plugins.sh`) over a 210-package tree.
+
+| Severity | Advisories | Status |
+|---|---|---|
+| **CRITICAL** | 0 | — |
+| **HIGH** | 3 | All three traced to an unreachable code path and allowlisted |
+| **MODERATE** | 7 | Reported, not gated |
+| **LOW** | 4 | Reported, not gated |
+| **Total distinct advisories** | **14** | Audit result: **PASS** |
+
+Twelve of the fourteen are the same dependency: `undici` 5.29.0, pulled in through a single chain from one plugin (`smart-title` → `ai` → `@ai-sdk/gateway` → `@ai-sdk/provider-utils` → `undici`). Every one of the three high-severity advisories is a defect in undici's **WebSocket client**, and the traced reason all three are unreachable is recorded in `tools/supply-chain/accepted-advisories.json` on two independent grounds: the only consumer of undici in the tree imports `Agent` and `fetch` and never constructs a WebSocket, and the import itself sits behind a runtime check that is false under the JavaScript engine OpenCode actually uses. There is no in-range upgrade — the vulnerable version is pinned two levels up by a package this project does not control.
+
+The same audit verifies supply-chain provenance: **210 of 210 packages have verified registry signatures**, 76 carry attestations, and 3 of the 7 pinned plugins publish a SLSA provenance attestation. The remaining four are recorded as a known, accepted residual rather than left undeclared.
+
+#### Summary
+
+| Population | Critical | High | Moderate/Medium | Low |
+|---|---|---|---|---|
+| Shipped dependencies | 0 | 0 | 0 | 0 |
+| Application source code | 0 | 0 | 0 | 0 |
+| Developer tooling (never shipped) | 0 | 3 (all traced unreachable) | 7 | 4 |
+
+**In the product itself — its own code and every dependency that ships with it — there are no known vulnerabilities at any severity.**
+
 ### Test execution time
 
 | Suite | Duration |
