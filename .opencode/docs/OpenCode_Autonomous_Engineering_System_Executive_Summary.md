@@ -191,7 +191,7 @@ This system delivers software with the discipline of a senior engineering team, 
 
 ## Some Metrics
 
-*Measured 2026-09-03 on branch `eop-182-cover-cidr-mask-and-resolve-trick`, one commit ahead of `main`, with this section's own uncommitted changes in the tree.*
+*Measured 2026-09-03 on `main` at commit `344b182`, with a clean working tree.*
 
 ### Codebase size
 
@@ -199,19 +199,21 @@ This system delivers software with the discipline of a senior engineering team, 
 |---|---|---|---|
 | Java — production (`src/main/java`) | 164 | 17,901 | 16,426 |
 | Java — tests (`src/test/java`) | 137 | 37,750 | 32,799 |
-| Front end — production (`ui/src`) | 16 | 3,752 | 3,385 |
-| Front end — tests (`ui/src`) | 11 | 4,143 | 3,488 |
-| Load-test scripts (`test/k6`) | 3 | 87 | — |
-| **Total including tests** | **331** | **63,633** | **≈56,100** |
-| **Total excluding tests** | **180** | **21,653** | **19,811** |
+| Front end — production (`ui/src`) | 17 | 3,784 | 3,411 |
+| Front end — tests (`ui/src`) | 11 | 4,140 | 3,485 |
+| Load-test scripts (`test/k6`) | 3 | 87 | 78 |
+| **Total including tests** | **332** | **63,662** | **56,199** |
+| **Total excluding tests** | **181** | **21,685** | **19,837** |
 
-Test code accounts for **66%** of the codebase — a **1.93:1** test-to-production ratio. A further 3,078 lines of configuration (12 Liquibase changelogs plus Spring profile and test-resource files) sit outside both totals.
+Test code accounts for **66%** of the codebase — a **1.94:1** test-to-production ratio. A further 3,078 lines of configuration (12 Liquibase changelogs plus Spring profile and test-resource files) sit outside both totals.
+
+The front-end rows count every `.ts`, `.tsx` and `.css` file under `ui/src`, split by the `*.test.*` filename convention — so the 11 test files here are the same 11 Vitest files counted below, while the 227-line stylesheet and the 41-line Vitest setup harness fall under production. The figures carried before this refresh (16 files, 3,752 lines) could not be reproduced by any counting rule, so they have been replaced rather than adjusted; the extension filter is necessary because `ui/src` also holds the tracked card images. The *excluding tests* row covers Java and front-end production code only, since the k6 scripts are themselves tests.
 
 ### Documentation
 
 | Metric | Count |
 |---|---|
-| Markdown documents under `docs/` | 70 (19,023 lines) |
+| Markdown documents under `docs/` | 70 (19,020 lines) |
 | All tracked Markdown documents | 114 |
 | Architecture Decision Records | 60 |
 | Mermaid diagrams (under `docs/`) | 22, across 6 files |
@@ -261,9 +263,9 @@ These figures come from a local SonarQube server and are the only numbers in thi
 
 | Suite | Duration |
 |---|---|
-| Java unit tests (`./mvnw test`) | 36.0 s |
-| Front end (`vitest run`) | 5.9 s |
-| **Full quality gate (`./mvnw clean verify`)** | **1 min 3 s** |
+| Java unit tests (`./mvnw test`) | 38.5 s |
+| Front end (`vitest run`) | 6.4 s |
+| **Full quality gate (`./mvnw clean verify`)** | **1 min 14 s** |
 
 The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
 
@@ -272,10 +274,10 @@ The `verify` figure is the one that matters, because it is what every commit mus
 | Metric | Count |
 |---|---|
 | Jira tickets delivered or planned | 177 tickets (carried forward from 2026-08-25 — see note) |
-| Highest issue key referenced in git history | `EOP-182` |
-| Distinct issue keys referenced in commit subjects | 95 |
-| Commits on the current branch | 615 |
+| Highest issue key referenced in git history | `EOP-186` |
+| Distinct issue keys referenced in commit subjects | 96 |
+| Commits on the current branch | 619 |
 
 The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
 
-Only the last three figures were re-measured on 2026-09-03: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was again unreachable when this section was refreshed, so it remains the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-182`. The distinct-key figure is much lower than the ticket total for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
+Only the last three figures were re-measured on 2026-09-03: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was again unreachable when this section was refreshed, so it remains the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-186`. The distinct-key figure is much lower than the ticket total for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
