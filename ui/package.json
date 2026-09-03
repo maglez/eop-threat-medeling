@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "coverage": "vitest run --coverage",
+    "verify": "npm run typecheck && npm run lint && npm run coverage && npm run build",
     "prebuild": "node scripts/copy-govuk-assets.mjs",
     "predev": "node scripts/copy-govuk-assets.mjs"
   },
@@ -33,6 +34,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^9.12.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "globals": "^15.11.0",

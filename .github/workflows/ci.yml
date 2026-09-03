@@ -119,8 +119,21 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
-        run: npm run test
+      # `coverage`, not `test`. `vitest run --coverage` runs the same suite
+      # and additionally writes `ui/coverage/lcov.info`, so this is the test
+      # step with a report attached rather than an extra step - running both
+      # would execute 259 tests twice for one artefact.
+      #
+      # Nothing in CI consumes that LCOV: the SonarQube scan needs a live
+      # server, which this pipeline deliberately does not have (ADR-060), so
+      # the front-end scan is a local operation exactly as the Java one is.
+      # The step earns its place by failing here rather than on a developer's
+      # machine - a coverage provider that stops resolving, or a config edit
+      # that emits nothing, is caught on the pull request that causes it
+      # instead of the next time someone runs `tools/sonar/scan-ui.sh` and
+      # gets a report claiming 0%. See ADR-063.
+      - name: Test with coverage
+        run: npm run coverage
 
       - name: Build
         run: npm run build
@@ -1050,3 +1063,48 @@ jobs:
       # makes that difference visible to grep at all.
       - name: Compare SonarQube issue counts against the committed baseline
         run: tools/sonar/ratchet.sh
+
+  # The same gate for the front end, over a second SonarQube project
+  # (`eop-threat-modeling-ui`) with its own report, its own baseline and its
+  # own freshness token. Every caveat on the job above applies here verbatim
+  # and is not repeated: three integers rather than a judgement, a hash that
+  # closes the accident of forgetting to rescan rather than the intent to
+  # lie, a digest-pinned server whose upgrade invalidates the baseline, and
+  # `--tighten` deliberately absent so no CI job can lower a ceiling.
+  #
+  # Why a second project and not one polyglot project. A single project would
+  # sum Java and TypeScript findings into one set of three integers, and a
+  # ceiling over that sum lets a front-end regression be paid out of Java
+  # headroom - the number would still move truthfully while meaning nothing
+  # about either population. Two projects also mean two independent
+  # freshness tokens, so a Java-only commit leaves the front-end report fresh
+  # and a `ui/`-only commit leaves the Java one fresh, and neither language's
+  # authors are asked to boot a container for the other's change.
+  #
+  # `needs:` is deliberately absent, on this job and on its Java counterpart.
+  # Neither reads the other's artefacts and neither can influence the other's
+  # result, so chaining them would only serialise two file comparisons and
+  # hide the second failure behind the first. Two red jobs naming their own
+  # language is the point.
+  #
+  # Note this job runs no Node and installs nothing: it compares two
+  # committed JSON files and hashes source text, so `python3` and `sha256sum`
+  # on the runner are the whole toolchain even though the subject is
+  # TypeScript. A `setup-node` appearing here would be the same warning sign
+  # a `setup-java` would be above - analysis belongs in `tools/sonar/
+  # scan-ui.sh`, which needs a live server and therefore runs locally.
+  #
+  # Deliberately NOT a required status check, for the same
+  # measure-the-friction-first reason. See ADR-063.
+  sonar-ratchet-ui:
+    name: sonar-ratchet-ui
+    runs-on: ubuntu-latest
+    # Reads two committed JSON files and the front-end source it hashes.
+    # Writes nothing anywhere, and contacts nothing over the network.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare front-end SonarQube issue counts against the committed baseline
+        run: tools/sonar/ratchet-ui.sh

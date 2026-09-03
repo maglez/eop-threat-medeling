@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
-"""Derive tools/sonar/sonar-baseline.json from a fresh scan report.
+"""Derive a SonarQube ratchet baseline from a fresh scan report.
 
 This runs once to bootstrap the gate, and thereafter only when a ceiling is
 being raised deliberately under review. Day to day the baseline moves on its
 own in one direction only: tools/sonar/ratchet.sh --tighten lowers it when a
 scan finds fewer issues than the ceiling. Nothing lowers the count in this
 script's absence and nothing raises it without a human running this file.
+
+TWO PROJECTS, ONE SEEDER
+
+There are two SonarQube projects and therefore two baselines - the Java one at
+tools/sonar/sonar-baseline.json and the front-end one at
+tools/sonar/sonar-ui-baseline.json (ADR-063). --flavour selects between them,
+and it changes five things: which prose ships in _comment, which function in
+tools/sonar/source-hash.sh computes the freshness token, whether provenance
+records the Maven GAV or the pinned scanner image, and the default report and
+baseline paths. --report and --baseline can still be overridden, but they
+default per flavour rather than to the Java pair, so `--flavour ui` alone
+cannot write front-end prose into the Java ceiling. Cross-wiring the two by
+hand fails anyway: the Java hash and the UI hash cover disjoint file sets, so
+seeding either project from the other's report is refused as stale.
+
+The alternative was a second seed-baseline-ui.py. It was rejected for the
+reason tools/sonar/source-hash.sh gives about the hash itself - the dangerous
+logic here is the refusal to overwrite and the refusal to seed from a stale
+report, and two copies of a refusal is one copy that can rot unnoticed while
+the other is maintained.
 
 WHY THIS IS A SEPARATE SCRIPT AND NOT A FLAG ON ratchet.py
 
@@ -56,7 +76,14 @@ QUALITIES = ("RELIABILITY", "MAINTAINABILITY", "SECURITY")
 # The prose that ships inside the baseline. It is here rather than in a
 # template file because the file it lands in is generated: prose maintained
 # beside the generator survives, prose hand-added to the output does not.
-BASELINE_COMMENT = [
+#
+# JAVA_BASELINE_COMMENT is reproduced verbatim inside the committed
+# tools/sonar/sonar-baseline.json, so editing a line here means the next
+# --tighten rewrites that file. That is harmless - ratchet.py preserves
+# _comment untouched and nothing compares it - but it does mean a prose-only
+# edit shows up in a diff nobody asked for, so leave it alone unless the prose
+# has actually gone wrong.
+JAVA_BASELINE_COMMENT = [
     "SONARQUBE ISSUE RATCHET BASELINE. See docs/adr/ADR-060-sonarqube-issue-ratchet.md.",
     "",
     "SCOPE. The three counts below are SonarQube software-quality issue totals for",
@@ -103,16 +130,107 @@ BASELINE_COMMENT = [
     "rather than passing it.",
 ]
 
+# The front-end baseline's prose. Deliberately a separate list rather than the
+# Java text with two words swapped: almost every paragraph above says something
+# true only of the Java project - src/main/java, JaCoCo, pom.xml, the MAIN
+# narrowing of 2026-09-02 - and a shared list with conditional sentences in it
+# would be harder to keep honest than two lists that each say one thing.
+UI_BASELINE_COMMENT = [
+    "SONARQUBE ISSUE RATCHET BASELINE - FRONT END.",
+    "See docs/adr/ADR-063-sonarqube-frontend-project.md.",
+    "",
+    "SCOPE. The three counts below are SonarQube software-quality issue totals for the",
+    "front-end production code in ui/src, as reported by the scopes=MAIN facet of",
+    "/api/issues/search on the SEPARATE project eop-threat-modeling-ui. They have",
+    "nothing to say about Java: that project has its own ceiling next door in",
+    "sonar-baseline.json, and the two gates fail independently. Test code under",
+    "ui/src/**/*.test.ts(x) is analysed and recorded in sonar-ui-report.json under",
+    "scope.TEST, and is not gated - the same split ADR-060 made for Java, for the same",
+    "reason: a routine new test file must not redden a gate that has nothing to say",
+    "about the product.",
+    "",
+    "WHY A SECOND PROJECT AND NOT ONE POLYGLOT PROJECT. Because one set of counts over",
+    "both languages would let a front-end regression be paid for out of Java headroom,",
+    "and a Java fix would silently create room for a TypeScript issue. The number would",
+    "still go up and down truthfully while meaning nothing about either population.",
+    "",
+    "KEY FORMAT. Each entry in issues[] is QUALITIES|rule|path|hash, where QUALITIES is",
+    "the issue's software qualities comma-joined and sorted, path is relative to the",
+    "scanner's base directory - ui/ - so it reads src/App.tsx rather than",
+    "ui/src/App.tsx, and hash is SonarQube's digest of the offending line's CONTENT,",
+    "not its number, so a finding survives edits elsewhere in the file. The list is a",
+    "sorted multiset: duplicates are kept deliberately, because the same rule can fire",
+    "twice on two identical lines in one file and set semantics would let a new",
+    "occurrence hide behind an existing one.",
+    "",
+    "WHAT THE LIST IS FOR. It is diagnostic, not the gate. Only counts[] is compared",
+    "for pass or fail; issues[] exists so that a failure can name the findings that",
+    "were added rather than reporting that a number went up by one. Do not hand-edit",
+    "it to silence a finding - that changes nothing about the outcome and desynchronises",
+    "the diagnosis from the counts.",
+    "",
+    "COVERAGE IS NOT GATED HERE, AND THERE IS NO EQUIVALENT OF JaCoCo. The front-end",
+    "figure in sonar-ui-report.json comes from ui/coverage/lcov.info via Vitest's v8",
+    "provider and is context only. ADR-063 declines to add a coverage threshold to",
+    "ui/vite.config.ts as well: the ratchet already holds quality, and two numbers for",
+    "one invariant is how the two drift apart.",
+    "",
+    "PREFER THE FIX. Raising a number here is always available and almost never right.",
+    "The issues are real findings; the ratchet exists so that the total can only fall.",
+    "If a story genuinely must admit a new issue, raise the ceiling in the same commit",
+    "as the code, and say in the commit message which rule fired and why living with it",
+    "beats fixing it. A raise with no argument is a raise a reviewer should reject.",
+    "",
+    "A RAISED CEILING IS A LIABILITY, NOT A DISMISSAL. The gate is one-directional by",
+    "design: tools/sonar/ratchet-ui.sh --tighten lowers these numbers automatically when",
+    "a scan finds fewer issues, so a ceiling left high after the underlying issues are",
+    "fixed does not stay high by accident. It stays high only if nobody rescans.",
+    "",
+    "GENERATED FILE. Written by tools/sonar/seed-baseline.py --flavour ui and updated in",
+    "place by tools/sonar/ratchet-ui.sh --tighten. Both preserve this comment.",
+    "Hand-editing the counts is legitimate when raising a ceiling under review;",
+    "hand-editing anything else is not, and hand-editing the report next door defeats",
+    "the freshness check rather than passing it.",
+]
+
+# Everything that differs between the two projects, in one table so that the
+# difference is enumerable rather than scattered through the control flow. A
+# third flavour would be a row here, not a new branch to find in four places.
+FLAVOURS: dict[str, dict[str, Any]] = {
+    "java": {
+        "comment": JAVA_BASELINE_COMMENT,
+        # The name of the shell function in tools/sonar/source-hash.sh, not a
+        # Python callable: the token is computed by that library and only by
+        # that library, so both flavours shell out to it rather than growing a
+        # second definition here.
+        "hash_function": "sonar_source_hash",
+        "scanner_field": "scannerGav",
+        "scan_command": "tools/sonar/scan.sh",
+        "ratchet_command": "tools/sonar/ratchet.sh",
+        "report": "tools/sonar/sonar-report.json",
+        "baseline": "tools/sonar/sonar-baseline.json",
+    },
+    "ui": {
+        "comment": UI_BASELINE_COMMENT,
+        "hash_function": "sonar_ui_source_hash",
+        "scanner_field": "scannerImage",
+        "scan_command": "tools/sonar/scan-ui.sh",
+        "ratchet_command": "tools/sonar/ratchet-ui.sh",
+        "report": "tools/sonar/sonar-ui-report.json",
+        "baseline": "tools/sonar/sonar-ui-baseline.json",
+    },
+}
+
 
 def _fail(message: str) -> None:
     sys.stderr.write(f"seed-baseline: {message}\n")
     raise SystemExit(2)
 
 
-def _counts(report: dict[str, Any]) -> dict[str, int]:
+def _counts(report: dict[str, Any], scan_command: str) -> dict[str, int]:
     raw = report.get("counts")
     if not isinstance(raw, dict):
-        _fail("the scan report has no counts object. Regenerate it with tools/sonar/scan.sh.")
+        _fail(f"the scan report has no counts object. Regenerate it with {scan_command}.")
     out: dict[str, int] = {}
     for quality in QUALITIES:
         value = raw.get(quality)
@@ -129,20 +247,25 @@ def _counts(report: dict[str, Any]) -> dict[str, int]:
     return out
 
 
-def _actual_source_hash(repo_root: Path) -> str:
+def _actual_source_hash(repo_root: Path, hash_function: str) -> str:
     """Recompute the freshness token by asking the shell library for it.
 
     Shelling out rather than reimplementing the pipeline, for exactly the reason
     tools/sonar/ratchet.sh gives: two definitions of the token would agree until
     they did not, and the symptom would be a bootstrap refused as stale on a
     tree scanned seconds earlier.
+
+    hash_function names the function to call - sonar_source_hash for Java,
+    sonar_ui_source_hash for the front end. The two cover disjoint file sets,
+    which is what makes seeding one project from the other's report fail here
+    rather than succeed quietly with the wrong ceiling.
     """
     library = repo_root / "tools" / "sonar" / "source-hash.sh"
     if not library.exists():
         _fail(f"the source-hash library is missing at {library}.")
     try:
         result = subprocess.run(
-            ["bash", "-c", f'set -euo pipefail; . "{library}"; sonar_source_hash'],
+            ["bash", "-c", f'set -euo pipefail; . "{library}"; {hash_function}'],
             capture_output=True,
             text=True,
             check=True,
@@ -155,14 +278,30 @@ def _actual_source_hash(repo_root: Path) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report", default="tools/sonar/sonar-report.json")
-    parser.add_argument("--baseline", default="tools/sonar/sonar-baseline.json")
+    # No defaults here: they are resolved from --flavour below, so that naming a
+    # flavour is sufficient and naming neither still means the Java pair.
+    parser.add_argument("--report")
+    parser.add_argument("--baseline")
     parser.add_argument(
         "--force",
         action="store_true",
         help="overwrite an existing baseline - raises the ceiling, so review the diff",
     )
+    # Defaults to java so that the command recorded in ADR-060 and in the
+    # remedy text ratchet.py prints keeps working unchanged. The front end is
+    # the addition, so the front end is the one that names itself.
+    parser.add_argument(
+        "--flavour",
+        choices=sorted(FLAVOURS),
+        default="java",
+        help="which project's baseline this is - selects the prose, the source-hash "
+        "function and the provenance field (default: java)",
+    )
     args = parser.parse_args()
+
+    flavour = FLAVOURS[args.flavour]
+    scan_command = flavour["scan_command"]
+    ratchet_command = flavour["ratchet_command"]
 
     repo_root = Path(
         subprocess.run(
@@ -174,21 +313,21 @@ def main() -> int:
     )
     os.chdir(repo_root)
 
-    report_path = Path(args.report)
-    baseline_path = Path(args.baseline)
+    report_path = Path(args.report or flavour["report"])
+    baseline_path = Path(args.baseline or flavour["baseline"])
 
     if not report_path.exists():
         _fail(
             f"no scan report at {report_path}. Start the local stack with\n"
             "  docker compose -f compose.sonar.yml up -d\n"
-            "then run tools/sonar/scan.sh."
+            f"then run {scan_command}."
         )
 
     if baseline_path.exists() and not args.force:
         _fail(
             f"a baseline already exists at {baseline_path}, and overwriting it raises the\n"
             "  ceiling rather than lowering it. If a scan found FEWER issues, you want\n"
-            "  tools/sonar/ratchet.sh --tighten instead, which lowers the ceiling and needs\n"
+            f"  {ratchet_command} --tighten instead, which lowers the ceiling and needs\n"
             "  no flag. If you really are admitting new issues, re-run with --force and say\n"
             "  in the commit message which rule fired and why living with it beats fixing it."
         )
@@ -200,34 +339,41 @@ def main() -> int:
 
     reported_hash = report.get("sourceHash")
     if not isinstance(reported_hash, str) or not reported_hash:
-        _fail(f"{report_path} carries no sourceHash. Regenerate it with tools/sonar/scan.sh.")
+        _fail(f"{report_path} carries no sourceHash. Regenerate it with {scan_command}.")
 
-    actual_hash = _actual_source_hash(repo_root)
+    actual_hash = _actual_source_hash(repo_root, flavour["hash_function"])
     if actual_hash != reported_hash:
         _fail(
             "the scan report is stale - it was measured on a different tree, so its counts\n"
             f"  would seed a ceiling for code nobody has.\n"
             f"    report: {reported_hash}\n"
             f"    actual: {actual_hash}\n"
-            "  Re-run tools/sonar/scan.sh, then seed from the fresh report."
+            f"  Re-run {scan_command}, then seed from the fresh report."
         )
 
     issues = report.get("issues")
     if not isinstance(issues, list):
-        _fail(f"{report_path} has no issues array. Regenerate it with tools/sonar/scan.sh.")
+        _fail(f"{report_path} has no issues array. Regenerate it with {scan_command}.")
 
     baseline = {
-        "_comment": BASELINE_COMMENT,
-        "counts": _counts(report),
+        "_comment": flavour["comment"],
+        "counts": _counts(report, scan_command),
         # Provenance, so a reader of a raised ceiling can find the scan it came
         # from. Deliberately not the sourceHash: a baseline is not tied to one
         # tree the way a report is, and recording a hash here would read as a
         # freshness claim the baseline does not make and must not make - it is a
         # ceiling that outlives the code it was measured against.
+        #
+        # The scanner is recorded under the field the report used, because the
+        # two projects are analysed by different things: a Maven plugin resolved
+        # by GAV for Java, a digest-pinned container image for the front end.
+        # One generic key would make the value's meaning depend on which file
+        # you are reading, which is precisely the ambiguity provenance exists to
+        # remove.
         "seededFrom": {
             "generatedAt": report.get("generatedAt"),
             "sonarQubeVersion": report.get("sonarQubeVersion"),
-            "scannerGav": report.get("scannerGav"),
+            flavour["scanner_field"]: report.get(flavour["scanner_field"]),
         },
         "issues": sorted(str(entry) for entry in issues),
     }

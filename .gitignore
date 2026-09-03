@@ -115,3 +115,22 @@ __pycache__/
 # when it does match, the stray is named like the report it protects, which is
 # exactly the confusion the rename was introduced to remove. See ADR-060.
 tools/sonar/sonar-report.json.*
+# The same guard for the front-end report written by tools/sonar/scan-ui.sh. Two
+# patterns rather than one glob over `sonar-*.json.*`, so that a future report
+# has to be listed here deliberately instead of inheriting the exemption and
+# being silently untracked. See ADR-063.
+tools/sonar/sonar-ui-report.json.*
+
+# Vitest coverage output (ADR-063). `npm run coverage` in ui/ writes lcov.info
+# here for the front-end SonarQube project to read. It is a build artefact
+# regenerated on every run, and the numbers that matter are committed in
+# tools/sonar/sonar-ui-report.json instead — an LCOV file in a diff is pure noise.
+ui/coverage/
+
+# SonarScanner CLI working directory (ADR-063). tools/sonar/scan-ui.sh redirects
+# the scanner container's workdir here, into the mounted worktree, because the
+# image's default sits inside the container and the compute-engine poll needs to
+# read report-task.txt from this side of that boundary. The Java path has no
+# equivalent entry because its scanner writes under target/, already ignored.
+# Note this sits outside ui/src, so it does not perturb the front-end sourceHash.
+ui/.scannerwork/
