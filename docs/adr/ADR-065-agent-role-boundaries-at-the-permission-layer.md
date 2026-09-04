@@ -122,6 +122,16 @@ bare catch-all because an adviser that cannot open the code it is asked to criti
 worth less than one that can. Each file also gained a `## Tooling Boundary` section saying
 so, and saying that the reply is the only deliverable.
 
+> **Measured, and the catch-all is not quite total.** A probe of `@expert-kent-beck` after
+> the restart reported its roster as `read`, `glob`, `grep` **plus `list_mcp_resources`,
+> `read_mcp_resource` and `list_mcp_resource_templates`** — three built-in MCP *resource*
+> tools that the `"*": deny` did not remove, and one absence in the other direction, since
+> the `list` key appears to gate no tool in this build. Both `bash` and every write tool were
+> reported `NO SUCH TOOL`, so the boundary this ADR is about holds. The three survivors read
+> MCP resources rather than invoking MCP tools, and every MCP server here is either read-only
+> by header or denied by name, so they are recorded as a measured detail rather than a hole.
+> Do not restate the allow-list as yielding exactly four tools.
+
 ### The Product Owner — a path-scoped `edit` and a read-only `bash`
 
 `edit` denies everything and re-allows `docs/requirements/**`, which is the one place its
@@ -216,6 +226,15 @@ an agent's frontmatter. Every verification of this change requires an OpenCode r
 a behavioural check — ask the agent to do the forbidden thing and watch what happens —
 rather than asking it what it is permitted to do. An agent asked to enumerate its own tools
 will narrate plausibly and unreliably; that was observed while probing for this decision.
+
+> **Verified after the restart, on 2026-09-04.** `@product-owner` was asked to add a comment
+> to `Main.java` and then run `./mvnw -q compile`. It attempted neither and emitted the
+> redirect block from its own briefing word for word, and `git status` was clean afterwards —
+> the filesystem is the evidence, not the reply. `@expert-kent-beck`, dispatched by `task` and
+> asked to run `echo`, write a file and read `AGENTS.md`, reported the first two as
+> `NO SUCH TOOL` and the third as succeeding. Note the expert had to be reached by `task`
+> rather than `opencode run --agent`, which falls back to the default agent for a
+> `mode: subagent` file — the same trap that spoiled the first Phase 0 probe.
 
 **The Product Owner cannot commit its own output, and that is a real cost.** A requirements
 document now takes an operator action to land. This was accepted as cheaper than the
