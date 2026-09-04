@@ -236,6 +236,22 @@ for an unrelated reason and would make this decision harder to read. It is a fol
 So is one stale sentence in `product-owner.md`'s delegation-boundary paragraph, which still
 describes a five-agent sign-off where there are now seven.
 
+> **Amended 2026-09-04 (EOP-000).** Both of those follow-ups are now closed for
+> `product-owner.md` alone, and closing them surfaced something this decision had missed.
+> Scoping the Product Owner's tools left it coherent about what it may *do* and wrong about
+> where the backlog lives: it still named Jira throughout and was told to file stories there.
+> The tracker is GitHub Issues, and **the agent cannot write to that either** — the global
+> configuration denies `github_*` except the read tools and the MCP server is pinned
+> read-only by an `X-MCP-Readonly` header, so no issue-write tool exists for any agent to
+> call. Its central documented duty was unreachable through both trackers at once. The
+> resolution follows this ADR's own PRD pattern rather than adding a permission: the Product
+> Owner drafts the issue body and the operator files it. Its four Jira create-allows became
+> `atlassian_jira_*: deny`, and its gate lists were corrected to seven. The ten other agent
+> files still carry the dead Jira block, so the follow-up above stands for them.
+> The general lesson is worth keeping: a permission block and the prose beside it can each
+> be internally correct while disagreeing about the world they describe, and only the prose
+> half names the tracker.
+
 ## Related
 
 - [ADR-022](ADR-022-agent-model-tier-governance.md) — agent model tier governance; the
