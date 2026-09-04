@@ -209,6 +209,30 @@ report = json.load(open(sys.argv[1]))
 allowlist_path = sys.argv[2]
 accepted = json.load(open(allowlist_path))["advisories"]
 
+# Guard: a successful npm audit always emits a top-level "metadata" key with a
+# "vulnerabilities" sub-key. Its absence means the advisory endpoint was unreachable
+# (503, DNS failure, etc.) and npm wrote an error document instead of an audit report.
+# A top-level "error" key is the other canonical shape for that case.
+# Either way this is could-not-run (exit 2), not a clean tree (exit 0).
+# Reaching the staleness comparison on an error document would falsely flag every
+# allowlist entry as "no longer reported" and recommend deleting live accepted-risk
+# documentation -- the exact failure mode this guard prevents.
+if "error" in report or "vulnerabilities" not in report.get("metadata", {}):
+    err = report.get("error", {})
+    code = err.get("code", "unknown")
+    detail = err.get("summary", err.get("detail", "no detail in document"))
+    print(
+        f"FATAL: npm audit returned an error document rather than an audit report.\n"
+        f"  error.code:    {code}\n"
+        f"  error.detail:  {detail}\n"
+        f"  This is a transport or registry failure, not a clean tree.\n"
+        f"  Re-run the audit once the advisory endpoint is reachable.\n"
+        f"  The allowlist has NOT been checked for staleness -- do not delete entries\n"
+        f"  based on this run.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
 # npm nests one advisory object per finding under vulnerabilities[pkg].via; entries
 # that are plain strings are just "this package is affected because of that one" and
 # carry no advisory of their own.
@@ -296,7 +320,15 @@ echo "=== Registry signature verification ==="
 # audit that were installed from a supported registry".
 ( cd "$workdir" && npm audit signatures )
 
-if [[ "$audit_status" -ne 0 ]]; then
+if [[ "$audit_status" -eq 2 ]]; then
+    echo
+    echo "=== COULD NOT RUN: advisory endpoint unreachable ==="
+    echo "npm audit returned an error document instead of an audit report."
+    echo "This is a transport or registry failure -- the advisory gate has NOT run."
+    echo "An unreachable endpoint is never a clean audit; re-run once the endpoint"
+    echo "is reachable. The allowlist has NOT been checked for staleness."
+    exit 2
+elif [[ "$audit_status" -ne 0 ]]; then
     echo
     echo "=== FAIL: the advisory gate above rejected this tree ==="
     echo "Low and moderate findings do not fail this job; SETUP.md records the"

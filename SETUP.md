@@ -264,6 +264,19 @@ future audits without new evidence.
 > deliberately, in the same commit that moves a pin, and never to make a red
 > job green.
 >
+> **An unreachable advisory endpoint is `exit 2` (could not run), never a
+> pass.** When the npm registry returns a 503 or DNS fails, `npm audit --json`
+> writes an error document — a JSON object with a top-level `"error"` key and
+> no `"metadata.vulnerabilities"`. The script detects this shape and exits with
+> code 2 rather than 0, so a network failure cannot masquerade as a clean tree.
+> The staleness comparison is also skipped in this case: running it against an
+> error document would falsely flag every allowlist entry as "no longer
+> reported" and recommend deleting live accepted-risk documentation. Re-run the
+> script once the endpoint is reachable; do not treat a `could not run` result
+> as evidence of anything about the advisory state. The three exit codes are:
+> `0` = clean, `1` = gate rejected (drift or unaccepted advisory), `2` = could
+> not run (network, missing tool, or missing file).
+>
 > **The allowlist is a liability rather than a dismissal, which is why it fails
 > in both directions.** An entry whose advisory has stopped being reported is a
 > hard failure telling you to delete it, so exemptions cannot silently
