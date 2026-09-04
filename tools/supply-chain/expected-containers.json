@@ -1,0 +1,84 @@
+{
+  "_comment": [
+    "Baseline for tools/supply-chain/audit-containers.sh. Read ADR-064 before editing.",
+    "",
+    "This file is a TRIPWIRE, not a policy. It records what each digest-pinned container",
+    "reference resolved to, and where in the repository that reference appears, at the moment",
+    "the pin was last reviewed. The audit compares today's repository and today's registry",
+    "against these values and fails on any difference.",
+    "",
+    "It is deliberately a WEAKER instrument than expected-plugins.json, and the difference is",
+    "worth understanding before trusting it. An npm pin names a version, and a version's",
+    "contents can be republished, so that baseline is a compromise tripwire. A container pin",
+    "names a digest, and a digest IS the content -- nobody can change what",
+    "sha256:9bd01d69... resolves to. So this file cannot tell you an image went bad. What it",
+    "tells you is whether every pinned container is DECLARED, whether the pin has the SHAPE",
+    "it needs (an index carrying linux/amd64, for the images CI runs on ubuntu-latest), and",
+    "whether the copies of a digest that live in more than one file still AGREE.",
+    "",
+    "A change here is not automatically an incident, but it must be a decision: re-verify with",
+    "docker buildx imagetools inspect, then update this file in the same reviewed commit as the",
+    "pin bump that caused it. Never update it to silence a red build.",
+    "",
+    "Fields, per image:",
+    "  tag           The tag written beside the digest, or null if the reference is tagless.",
+    "                Mandatory but nullable: two of the three references here carry no tag, and",
+    "                omitting the field must not read as 'no tag' by silence.",
+    "  digest        The pinned digest. This is the value every occurrence must carry.",
+    "  mediaType     What the registry serves at that digest. Compared rather than required to",
+    "                be an index, because one of these three legitimately is not one.",
+    "  platforms     Platforms reachable at that digest. For an index, read from the manifest",
+    "                list. For a single manifest, resolved from the config blob.",
+    "  attestations  Count of buildx attestation manifests (provenance + SBOM) in the index.",
+    "                0 is not a finding -- it is less to verify against. A CHANGE is a finding.",
+    "  occurrences   Every tracked file that must carry this reference. Bidirectional: a file",
+    "                listed here that no longer carries it fails, and so does a file carrying it",
+    "                that is not listed.",
+    "  note          Why this container exists and what moving its pin costs."
+  ],
+  "containers": {
+    "grafana/k6": {
+      "tag": "2.2.0",
+      "digest": "sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "attestations": 2,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "The k6 CLI for the CI performance canary (ADR-055). The tag is 2.2.0 and NOT v2.2.0 -- grafana/k6:v2.2.0 does not exist. The digest is the top-level OCI index digest from 'docker buildx imagetools inspect grafana/k6:2.2.0'; pinning the arm64 child breaks ubuntu-latest with 'no matching manifest for linux/amd64', and 'docker inspect' on a developer Mac reports a third digest again. Both traps are recorded in ADR-055 amendment 2026-08-23."
+    },
+    "sonarqube": {
+      "tag": null,
+      "digest": "sha256:9026624a61cd25542a402a9e7213dd7dbb39724ac9597e331e6b85362558c079",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64/v8"
+      ],
+      "attestations": 2,
+      "occurrences": [
+        "compose.sonar.yml"
+      ],
+      "note": "The local SonarQube server both issue ratchets scan against. Tagless on purpose: a tag is a moving target and this pin decides what the committed baselines mean. MOVING THIS PIN IS A BASELINE-INVALIDATING CHANGE, not a version bump -- a SonarQube upgrade ships retuned rules, so tools/sonar/sonar-baseline.json and sonar-ui-baseline.json must be re-derived in the same commit."
+    },
+    "sonarsource/sonar-scanner-cli": {
+      "tag": null,
+      "digest": "sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
+      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "attestations": 0,
+      "occurrences": [
+        "tools/sonar/scan-ui.sh",
+        "tools/sonar/sonar-ui-baseline.json",
+        "tools/sonar/sonar-ui-report.json"
+      ],
+      "note": "The scanner tools/sonar/scan-ui.sh runs over ui/src, since ui/ has no pom.xml. Single-platform amd64, so it runs under emulation on Apple silicon and that scan is slow -- this is the one reference here that is NOT an index, which is why the audit compares mediaType rather than demanding one. Three occurrences: the script that runs it, and the two committed JSONs that record which scanner produced them. Those two are the reason the mirror check exists -- sonar-ratchet-ui's sourceHash covers only ui/package.json, ui/tsconfig.json, ui/vite.config.ts and ui/src/**, so editing scan-ui.sh alone leaves the committed report naming a scanner that no longer ran, with nothing else in the build catching it."
+    }
+  }
+}

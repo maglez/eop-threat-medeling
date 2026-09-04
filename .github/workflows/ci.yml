@@ -300,13 +300,38 @@ jobs:
           # sub-manifest instead would fail on this x86_64 runner with "no matching
           # manifest for linux/amd64", and `docker inspect` on an arm64 developer
           # machine reports a third digest again -- never derive the pin there.
+          #
+          # --network joins Caddy's own network namespace rather than the host's
+          # (EOP-160, ADR-055 amendment 2026-09-04). `--network host` handed the
+          # container every host port, every loopback service on the runner and the
+          # ability to bind host ports, when the only access k6 needs is outbound to
+          # one proxy. `eop-caddy` is the fixed container_name in compose.app.yml,
+          # so the target is deterministic. The port is 8080 because Caddy listens
+          # unprivileged inside the container; Compose maps that to 443 on the host,
+          # and the host's ports do not exist in this namespace.
+          #
+          # The address must be `localhost`, and that is a TLS constraint rather
+          # than a preference. ui/Caddyfile serves `tls internal` for exactly
+          # `localhost, 127.0.0.1, [::1]`, and a non-empty SNI outside that set
+          # aborts the handshake server-side with `tlsv1 alert internal error`.
+          # `default_sni` does not rescue it, and --insecure-skip-tls-verify is
+          # client-side so it cannot either -- which rules out `https://caddy:8080`
+          # by Compose service name. An IP literal (`https://172.28.0.10:8080`)
+          # does handshake, because Go omits SNI for IP literals, but its Host
+          # header then matches no site block and returns an empty 200 instead of
+          # /health.
+          #
+          # Residual, stated rather than implied: k6 can still reach app:8080 and
+          # postgres:5432 directly over the Compose network, bypassing the proxy.
+          # That was equally true under `--network host`, which could route to the
+          # same 172.28.0.0/24 subnet, so this is a narrowing with no new reach.
           k6_exit=0
-          docker run --network host \
+          docker run --network "container:eop-caddy" \
             --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}/test/k6:/scripts:ro" \
             -v "$RESULTS:/results" \
             -e K6_ENV=ci \
-            -e BASE_URL=https://localhost \
+            -e BASE_URL=https://localhost:8080 \
             grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6 \
             run --insecure-skip-tls-verify \
             --out json=/results/raw.json \
@@ -740,18 +765,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The container audit runs first, before the Node setup, because it needs
+      # neither Node nor npm -- only `git`, `python3` and `docker buildx`, all
+      # present on ubuntu-latest. Putting it here means a malformed or
+      # undeclared container pin reports in seconds instead of waiting on a
+      # toolchain install it does not use (ADR-064).
+      - name: Audit digest-pinned containers
+        run: tools/supply-chain/audit-containers.sh
+
       # No `cache: npm` here, and that is deliberate rather than an
       # oversight. The manifest this job audits is generated at run time
       # from the pinned specs and there is no lockfile to key a cache on;
       # more to the point, a cached dependency tree is exactly the wrong
       # thing for an audit that is supposed to observe what the registry
       # serves today.
+      #
+      # `if: always()` for the same reason as the plugin audit below: if the
+      # container audit failed, this setup must still run, or the plugin audit
+      # would fall back to whatever Node the runner image happens to ship.
       - name: Set up Node 22
+        if: always()
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      # `if: always()` so that a container finding above cannot hide plugin
+      # drift here. The two audits are independent populations and a reader
+      # needs both verdicts from one run, not the first one to fail.
       - name: Audit pinned OpenCode plugins
+        if: always()
         run: tools/supply-chain/audit-plugins.sh
 
   # CVE scanning for the two dependency trees the application actually

@@ -209,6 +209,57 @@ The row guard was first written as a comma-separated jq stream, `(.p50, .p95, �
 - **The canary is still a smoke test** of `GET /health` under `SMOKE_STAGES`, so the trend tracks one endpoint, not behaviour under load. `LOAD_STAGES` and `STRESS_STAGES` remain local-only.
 - **Nothing prunes `ci-history.jsonl`**; it grows one line per push to `main` indefinitely. Revisit when the file reaches a size that matters (roughly 1 MB per 10,000 pushes), or add a retention policy then.
 
+**2026-09-04 — EOP-160 narrows the k6 container's network grant:**
+
+### 1. What this amendment supersedes
+
+Section 2 ("How k6 is installed") says: "The image runs with `--network host` to reach the host's Caddy on `127.0.0.1:443` (the same path the existing smoke test uses). This must be verified during implementation." The matching Consequences bullet says the container "must reach the host's Caddy via `--network host`", and that if the path did not work "the architecture may need to change (e.g., run k6 outside Docker, or use a sidecar container)."
+
+Both are superseded. The path *did* work — amendment 1 above discharged that verification and remains accurate as history. What was wrong was the word **must**: `--network host` was sufficient, not necessary. The container now joins Caddy's own network namespace with `--network container:eop-caddy`, addressing `https://localhost:8080`.
+
+This closes @security-auditor's MEDIUM finding from EOP-155's gate round, which judged the host grant acceptable on an ephemeral runner but not minimal. That judgement was right on both counts, and "acceptable" is not the standard `.opencode/rules/security.md` sets.
+
+### 2. What the host grant actually conferred
+
+`--network host` put k6 in the runner's own network namespace: every host port, every loopback service on the runner, and the ability to bind arbitrary host ports. The step needed exactly one thing from that — outbound HTTPS to one reverse proxy.
+
+Joining Caddy's namespace is **strictly narrower, and confers nothing new**. On Linux the host can already route to the Compose bridge subnet `172.28.0.0/24`, so host-namespace membership already implied reach into the Compose network; moving into Caddy's namespace *drops* host loopback and the ability to bind host ports while adding no destination. `eop-caddy` is the fixed `container_name` in `compose.app.yml`, so the target is deterministic rather than a generated name.
+
+The port changes from 443 to 8080 because Caddy listens unprivileged inside its container and Compose publishes that to 443 on the host. Inside the namespace there is no host port to reach.
+
+### 3. Why the address must be `localhost`, and what that rules out
+
+This is a TLS constraint, not a preference, and it is the reason two more obvious options do not work.
+
+`ui/Caddyfile` serves `tls internal` for exactly `localhost`, `127.0.0.1` and `[::1]`. A client presenting a non-empty SNI outside that set gets the handshake aborted **server-side** with `tlsv1 alert internal error`; `default_sni` does not rescue that case (it covers an *absent* SNI), and `--insecure-skip-tls-verify` is client-side so it cannot either. So:
+
+- **`https://caddy:8080` by Compose service name is dead at the TLS layer.** This was option 1 in the ticket. It cannot be made to work without editing the shipped Caddyfile to add a site name for a load-testing tool.
+- **`https://172.28.0.10:8080` by IP literal handshakes but fails at routing.** Go omits SNI for IP literals, so `default_sni` completes the handshake — but the Host header then matches no site block, and Caddy returns an empty 200 with no security headers instead of `/health`. Rescuing it would need a Host override inside `test/k6/health-check.js`, a file local runs also use, so CI would diverge from local in the shared script.
+- **A `--network-alias localhost` does not work either**, because libc resolves `localhost` from `/etc/hosts` before consulting Docker DNS, so the request never leaves the container.
+
+A Compose sidecar (option 2 in the ticket) was rejected for the reason k6 was kept out of `compose.app.yml` in the first place: it entangles the load-testing tool with the shipping application topology.
+
+### 4. Verification
+
+Probed locally under Colima before the change was committed, with a deliberately minimal stand-in rather than a full stack build: `caddy:2-alpine` configured with only the decisive lines of `ui/Caddyfile` — `admin off`, `auto_https disable_redirects`, `default_sni localhost`, and the site address `localhost:8080, 127.0.0.1:8080, [::1]:8080 { tls internal … }` — started with **no published ports at all**, so no host path to it existed and the namespace join was the only possible route. Caddy's log confirmed local-CA issuance for all three identifiers.
+
+The real digest-pinned `grafana/k6:2.2.0@sha256:9bd01d69…` image was then run exactly as CI runs it, with only `--network` and `BASE_URL` changed:
+
+- `checks_succeeded: 100.00% 663 out of 663`, `checks_failed: 0.00% 0 out of 663`
+- all three of `health-check.js`'s checks passed, including `response body is OK`
+- all three CI thresholds evaluated and passed, matching `EXPECTED_THRESHOLD_COUNT=3`: `http_req_duration p(95)=880.92µs` against `p(95) < 500`, `max=2.72ms` against `max < 2000`, `http_req_failed rate=0.00%` against `rate < 0.001`
+- `http_reqs: 221`, `http_req_failed: 0 out of 221`, 40.1s, 10 VUs
+
+That proves the namespace join, the `tls internal` handshake with SNI `localhost`, site-block matching on a `localhost:8080` address including the Host header's port, and that `--user` with `/scripts:ro` plus a writable `/results` is unaffected by the network change.
+
+What it does **not** prove is the end-to-end path through the real `eop-caddy` container on a GitHub runner. Per amendment 6's own lesson — "a step that only ever runs in CI is only ever proven in CI" — that proof is this change's own CI run, and nothing less should be accepted as it.
+
+### 5. Residual, stated rather than implied
+
+k6 can still reach `app:8080` and `postgres:5432` directly over the Compose network, bypassing the proxy. This was equally true under `--network host`, so it is unchanged by this amendment rather than introduced by it. Removing it would mean a dedicated network with Caddy attached to both, which buys nothing while the tool being contained is a pinned, read-only k6 running one committed script.
+
+`test/k6/run.sh` is untouched: the local path runs the brew-installed k6 binary natively, so no `--network` value reaches it.
+
 ## Related
 
 - ADR-016 (Colima as local container runtime)
