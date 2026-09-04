@@ -1,6 +1,6 @@
 # ADR-006: Build Quality Gates
 
-**Status:** Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20, 2026-08-23 and 2026-08-24)
+**Status:** Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20, 2026-08-23, 2026-08-24 and 2026-09-04)
 **Date:** 2026-07-26
 **Deciders:** @tech-lead, @devops-engineer
 
@@ -166,6 +166,18 @@ Plugins pinned to specific versions for reproducible builds.
 > - **Extraction reads `createTable` only.** A table created by a raw `<sql>` or `<sqlFile>` changeset carries no such element and is invisible; none exists in this tree today, since raw `<sql>` is used only for check constraints and indexes. The same narrowness means a genuinely dropped table would leave its historic `createTable` behind and the gate would keep accepting a stale entity — at which point dropped names read *outside* `<rollback>` blocks must be subtracted, since every `dropTable` here is currently a rollback inverse.
 >
 > **Related:** `docs/architecture/db-schema.md`, the diagram this gate guards; `.opencode/rules/build-quality.md`, whose prose-gate bullet gains this gate; [ADR-008](ADR-008-database-migration-liquibase.md), which makes the changelogs the sole schema truth the diagram is derived from.
+
+> **Amended 2026-09-04 (EOP-125): a tenth documentation-integrity gate, and the first to read a directory that no build gate had ever read.**
+>
+> `src/test/java/org/maglez/eop/docs/RuleVersionLiteralTest.java` fails the build on a version literal in `.opencode/rules/**` that carries no `ADR-NNN` citation on the same line. Every gate above reads `docs/**`, `src/**`, `docs/api/openapi.yml` or `ui/src/api.ts`; none read `.opencode/rules/`, which is the one place where a stale claim is injected into **every** agent session, on **every** dispatch. That is the asymmetry this gate closes: the least supervised text in the repository was also the most read.
+>
+> **Why a citation is the pass condition rather than the absence of a literal.** A rule file has no `**Status:**` line, no `**Date:**` and no supersession mechanism, so a version claim inside one can never be retired the way a claim in this file can — it simply goes quietly wrong. An ADR citation on the same line restores what the file itself cannot provide: a dated, supersedable owner for the number. So the rule is not "never name a version in a rule file", it is "never name one without saying which dated decision owns it". `build-quality.md:6` already satisfies it, carrying six Maven plugin versions beside `ADR-064` and `ADR-006`.
+>
+> **The recognised shapes are a closed enumeration, and the closure was measured rather than assumed.** The gate matches exactly two things: a three-component `MAJOR.MINOR.PATCH` literal, and a Docker image tag of the form `image: name:tag`. It deliberately does **not** recognise two-component numbers, and that is the interesting bound — a broad `\d+\.\d+` sweep of the directory returned an IP address (`127.0.0.1`), two coverage percentages (`95.1`), three k6 threshold rates (`0.001`, `0.1`) and exactly **one** genuine two-component pin. False positives outnumbered true ones five to one, so a two-component matcher would have been switched off within a week, which is ADR-060's lesson about a control nobody can live with. The one real instance was fixed instead: `performance-testing.md` no longer quotes InfluxDB's tag, it names `docker-compose.yml` as the place to read it. Also unrecognised, each for a stated reason: a `v`-prefixed tag (`v1.2.0`), a four-or-more-component literal (an IP address), and a digest (`sha256:…`, which carries no dotted numerals at all). Per the principle already stated in this ADR, that enumeration must be revisited when a new shape appears — it is not a claim that no other shape exists.
+>
+> **Two exceptions ship with it, both in `versioning.md`, and both are declared rather than tolerated.** `Semantic Versioning 2.0.0` names a specification, not a dependency: 2.0.0 is that spec's current and only release and no bump in this repository can falsify it. `` `1.2.0-SNAPSHOT` → tag `v1.2.0` `` is a deliberately fictional worked example of the version-to-tag mapping; the repository's real version is `1.0.0-SNAPSHOT`, so replacing the example with the real value would make the illustration circular. Each entry carries its justification in the test and is **self-retiring** on `SeparationInvariantTest`'s pattern: an entry whose excerpt no longer appears in the file fails the build, so closing an exception means deleting it rather than letting it decay into a permanent carve-out. The gate was **not** introduced with a blanket exemption.
+>
+> **What it does not do.** It proves a number has a dated owner, never that the number is *right* — `ADR-064` beside a wrong version still passes, exactly as `ConditionalOnPropertyHavingValueTest` proves a value is `true` and not that gating that bean was wise. It carries an anti-vacuity floor (at least one literal must still be found, and all fifteen rule files must be read) for the reason ADR-006 already gives about the branch-coverage limit: a guard that has quietly stopped matching anything is worse than no guard, because it reads as protection. Deliberately scoped to `.opencode/rules/**` alone and **not** extended to `docs/**`, where a version literal is correct: an ADR is dated and supersedable, which is the whole point of it.
 
 ## Consequences
 
