@@ -745,7 +745,7 @@ jobs:
   # unhonoured. Prose does not run. This job does.
   #
   # What it guards is not the shipped Java application - that has no npm
-  # dependencies at all. It guards the six plugins pinned in the `plugin`
+  # dependencies at all. It guards the plugins pinned in the `plugin`
   # array of `.opencode/opencode.json`, which load in-process inside
   # OpenCode with sight of every message and file on a developer machine
   # and no sandbox. That is a wider blast radius than anything in `pom.xml`,
