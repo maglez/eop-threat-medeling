@@ -3,6 +3,11 @@ description: Writes ultra-fast unit tests, analyzes code coverage gaps, and runs
 mode: subagent
 temperature: 0.1
 permission:
+  # Authoring is the role, so `edit` is unrestricted -- stated rather than left
+  # unstated. An undeclared key inherits the global allow, so silence here would
+  # be indistinguishable from an oversight, which is the hole this closes
+  # (ADR-065 as amended; AgentPermissionDeclarationTest).
+  edit: allow
   # Delivery is the role; publishing is not. `bash` stays broadly allowed because
   # these agents must run ./mvnw verify, the SonarQube ratchets, npm run verify
   # and the Trivy scan, and their Sign-off Contract obliges them to paste real

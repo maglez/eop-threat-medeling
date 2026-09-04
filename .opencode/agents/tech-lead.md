@@ -4,6 +4,10 @@ mode: all
 temperature: 0.1
 permission:
   task: allow
+  # The orchestrator authors and commits, so `edit` is unrestricted -- stated
+  # rather than left unstated, because an undeclared key inherits the global
+  # allow and silence would read as an oversight (ADR-065 as amended).
+  edit: allow
   # The orchestrator commits; the Prompter publishes. `bash` stays broadly allowed
   # -- this agent runs the whole verification suite and is the one agent permitted
   # to `git commit` -- but the commands that make work public or irreversible are
