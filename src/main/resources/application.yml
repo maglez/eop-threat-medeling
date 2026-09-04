@@ -214,3 +214,11 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Explicit log levels (EOP-117). logback-spring.xml sets these too via <logger> elements,
+# but declaring them here as well means they appear in the Spring Environment and are
+# visible to tools that inspect application properties. The two must agree: DEBUG in the
+# default profile, INFO in prod (see application-prod.yml and logback-spring.xml).
+logging:
+  level:
+    org.maglez.eop: DEBUG

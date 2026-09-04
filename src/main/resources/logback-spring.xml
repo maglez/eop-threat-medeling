@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback configuration for the EoP Threat Modelling application (EOP-117).
+
+  Two appenders are defined:
+    - CONSOLE_PLAIN  : human-readable pattern, active on the default profile
+    - CONSOLE_JSON   : structured JSON via ch.qos.logback.classic.encoder.JsonEncoder,
+                       active on the prod profile
+
+  The MDC key "correlationId" is populated by CorrelationIdFilter on every request
+  and appears automatically in both appenders — in the pattern via %X{correlationId}
+  and in the JSON output as an MDC field.
+
+  Profiles: exactly two (default and prod). No third profile exists (ADR-012).
+-->
+<configuration>
+
+    <!-- ================================================================
+         Default profile: human-readable console output
+         ================================================================ -->
+    <springProfile name="!prod">
+        <appender name="CONSOLE_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <!--
+                  Pattern includes the MDC correlationId so developers can trace a request
+                  through the log even in local runs. The %X{correlationId:-no-correlation-id}
+                  default ensures the field is always present, never blank.
+                -->
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{correlationId:-no-correlation-id}] - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <!-- Application code: DEBUG in development so state transitions are visible -->
+        <logger name="org.maglez.eop" level="DEBUG"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_PLAIN"/>
+        </root>
+    </springProfile>
+
+    <!-- ================================================================
+         prod profile: structured JSON output
+         ================================================================ -->
+    <springProfile name="prod">
+        <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <!--
+              JsonEncoder (ch.qos.logback.classic.encoder.JsonEncoder) is available in
+              logback-classic 1.5.x, which Spring Boot 4.1 ships. It emits one JSON
+              object per log event with standard fields (timestamp, level, logger,
+              thread, message) plus an "mdc" object containing all MDC entries,
+              including correlationId. No additional library is required.
+            -->
+            <encoder class="ch.qos.logback.classic.encoder.JsonEncoder"/>
+        </appender>
+
+        <!-- Application code: INFO in production; DEBUG would be too noisy -->
+        <logger name="org.maglez.eop" level="INFO"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_JSON"/>
+        </root>
+    </springProfile>
+
+</configuration>
