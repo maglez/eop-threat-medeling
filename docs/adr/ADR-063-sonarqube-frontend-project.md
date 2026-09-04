@@ -182,6 +182,23 @@ chaining them would only serialise two file comparisons and hide the second fail
 first. Like the Java job, it is not a required status check yet, for ADR-060's reason: the friction
 of the stale-report failure should be measured before it can block a merge.
 
+> **Amended 2026-09-04 (EOP-193):** both jobs are required status checks now. The friction was
+> measured on the Java ratchet and came back adverse in the direction nobody had planned for — not
+> a gate too strict to live with, but one whose red state depended on somebody happening to read a
+> checks page, which is how `main` sat red across two merges for about a day. ADR-060's
+> 2026-09-04 amendment holds the measurement, the reasoning and the caveats; this job inherited the
+> original position and inherits the reversal with it.
+>
+> Two things follow specifically for this job. **The symmetry is a choice, not a finding.** The
+> front-end project has never suffered the failure that prompted the change; it was made required
+> alongside the Java job because an asymmetry would mean a front-end regression merges while the
+> identical Java one does not, for no reason a contributor could infer from either file. And **the
+> "neither job declares a dependency on the other" sentence above is now load-bearing rather than
+> merely tidy**: two independent required checks both report, so a red front-end ratchet can never
+> be hidden behind a red Java one, and neither can be skipped. Adding an `if:` or a path filter to
+> either job while it is required would leave every pull request permanently unmergeable, waiting
+> on a status that never arrives.
+
 ## Consequences
 
 ### What this buys

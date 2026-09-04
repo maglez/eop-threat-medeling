@@ -168,6 +168,13 @@ should read differently.
 The job is **not** a required status check on arrival. `build` remains the only required
 check.
 
+> **Amended 2026-09-04 (EOP-193):** it is required now, and so is `sonar-ratchet-ui`. The
+> friction the sentence above was waiting to measure was measured, and it came back adverse
+> in the opposite direction — not an over-strict gate, but a gate whose red state depended on
+> someone happening to look. The evidence and the reasoning are in the amendment at the end
+> of the Consequences section. "On arrival" is the operative phrase: the original decision was
+> about how the gate should land, not about where it should stay.
+
 ### What was rejected
 
 **An offline scanner CLI.** This is the option the operator's instruction most directly
@@ -295,6 +302,64 @@ the friction can be measured before it becomes mandatory. Two caveats, in the sa
 ADR-050 uses: branch protection is configured outside the workflow file, so no comment or
 ADR can make the job required; and the job goes red on a regression either way, so "not
 required" affects whether a merge is blocked, never whether the regression is visible.
+
+> **Amended 2026-09-04 (EOP-193):** the friction was measured, and the measurement decided
+> this the other way. Both `sonar-ratchet` and `sonar-ratchet-ui` are required status checks
+> on `main` as of this date. The heading above is left as written because it records what was
+> decided in August and why; this block records what changed.
+>
+> **What was measured.** PR #362 added four `.java` files and merged without a rescan. The
+> freshness guard behaved exactly as designed — it saw 307 files recorded against 311 present,
+> declined to compare counts it could not trust, and exited 1. It did not pass a wrong number.
+> It also did not block anything, because it was advisory, so `main` then sat red on this job
+> across two further merges for about a day:
+>
+> | CI run | `main` commit | `sonar-ratchet` |
+> |---|---|---|
+> | 33905648171 | `99a776c` — merge of #362 | failure |
+> | 33914462303 | `c159098` — merge of #363 | failure |
+> | 33915481685 | `7f65fcd` — merge of #364, the rescan | success |
+>
+> **Why that reverses the decision rather than merely annoying us.** The anticipated cost was
+> a developer being told to boot a container over a one-line fix. That cost turned out to be
+> one command and a five-line diff, with the ceiling unchanged — the rescan found no new
+> production finding at all. The unanticipated cost was the one actually paid: a gate that is
+> visible but not binding is a gate whose enforcement is whoever next reads the checks page.
+> Nothing in the pipeline surfaced the red `main`; a human noticed it on an unrelated pull
+> request. A control that depends on attention is not a control, and this one had a year of
+> prose defending it in exactly the way ADR-065 later found agent role boundaries were
+> defended before they were enforced.
+>
+> **A precondition, not an incidental detail.** Neither ratchet job carries an `if:`, so both
+> run on every event. A required check that can be *skipped* leaves a pull request permanently
+> unmergeable — GitHub waits for a status that will never arrive. So while either job is
+> required, neither may gain a path filter or an event guard, however reasonable narrowing it
+> would otherwise look. This is the one way a well-meant edit to `ci.yml` could break every
+> merge in the repository.
+>
+> **Why `sonar-ratchet-ui` too, when the incident was Java.** Symmetry, stated plainly rather
+> than dressed up as evidence: the front-end project has not suffered this failure, and is
+> promoted alongside the Java one because an asymmetry would mean a front-end regression merges
+> while the equivalent Java one does not, for no reason a contributor could infer from either
+> job. ADR-063's inheritance of the "not required yet" position is amended with it.
+>
+> **The caveats above survive intact, and the first one now bites harder.** Branch protection
+> is configured in repository settings, outside this file and outside `ci.yml`, so this ADR
+> still cannot make the job required — it can only record the intent. The two can drift apart
+> silently and nothing detects it. Worse, no agent can even check: the available token returns
+> `403 Resource not accessible by personal access token` on both `GET` and `PUT` of
+> `/repos/…/branches/main/protection`, so the enforcement half of this amendment is a manual
+> act by the repository owner and its verification is observational — the checks appearing as
+> required on a subsequent pull request. Until that is done, this section describes an
+> intention. The second caveat is unchanged and worth restating for the same reason it was
+> written: red is red either way, so "required" was never about visibility.
+>
+> **What stays advisory, and why this is not the thin end of a wedge.** `ui`, `supply-chain`
+> and `dependency-cve` remain optional, each for its own reason. `dependency-cve` is the
+> instructive one: it can go red on a third-party CVE publication against unchanged code, so
+> requiring it would let an unrelated pull request be blocked by someone else's release
+> schedule. The ratchets cannot do that — their inputs are two committed files and a hash of
+> the tree, so they only go red because of the change in front of them.
 
 ### Verification
 
