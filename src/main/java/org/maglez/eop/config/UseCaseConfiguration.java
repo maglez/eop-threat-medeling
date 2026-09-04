@@ -31,6 +31,7 @@ import org.maglez.eop.usecase.SessionEventPublisher;
 import org.maglez.eop.usecase.SessionRepository;
 import org.maglez.eop.usecase.StartSessionUseCase;
 import org.maglez.eop.usecase.SweepExpiredSessionsUseCase;
+import org.maglez.eop.usecase.TrickJournal;
 import org.maglez.eop.usecase.TrickRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -302,22 +303,55 @@ public class UseCaseConfiguration {
     }
 
     /**
+     * Declares the trick journal, the collaborator every trick write goes through.
+     *
+     * <p>Extracted by EOP-190 from {@code PlayCardUseCase} and {@code ResolveTrickUseCase}, which
+     * held the same completion cascade twice — record the resolution, announce it, and when the last
+     * card is gone complete the session, persist the result best-effort and announce the game over.
+     * Two copies of a cascade ending in a durable write is the shape where the copies drift, and here
+     * a drift decides whether a finished game is ever scoreable.
+     *
+     * <p><strong>Deliberately not gated.</strong> Both of its callers are behind
+     * {@code eop.features.trick-play} today, so gating the collaborator as well would withhold
+     * nothing that gating them has not already withheld, while turning any future caller on a
+     * different flag into an unsatisfied dependency far from its cause. That is the reasoning already
+     * recorded for {@link DeckShuffler} and {@link HandDealer} above (ADR-013). Ungated is not
+     * unguarded: containment rests on both callers being gated, and on this class authorising nobody
+     * — establishing that the caller may play or resolve stays the calling use case's first statement
+     * (ADR-024).
+     *
+     * @param trickRepository the port tricks are opened, appended to and resolved through
+     * @param sessionRepository the port the session is completed through when the last trick resolves
+     * @param sessionEventPublisher the transport each write is announced on, after it has landed
+     * @param persistGameResultUseCase writes the final standings, empty when the game-over feature is
+     *     off — the game still completes, it is simply not recorded
+     * @return the trick journal
+     */
+    @Bean
+    public TrickJournal trickJournal(
+            final TrickRepository trickRepository,
+            final SessionRepository sessionRepository,
+            final SessionEventPublisher sessionEventPublisher,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
+        return new TrickJournal(trickRepository, sessionRepository, sessionEventPublisher, persistGameResultUseCase);
+    }
+
+    /**
      * Declares the play-card use case, behind {@code eop.features.trick-play}.
      *
      * <p>When the last card of a trick is played, this use case resolves the trick inline and
      * publishes {@code trick-resolved} (and {@code game-completed} if no cards remain). The
-     * {@link ResolveTrickUseCase} endpoint remains available for reconnect and edge cases.
+     * {@link ResolveTrickUseCase} endpoint remains available for reconnect and edge cases. Both
+     * reach that cascade through the same {@link TrickJournal} since EOP-190, so the two routes
+     * cannot drift apart.
      *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands and the current leader seat are read through
-     * @param trickRepository the port a trick is opened and a play appended through
      * @param cardRepository the port the played card is resolved through
      * @param identifierGenerator the source of the trick and play identifiers
-     * @param sessionEventPublisher the transport that announces the play to connected clients
      * @param clock the clock the played timestamp is read from
-     * @param sessionRepository the port the session status is advanced through on auto-complete
-     * @param persistGameResultUseCase persists the final game result; absent when the
-     *     {@code game-over} feature flag is off
+     * @param trickJournal writes the trick, announces each write, and completes the game when the
+     *     last trick resolves
      * @return the play-card use case
      */
     @Bean
@@ -325,23 +359,12 @@ public class UseCaseConfiguration {
     public PlayCardUseCase playCardUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
-            final TrickRepository trickRepository,
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
             final Clock clock,
-            final SessionRepository sessionRepository,
-            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
+            final TrickJournal trickJournal) {
         return new PlayCardUseCase(
-                resolvePlayerUseCase,
-                handRepository,
-                trickRepository,
-                cardRepository,
-                identifierGenerator,
-                sessionEventPublisher,
-                clock,
-                sessionRepository,
-                persistGameResultUseCase);
+                resolvePlayerUseCase, handRepository, cardRepository, identifierGenerator, clock, trickJournal);
     }
 
     /**
@@ -370,12 +393,9 @@ public class UseCaseConfiguration {
      *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands are read through
-     * @param trickRepository the port the resolution is recorded through
-     * @param sessionRepository the port the session status is advanced through on auto-complete
-     * @param sessionEventPublisher the transport that announces the resolution to connected clients
      * @param clock the clock the resolved timestamp is read from
-     * @param persistGameResultUseCase the use case that writes the final standings, empty when the
-     *     leaderboard feature is off — the resolution still completes, it is simply not recorded
+     * @param trickJournal reads the current trick, records the resolution, announces it, and
+     *     completes the game when no seat still holds a card
      * @return the resolve-trick use case
      */
     @Bean
@@ -383,14 +403,9 @@ public class UseCaseConfiguration {
     public ResolveTrickUseCase resolveTrickUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
-            final TrickRepository trickRepository,
-            final SessionRepository sessionRepository,
-            final SessionEventPublisher sessionEventPublisher,
             final Clock clock,
-            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
-        return new ResolveTrickUseCase(
-                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository,
-                sessionEventPublisher, clock, persistGameResultUseCase);
+            final TrickJournal trickJournal) {
+        return new ResolveTrickUseCase(resolvePlayerUseCase, handRepository, clock, trickJournal);
     }
 
     /**

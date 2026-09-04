@@ -155,10 +155,10 @@ javadoc of the class it constrains.
 > **Amended 2026-08-13, EOP-14 Slice C2 — this obligation is now discharged.** The bolded sentence
 > above says "undischarged" and was true when it was written; it is no longer. All three use cases
 > call `ResolvePlayerUseCase.execute` as their first port call, before any hand, trick or card is
-> read: `DealHandsUseCase.java:88` (anchor: `resolvePlayerUseCase`), `PlayCardUseCase.java:189` and
-> `ResolveTrickUseCase.java:166`.
+> read: `DealHandsUseCase.java:88` (anchor: `resolvePlayerUseCase`), `PlayCardUseCase.java:178` and
+> `ResolveTrickUseCase.java:158`.
 > `PlayCardUseCase` then derives the acting seat and the acting player identifier from the resolved
-> player and from nothing the caller supplied (`PlayCardUseCase.java:190-191`), which is stronger than
+> player and from nothing the caller supplied (`PlayCardUseCase.java:179-191`), which is stronger than
 > the obligation asked for: `PlayCardCommand` has no seat and no player component, so a caller-supplied
 > seat is inexpressible rather than rejected. Each of the three has a test asserting a stranger is
 > refused *before* any port read happens, asserted against the repository double's read log rather than

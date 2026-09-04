@@ -2,17 +2,13 @@ package org.maglez.eop.usecase;
 
 import java.time.Clock;
 import java.util.Objects;
-import java.util.Optional;
 import org.maglez.eop.entity.CardNotFoundException;
 import org.maglez.eop.entity.HandCompleteException;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.OutOfTurnException;
 import org.maglez.eop.entity.PlayerNotInSessionException;
-import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickPlay;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Plays one card from the acting player's hand into the current trick, opening a trick first if none
@@ -99,60 +95,53 @@ import org.slf4j.LoggerFactory;
  * complete but unresolved. {@link ResolveTrickUseCase} remains available for reconnect and edge
  * cases; it will return {@link org.maglez.eop.entity.TrickAlreadyResolvedException} if called on a
  * trick this path already resolved.
+ *
+ * <p>Every sentence above about what is written and what is announced is carried out by
+ * {@link TrickJournal}, not here. Until EOP-190 this class held {@code TrickRepository},
+ * {@code SessionRepository}, {@link SessionEventPublisher} and the optional
+ * {@link PersistGameResultUseCase} itself, and the resolution cascade &mdash; record, announce,
+ * complete the session, persist the result, announce the game over &mdash; was written out inline
+ * here and again in {@link ResolveTrickUseCase}. Both paths now reach it through the same journal, so
+ * the two cannot drift apart, and the write-then-announce ordering this paragraph relies on is
+ * enforced in one place rather than asserted in two.
  */
 public class PlayCardUseCase {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PlayCardUseCase.class);
-
     private final ResolvePlayerUseCase resolvePlayerUseCase;
     private final HandRepository handRepository;
-    private final TrickRepository trickRepository;
     private final CardRepository cardRepository;
     private final IdentifierGenerator identifierGenerator;
-    private final SessionEventPublisher sessionEventPublisher;
     private final Clock clock;
-    private final SessionRepository sessionRepository;
-    private final Optional<PersistGameResultUseCase> persistGameResultUseCase;
+    private final TrickJournal trickJournal;
 
     /**
      * Creates the use case.
      *
      * @param resolvePlayerUseCase resolves the identity token into a seated player
      * @param handRepository reads the hands and the recorded leader seat
-     * @param trickRepository opens tricks and appends plays
      * @param cardRepository resolves the played card against the deck
      * @param identifierGenerator mints trick and play identifiers
-     * @param sessionEventPublisher announces that a card was played, naming none of it
      * @param clock supplies the instant the play was made at
-     * @param sessionRepository records the session completion when the last trick resolves
-     * @param persistGameResultUseCase persists the final game result; absent when the
-     *     {@code game-over} feature flag is off
+     * @param trickJournal writes the trick and announces each write. It also owns the completion
+     *     cascade that used to sit at the end of this class, which is why no
+     *     {@code SessionRepository}, {@code SessionEventPublisher} or {@code PersistGameResultUseCase}
+     *     is held here any more (EOP-190)
      */
     public PlayCardUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
-            final TrickRepository trickRepository,
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
             final Clock clock,
-            final SessionRepository sessionRepository,
-            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
+            final TrickJournal trickJournal) {
         this.resolvePlayerUseCase =
                 Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
-        this.trickRepository =
-                Objects.requireNonNull(trickRepository, "trickRepository is required");
         this.cardRepository = Objects.requireNonNull(cardRepository, "cardRepository is required");
         this.identifierGenerator =
                 Objects.requireNonNull(identifierGenerator, "identifierGenerator is required");
-        this.sessionEventPublisher =
-                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
-        this.sessionRepository =
-                Objects.requireNonNull(sessionRepository, "sessionRepository is required");
-        this.persistGameResultUseCase =
-                Objects.requireNonNull(persistGameResultUseCase, "persistGameResultUseCase is required");
+        this.trickJournal = Objects.requireNonNull(trickJournal, "trickJournal is required");
     }
 
     /**
@@ -213,7 +202,7 @@ public class PlayCardUseCase {
                         .findCurrentLeaderSeat(sessionId)
                         .orElseThrow(() -> new HandNotDealtException(sessionId));
         final var now = clock.instant();
-        final var current = trickRepository.findCurrentTrick(sessionId);
+        final var current = trickJournal.currentTrick(sessionId);
 
         final var opening = current.isEmpty() || current.get().winner().isPresent();
         final Trick trick;
@@ -243,14 +232,13 @@ public class PlayCardUseCase {
                         now);
 
         if (opening) {
-            trickRepository.openTrick(sessionId, trick, leaderSeat, now);
+            trickJournal.openTrick(sessionId, trick, leaderSeat, now);
         }
 
         final var updated = trick.acceptPlay(actingSeat, candidate, hands);
         final var accepted = updated.plays().getLast();
 
-        trickRepository.appendPlay(sessionId, trick.trickId(), leaderSeat, accepted);
-        sessionEventPublisher.publish(new SessionEvent(SessionEventType.CARD_PLAYED, sessionId, now));
+        trickJournal.appendPlay(sessionId, trick.trickId(), leaderSeat, accepted, now);
 
         // Auto-resolve: if the play just appended completes the trick, resolve it inline.
         // This ensures all connected clients receive TRICK_RESOLVED immediately after CARD_PLAYED
@@ -260,28 +248,7 @@ public class PlayCardUseCase {
         if (updated.isComplete(seatsHoldingCards)) {
             final var resolvedTrick = updated.resolved();
             final var nextLeaderSeat = resolvedTrick.nextLeaderSeat(seatsHoldingCards);
-            trickRepository.recordResolution(sessionId, resolvedTrick, leaderSeat, nextLeaderSeat, now);
-            sessionEventPublisher.publish(new SessionEvent(SessionEventType.TRICK_RESOLVED, sessionId, now));
-
-            if (nextLeaderSeat.isEmpty()) {
-                try {
-                    sessionRepository.recordCompleted(sessionId, now);
-                }
-                catch (SessionNotInProgressException ignored) {
-                    // A concurrent facilitator call already completed the session.
-                    // The trick resolution was durably committed; treat this as success.
-                }
-                persistGameResultUseCase.ifPresent(uc -> {
-                    try {
-                        uc.execute(sessionId);
-                    }
-                    catch (RuntimeException ex) {
-                        LOG.warn("[EOP-64] Failed to persist game result for session {}; "
-                                + "leaderboard will return 404 until the result is recorded.", sessionId, ex);
-                    }
-                });
-                sessionEventPublisher.publish(new SessionEvent(SessionEventType.GAME_COMPLETED, sessionId, now));
-            }
+            trickJournal.recordResolution(sessionId, resolvedTrick, leaderSeat, nextLeaderSeat, now);
             return resolvedTrick;
         }
 

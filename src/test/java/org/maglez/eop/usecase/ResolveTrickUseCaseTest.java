@@ -202,11 +202,9 @@ class ResolveTrickUseCaseTest {
         return new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.empty());
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.empty()));
     }
 
     @Test
@@ -465,11 +463,9 @@ class ResolveTrickUseCaseTest {
         final var useCase = new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.empty());
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.empty()));
 
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
@@ -493,11 +489,9 @@ class ResolveTrickUseCaseTest {
         final var useCase = new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.empty());
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.empty()));
 
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
@@ -522,11 +516,9 @@ class ResolveTrickUseCaseTest {
         final var useCase = new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.empty());
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.empty()));
 
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
 
@@ -569,11 +561,9 @@ class ResolveTrickUseCaseTest {
         final var useCase = new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.empty());
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.empty()));
 
         // Must not throw — the session is already COMPLETED, which is the desired outcome
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
@@ -607,11 +597,9 @@ class ResolveTrickUseCaseTest {
         final var useCase = new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.of(persistStub));
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.of(persistStub)));
 
         // Act
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));
@@ -642,11 +630,9 @@ class ResolveTrickUseCaseTest {
         final var useCase = new ResolveTrickUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
-                sessionRepository,
-                publisher,
                 FIXED,
-                Optional.of(throwingStub));
+                new TrickJournal(
+                        trickRepository, sessionRepository, publisher, Optional.of(throwingStub)));
 
         // Act — must not throw even though the persist stub throws
         useCase.execute(session.sessionId(), tokenForSeat(LEADER_SEAT));

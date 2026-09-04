@@ -70,7 +70,7 @@ is not a mechanism anybody should rely on for a first release.
 because it records the context on the day this ADR was accepted, but **it is no longer true of
 the code**: commit `34d30d7` added `havingValue = "true"` to `SessionController.java:69` (anchor: `havingValue`) and
 gated the four use-case beans that open or mutate a session
-(`UseCaseConfiguration.java:121` (anchor: `session-lifecycle`), `:144`, `:188`, `:203`) on the same flag, with a 12-test
+(`UseCaseConfiguration.java:122` (anchor: `session-lifecycle`), `:145`, `:189`, `:204`) on the same flag, with a 12-test
 off-value suite pinning the `off` spelling. The unconditional beans turned out to be the deeper
 half of it: withholding the request mapping alone left an application that could still execute
 session creation. This predecessor is therefore **discharged**, and the reasoning that made it

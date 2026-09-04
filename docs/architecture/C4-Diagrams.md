@@ -425,7 +425,7 @@ job:
 - **Ten beans do not exist unless a flag says so:** the seven use cases and the three controllers.
   `UseCaseConfiguration` declares the use cases behind
   `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")`
-  (`UseCaseConfiguration.java:219-373`), `TrickController`, `ScoreController` and `EndSessionController` carry the same condition with the same
+  (`UseCaseConfiguration.java:264-373`), `TrickController`, `ScoreController` and `EndSessionController` carry the same condition with the same
   `havingValue`, and `application.yml` sets the flag `false`. Containment is a flag rather than an
   absent caller, which is a stronger guarantee under test and a weaker one under operator error — a
   flag can be flipped, an absent class cannot. `TrickPlayDisabledIntegrationTest` therefore asserts
@@ -449,7 +449,9 @@ job:
   `--> SessionEventPublisher` edges are outward from `usecase` to a port `usecase` owns, so the
   dependency still points inward; `SseSessionEventPublisher` in `adapter/web` implements it. Each
   `publish` sits *after* the port write returns — `HandDealer.java:143` (anchor: `HAND_DEALT`),
-  `PlayCardUseCase.java:253` (anchor: `CARD_PLAYED`), `ResolveTrickUseCase.java:195` (anchor: `TRICK_RESOLVED`) — so a broadcast can only describe a
+  `TrickJournal.java:125` (anchor: `CARD_PLAYED`), `TrickJournal.java:158` (anchor: `TRICK_RESOLVED`),
+  the latter two having moved out of `PlayCardUseCase` and `ResolveTrickUseCase` into the shared
+  journal in EOP-190 — so a broadcast can only describe a
   durable change and a throwing publisher cannot fail a request whose write succeeded. None of the
   three events carries any part of the change, which is what keeps a per-player hand off a fan-out
   transport (ADR-027) and what makes re-reading still the only way to learn *what* happened.
@@ -459,7 +461,7 @@ job:
   `ResolvePlayerUseCase` are drawn as first-class
   edges rather than left implicit because the *ordering* is the slice's main security property, and
   a component view that omitted them would hide it: `DealHandsUseCase.java:88`,
-  `PlayCardUseCase.java:165`, `ResolveTrickUseCase.java:154`, `ReadOwnHandUseCase.java:64`,
+  `PlayCardUseCase.java:154`, `ResolveTrickUseCase.java:149`, `ReadOwnHandUseCase.java:64`,
   `GetTrickStateUseCase.java:83`, `GetScoreUseCase.java:72` and `EndSessionUseCase.java:70` are
   each the first port call of their `execute` method, before any read of a hand or a trick and before
   any state test
@@ -507,7 +509,7 @@ nothing failed the context to say so: the off position was a property of the URL
 the application behind it could still create and mutate sessions. EOP-48 closed both halves —
 `havingValue = "true"` on the controller, and the same condition on `createSessionUseCase`,
 `joinSessionUseCase`, `getSessionStateUseCase` and `startSessionUseCase`
-(`UseCaseConfiguration.java:121` (anchor: `session-lifecycle`), `:144`, `:188`, `:203`) — so the flag then withheld **five beans
+(`UseCaseConfiguration.java:122` (anchor: `session-lifecycle`), `:145`, `:189`, `:204`) — so the flag then withheld **five beans
 in all**, matching the arrangement `TrickController` has had since Slice D. It withholds **six** as of
 EOP-190 (2026-09-04), which moved the SSE route out of `SessionController` into
 `SessionStreamController` to bring the controller's constructor under the `java:S107` parameter
@@ -1104,7 +1106,7 @@ constructible and was declined, because a copy that can disagree with `trick.gam
 constrains the copy rather than the truth; enforcement is Slice C2's play use case, which **as of
 that slice does resolve** the acting player from the identity token instead of trusting a request
 field — `PlayCardCommand` has no seat and no player component at all
-(`PlayCardCommand.java:35-41`), so `PlayCardUseCase.java:165-167` can only take the seat from the
+(`PlayCardCommand.java:35-41`), so `PlayCardUseCase.java:154-167` can only take the seat from the
 player `ResolvePlayerUseCase` returned. The storage gap is unchanged and still real; what has
 changed is that no request can express the seat needed to reach it from outside the process. Nor is a card
 scoped to one hand or one trick *per session* — only per hand and per trick — which is the other
@@ -1130,7 +1132,7 @@ status that refusal carries — are in
 only that `trick.winner_play_id` names some `trick_play` row — not one of *this* trick's plays, and
 not one from this session. That needs neither a second session nor a second player, so no
 cross-session fix bounds it, and Slice C's resolve-trick use case owed the check. **Slice C2
-discharges it:** `ResolveTrickUseCase.java:151-157` refuses a resolution whose winning play is not
+discharges it:** `ResolveTrickUseCase.java:146-157` refuses a resolution whose winning play is not
 one of the plays of the trick being resolved, throwing `WinningPlayNotInTrickException` (422) at
 `:155-156`. Slice E moved that guard down the file without changing it — it stood at `:131-135` when
 this paragraph was written — so find it by the `anyMatch`, not by the number. The
@@ -1168,7 +1170,7 @@ are `true`: `session-lifecycle` (on since EOP-25, 2026-08-16, `application.yml:1
 (on since EOP-70, `application.yml:157` (anchor: `trick-play`), ADR-040) and `game-over` (on since EOP-82, `application.yml:169` (anchor: `game-over`), ADR-042). The seven
 use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
-`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:219-373`), as do
+`matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:264-373`), as do
 `TrickController`, `ScoreController` and `EndSessionController`. With the flag
 off the beans do not exist, so the ports have no caller again; with it on they do, and only in-process
 code can call them. The flag is now on, so that second case is the shipped one.
@@ -1184,7 +1186,7 @@ the seat check it performs is a check on the *row*, not on the requester
 
 Two of ADR-023's four cross-session obligations are discharged by Slice C2 and two are not.
 Discharged: the play path cannot express a foreign seat (`PlayCardCommand.java:35-41`), and the
-winning play is confined to its own trick (`ResolveTrickUseCase.java:151-157`). Not discharged, and
+winning play is confined to its own trick (`ResolveTrickUseCase.java:146-157`). Not discharged, and
 still storage-shaped: `trick_play` and `hand` still accept a row naming a player from another
 session, so the seat- and card-lockout denial of service enumerated above survives any use-case
 check, because it does not depend on a forged request — it depends on a genuine request from a

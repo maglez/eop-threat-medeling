@@ -181,7 +181,7 @@ figure.** Re-derived from source on 2026-08-21 under EOP-41, the flag withholds 
 beans and three controllers — ten beans in all**: `DealHandsUseCase`, `ReadOwnHandUseCase`,
 `PlayCardUseCase`, `GetTrickStateUseCase`, `ResolveTrickUseCase`, `EndSessionUseCase` and
 `GetScoreUseCase`, plus `TrickController`, `ScoreController` and `EndSessionController`
-(`UseCaseConfiguration.java:238`, `:269`, `:295`, `:331`, `:353`, `:384`, `:410`,
+(`UseCaseConfiguration.java:281`, `:269`, `:295`, `:331`, `:353`, `:384`, `:410`,
 `TrickController.java:70`, `ScoreController.java:42` and `EndSessionController.java:54`), whose
 **seven** routes — `POST /{sessionId}/deal`, `GET /{sessionId}/hand`, `POST /{sessionId}/plays`,
 `GET /{sessionId}/tricks/current`, `POST /{sessionId}/tricks/current/resolve`,
@@ -230,7 +230,7 @@ the deeper half of the defect.** `SessionController.java:69` (anchor: `havingVal
 `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle", havingValue = "true")`,
 and the four use cases that open or mutate a session — `createSessionUseCase`,
 `joinSessionUseCase`, `getSessionStateUseCase`, `startSessionUseCase` — each carry the same
-condition (`UseCaseConfiguration.java:121` (anchor: `session-lifecycle`), `:144`, `:188`, `:203`). The two spellings in the tree,
+condition (`UseCaseConfiguration.java:122` (anchor: `session-lifecycle`), `:145`, `:189`, `:204`). The two spellings in the tree,
 `prefix` + `name` on the controllers and the single dotted `name = "eop.features.…"` on the beans,
 resolve to the same property and the same condition; the inconsistency is cosmetic and is recorded
 here so that nobody reads it as two mechanisms.
@@ -267,7 +267,7 @@ older test (`SessionControllerDisabledIntegrationTest`), untouched, because a fi
 spellings agree by breaking the one that already worked would pass a single-test suite.
 
 One exception is deliberate and load-bearing: `resolvePlayerUseCase`
-(`UseCaseConfiguration.java:156`) stays **ungated**. It is a pure lookup that writes nothing, and it
+(`UseCaseConfiguration.java:158`) stays **ungated**. It is a pure lookup that writes nothing, and it
 is a constructor dependency of two lifecycle use cases *and* all six trick-play use cases, so
 gating it on the lifecycle flag would make the lobby-off/trick-play-on combination — the
 combination this repository's own suite runs — an unsatisfiable context rather than a withheld

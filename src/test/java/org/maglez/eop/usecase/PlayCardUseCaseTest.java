@@ -708,12 +708,13 @@ class PlayCardUseCaseTest {
         return new PlayCardUseCase(
                 new ResolvePlayerUseCase(new InMemorySessionRepository(order, session), java.time.Clock.systemUTC()),
                 handRepository,
-                trickRepository,
                 cardRepository,
                 generator,
-                publisher,
                 FIXED,
-                new InMemorySessionRepository(order, session),
-                Optional.empty());
+                new TrickJournal(
+                        trickRepository,
+                        new InMemorySessionRepository(order, session),
+                        publisher,
+                        Optional.empty()));
     }
 }

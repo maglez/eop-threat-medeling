@@ -2,20 +2,16 @@ package org.maglez.eop.usecase;
 
 import java.time.Clock;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import org.maglez.eop.entity.HandNotDealtException;
 import org.maglez.eop.entity.NoTrickToResolveException;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
 import org.maglez.eop.entity.SessionNotFoundException;
-import org.maglez.eop.entity.SessionNotInProgressException;
 import org.maglez.eop.entity.SessionNotJoinableException;
 import org.maglez.eop.entity.Trick;
 import org.maglez.eop.entity.TrickAlreadyResolvedException;
 import org.maglez.eop.entity.TrickNotCompleteException;
 import org.maglez.eop.entity.WinningPlayNotInTrickException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Resolves the current trick: decides which play took it, records the winner and moves the lead to
@@ -76,11 +72,13 @@ import org.slf4j.LoggerFactory;
  * published. The transition is a compare-and-swap on {@code IN_PROGRESS}: if the facilitator's
  * end-session call wins the race in the window between {@code recordResolution} committing and
  * {@code recordCompleted} being called, the CAS finds zero rows and throws
- * {@link SessionNotInProgressException}. The auto-complete branch catches that exception and treats
+ * {@code SessionNotInProgressException}. The auto-complete branch catches that exception and treats
  * it as success — the session is already {@code COMPLETED}, which is the desired outcome, and the
  * trick resolution itself was already durably committed. The two writes are in separate transactions
  * (each adapter method carries its own {@code @Transactional}), so the race is real and the
- * tolerance is necessary (EOP-15 Slice C, ADR-032).
+ * tolerance is necessary (EOP-15 Slice C, ADR-032). Since EOP-190 that branch lives in
+ * {@link TrickJournal} rather than here, which is why this class no longer names the exception in
+ * code and refers to it as {@code SessionNotInProgressException} rather than linking it.
  *
  * <p>The resolved trick is returned because everything in it is public: every card in it was played
  * face up and the winner is what the whole table is waiting to see.
@@ -93,58 +91,55 @@ import org.slf4j.LoggerFactory;
  * published rather than returned to the resolving caller alone because the seat that leads next is
  * usually somebody else's news. Publishing is not guarded here because it must not fail a request, an
  * obligation {@link SessionEventPublisher} places on its implementation.
+ *
+ * <p>The recording, the announcement and the completion cascade described above are all carried out
+ * by {@link TrickJournal}. What stays here is the part that is this route's own: deciding whether
+ * there is a complete, unresolved trick to resolve at all, and refusing with the three distinct
+ * exceptions above when there is not. {@link PlayCardUseCase} resolves inline through the same
+ * journal, so the two routes write and announce identically by construction rather than by two
+ * copies of the same twenty-four lines being kept in step by hand (EOP-190).
  */
 public class ResolveTrickUseCase {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ResolveTrickUseCase.class);
 
     private final ResolvePlayerUseCase resolvePlayerUseCase;
 
     private final HandRepository handRepository;
 
-    private final TrickRepository trickRepository;
-
-    private final SessionRepository sessionRepository;
-
-    private final SessionEventPublisher sessionEventPublisher;
-
     private final Clock clock;
 
-    private final Optional<PersistGameResultUseCase> persistGameResultUseCase;
+    private final TrickJournal trickJournal;
 
     /**
      * Creates the use case.
      *
      * @param resolvePlayerUseCase resolves the acting player from the identity token
      * @param handRepository reads the hands, which say which seats still hold cards
-     * @param trickRepository reads the current trick and records its resolution
-     * @param sessionRepository records the session completion when the last trick resolves
-     * @param sessionEventPublisher announces that the trick was resolved, naming none of it
      * @param clock supplies the resolution timestamp
-     * @param persistGameResultUseCase persists the final game result; absent when the
-     *     {@code game-over} feature flag is off
+     * @param trickJournal reads the current trick, records its resolution, announces it, and
+     *     completes the game when that was the last trick. EOP-190 moved that cascade there because
+     *     {@code PlayCardUseCase} resolves inline and held a second copy of it, which is why no
+     *     {@code TrickRepository}, {@code SessionRepository}, {@code SessionEventPublisher} or
+     *     {@code PersistGameResultUseCase} is held here any more
      */
     public ResolveTrickUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
-            final TrickRepository trickRepository,
-            final SessionRepository sessionRepository,
-            final SessionEventPublisher sessionEventPublisher,
             final Clock clock,
-            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
+            final TrickJournal trickJournal) {
         this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
         this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
-        this.trickRepository = Objects.requireNonNull(trickRepository, "trickRepository is required");
-        this.sessionRepository = Objects.requireNonNull(sessionRepository, "sessionRepository is required");
-        this.sessionEventPublisher =
-                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
-        this.persistGameResultUseCase =
-                Objects.requireNonNull(persistGameResultUseCase, "persistGameResultUseCase is required");
+        this.trickJournal = Objects.requireNonNull(trickJournal, "trickJournal is required");
     }
 
     /**
      * Resolves the session's current trick.
+     *
+     * <p>When this resolution empties the last hand, the game is completed too. That completion is
+     * a compare-and-set against a session a concurrent facilitator call may already have completed,
+     * in which case {@code SessionNotInProgressException} is raised and swallowed as success. Since
+     * EOP-190 both the completion and that catch live in {@link TrickJournal} rather than here, so
+     * this method neither throws nor catches it and it is deliberately absent from the list below.
      *
      * @param sessionId the session whose trick is to be resolved
      * @param playerToken the requester's identity token, which may be null or unrecognised
@@ -158,16 +153,13 @@ public class ResolveTrickUseCase {
      * @throws TrickAlreadyResolvedException if the trick already has a winner
      * @throws WinningPlayNotInTrickException if the winning play was not made into this trick
      * @throws SessionNotJoinableException if the session is no longer playable
-     * @throws SessionNotInProgressException if the session is not in progress when the auto-complete
-     *     CAS is attempted; this is caught and treated as success — the session was already completed
-     *     by a concurrent facilitator call
      */
     public Trick execute(final UUID sessionId, final String playerToken) {
         resolvePlayerUseCase.execute(sessionId, playerToken);
 
         final var hands = handRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new HandNotDealtException(sessionId));
-        final var trick = trickRepository.findCurrentTrick(sessionId)
+        final var trick = trickJournal.currentTrick(sessionId)
                 .orElseThrow(() -> new NoTrickToResolveException(sessionId));
 
         if (trick.winner().isPresent()) {
@@ -191,30 +183,7 @@ public class ResolveTrickUseCase {
 
         final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);
         final var now = clock.instant();
-        trickRepository.recordResolution(sessionId, resolved, trick.leaderSeat(), nextLeaderSeat, now);
-        sessionEventPublisher.publish(new SessionEvent(SessionEventType.TRICK_RESOLVED, sessionId, now));
-
-        if (nextLeaderSeat.isEmpty()) {
-            try {
-                sessionRepository.recordCompleted(sessionId, now);
-            }
-            catch (SessionNotInProgressException ignored) {
-                // A concurrent facilitator call already completed the session.
-                // The trick resolution was durably committed; treat this as success.
-            }
-            persistGameResultUseCase.ifPresent(uc -> {
-                try {
-                    uc.execute(sessionId);
-                }
-                catch (RuntimeException ex) {
-                    // Best-effort: the session is completed and the trick is resolved.
-                    // The leaderboard will return 404 until the result is recorded.
-                    LOG.warn("[EOP-65] Failed to persist game result for session {}; "
-                            + "leaderboard will return 404 until the result is recorded.", sessionId, ex);
-                }
-            });
-            sessionEventPublisher.publish(new SessionEvent(SessionEventType.GAME_COMPLETED, sessionId, now));
-        }
+        trickJournal.recordResolution(sessionId, resolved, trick.leaderSeat(), nextLeaderSeat, now);
 
         return resolved;
     }
