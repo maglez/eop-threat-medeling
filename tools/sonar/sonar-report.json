@@ -28,18 +28,15 @@
     "already excluded src/test/java from the coverage denominator via sonar.tests."
   ],
   "counts": {
-    "MAINTAINABILITY": 30,
+    "MAINTAINABILITY": 26,
     "RELIABILITY": 1,
     "SECURITY": 0
   },
-  "coverage": 95.2,
-  "generatedAt": "2026-09-03T21:31:45Z",
+  "coverage": 95.3,
+  "generatedAt": "2026-09-04T07:37:46Z",
   "issues": [
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/PlayerJpaEntity.java|fa6ce9e24507b54e004c9a9f51b35f8f",
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/TrickPlayJpaEntity.java|fe1fa84d615bf6f12059ceb7a83f5eca",
-    "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/web/SessionController.java|d4beabaed2164f0bc067dd9f30a61849",
-    "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/usecase/NewGameUseCase.java|6d8ca892c22716b0d64ab7aa12a57437",
-    "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/usecase/PlayCardUseCase.java|917e979ec4c82f57a067827819f13263",
     "MAINTAINABILITY|java:S1192|src/main/java/org/maglez/eop/adapter/persistence/TrickPlayRepositoryAdapter.java|1128ae24f0f2aae0960f13148fc28ec7",
     "MAINTAINABILITY|java:S1192|src/main/java/org/maglez/eop/adapter/web/GlobalExceptionHandler.java|30e8f254b26a0bd6983680086856001f",
     "MAINTAINABILITY|java:S1192|src/main/java/org/maglez/eop/adapter/web/GlobalExceptionHandler.java|3d2b61ca7d5025033613cfda0f58d1a5",
@@ -55,7 +52,7 @@
     "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/SessionController.java|2555b2a47889be7012dc06dc4661a69c",
     "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/SessionController.java|2555b2a47889be7012dc06dc4661a69c",
     "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/SessionController.java|2555b2a47889be7012dc06dc4661a69c",
-    "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/SessionController.java|2555b2a47889be7012dc06dc4661a69c",
+    "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/SessionStreamController.java|2555b2a47889be7012dc06dc4661a69c",
     "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/TrickController.java|2555b2a47889be7012dc06dc4661a69c",
     "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/TrickController.java|2555b2a47889be7012dc06dc4661a69c",
     "MAINTAINABILITY|java:S1710|src/main/java/org/maglez/eop/adapter/web/TrickController.java|2555b2a47889be7012dc06dc4661a69c",
@@ -64,26 +61,25 @@
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|3e709d1e6ea887bbf0e5ffd4a9c9d01a",
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|aa2bb258264b2afcd70495c7c174b68c",
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|b93b37d02812ef89d2dd7d164dbca921",
-    "MAINTAINABILITY|java:S3776|src/main/java/org/maglez/eop/usecase/PlayCardUseCase.java|832088137f60d88502a2e132d5962267",
     "RELIABILITY|java:S6218|src/main/java/org/maglez/eop/adapter/web/TrustedProxies.java|fb9503e79ba3740bac86eda902b058db"
   ],
-  "ncloc": 7338,
+  "ncloc": 7350,
   "scannerGav": "org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751",
   "scope": {
     "ALL": {
       "byQuality": {
-        "MAINTAINABILITY": 231,
+        "MAINTAINABILITY": 227,
         "RELIABILITY": 8,
         "SECURITY": 0
       }
     },
     "MAIN": {
       "byQuality": {
-        "MAINTAINABILITY": 30,
+        "MAINTAINABILITY": 26,
         "RELIABILITY": 1,
         "SECURITY": 0
       },
-      "total": 31
+      "total": 27
     },
     "TEST": {
       "byQuality": {
@@ -95,7 +91,7 @@
     }
   },
   "sonarQubeVersion": "26.8.0.126808",
-  "sourceFileCount": 302,
-  "sourceHash": "2b42bda071477e7d036732f50f1b2f49da94db166017552be8da9fc04e95498d",
-  "tests": 1406
+  "sourceFileCount": 307,
+  "sourceHash": "07146a1de349576203d26a1ba9cbd4bc114185f34baa6354a6110a01bf35ab5c",
+  "tests": 1416
 }

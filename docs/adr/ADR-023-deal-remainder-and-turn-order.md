@@ -1456,7 +1456,7 @@ The flag is dated by **the first player-reachable trick-play route**, whichever 
 to be, and that route may not be merged unflagged. Amending the bullet to say "C2" while leaving
 this clause intact would have left a second contradiction behind.
 
-One live fact for whoever writes C2: `SessionController.java:51` already carries
+One live fact for whoever writes C2: `SessionController.java:57` already carries
 `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle")`. Routes added to that
 class would inherit that gate, and inheriting it is not a substitute for `trick-play` —
 `ADR-013:44-48` deletes a flag once its feature ships, so `session-lifecycle` will be removed and

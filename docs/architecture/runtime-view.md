@@ -62,13 +62,13 @@ violation. **Slice C2 discharges that on the play path by construction rather th
 Slice D preserves it across the HTTP boundary.**
 `PlayCardCommand` has no seat component and no player component at all
 (`PlayCardCommand.java:35-41`, argued at `:10-17`), so `PlayCardUseCase` derives the acting seat
-from the resolved player (`PlayCardUseCase.java:165-167`): a caller cannot name a seat it does not
+from the resolved player (`PlayCardUseCase.java:154-167`): a caller cannot name a seat it does not
 hold, which makes the 403 with `NotYourSeatException` inexpressible from the outside rather than
 merely refused. `PlayCardRequest` — the request record Slice D adds — carries no seat, player, suit
 or rank either, so the property survives the one change that could have quietly undone it, and a
 test posts a body naming all four for an impostor and asserts the published play still carries the
 token's seat and the deck's suit. A caller outside the session is refused with
-`PlayerNotInSessionException` (`PlayCardUseCase.java:173-175`), a 404 chosen so the status does not
+`PlayerNotInSessionException` (`PlayCardUseCase.java:162-175`), a 404 chosen so the status does not
 itself disclose that the session exists. If a future slice adds or alters an interaction, this
 paragraph is the first thing to correct — one version of it claimed EOP-10 two stories after that
 stopped being the whole truth, the version before last claimed Slice C1 one slice after the same
@@ -608,6 +608,7 @@ sequenceDiagram
     participant CL as TrickController — POST /api/v1/sessions/{sessionId}/deal
     participant DH as DealHandsUseCase
     participant RP as ResolvePlayerUseCase
+    participant HD as HandDealer
     participant CRA as CardRepositoryAdapter
     participant SH as SecureRandomDeckShuffler
     participant IDG as IdentifierGenerator
@@ -620,42 +621,49 @@ sequenceDiagram
     CL->>DH: execute(sessionId, playerToken)
 
     DH->>RP: execute(sessionId, playerToken)
-    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:133. Nothing is<br/>read, shuffled or written before it.
+    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:88. Nothing is<br/>read, shuffled or written before it.
     RP-->>DH: ResolvedPlayer, or 404 SessionNotFoundException<br/>or 403 PlayerNotRecognisedException
 
     alt not the facilitator
         DH-->>CL: 403 NotFacilitatorException
-    else fewer than three seated
-        DH-->>CL: 409 TooFewPlayersException
     else may deal
-        DH->>CRA: findWholeDeck()
-        CRA->>DB: SELECT from card ORDER BY suit, rank
-        DB-->>CRA: every row, canonical order
-        CRA-->>DH: the whole deck as domain Cards
-        DH->>SH: shuffle(deck)
-        Note over SH: SecureRandom, no seed anywhere.<br/>Copies the list — the input is never mutated.
-        SH-->>DH: a permuted copy
-        loop each seated player, in seat order
-            DH->>IDG: nextIdentifier()
-        end
-        DH->>DH: Hands.deal(shuffled, seats)
-        Note over DH: Pure domain. The remainder rule and the<br/>opening leader come from the entity,<br/>not from this use case (ADR-023).
-
-        DH->>TPRA: recordDeal(sessionId, hands, openingLeaderSeat, now)
-        TPRA->>DB: UPDATE game_session SET current_leader_seat = ?<br/>WHERE id = ? AND status = IN_PROGRESS<br/>AND current_leader_seat IS NULL
-        Note over TPRA,DB: The compare-and-set. "current_leader_seat IS NULL"<br/>*is* "not yet dealt", and this UPDATE takes the<br/>session row lock before any hand row — which is<br/>what serialises two simultaneous deals (ADR-020).
-        alt 0 rows affected
-            TPRA->>DB: one disambiguating read
-            TPRA-->>DH: SessionNotFoundException, SessionNotJoinableException<br/>or HandAlreadyDealtException
-            DH-->>CL: 404 or 409
-        else 1 row affected
-            loop each dealt seat
-                TPRA->>DB: INSERT hand, then one INSERT per card held
+        DH->>HD: deal(session)
+        Note over DH,HD: EOP-190 moved the deal itself into HandDealer,<br/>which NewGameUseCase calls too. DealHandsUseCase<br/>authorises and delegates and does nothing else.<br/>HandDealer authorises nobody, so it is never<br/>reached from an adapter (ADR-024).
+        alt fewer than three seated
+            HD-->>DH: TooFewPlayersException
+            DH-->>CL: 409 TooFewPlayersException
+        else enough seated
+            HD->>CRA: findWholeDeck()
+            CRA->>DB: SELECT from card ORDER BY suit, rank
+            DB-->>CRA: every row, canonical order
+            CRA-->>HD: the whole deck as domain Cards
+            HD->>SH: shuffle(deck)
+            Note over SH: SecureRandom, no seed anywhere.<br/>Copies the list — the input is never mutated.
+            SH-->>HD: a permuted copy
+            loop each seated player, in seat order
+                HD->>IDG: nextIdentifier()
             end
-            TPRA-->>DH: void
-            DH->>EV: publish(HAND_DEALT, sessionId, now)
-            Note over DH,EV: EOP-14 Slice E, DealHandsUseCase.java:162.<br/>After the write returns, so the broadcast can only<br/>describe a durable deal. Carries no card and no seat:<br/>a subscriber learns *that* hands exist and re-reads<br/>sequence 1 or GET /hand to learn what it holds (ADR-027).
-            DH-->>CL: nothing — the deal returns void
+            HD->>HD: Hands.deal(shuffled, seats)
+            Note over HD: Pure domain. The remainder rule and the<br/>opening leader come from the entity,<br/>not from this collaborator (ADR-023).
+
+            HD->>TPRA: recordDeal(sessionId, hands, openingLeaderSeat, now)
+            TPRA->>DB: UPDATE game_session SET current_leader_seat = ?<br/>WHERE id = ? AND status = IN_PROGRESS<br/>AND current_leader_seat IS NULL
+            Note over TPRA,DB: The compare-and-set. "current_leader_seat IS NULL"<br/>*is* "not yet dealt", and this UPDATE takes the<br/>session row lock before any hand row — which is<br/>what serialises two simultaneous deals (ADR-020).
+            alt 0 rows affected
+                TPRA->>DB: one disambiguating read
+                TPRA-->>HD: SessionNotFoundException, SessionNotJoinableException<br/>or HandAlreadyDealtException
+                HD-->>DH: the same exception, unwrapped
+                DH-->>CL: 404 or 409
+            else 1 row affected
+                loop each dealt seat
+                    TPRA->>DB: INSERT hand, then one INSERT per card held
+                end
+                TPRA-->>HD: void
+                HD->>EV: publish(HAND_DEALT, sessionId, now)
+                Note over HD,EV: EOP-14 Slice E, HandDealer.java:143.<br/>After the write returns, so the broadcast can only<br/>describe a durable deal. Carries no card and no seat:<br/>a subscriber learns *that* hands exist and re-reads<br/>sequence 1 or GET /hand to learn what it holds (ADR-027).
+                HD-->>DH: nothing — the deal returns void
+                DH-->>CL: nothing — the deal returns void
+            end
         end
     end
 ```
@@ -678,7 +686,7 @@ the write it justifies (ADR-020).
 
 **The shuffle is drawn as a participant because it is a security control.** Deck
 composition is published reference data, so a predictable permutation is a predictable
-hand. `SecureRandomDeckShuffler` takes no seed in any constructor, and the use case holds
+hand. `SecureRandomDeckShuffler` takes no seed in any constructor, and `HandDealer` holds
 the `DeckShuffler` port rather than a `java.util.Random`, so no caller can weaken the
 choice by passing a seeded generator.
 
@@ -687,9 +695,12 @@ every card in canonical order (suit, then ascending rank); randomising is the us
 job. A paginated deal would be one forgotten loop away from a truncated deck, and a
 canonical order means a test can pin a deal by pinning the shuffler.
 
-**The deal is broadcast, after it is durable.** `DealHandsUseCase` takes a
-`SessionEventPublisher` and publishes `HAND_DEALT` at `DealHandsUseCase.java:162`, on the
-line after `recordDeal` returns. The ordering is the decision: a broadcast that preceded
+**The deal is broadcast, after it is durable.** `HandDealer` takes a
+`SessionEventPublisher` and publishes `HAND_DEALT` at `HandDealer.java:143` (anchor:
+`HAND_DEALT`), on the line after `recordDeal` returns. EOP-190 moved both the write and the
+announcement out of `DealHandsUseCase` and into that collaborator, so `NewGameUseCase` deals
+by calling it rather than by holding a second copy of these six lines — the ordering below is
+therefore now asserted once and relied on twice. The ordering is the decision: a broadcast that preceded
 the write could announce a deal that then rolled back, and a publisher that threw could
 fail a request whose write had already succeeded. What the event does *not* carry is any
 part of the deal — no seat, no card, no count — so a subscriber still re-reads to learn
@@ -715,6 +726,7 @@ sequenceDiagram
     participant PC as PlayCardUseCase
     participant RP as ResolvePlayerUseCase
     participant CRA as CardRepositoryAdapter
+    participant TJ as TrickJournal
     participant TPRA as TrickPlayRepositoryAdapter
     participant DB as PostgreSQL
     participant EV as SessionEventPublisher
@@ -724,14 +736,14 @@ sequenceDiagram
 
     PC->>RP: execute(sessionId, playerToken)
     RP-->>PC: ResolvedPlayer, or 404 / 403
-    Note over PC: The acting seat and player id are taken from the<br/>resolved player and from nowhere else<br/>(PlayCardUseCase.java:165-167).
+    Note over PC: The acting seat and player id are taken from the<br/>resolved player and from nowhere else<br/>(PlayCardUseCase.java:154-167).
 
     PC->>TPRA: findBySessionId(sessionId)
     TPRA->>DB: SELECT hand and hand_card for the session
     TPRA-->>PC: Hands, or empty which is 409 HandNotDealtException
-    Note over PC: A resolved player holding no seat in those hands<br/>is 404 PlayerNotInSessionException — the status<br/>does not confirm the session exists<br/>(PlayCardUseCase.java:173-175).
+    Note over PC: A resolved player holding no seat in those hands<br/>is 404 PlayerNotInSessionException — the status<br/>does not confirm the session exists<br/>(PlayCardUseCase.java:162-175).
     PC->>PC: hands.allEmpty() → 409 HandCompleteException
-    Note over PC: EOP-14 Slice E, PlayCardUseCase.java:176-177.<br/>Asked before the card is even looked up, so a play<br/>into a played-out hand is told the hand is over<br/>rather than that its card is not in it.
+    Note over PC: EOP-14 Slice E, PlayCardUseCase.java:165-177.<br/>Asked before the card is even looked up, so a play<br/>into a played-out hand is told the hand is over<br/>rather than that its card is not in it.
 
     PC->>CRA: findById(cardId)
     CRA->>DB: SELECT from card WHERE id = ?
@@ -743,8 +755,10 @@ sequenceDiagram
     PC->>PC: hand.resolve(card) → 422 CardNotInHandException
     PC->>TPRA: findCurrentLeaderSeat(sessionId)
     TPRA-->>PC: the seat to lead, or empty which is 409 HandNotDealtException
-    PC->>TPRA: findCurrentTrick(sessionId)
-    TPRA-->>PC: the latest trick, or empty
+    PC->>TJ: currentTrick(sessionId)
+    TJ->>TPRA: findCurrentTrick(sessionId)
+    TPRA-->>TJ: the latest trick, or empty
+    TJ-->>PC: the latest trick, or empty
     alt opening a new trick
         PC->>PC: actingSeat is not leaderSeat → 409 OutOfTurnException
     end
@@ -755,20 +769,22 @@ sequenceDiagram
     PC->>PC: build the candidate TrickPlay
     Note over PC: Built BEFORE any write (commit fcb6fd5). An over-long<br/>note or an unnamed component now fails here,<br/>with no trick row left behind.
     alt opening a new trick
-        PC->>TPRA: openTrick(sessionId, Trick.open(id, sequence + 1, leaderSeat), leaderSeat, now)
+        PC->>TJ: openTrick(sessionId, Trick.open(id, sequence + 1, leaderSeat), leaderSeat, now)
+        TJ->>TPRA: openTrick(sessionId, trick, leaderSeat, now)
         TPRA->>DB: UPDATE game_session WHERE current_leader_seat = ?<br/>AND status = IN_PROGRESS
         TPRA->>DB: INSERT trick
+        Note over TJ: Opening a trick announces nothing. The play that<br/>opens it announces immediately below, so a client<br/>is never told about a trick with no play in it.
     end
     PC->>PC: trick.acceptPlay(actingSeat, candidate, hands)
     Note over PC: Follow suit, one play per seat, one play per card.<br/>On an opening play none of the three can fire.
-    PC->>TPRA: appendPlay(sessionId, trickId, leaderSeat, accepted)
+    PC->>TJ: appendPlay(sessionId, trickId, leaderSeat, accepted, now)
+    TJ->>TPRA: appendPlay(sessionId, trickId, leaderSeat, accepted)
     TPRA->>DB: UPDATE game_session — the same compare-and-set
     TPRA->>DB: DELETE from hand_card — 0 rows is 422 CardNotInHandException
     TPRA->>DB: INSERT trick_play, then one row per named component
+    TJ->>EV: publish(CARD_PLAYED, sessionId, now)
+    Note over TJ,EV: EOP-14 Slice E, since EOP-190 at TrickJournal.java:125.<br/>Appended and announced in the one call, after the write returns,<br/>and carrying no card, no seat and no trick — a subscriber is told<br/>a play happened and re-reads GET /tricks/current to learn what it was.
     end
-
-    PC->>EV: publish(CARD_PLAYED, sessionId, now)
-    Note over PC,EV: EOP-14 Slice E, PlayCardUseCase.java:253.<br/>After the writes, and carrying no card, no seat and<br/>no trick — a subscriber is told a play happened and<br/>re-reads GET /tricks/current to learn what it was.
 
     PC-->>CL: the updated Trick
     Note over PC,CL: A complete trick is NOT resolved here.<br/>Resolution is sequence 6, a separate request.
@@ -783,7 +799,7 @@ Without the turn-order guard, an out-of-turn opening play would commit a trick r
 only then be refused, leaving an open trick nobody may play into. Without
 `hand.resolve(card)`, a play of a card the seat does not hold would surface as an
 `IllegalStateException` and a 500 instead of a 422. Slice E added a third guard above the
-rect, `hands.allEmpty()` at `PlayCardUseCase.java:176-177`, for the same reason one step
+rect, `hands.allEmpty()` at `PlayCardUseCase.java:165-177`, for the same reason one step
 earlier: a play into a hand that has been played out now answers 409 `HandCompleteException`
 rather than reporting that some particular card is not held, which was the only answer
 available before the end of a hand had a name.
@@ -807,9 +823,10 @@ constructor reopens
 the window**, which is why ADR-025 records the reasoning rather than only the conclusion — as a
 table, row by row against the method, in its decision 9.
 
-**The play is broadcast, after the writes.** `PlayCardUseCase` takes a
-`SessionEventPublisher` and publishes `CARD_PLAYED` at `PlayCardUseCase.java:253` (anchor: `CARD_PLAYED`), once
-`appendPlay` has returned. The event names the session and nothing else: not the card,
+**The play is broadcast, after the writes.** Since EOP-190 the `SessionEventPublisher`
+is held by `TrickJournal` rather than by `PlayCardUseCase`, and the journal appends and
+announces in the one call: `CARD_PLAYED` is published at
+`TrickJournal.java:125` (anchor: `CARD_PLAYED`), once `appendPlay` has returned. The event names the session and nothing else: not the card,
 not the seat, not the trick. That is what makes it safe on a fan-out transport where
 every subscriber of a session receives every event — the other players learn *that* the
 table moved and re-read `GET /tricks/current` to learn whose turn it now is, and a
@@ -837,7 +854,7 @@ sequenceDiagram
 
     RT->>RP: execute(sessionId, playerToken)
     RP-->>RT: ResolvedPlayer, or 404 / 403
-    Note over RT,RP: Membership only — the resolved player is not<br/>otherwise used (ResolveTrickUseCase.java:133).<br/>Any member may resolve, because resolution is<br/>arithmetic and gating it on the facilitator<br/>would stall a table whose facilitator dropped.
+    Note over RT,RP: Membership only — the resolved player is not<br/>otherwise used (ResolveTrickUseCase.java:127).<br/>Any member may resolve, because resolution is<br/>arithmetic and gating it on the facilitator<br/>would stall a table whose facilitator dropped.
 
     RT->>TPRA: findBySessionId(sessionId)
     TPRA-->>RT: Hands, or empty which is 409 HandNotDealtException
@@ -850,16 +867,16 @@ sequenceDiagram
         RT-->>CL: 409 TrickNotCompleteException — names the seat still to play
     else complete
         RT->>RT: trick.resolved() — highest card of the led suit takes it
-        RT->>RT: the winning play must be one of this trick's plays,<br/>or 422 WinningPlayNotInTrickException (ResolveTrickUseCase.java:151-157)
+        RT->>RT: the winning play must be one of this trick's plays,<br/>or 422 WinningPlayNotInTrickException (ResolveTrickUseCase.java:146-157)
         RT->>RT: nextLeaderSeat = OptionalInt — the next seat still holding<br/>cards, or empty when the hand is played out
-        Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:159:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards)<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
+        Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:154:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards)<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
         RT->>TPRA: recordResolution(sessionId, resolved, leaderSeat, nextLeaderSeat, now)
         TPRA->>DB: UPDATE game_session SET current_leader_seat = next, or NULL<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
         Note over TPRA,DB: NULL is the end of the hand, recorded rather than<br/>released or scored at this point: the status transitions to<br/>COMPLETED in the next step when nextLeaderSeat is empty<br/>(EOP-15 Slice C, ADR-032). Changeset 005's CHECK<br/>already permitted NULL, so no migration was needed.
         TPRA->>DB: UPDATE trick SET winner_play_id = ?<br/>WHERE id = ? AND winner_play_id IS NULL
         Note over TPRA,DB: 0 rows on the second UPDATE is a replay, not a fault:<br/>when the leader also won, the first UPDATE is<br/>idempotent and lets a repeat through. Answered 409.
         RT->>EV: publish(TRICK_RESOLVED, sessionId, now)
-        Note over RT,EV: EOP-14 Slice E, ResolveTrickUseCase.java:162.<br/>After the write returns, and naming no winner and no<br/>seat — a subscriber re-reads GET /tricks/current, which<br/>is also where it learns that the hand is complete.
+        Note over RT,EV: EOP-14 Slice E, ResolveTrickUseCase.java:140.<br/>After the write returns, and naming no winner and no<br/>seat — a subscriber re-reads GET /tricks/current, which<br/>is also where it learns that the hand is complete.
         RT-->>CL: the resolved Trick
     end
 ```
@@ -880,7 +897,7 @@ member of that session (ADR-005 for the problem-detail shape).
 
 **End of hand is recognised here, and the placeholder is gone.** When no seat holds a
 card, `Trick.nextLeaderSeat(seatsHoldingCards)` returns an empty `OptionalInt` and
-`ResolveTrickUseCase.java:159` passes it straight through, because
+`ResolveTrickUseCase.java:154` passes it straight through, because
 `TrickRepository.recordResolution`'s next-leader parameter widened from `int` to
 `OptionalInt` (`TrickRepository.java:163-164`). `advanceLeaderSeat` then writes
 `current_leader_seat = NULL`. No migration was needed: changeset `005`'s CHECK already

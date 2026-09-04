@@ -231,8 +231,7 @@ class NewGameUseCaseTest {
         void shouldRejectNullResolvePlayerUseCase() {
             final var sessionRepository = new InMemorySessionRepository(order);
             assertThatNullPointerException().isThrownBy(() -> new NewGameUseCase(
-                    null, handRepository, trickRepository, sessionRepository,
-                    cardRepository, shuffler, identifiers, publisher, FIXED));
+                    null, handRepository, trickRepository, sessionRepository, dealer(), FIXED));
         }
 
         @Test
@@ -241,8 +240,7 @@ class NewGameUseCaseTest {
             final var sessionRepository = new InMemorySessionRepository(order);
             assertThatNullPointerException().isThrownBy(() -> new NewGameUseCase(
                     new ResolvePlayerUseCase(sessionRepository, Clock.systemUTC()),
-                    null, trickRepository, sessionRepository,
-                    cardRepository, shuffler, identifiers, publisher, FIXED));
+                    null, trickRepository, sessionRepository, dealer(), FIXED));
         }
 
         @Test
@@ -251,8 +249,7 @@ class NewGameUseCaseTest {
             final var sessionRepository = new InMemorySessionRepository(order);
             assertThatNullPointerException().isThrownBy(() -> new NewGameUseCase(
                     new ResolvePlayerUseCase(sessionRepository, Clock.systemUTC()),
-                    handRepository, null, sessionRepository,
-                    cardRepository, shuffler, identifiers, publisher, FIXED));
+                    handRepository, null, sessionRepository, dealer(), FIXED));
         }
 
         @Test
@@ -261,8 +258,16 @@ class NewGameUseCaseTest {
             final var sessionRepository = new InMemorySessionRepository(order);
             assertThatNullPointerException().isThrownBy(() -> new NewGameUseCase(
                     new ResolvePlayerUseCase(sessionRepository, Clock.systemUTC()),
-                    handRepository, trickRepository, null,
-                    cardRepository, shuffler, identifiers, publisher, FIXED));
+                    handRepository, trickRepository, null, dealer(), FIXED));
+        }
+
+        @Test
+        @DisplayName("rejects a null handDealer")
+        void shouldRejectNullHandDealer() {
+            final var sessionRepository = new InMemorySessionRepository(order);
+            assertThatNullPointerException().isThrownBy(() -> new NewGameUseCase(
+                    new ResolvePlayerUseCase(sessionRepository, Clock.systemUTC()),
+                    handRepository, trickRepository, sessionRepository, null, FIXED));
         }
 
         @Test
@@ -271,8 +276,7 @@ class NewGameUseCaseTest {
             final var sessionRepository = new InMemorySessionRepository(order);
             assertThatNullPointerException().isThrownBy(() -> new NewGameUseCase(
                     new ResolvePlayerUseCase(sessionRepository, Clock.systemUTC()),
-                    handRepository, trickRepository, sessionRepository,
-                    cardRepository, shuffler, identifiers, publisher, null));
+                    handRepository, trickRepository, sessionRepository, dealer(), null));
         }
     }
 
@@ -288,16 +292,17 @@ class NewGameUseCaseTest {
         return PlayerBuilder.DEFAULT_TOKEN + "-" + seat;
     }
 
+    private HandDealer dealer() {
+        return new HandDealer(cardRepository, shuffler, handRepository, identifiers, publisher, FIXED);
+    }
+
     private NewGameUseCase useCaseFor(final InMemorySessionRepository sessionRepository) {
         return new NewGameUseCase(
                 new ResolvePlayerUseCase(sessionRepository, Clock.systemUTC()),
                 handRepository,
                 trickRepository,
                 sessionRepository,
-                cardRepository,
-                shuffler,
-                identifiers,
-                publisher,
+                dealer(),
                 FIXED);
     }
 }

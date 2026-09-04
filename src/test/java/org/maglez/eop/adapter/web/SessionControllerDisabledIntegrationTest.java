@@ -55,6 +55,12 @@ class SessionControllerDisabledIntegrationTest {
     }
 
     @Test
+    @DisplayName("does not create the stream controller either")
+    void shouldNotRegisterTheStreamController() {
+        Assertions.assertThat(context.getBeanNamesForType(SessionStreamController.class)).isEmpty();
+    }
+
+    @Test
     @DisplayName("does not create the sweep scheduler when the flag is off")
     void shouldNotRegisterTheSweepScheduler() {
         Assertions.assertThat(context.getBeanNamesForType(ExpiredSessionSweepScheduler.class)).isEmpty();

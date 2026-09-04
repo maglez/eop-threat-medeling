@@ -13,6 +13,7 @@ import org.maglez.eop.usecase.GetLeaderboardUseCase;
 import org.maglez.eop.usecase.GetScoreUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
 import org.maglez.eop.usecase.GetTrickStateUseCase;
+import org.maglez.eop.usecase.HandDealer;
 import org.maglez.eop.usecase.HandRepository;
 import org.maglez.eop.usecase.IdentifierGenerator;
 import org.maglez.eop.usecase.IdentityTokenGenerator;
@@ -30,6 +31,7 @@ import org.maglez.eop.usecase.SessionEventPublisher;
 import org.maglez.eop.usecase.SessionRepository;
 import org.maglez.eop.usecase.StartSessionUseCase;
 import org.maglez.eop.usecase.SweepExpiredSessionsUseCase;
+import org.maglez.eop.usecase.TrickJournal;
 import org.maglez.eop.usecase.TrickRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -209,6 +211,49 @@ public class UseCaseConfiguration {
     }
 
     /**
+     * Declares the hand dealer, deliberately ungated.
+     *
+     * <p>It is the act of dealing, shared by {@link DealHandsUseCase} and {@link NewGameUseCase},
+     * which are gated on two <em>different</em> flags &mdash; {@code eop.features.trick-play} and
+     * {@code eop.features.game-over}. Gating this bean on either one would make the other flag
+     * implicitly require it, so {@code game-over=true} with {@code trick-play=false}, a configuration
+     * that is legal today, would fail to start with an unsatisfied dependency naming a class that has
+     * nothing to do with the cause. This is the same reasoning already recorded for
+     * {@link DeckShuffler} below, and it is what allows the deal to live in one place instead of two
+     * (ADR-013).
+     *
+     * <p>Ungated does not mean unguarded. The dealer reaches the hand tables, so the containment
+     * claim for {@code eop.features.trick-play} rests on both of its callers being gated rather than
+     * on the dealer itself: with the flag off and {@code game-over} off, nothing injects it. What the
+     * dealer notably does <em>not</em> do is authorise anybody &mdash; that stays with each calling
+     * use case, as {@link HandRepository} requires (ADR-024).
+     *
+     * @param cardRepository the port the whole deck is read through
+     * @param deckShuffler the port that randomises the deck before it is dealt
+     * @param handRepository the port the deal is recorded through
+     * @param identifierGenerator the source of the hand identifiers
+     * @param sessionEventPublisher the transport that announces the deal to connected clients
+     * @param clock the clock the dealt timestamp is read from
+     * @return the hand dealer
+     */
+    @Bean
+    public HandDealer handDealer(
+            final CardRepository cardRepository,
+            final DeckShuffler deckShuffler,
+            final HandRepository handRepository,
+            final IdentifierGenerator identifierGenerator,
+            final SessionEventPublisher sessionEventPublisher,
+            final Clock clock) {
+        return new HandDealer(
+                cardRepository,
+                deckShuffler,
+                handRepository,
+                identifierGenerator,
+                sessionEventPublisher,
+                clock);
+    }
+
+    /**
      * Declares the deal-hands use case, behind {@code eop.features.trick-play}.
      *
      * <p>The flag is on the bean rather than on a controller because this slice ships
@@ -223,35 +268,20 @@ public class UseCaseConfiguration {
      *
      * <p>{@link DeckShuffler} is deliberately not gated. It is stateless, reaches no
      * table, and gating it would only turn a missing feature into an unsatisfied
-     * dependency somewhere further away from the cause.
+     * dependency somewhere further away from the cause. Since EOP-190 {@link HandDealer} is ungated
+     * for a related but stronger reason: it <em>does</em> reach the hand tables, so it is the gating
+     * of both its callers that withholds it, and gating the dealer itself would couple two
+     * independent flags.
      *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
-     * @param cardRepository the port the whole deck is read through
-     * @param deckShuffler the port that randomises the deck before it is dealt
-     * @param handRepository the port the deal is recorded through
-     * @param identifierGenerator the source of the hand identifiers
-     * @param sessionEventPublisher the transport that announces the deal to connected clients
-     * @param clock the clock the dealt timestamp is read from
+     * @param handDealer the collaborator that shuffles, deals and announces the deal
      * @return the deal-hands use case
      */
     @Bean
     @ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")
     public DealHandsUseCase dealHandsUseCase(
-            final ResolvePlayerUseCase resolvePlayerUseCase,
-            final CardRepository cardRepository,
-            final DeckShuffler deckShuffler,
-            final HandRepository handRepository,
-            final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
-        return new DealHandsUseCase(
-                resolvePlayerUseCase,
-                cardRepository,
-                deckShuffler,
-                handRepository,
-                identifierGenerator,
-                sessionEventPublisher,
-                clock);
+            final ResolvePlayerUseCase resolvePlayerUseCase, final HandDealer handDealer) {
+        return new DealHandsUseCase(resolvePlayerUseCase, handDealer);
     }
 
     /**
@@ -273,22 +303,55 @@ public class UseCaseConfiguration {
     }
 
     /**
+     * Declares the trick journal, the collaborator every trick write goes through.
+     *
+     * <p>Extracted by EOP-190 from {@code PlayCardUseCase} and {@code ResolveTrickUseCase}, which
+     * held the same completion cascade twice — record the resolution, announce it, and when the last
+     * card is gone complete the session, persist the result best-effort and announce the game over.
+     * Two copies of a cascade ending in a durable write is the shape where the copies drift, and here
+     * a drift decides whether a finished game is ever scoreable.
+     *
+     * <p><strong>Deliberately not gated.</strong> Both of its callers are behind
+     * {@code eop.features.trick-play} today, so gating the collaborator as well would withhold
+     * nothing that gating them has not already withheld, while turning any future caller on a
+     * different flag into an unsatisfied dependency far from its cause. That is the reasoning already
+     * recorded for {@link DeckShuffler} and {@link HandDealer} above (ADR-013). Ungated is not
+     * unguarded: containment rests on both callers being gated, and on this class authorising nobody
+     * — establishing that the caller may play or resolve stays the calling use case's first statement
+     * (ADR-024).
+     *
+     * @param trickRepository the port tricks are opened, appended to and resolved through
+     * @param sessionRepository the port the session is completed through when the last trick resolves
+     * @param sessionEventPublisher the transport each write is announced on, after it has landed
+     * @param persistGameResultUseCase writes the final standings, empty when the game-over feature is
+     *     off — the game still completes, it is simply not recorded
+     * @return the trick journal
+     */
+    @Bean
+    public TrickJournal trickJournal(
+            final TrickRepository trickRepository,
+            final SessionRepository sessionRepository,
+            final SessionEventPublisher sessionEventPublisher,
+            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
+        return new TrickJournal(trickRepository, sessionRepository, sessionEventPublisher, persistGameResultUseCase);
+    }
+
+    /**
      * Declares the play-card use case, behind {@code eop.features.trick-play}.
      *
      * <p>When the last card of a trick is played, this use case resolves the trick inline and
      * publishes {@code trick-resolved} (and {@code game-completed} if no cards remain). The
-     * {@link ResolveTrickUseCase} endpoint remains available for reconnect and edge cases.
+     * {@link ResolveTrickUseCase} endpoint remains available for reconnect and edge cases. Both
+     * reach that cascade through the same {@link TrickJournal} since EOP-190, so the two routes
+     * cannot drift apart.
      *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands and the current leader seat are read through
-     * @param trickRepository the port a trick is opened and a play appended through
      * @param cardRepository the port the played card is resolved through
      * @param identifierGenerator the source of the trick and play identifiers
-     * @param sessionEventPublisher the transport that announces the play to connected clients
      * @param clock the clock the played timestamp is read from
-     * @param sessionRepository the port the session status is advanced through on auto-complete
-     * @param persistGameResultUseCase persists the final game result; absent when the
-     *     {@code game-over} feature flag is off
+     * @param trickJournal writes the trick, announces each write, and completes the game when the
+     *     last trick resolves
      * @return the play-card use case
      */
     @Bean
@@ -296,23 +359,12 @@ public class UseCaseConfiguration {
     public PlayCardUseCase playCardUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
-            final TrickRepository trickRepository,
             final CardRepository cardRepository,
             final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
             final Clock clock,
-            final SessionRepository sessionRepository,
-            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
+            final TrickJournal trickJournal) {
         return new PlayCardUseCase(
-                resolvePlayerUseCase,
-                handRepository,
-                trickRepository,
-                cardRepository,
-                identifierGenerator,
-                sessionEventPublisher,
-                clock,
-                sessionRepository,
-                persistGameResultUseCase);
+                resolvePlayerUseCase, handRepository, cardRepository, identifierGenerator, clock, trickJournal);
     }
 
     /**
@@ -341,12 +393,9 @@ public class UseCaseConfiguration {
      *
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param handRepository the port the hands are read through
-     * @param trickRepository the port the resolution is recorded through
-     * @param sessionRepository the port the session status is advanced through on auto-complete
-     * @param sessionEventPublisher the transport that announces the resolution to connected clients
      * @param clock the clock the resolved timestamp is read from
-     * @param persistGameResultUseCase the use case that writes the final standings, empty when the
-     *     leaderboard feature is off — the resolution still completes, it is simply not recorded
+     * @param trickJournal reads the current trick, records the resolution, announces it, and
+     *     completes the game when no seat still holds a card
      * @return the resolve-trick use case
      */
     @Bean
@@ -354,14 +403,9 @@ public class UseCaseConfiguration {
     public ResolveTrickUseCase resolveTrickUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
-            final TrickRepository trickRepository,
-            final SessionRepository sessionRepository,
-            final SessionEventPublisher sessionEventPublisher,
             final Clock clock,
-            final Optional<PersistGameResultUseCase> persistGameResultUseCase) {
-        return new ResolveTrickUseCase(
-                resolvePlayerUseCase, handRepository, trickRepository, sessionRepository,
-                sessionEventPublisher, clock, persistGameResultUseCase);
+            final TrickJournal trickJournal) {
+        return new ResolveTrickUseCase(resolvePlayerUseCase, handRepository, clock, trickJournal);
     }
 
     /**
@@ -476,14 +520,16 @@ public class UseCaseConfiguration {
     /**
      * Declares the new-game use case, behind {@code eop.features.game-over}.
      *
+     * <p>It reaches the deal through the ungated {@link HandDealer} rather than through
+     * {@link DealHandsUseCase}, which is gated on {@code eop.features.trick-play}: injecting one
+     * gated use case into another would make {@code game-over} silently require {@code trick-play}
+     * and fail the context on a configuration that is legal today (ADR-013).
+     *
      * @param resolvePlayerUseCase  resolves the acting player from the identity token
-     * @param handRepository        clears and re-records hands
-     * @param trickRepository       clears tricks
+     * @param handRepository        clears the hands of the finished game
+     * @param trickRepository       clears the tricks of the finished game
      * @param sessionRepository     resets session status
-     * @param cardRepository        reads the whole deck for re-dealing
-     * @param deckShuffler          randomises the deck before it is dealt
-     * @param identifierGenerator   mints one hand identifier per seat
-     * @param sessionEventPublisher announces that the deal happened
+     * @param handDealer            deals the new game and records its opening lead
      * @param clock                 supplies timestamps
      * @return the new-game use case
      */
@@ -494,13 +540,10 @@ public class UseCaseConfiguration {
             final HandRepository handRepository,
             final TrickRepository trickRepository,
             final SessionRepository sessionRepository,
-            final CardRepository cardRepository,
-            final DeckShuffler deckShuffler,
-            final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
+            final HandDealer handDealer,
             final Clock clock) {
         return new NewGameUseCase(
                 resolvePlayerUseCase, handRepository, trickRepository, sessionRepository,
-                cardRepository, deckShuffler, identifierGenerator, sessionEventPublisher, clock);
+                handDealer, clock);
     }
 }

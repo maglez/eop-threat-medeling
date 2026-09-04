@@ -1,16 +1,12 @@
 package org.maglez.eop.usecase;
 
 import java.time.Clock;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.maglez.eop.entity.GameNotCompletedException;
 import org.maglez.eop.entity.GameSession;
-import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
-import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.SessionStatus;
 import org.maglez.eop.entity.TooFewPlayersException;
 
@@ -27,13 +23,31 @@ import org.maglez.eop.entity.TooFewPlayersException;
  *   <li>Clear tricks (plays first, then tricks — FK order).</li>
  *   <li>Clear hands (hand-cards first, then hands — FK order).</li>
  *   <li>Reset session status to {@code IN_PROGRESS} and clear the leader seat.</li>
- *   <li>Deal a freshly shuffled deck and record the opening lead.</li>
+ *   <li>Deal a freshly shuffled deck and record the opening lead, through
+ *       {@link HandDealer}.</li>
  * </ol>
  *
  * <p>Steps 2–4 are separate port calls rather than one atomic operation. A partial failure
  * leaves the session in an inconsistent state, but the facilitator can retry: the reset
  * is idempotent once the session is back in {@code IN_PROGRESS} and the deal is the
  * compare-and-set that prevents a double-deal.
+ *
+ * <p>Step 5 is not this class's own work. {@link DealHandsUseCase} needs the identical act for a
+ * session that has just started, and until EOP-190 both classes carried a verbatim copy of it; it now
+ * lives once, in {@link HandDealer}. Two consequences are worth stating here rather than leaving to be
+ * rediscovered. The session object handed to the dealer is the one resolved in step 1, so its status
+ * still reads {@code COMPLETED} even though step 4 has since reset it &mdash; harmless because the
+ * dealer reads only the identifier and the seats, and because whether the session was playable at the
+ * moment of the write is decided by {@link HandRepository#recordDeal} against the database rather than
+ * by any status held up here (ADR-020). And the seat count is checked twice: once in step 1, before
+ * anything has been destroyed, and again inside the dealer where {@link org.maglez.eop.entity.Hands}
+ * is actually called. The early check is the one that matters, because a session refused after its
+ * tricks and hands were cleared would have paid for the refusal with the game.
+ *
+ * <p>{@link HandDealer} is not gated on a feature flag, which is what allows this class to reuse it.
+ * This use case is a bean only when {@code eop.features.game-over} is on and {@link DealHandsUseCase}
+ * only when {@code eop.features.trick-play} is, so depending on the other use case directly would
+ * make {@code game-over} silently require {@code trick-play} (ADR-013).
  *
  * <p>Pure use case: no Spring, no Jakarta imports.
  */
@@ -43,34 +57,25 @@ public class NewGameUseCase {
     private final HandRepository handRepository;
     private final TrickRepository trickRepository;
     private final SessionRepository sessionRepository;
-    private final CardRepository cardRepository;
-    private final DeckShuffler deckShuffler;
-    private final IdentifierGenerator identifierGenerator;
-    private final SessionEventPublisher sessionEventPublisher;
+    private final HandDealer handDealer;
     private final Clock clock;
 
     /**
      * Creates the use case.
      *
-     * @param resolvePlayerUseCase  resolves the identity token into a seated player
-     * @param handRepository        clears and re-records hands
-     * @param trickRepository       clears tricks
-     * @param sessionRepository     resets session status
-     * @param cardRepository        reads the whole deck for re-dealing
-     * @param deckShuffler          randomises the deck before it is dealt
-     * @param identifierGenerator   mints one hand identifier per seat
-     * @param sessionEventPublisher announces that the deal happened
-     * @param clock                 supplies timestamps
+     * @param resolvePlayerUseCase resolves the identity token into a seated player
+     * @param handRepository       clears the hands of the finished game
+     * @param trickRepository      clears the tricks of the finished game
+     * @param sessionRepository    resets session status
+     * @param handDealer           deals the new game and records its opening lead
+     * @param clock                supplies timestamps
      */
     public NewGameUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,
             final TrickRepository trickRepository,
             final SessionRepository sessionRepository,
-            final CardRepository cardRepository,
-            final DeckShuffler deckShuffler,
-            final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
+            final HandDealer handDealer,
             final Clock clock) {
         this.resolvePlayerUseCase =
                 Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
@@ -78,12 +83,7 @@ public class NewGameUseCase {
         this.trickRepository = Objects.requireNonNull(trickRepository, "trickRepository is required");
         this.sessionRepository =
                 Objects.requireNonNull(sessionRepository, "sessionRepository is required");
-        this.cardRepository = Objects.requireNonNull(cardRepository, "cardRepository is required");
-        this.deckShuffler = Objects.requireNonNull(deckShuffler, "deckShuffler is required");
-        this.identifierGenerator =
-                Objects.requireNonNull(identifierGenerator, "identifierGenerator is required");
-        this.sessionEventPublisher =
-                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
+        this.handDealer = Objects.requireNonNull(handDealer, "handDealer is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
@@ -130,17 +130,6 @@ public class NewGameUseCase {
         sessionRepository.resetToInProgress(sessionId, now);
 
         // Re-deal a freshly shuffled deck to the same seats
-        final List<Hands.Seat> seats =
-                session.players().stream()
-                        .sorted(Comparator.comparingInt(Player::seatOrder))
-                        .map(player -> new Hands.Seat(
-                                player.seatOrder(),
-                                player.playerId(),
-                                identifierGenerator.nextIdentifier()))
-                        .toList();
-
-        final var hands = Hands.deal(deckShuffler.shuffle(cardRepository.findWholeDeck()), seats);
-        handRepository.recordDeal(sessionId, hands, hands.openingLeaderSeat(), now);
-        sessionEventPublisher.publish(new SessionEvent(SessionEventType.HAND_DEALT, sessionId, now));
+        handDealer.deal(session);
     }
 }
