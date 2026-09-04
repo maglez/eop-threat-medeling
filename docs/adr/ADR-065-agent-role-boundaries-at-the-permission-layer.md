@@ -221,6 +221,34 @@ definition that omits the scheduler denials will hold them, by the implicit-allo
 There is no build gate for this and no test that walks the agent files, so it is
 reviewer-enforced; adding one would be a reasonable follow-up.
 
+> **Amended 2026-09-04 (EOP-000):** that follow-up now exists, so the paragraph above
+> describes the position this ADR shipped in rather than the position today.
+> `src/test/java/org/maglez/eop/docs/AgentPermissionDeclarationTest.java` walks
+> `.opencode/agents/*.md`, parses each frontmatter block with SnakeYAML, and fails
+> `./mvnw verify` if an agent declares no `permission` block, omits either `edit` or `bash`
+> without being covered by a `"*": deny` catch-all, or leaves any of the six mutating
+> scheduler tools undenied without appearing on a declared exception list. The two exceptions
+> are `@performance-engineer` and `@tech-lead`, each carrying a written justification the test
+> length-checks, and an entry naming an agent that no longer exists fails — so an exception
+> retires itself rather than decaying into silence, on `SeparationInvariantTest`'s pattern.
+>
+> Closing it required changing eight agent files rather than only adding a test.
+> `architecture-guardian`, `db-designer`, `devops-engineer`, `performance-engineer`,
+> `tester-api`, `tester-unit-and-quality`, `ui-builder` and `tech-lead` declared no `edit` key
+> at all and held it by the implicit-allow baseline, which is exactly the shape that produced
+> the breaches. Each now states `edit: allow` explicitly. Nothing about what those agents may
+> do changed; what changed is that the grant is now a decision on the record instead of an
+> omission indistinguishable from an oversight. That is the whole point of the gate: it cannot
+> tell an intended inheritance from a forgotten one, so it forbids inheritance.
+>
+> **Read the bound before citing this as enforcement.** The test proves a key is *declared*,
+> never that its value is sensible — `bash: {"*": allow}` satisfies it while granting
+> everything, and a hostile author has no more trouble writing that than writing nothing.
+> It closes the *silent* case, which is the one that has actually happened here twice.
+> Whether a declared value is the right one stays reviewer-enforced, exactly as
+> `ConditionalOnPropertyHavingValueTest` mechanises `havingValue = "true"` while leaving
+> ADR-013's bean-repetition clause to judgement.
+
 **Permissions are read at process start.** A running session does not pick up a change to
 an agent's frontmatter. Every verification of this change requires an OpenCode restart, and
 a behavioural check — ask the agent to do the forbidden thing and watch what happens —
