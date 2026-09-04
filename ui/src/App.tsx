@@ -233,11 +233,10 @@ export default function App(): React.JSX.Element {
                   href="https://creativecommons.org/licenses/by/3.0/us/"
                 >
                   Creative Commons Attribution 3.0 United States
-                </a>
-                . The threat prompts shown above are Microsoft&apos;s, transcribed
-                from the published deck. Attribution is the only obligation the
-                licence imposes, and it is discharged here rather than only in the
-                repository.
+                </a>. The threat prompts shown above are Microsoft&apos;s,
+                transcribed from the published deck. Attribution is the only
+                obligation the licence imposes, and it is discharged here rather
+                than only in the repository.
               </p>
             </div>
           </div>

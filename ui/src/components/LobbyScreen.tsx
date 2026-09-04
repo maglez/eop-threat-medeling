@@ -223,7 +223,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
             
             <div className="govuk-inset-text">
               <p className="govuk-body-l">
-                Share this code with other players: 
+                <span>Share this code with other players:</span>
                 <strong className="govuk-!-font-size-48 govuk-!-margin-left-2">
                   {session.joinCode}
                 </strong>
@@ -280,7 +280,7 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
               <div className="govuk-warning-text">
                 <span className="govuk-warning-text__icon" aria-hidden="true">!</span>
                 <strong className="govuk-warning-text__text">
-                  <span className="govuk-warning-text__assistive">Warning</span>
+                  <span className="govuk-warning-text__assistive">Warning</span>{' '}
                   The game has started
                 </strong>
               </div>

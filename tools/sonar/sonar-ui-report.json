@@ -42,16 +42,13 @@
     "for that metric and the field reads null. That is not a broken scan."
   ],
   "counts": {
-    "MAINTAINABILITY": 26,
-    "RELIABILITY": 9,
+    "MAINTAINABILITY": 23,
+    "RELIABILITY": 6,
     "SECURITY": 0
   },
   "coverage": 90.8,
-  "generatedAt": "2026-09-03T17:35:43Z",
+  "generatedAt": "2026-09-04T09:46:23Z",
   "issues": [
-    "MAINTAINABILITY,RELIABILITY|typescript:S6772|src/App.tsx|cfb0b5f8ccae71824d6eaeed9d5efb2c",
-    "MAINTAINABILITY,RELIABILITY|typescript:S6772|src/components/LobbyScreen.tsx|65c0dc1b6a60b6207972a8235df71e79",
-    "MAINTAINABILITY,RELIABILITY|typescript:S6772|src/components/LobbyScreen.tsx|94f4c77091f021f908889caa26640940",
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/FollowSuitHint.tsx|f0c715412bbc4555cd76e5d6b664ffd4",
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameOverScreen.tsx|5b89c7407eeb795475a0d05f003ccf72",
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameScreen.tsx|39bda89d640442c8d0d2cbed212a2bc5",
@@ -76,23 +73,23 @@
     "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|eafafa7528a1cd60013fc495d933b241",
     "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|ed86bc12f87ddb5d2c00df640ecd7b14"
   ],
-  "ncloc": 2814,
+  "ncloc": 2813,
   "scannerImage": "sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
   "scope": {
     "ALL": {
       "byQuality": {
-        "MAINTAINABILITY": 31,
-        "RELIABILITY": 9,
+        "MAINTAINABILITY": 28,
+        "RELIABILITY": 6,
         "SECURITY": 0
       }
     },
     "MAIN": {
       "byQuality": {
-        "MAINTAINABILITY": 26,
-        "RELIABILITY": 9,
+        "MAINTAINABILITY": 23,
+        "RELIABILITY": 6,
         "SECURITY": 0
       },
-      "total": 26
+      "total": 23
     },
     "TEST": {
       "byQuality": {
@@ -105,6 +102,6 @@
   },
   "sonarQubeVersion": "26.8.0.126808",
   "sourceFileCount": 30,
-  "sourceHash": "fb2fbae31fc2f3f9ff666e8d1ffd95f8e38ea03fccbdc942f826106b0a6e2b24",
+  "sourceHash": "3cade5f44b456461644ec2ad34f427e49d62954a06e8bf67284f66045b9318c5",
   "tests": null
 }
