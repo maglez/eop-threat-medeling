@@ -1739,14 +1739,33 @@ class TrickControllerIntegrationTest {
     }
 
     /**
-     * Asserts a result carries a problem document rather than an ordinary body.
+     * Asserts a result carries a well-formed RFC 9457 problem document.
+     *
+     * <p>Checks three mandatory invariants:
+     * <ul>
+     *   <li>Content-Type starts with {@code application/problem+json}</li>
+     *   <li>{@code $.status} matches the HTTP status line (RFC 9457 §3.1)</li>
+     *   <li>{@code $.detail} is present and non-blank</li>
+     * </ul>
+     *
+     * <p>Note: {@code $.type} is intentionally not asserted. RFC 9457 §3.1 makes it optional
+     * with a default of {@code about:blank}, and Spring omits it from the serialised body
+     * while it holds that default value.
      *
      * @param result the result to inspect
+     * @throws Exception if the response body cannot be read
      */
-    private static void assertProblemJson(final MvcResult result) {
+    private static void assertProblemJson(final MvcResult result) throws Exception {
         Assertions.assertThat(result.getResponse().getContentType())
                 .as("every refusal is an RFC 9457 problem document")
                 .startsWith(PROBLEM_JSON);
+        final var doc = JsonPath.parse(result.getResponse().getContentAsString());
+        Assertions.assertThat(doc.read("$.status", Integer.class))
+                .as("$.status body member must agree with the HTTP status line")
+                .isEqualTo(result.getResponse().getStatus());
+        Assertions.assertThat(doc.read("$.detail", String.class))
+                .as("$.detail must be present and non-blank")
+                .isNotBlank();
     }
 
     /**
