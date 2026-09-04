@@ -203,6 +203,8 @@ The flow is one-directional, and the hop from requirements to delivery goes **th
 
 > **`task: deny` is enforcement, not documentation — and it does not restrict you.** A denied subagent is removed from the Task tool description entirely, so the model never sees it and cannot attempt to invoke it; contrast a prompt instruction, which a model may simply ignore. A human is unaffected: every agent remains directly invocable from the `@` autocomplete menu regardless of `task` permissions. Note the flip side — an agent cannot be *forced* to delegate, so the Tech Lead's prompt still has to say what to dispatch and when.
 
+> **The same reasoning was extended to `edit`, `bash` and the scheduler tools on 2026-09-04, and for the same reason: the prose had already been ignored.** `task` was the first key here to be enforced rather than described, and for a year it was the only one — so the Product Owner's *delegation* boundary was tool-enforced while its *authoring* boundary was three paragraphs of prose, which it overrode twice. Every agent's write and command access is now scoped in frontmatter: see §7.8 for the three `bash` shapes, the path-scoped `edit`, and the plugin-tool escape hatch that defeats both if left open. One caveat carries across from `task` unchanged — a *flat* deny on a tool removes it from the roster and is a boundary, whereas a deny on a command *pattern* is matching over text and is only a speed bump.
+
 > **Per-agent permissions live in frontmatter only.** Both `.opencode/opencode.json` (its `agent` block) and each agent's own `permission:` frontmatter can carry per-agent rules, and it is not documented whether the two merge per key or whether one replaces the other. Rather than depend on the answer, every per-agent rule now sits in frontmatter and the JSON `agent` block holds nothing but model assignments. The Product Owner's four Jira `allow`s moved there for exactly this reason: with a nested `permission` object in the JSON *and* a 14-key Jira block in its frontmatter, a replacing merge would have silently dropped one of the two.
 
 ### 3.4 Provider Architecture
@@ -968,6 +970,8 @@ These complement the `/goal` command (see §12.8) for when you want to poll mult
 
 The complete key set is `read`, `edit`, `glob`, `grep`, `list`, `bash`, `task`, `external_directory`, `todowrite`, `webfetch`, `websearch`, `lsp`, `skill`, `question`, `doom_loop`. `task` is covered in §3.3 (*Orchestration Topology*).
 
+That 2026-08-02 change gated the machine **globally**; it did not scope any agent to its role. `bash` stayed unrestricted in every agent file for another month, which is what two consecutive role-boundary breaches by the Product Owner exploited. The per-agent shape landed on 2026-09-04 under [ADR-065](../../docs/adr/ADR-065-agent-role-boundaries-at-the-permission-layer.md) and is described in the three subsections below.
+
 > **There is no `write` permission key.** `edit` gates `write`, `edit` and `apply_patch` together. A rule spelled `"write": "deny"` is accepted by the config, matches nothing, and silently does nothing — the same class of defect as the dead Jira and GitHub rules above.
 
 > **`external_directory` is the one key deliberately left unconfigured**, which means it falls back to `ask` — the only tool in the set whose default is a prompt rather than silent permission. Every read, write or shell touch of a path outside the worktree therefore stops the agent until a human answers: `/tmp`, `~/Documents/…`, the project's own parent directory. That is the intended posture and §7.9 is how work is arranged around it rather than an argument for widening it. Two things to know before reaching for an allow-glob. The prompt is not advisory — it blocks, and an unattended prompt costs minutes of wall-clock time, which is what makes the in-worktree alternative worth the discipline. And a static claim in an agent's own tool briefing that some path is "pre-approved for external directory access" does **not** override this config: on 2026-08-20 an agent asserted exactly that about `/var/folders/…/T/opencode` and the touch was gated anyway. Treat any such briefing as unverified until a session demonstrates otherwise.
@@ -988,7 +992,7 @@ Two of those entries deserve explanation. `rm *` replaced the original pair `rm 
 
 > **Still a speed bump, not a boundary — do not describe it as one.** It matches command text, so it misses `find … -delete`, a `$HOME` that expands to something unexpected, and any script that performs the deletion internally. The reason to keep it is that it costs nothing and turns the most common catastrophic typo into a question. The reason `"bash": {"*": "ask"}` was rejected is that a control which makes ordinary work unbearable gets switched off within a day, and a control that is switched off protects nothing.
 
-#### edit — deny for the agents that only audit
+#### edit — deny for the agents that only audit, and a path scope for the one that only specifies
 
 Eight agents exist to produce findings, not changes. A reviewer that can silently rewrite the code it reviews defeats the review, so they carry `edit: deny` in frontmatter:
 
@@ -1002,9 +1006,51 @@ Eight agents exist to produce findings, not changes. A reviewer that can silentl
 
 > **For the two 2026-09-02 gates, `edit: deny` is what makes the separation meaningful (ADR-061).** Both adjudicate a *committed artefact* — a baseline of three integers, an allowlist of CVE suppressions — where the cheapest way to turn a red gate green is to edit the artefact rather than the code. Neither agent is the enforcement in any case: the `sonar-ratchet` and `dependency-cve` CI jobs fail mechanically with no model in the path, and what these two add is the judgement a script cannot make — whether a raised ceiling was actually argued, and whether an allowlist entry carries a real reachability trace. Denying `edit` is what keeps those two roles distinct.
 
-Every other agent keeps `edit`, because writing is their job: the Performance Engineer maintains `docs/performance/TRENDS.md`, the Architecture Guardian writes `docs/`, the DevOps Engineer authors workflows, the Product Owner writes PRDs, and the testers, DB Designer and UI Builder all produce code.
+The four `expert-*` advisers went further on 2026-09-04. `edit: deny` alone left them holding `bash` — and therefore `git commit` and `git push` — which contradicted the very sentence that justified the deny. They now carry an **allow-list**: `"*": deny` first, then `read`, `grep`, `glob`, `list` re-allowed. Four keys rather than an enumerated deny-list, because a list of today's tool names silently grants tomorrow's; a plugin installed next month is denied by default. The four read tools are retained deliberately, so an adviser can open the code it is asked to critique instead of reasoning from a paste.
+
+**A ninth agent now carries a scoped `edit` rather than a flat one.** The Product Owner writes Product Requirement Documents and nothing else, so its `edit` is `"*": deny` followed by `"docs/requirements/**": allow` — its authoring path, and only that path. This **reverses** what this section said until 2026-09-04, which was that "every other agent keeps `edit`, because writing is their job … the Product Owner writes PRDs". That was true of the intent and false of the consequence: an unscoped `edit` let the Product Owner write seven Java and XML files under `src/`, twice. See [ADR-065](../../docs/adr/ADR-065-agent-role-boundaries-at-the-permission-layer.md).
+
+> **The path glob was verified before it was relied on, and the mechanism is undocumented.** OpenCode's docs show `edit` accepting an object of pattern → action but never state what the pattern matches. A `mode: primary` probe agent carrying `edit: {"*": deny, ".tmp/permtest/**": allow}` wrote inside the allowed directory and was refused outside it, so the patterns match **worktree-relative file paths** and last-matching-rule-wins holds for `edit` as it does for `bash`. Re-verify behaviourally if a release changes it — and note that `opencode run --agent` silently falls back to the default `build` agent when handed a `mode: subagent` file, which will make a subagent probe measure the wrong permissions and look like a total failure of the mechanism.
+
+Every remaining agent keeps an unrestricted `edit`, because authoring is their job: the Performance Engineer maintains `docs/performance/TRENDS.md`, the Architecture Guardian writes `docs/`, the DevOps Engineer authors workflows, and the testers, DB Designer and UI Builder all produce code.
 
 Permission configuration is read at **process start**. A running session will not pick up a change to `.opencode/opencode.json` or to any agent's frontmatter; restart OpenCode and re-verify behaviourally.
+
+#### bash — deny where delivery is not the role
+
+The section above gates *what* an agent may write. This one gates what it may *run*, and until 2026-09-04 the answer was everything: **not one of the seventeen agent files declared a `bash` key**, so every one of them inherited the global `"*": "allow"` — including the four advisers whose own briefing said they do not touch the repository, and the Product Owner, which used it to run `./mvnw verify`, `git commit`, `git push` and `gh pr create`. Omitting a key is not leaving a permission unset; it is granting it. The effective ruleset begins `{"permission":"*","action":"allow","pattern":"*"}` before any frontmatter rule is applied.
+
+Three shapes now exist, matching the three kinds of role:
+
+| Agents | `bash` | Reasoning |
+|---|---|---|
+| the 4 `expert-*` advisers | denied by their `"*": deny` catch-all | they answer questions; there is nothing for them to run |
+| `product-owner` | `"*": deny`, then `git status*`, `git log*`, `git diff*`, `git show*` allowed | it needs to *see* repository state to write requirements against it, and nothing more. It cannot build, test, commit, push or open a pull request |
+| the 11 delivery agents | `"*": allow`, then `git commit*`, `git push*`, `git reset*`, `git checkout*`, `git restore*`, `gh pr create*`, `gh pr merge*`, `gh release*` denied | they must run `./mvnw verify`, both SonarQube ratchets, `npm run verify` and the Trivy scan, and their Sign-off Contract obliges them to paste real command output — so the shell stays open and only publishing and worktree-rewriting are closed |
+| `tech-lead` | `"*": allow`, then `git push*`, `gh pr create*`, `gh pr merge*`, `gh release*` denied | it is the one agent that may `git commit`, because the eleven no longer can. Publishing remains a human act |
+
+The chain that produces is deliberate and worth stating as one sentence: **delivery agents produce changes, the Tech Lead commits them, and only the operator publishes.**
+
+> **The two delivery shapes are blocklists, and a blocklist is weaker than an allow-list.** `security.md` prefers allow-lists and this is a departure from it, argued rather than overlooked: an allow-list of every command the eleven gates legitimately run would need `./mvnw` with every goal, two ratchet scripts, `npm`, `docker`, `trivy`, `git` reads, and would still block the next tool someone adds — which lands us straight back in §7.8's own finding that "a control which makes ordinary work unbearable gets switched off within a day, and a control that is switched off protects nothing". The blocklist buys the specific property that matters here: an agent cannot publish. It does not buy general containment, and must not be cited as though it did.
+
+> **Which of these are boundaries and which are speed bumps — cite them apart.** A flat `deny` on a *tool* (`bash: deny` on an adviser, `run_job: deny`) removes the tool from the roster entirely: the model never sees it, gets no prompt, and has nothing to argue with. That is a boundary. A `deny` on a *command pattern* is still pattern matching over command text, so it inherits every limitation of the `ask` patterns above — it cannot see inside a script, a `bash -c` wrapper is a single node beginning with `bash`, and the three ways the friction vanishes (a careless "always", `--auto`/`--yolo`/`--dangerously-skip-permissions`/the TUI auto-approve toggle, and upstream [#39001](https://github.com/anomalyco/opencode/issues/39001)) apply here exactly as they do to `rm *`. The path-scoped `edit` is a boundary; `"git push*": deny` is a speed bump on a path an agent has no reason to walk.
+
+> Permissions are read at **process start**. Restart OpenCode after changing any of this, and confirm behaviourally — ask the agent to do the forbidden thing and check the filesystem or the git log. **Never** confirm by asking an agent to enumerate its own tools: a probe asked exactly that refused as unverifiable introspection while narrating a `read` call it had not made.
+
+#### The plugin-tool escape hatch
+
+`bash: deny` and `edit: deny` are not sufficient on their own, and this was not documented anywhere until 2026-09-04.
+
+Plugin tools are unaffected by either key. The scheduler plugin (§12) contributes `schedule_job`, `run_job`, `update_job`, `delete_job`, `cleanup_global` and `install_skill`, and two of those reach straight past the shell and file gates: **`run_job` accepts `agent`, `prompt`, `command`, `model` and `files` overrides**, and `schedule_job` registers a cron job that runs an arbitrary OpenCode prompt. An agent holding `bash: deny` and `edit: deny` can therefore obtain arbitrary command execution and arbitrary file writes by running a job **under a different agent's identity**. `install_skill` writes into `.opencode/skill`. This was confirmed live: a probe agent with `bash` denied and `edit` denied still listed the whole scheduler set in its roster.
+
+The mutating six are therefore denied per agent, alongside `bash` and `edit`, on every agent except two:
+
+- **`performance-engineer` keeps the job lifecycle** — `schedule_job`, `run_job`, `update_job`, `delete_job`, `list_jobs`, `get_job`, `job_logs` — because the k6 load-test run is a scheduled job and that is its role (§11). It denies only `cleanup_global` and `install_skill`, neither of which is part of running a load test.
+- **`tech-lead` keeps them** as the orchestrator, along with the `/goal` tools.
+
+> **A blanket deny in `.opencode/opencode.json` was rejected for exactly that first reason.** A single top-level `run_job: deny` would have been one line instead of six lines across twelve files, and would have broken the scheduled load test. The per-agent form costs repetition and buys the exception.
+
+> **The cost of the per-agent form is that a new agent inherits everything unstated.** Add an eighteenth agent file with no `permission` block and it holds unrestricted shell, unrestricted writes and the full scheduler set — the same posture that produced the two breaches. Nothing in `./mvnw verify` walks `.opencode/agents/`, so this is reviewer-enforced. A test asserting that every agent file declares `edit` and `bash` would close it and is a reasonable follow-up; it does not exist today.
 
 ---
 

@@ -119,6 +119,8 @@ Four expert personas have been synthesised from **hundreds of hours of video con
 
 These advisors are available to any agent in the system for a second opinion on a design decision, a trade-off, or an architectural choice. They do not write code or file tickets — their role is purely advisory, ensuring that the team's decisions are grounded in proven, battle-tested engineering wisdom.
 
+As of September 2026 that last sentence is a property of the system rather than an instruction to it. The four advisors are configured with the ability to *read* the codebase and nothing else: the tools that write files, run commands, commit, publish or delegate work are simply absent from what they can reach. An advisor cannot act outside its remit even if it were asked to, and it cannot be talked into it.
+
 ---
 
 ## Seven Independent Review Gates
@@ -138,6 +140,10 @@ For **production code, infrastructure and test code** there are zero exceptions,
 | `@dependency-vulnerability` | No new high or critical vulnerability in any third-party library the product ships |
 
 The last two gates were added in September 2026 and work differently from the first five in a way worth understanding. Both sit in front of an automated scan that already fails the build on its own, with no AI involved in the decision. Their job is the judgement the scan cannot make: whether a team's decision to *accept* a known defect or a known vulnerability was genuinely reasoned and documented, rather than waved through to make a red light go green. Neither agent is permitted to edit the files it is judging, so neither can grant itself a pass.
+
+That restriction is now the general rule rather than a special case for two gates. Every agent's ability to write files and run commands is scoped to the job it actually has: the Product Owner can write requirements documents and nothing else, the delivery agents can build and test but cannot publish, and only the human operator can push code or open a pull request. These limits are enforced by the platform, not by instructions in a prompt — which matters, because the change was made after an agent twice ignored written instructions and did work belonging to another role. An instruction can be overridden by a persuasive-looking context; an absent tool cannot.
+
+> Two honest limits. Scoping an agent's *commands* is a strong speed bump rather than an absolute barrier — an operator who chooses to switch the safety off can still do so, by design, so that the controls stay usable enough to remain switched on. And every agent can still *read* the whole repository; this scopes what an agent may **do**, not what it may see.
 
 An eighth automated backstop then checks that all seven approvals are genuinely present and evidenced before a story can be archived as done. It is described here as a safety net rather than an independent review, because it runs on the same underlying model as the orchestrator whose work it is checking — another limitation the project documents rather than overstates.
 

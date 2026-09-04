@@ -3,6 +3,32 @@ description: Writes and executes fast API integration tests, validates request/r
 mode: subagent
 temperature: 0.1
 permission:
+  # Delivery is the role; publishing is not. `bash` stays broadly allowed because
+  # these agents must run ./mvnw verify, the SonarQube ratchets, npm run verify
+  # and the Trivy scan, and their Sign-off Contract obliges them to paste real
+  # command output. That makes this a blocklist -- weaker than an allow-list and
+  # a deliberate, argued departure from security.md's preference (ADR-065).
+  # Denied: publishing the work, and rewriting or discarding the worktree.
+  bash:
+    "*": allow
+    "git commit*": deny
+    "git push*": deny
+    "git reset*": deny
+    "git checkout*": deny
+    "git restore*": deny
+    "gh pr create*": deny
+    "gh pr merge*": deny
+    "gh release*": deny
+  # The scheduler tools reach arbitrary execution under another agent's identity
+  # (run_job takes agent/prompt/command/model overrides; schedule_job cron-runs an
+  # arbitrary prompt), which would defeat every bash rule above. install_skill
+  # writes into .opencode/skill.
+  run_job: deny
+  schedule_job: deny
+  update_job: deny
+  delete_job: deny
+  cleanup_global: deny
+  install_skill: deny
   task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny
