@@ -42,12 +42,12 @@
     "for that metric and the field reads null. That is not a broken scan."
   ],
   "counts": {
-    "MAINTAINABILITY": 23,
+    "MAINTAINABILITY": 21,
     "RELIABILITY": 6,
     "SECURITY": 0
   },
   "coverage": 90.8,
-  "generatedAt": "2026-09-04T10:23:54Z",
+  "generatedAt": "2026-09-04T11:19:44Z",
   "issues": [
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/FollowSuitHint.tsx|f0c715412bbc4555cd76e5d6b664ffd4",
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameOverScreen.tsx|5b89c7407eeb795475a0d05f003ccf72",
@@ -65,31 +65,29 @@
     "MAINTAINABILITY|typescript:S3776|src/components/GameScreen.tsx|ede2b910ae62add0ef53feb623def63d",
     "MAINTAINABILITY|typescript:S3863|src/components/LobbyScreen.tsx|3a93b8cae378fd3b9e9b76e9e08424a8",
     "MAINTAINABILITY|typescript:S3863|src/components/LobbyScreen.tsx|c16325c399c9f66d4951c9ab97d978fb",
-    "MAINTAINABILITY|typescript:S6479|src/components/ErrorSummary.tsx|d373a0f16fb27d7b7c903f13bfb36b6b",
-    "MAINTAINABILITY|typescript:S6767|src/components/GameScreen.tsx|af805f3fe512367df911612fd49910c5",
     "MAINTAINABILITY|typescript:S6819|src/components/FollowSuitHint.tsx|76b57ea88200dae410201c3887d9cdce",
     "MAINTAINABILITY|typescript:S6819|src/components/GameScreen.tsx|d90c26198ff23a5c54f81269ceed5c01",
     "MAINTAINABILITY|typescript:S6819|src/components/GameScreen.tsx|d90c26198ff23a5c54f81269ceed5c01",
     "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|eafafa7528a1cd60013fc495d933b241",
     "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|ed86bc12f87ddb5d2c00df640ecd7b14"
   ],
-  "ncloc": 2813,
+  "ncloc": 2810,
   "scannerImage": "sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
   "scope": {
     "ALL": {
       "byQuality": {
-        "MAINTAINABILITY": 28,
+        "MAINTAINABILITY": 26,
         "RELIABILITY": 6,
         "SECURITY": 0
       }
     },
     "MAIN": {
       "byQuality": {
-        "MAINTAINABILITY": 23,
+        "MAINTAINABILITY": 21,
         "RELIABILITY": 6,
         "SECURITY": 0
       },
-      "total": 23
+      "total": 21
     },
     "TEST": {
       "byQuality": {
@@ -102,6 +100,6 @@
   },
   "sonarQubeVersion": "26.8.0.126808",
   "sourceFileCount": 30,
-  "sourceHash": "76b5b349820d6b9dc9c860922c87c67d04c936c120a35ea2599d33cf7e134767",
+  "sourceHash": "a519c859531c2b58b338b782f262ebc6339db04fd38b5664c96b102a5b1ca6ea",
   "tests": null
 }

@@ -1,6 +1,6 @@
 # ADR-009: Front-End Technology Stack — React + TypeScript + Vite + GOV.UK Frontend
 
-- **Status:** Accepted (amended six times — four on 2026-08-19, when five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant became a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; and twice on 2026-08-20, when the `ui/` dev toolchain moved to vite 7 + vitest 3 to clear six CVEs, npm's suggested vite 8 + vitest 4 majors were declined, and the Node floor rose to 22.12, and when the dev server port reverted to Vite's default `:5173` after its author confirmed `:5371` was mistyped, superseding this ADR's guess at a reason for it; see Amendments)
+- **Status:** Accepted (amended seven times — four on 2026-08-19, when five stack and layout claims diverged from the shipped code, the DTO mirror's unenforced manual invariant became a build gate, codegen was re-evaluated once response parsing landed and again declined, and the last field typed bare `string` against a *mirrored* enum schema was closed while `Rank` was explicitly rejected as a mirror; twice on 2026-08-20, when the `ui/` dev toolchain moved to vite 7 + vitest 3 to clear six CVEs, npm's suggested vite 8 + vitest 4 majors were declined, and the Node floor rose to 22.12, and when the dev server port reverted to Vite's default `:5173` after its author confirmed `:5371` was mistyped, superseding this ADR's guess at a reason for it; and once on 2026-09-04, when the front-end ESLint rule set was recorded as a decision for the first time — `eslint-plugin-react` enabled with 29 explicitly listed rules chosen to match what SonarQube's own analyser runs rather than `react.configs.flat.recommended`, since the rule EOP-191 tripped over is off by default and absent from that preset; see Amendments)
 - **Date:** 2026-07-26
 - **Author:** Engineering Team
 - **Deciders:** Architecture Guardian, UI Builder, Tech Lead
@@ -846,6 +846,104 @@ value nobody could account for three days later. Filed as EOP-111, which asks wh
 should be enforced by a hook or by CI rather than only by review, given that documenting it did not
 prevent this instance.
 
+### Amendment — EOP-192 (2026-09-04): the front-end ESLint rule set is a decision, and it is selected to match what SonarQube runs rather than to match `recommended`
+
+**This amendment adds a decision the ADR never recorded, rather than correcting a claim it made.**
+Every earlier amendment here fixed prose that had gone stale; this one fills a silence. The only
+mention of linting anywhere in the original text is the bare `eslint.config.js` line in the shipped
+layout tree (line 171), which says nothing about what that file enables — so there is no superseded
+paragraph to annotate with a dated note, and none has been added. The reason it now needs recording
+is that ADR-063 made the front-end lint configuration load-bearing: with a SonarQube ratchet gating
+`ui/src`, *which ESLint plugins are enabled* determines which gated findings a developer can see
+before pushing.
+
+**What the gap actually was.** `ui/eslint.config.js` enabled `@eslint/js` recommended,
+`typescript-eslint` `recommendedTypeChecked` and `eslint-plugin-react-hooks` — but not
+`eslint-plugin-react`. SonarQube's TypeScript analyser runs 30 `eslint-plugin-react` rules, so every
+`typescript:S67xx` finding backed by one of them was invisible to `npm run verify` and detectable
+only by the `sonar-ratchet-ui` job, which runs after push. EOP-191 demonstrated it: three
+`typescript:S6772` findings were fixed while `npm run verify` stayed green both before and after the
+fix. The feedback loop was the wrong way round — the cheap local tool was silent and the expensive
+one (a container, an amd64 scanner under emulation, regenerated artefacts to commit) was the only
+detector.
+
+**The selection principle: the rules SonarQube itself runs, not `react.configs.flat.recommended`.**
+This is the substance of the decision, and the argument for it is measured rather than aesthetic.
+`react/jsx-child-element-spacing` — the very rule EOP-191's three findings violated — is off by
+default and **absent from `recommended`**, so adopting the preset would not have closed the
+demonstrated miss at all, while it *would* have switched on two rules that are wrong for this
+codebase. Matching Sonar's set closes the gap by construction: the two tools then disagree about
+nothing, and the local run is a faithful preview of the gate. It also disposes of
+`react/react-in-jsx-scope` (wrong under the automatic JSX runtime) without a special case, because
+that rule backs no Sonar key and so falls outside the principle rather than needing an exception.
+
+| Decision | Value | Why |
+|---|---|---|
+| Plugin | `eslint-plugin-react@7.37.5`, devDependency | Its `engines` is `{"node": ">=4"}`, so it imposes nothing against `ui/package.json`'s `engines.node >= 22.12` floor |
+| Rule set | 29 explicit `react/*` rules at `"error"`, each annotated in-file with its Sonar key | Sonar's 30 minus one documented omission. Explicit, not a preset — see above |
+| `settings.react.version` | `"detect"` | `react` is `^18.3.1`, so a literal `"18.3"` goes stale the first time a minor resolves forward |
+| Omitted | `react/prop-types` (S6774) | Demands runtime PropTypes that are redundant when every prop shape is a checked TypeScript interface. It would fire on every component, and the noise is what invites the blanket disable this ADR's amendment is meant to prevent |
+| Kept despite the omission | `react/default-props-match-prop-types` (S6775) | It only validates PropTypes that already exist, so with none declared it is inert rather than noisy — the two rules are not a package |
+| Configured, not defaulted | `react/jsx-no-bind` with `allowArrowFunctions: true` (S6480) | Measured: the plugin default reports **33** errors across seven components on this tree, `allowArrowFunctions: true` reports **0** — and the ratchet reports **zero** S6480 against the same tree, so the relaxed option is exact parity with the gate. It still catches `.bind()` and `function`-expression props, which nothing local caught before |
+| Enabled though currently inert | the class-component rules (`no-direct-mutation-state`, `no-is-mounted`, `no-string-refs`, `require-render-return`, …) | This codebase is hooks-only, so they cannot fire today and add no noise. They are load-bearing the day a class component appears |
+
+**On `jsx-no-bind` specifically.** Taking the default would have surfaced 33 findings that no gate
+tracks, forcing exactly the "large unrelated cleanup" that must be gated separately rather than
+bundled into an enablement story. Tightening to the default is therefore its own ticket, to be
+argued on its own merits — not something this amendment quietly forecloses.
+
+**What the new rules found, and what was done about each.** Five errors, all fixed; no
+`eslint-disable` was added anywhere.
+
+| Site | Rule (Sonar key) | Gated? | Fix |
+|---|---|---|---|
+| `ui/src/components/ErrorSummary.tsx:23` | `react/no-array-index-key` (S6479) | Yes | De-duplicates with `[...new Set(errors)]` and keys by message text, so uniqueness is guaranteed rather than assumed. A summary listing one message twice was a defect anyway — the reader cannot tell the entries apart. Covered by a new test in `ErrorSummary.test.tsx` |
+| `ui/src/components/GameScreen.tsx:340` | `react/no-unused-prop-types` (S6767) | Yes | `OtherPlayerSeatProps.position` was genuinely dead: positioning is applied by the wrapper `<div style={positionStyle[pos]}>` at the call site. Field and the `position={pos}` attribute both removed |
+| `ui/src/components/GameOverScreen.test.tsx:24` | `react/no-array-index-key` (S6479) | No — TEST scope | Keys the `ErrorSummary` mock's list by message instead of index |
+| `ui/src/components/GameScreen.test.tsx:13` | `react/no-array-index-key` (S6479) | No — TEST scope | Same |
+| `ui/src/components/JoinSessionForm.tsx:118` | `react/no-unescaped-entities` (S6766) | **No — and absent from the baseline entirely** | `you'd` → `you&apos;d`. Fixed rather than configured away, since one site existed and `&apos;` is the established idiom (precedent: `ui/src/App.tsx:236`) |
+
+That last row is worth keeping in view, because it qualifies the parity claim above: matching
+Sonar's rule *list* does not make the two tools identical, since Sonar can configure a rule's
+options differently. Local ESLint is stricter here, which is the harmless direction — a finding
+caught locally that the gate would not have raised — but "the two tools agree" should be read as
+"the same rules are enabled", not "the same findings are produced".
+
+**The ratchet tightened, and both artefacts moved together.** `tools/sonar/scan-ui.sh` then
+`ratchet-ui.sh` reported `PASS — and this commit is cleaner than the ceiling`, with
+`MAINTAINABILITY: 23 → 21`. `--tighten` lowered `tools/sonar/sonar-ui-baseline.json` automatically;
+`sonar-ui-report.json` is committed with it. RELIABILITY stayed at 6 because both fixed findings
+were classified MAINTAINABILITY-only. No ceiling was raised, so no ceiling argument is owed.
+
+**What deliberately did not change.**
+
+- **The other plugins Sonar's mapping implicates are still absent, on purpose.** The 23 findings
+  gated before this story also included `sonarjs` (S3358, S3735, S3776), `unicorn` (S7781, S7741),
+  `jsx-a11y` (S6819) and `import` (S3863) rules. Each is its own enablement decision with its own
+  noise profile and its own cleanup, and bundling four more plugins into this story would have made
+  the rule-selection argument unreviewable. This amendment closes the react gap and names the rest
+  as known and open
+- **The `**/*.js`/`**/*.mjs` block.** The react rules are scoped to `**/*.{ts,tsx}` alongside the
+  type-aware config; the Node-side build files are untouched
+- **`ui/vite.config.ts`, `ui/tsconfig.json` and the four-block shape of `eslint.config.js`.** The
+  plugin was added into the existing type-aware block rather than by restructuring the file
+- **The Java ratchet.** No `.java` file and no `pom.xml` changed, so `sonar-report.json`'s
+  `sourceHash` is untouched and `tools/sonar/sonar-baseline.json` needed no rescan — the two
+  freshness tokens are disjoint by design (ADR-063)
+
+**Verification.** The acceptance criterion was proved by experiment rather than by inspection: a
+throwaway `ui/src/spacing-probe.tsx` reintroducing EOP-191's exact pattern was added, and
+`npm run verify` **failed at the lint step** with two `react/jsx-child-element-spacing` errors —
+the finding that was silent locally before this change. The probe was then removed and
+`npm run verify` re-run green (typecheck, lint, coverage, build). `tools/sonar/ratchet-ui.sh` PASS
+as above. `tools/supply-chain/scan-dependencies.sh` (Trivy 0.74.0) over `pom.xml` and
+`ui/package-lock.json` reported no HIGH or CRITICAL findings — none at any severity — so the new
+devDependency needs no `accepted-advisories.json` entry. `./mvnw verify` exits 0.
+
+**`docs/adr/README.md` does change this time.** `AdrIndexConsistencyTest` requires every ISO date in
+an ADR's status line to appear in its index row, and 2026-09-04 is a new date for this ADR, so the
+row's status cell gains it. That is the opposite of EOP-106's case, which introduced no new date.
+
 ## Related
 
 - [ADR-004: API Contract-First](ADR-004-api-contract-first.md) — OpenAPI contract drives shared types
@@ -853,6 +951,8 @@ prevent this instance.
   a documentation-integrity gate
 - [ADR-045: Front-End Response Validation](ADR-045-frontend-response-validation.md) — adopts the
   hand-written per-DTO parsers that fired this ADR's third codegen revisit trigger (EOP-108)
+- [ADR-063: SonarQube Front-End Project](ADR-063-sonarqube-frontend-project.md) — the `ui/src` issue
+  ratchet whose existence made the ESLint rule set load-bearing (EOP-192 amendment)
 
 - GOV.UK Design System: https://design-system.service.gov.uk/
 - GOV.UK Frontend: https://frontend.design-system.service.gov.uk/

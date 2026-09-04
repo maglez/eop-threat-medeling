@@ -36,6 +36,16 @@ describe('ErrorSummary', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('renders a repeated message once, so every list key is unique', () => {
+    const errors = ['Enter a value', 'Enter a value', 'Choose an option'];
+
+    render(<ErrorSummary errors={errors} />);
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByText('Enter a value')).toBeInTheDocument();
+    expect(screen.getByText('Choose an option')).toBeInTheDocument();
+  });
+
   it('does not render dismiss button when onDismiss is not provided', () => {
     const errors = ['Error message'];
     

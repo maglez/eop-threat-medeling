@@ -337,7 +337,6 @@ function CardBack(): React.JSX.Element {
 
 interface OtherPlayerSeatProps {
   readonly player: PlayerDto;
-  readonly position: TablePosition;
 }
 
 function OtherPlayerSeat({ player }: OtherPlayerSeatProps): React.JSX.Element {
@@ -738,10 +737,7 @@ export function GameScreen({
             const pos = positions[idx] ?? 'top';
             return (
               <div key={player.playerId} style={positionStyle[pos]}>
-                <OtherPlayerSeat
-                  player={player}
-                  position={pos}
-                />
+                <OtherPlayerSeat player={player} />
               </div>
             );
           })}

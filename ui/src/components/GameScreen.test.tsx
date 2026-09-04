@@ -9,8 +9,8 @@ vi.mock('./ErrorSummary', () => ({
     <div data-testid="error-summary">
       <h2>{title}</h2>
       <ul>
-        {errors.map((error, index) => (
-          <li key={index}>{error}</li>
+        {errors.map((error) => (
+          <li key={error}>{error}</li>
         ))}
       </ul>
     </div>

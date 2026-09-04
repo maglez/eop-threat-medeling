@@ -57,7 +57,7 @@
     "the freshness check rather than passing it."
   ],
   "counts": {
-    "MAINTAINABILITY": 23,
+    "MAINTAINABILITY": 21,
     "RELIABILITY": 6,
     "SECURITY": 0
   },
@@ -78,8 +78,6 @@
     "MAINTAINABILITY|typescript:S3776|src/components/GameScreen.tsx|ede2b910ae62add0ef53feb623def63d",
     "MAINTAINABILITY|typescript:S3863|src/components/LobbyScreen.tsx|3a93b8cae378fd3b9e9b76e9e08424a8",
     "MAINTAINABILITY|typescript:S3863|src/components/LobbyScreen.tsx|c16325c399c9f66d4951c9ab97d978fb",
-    "MAINTAINABILITY|typescript:S6479|src/components/ErrorSummary.tsx|d373a0f16fb27d7b7c903f13bfb36b6b",
-    "MAINTAINABILITY|typescript:S6767|src/components/GameScreen.tsx|af805f3fe512367df911612fd49910c5",
     "MAINTAINABILITY|typescript:S6819|src/components/FollowSuitHint.tsx|76b57ea88200dae410201c3887d9cdce",
     "MAINTAINABILITY|typescript:S6819|src/components/GameScreen.tsx|d90c26198ff23a5c54f81269ceed5c01",
     "MAINTAINABILITY|typescript:S6819|src/components/GameScreen.tsx|d90c26198ff23a5c54f81269ceed5c01",
@@ -92,7 +90,7 @@
     "sonarQubeVersion": "26.8.0.126808"
   },
   "tightenedFrom": {
-    "generatedAt": "2026-09-04T09:46:23Z",
+    "generatedAt": "2026-09-04T11:19:44Z",
     "sonarQubeVersion": "26.8.0.126808"
   }
 }

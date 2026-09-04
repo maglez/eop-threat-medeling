@@ -115,7 +115,7 @@ export function JoinSessionForm({ onSubmit, onError }: JoinSessionFormProps): Re
           </label>
           
           <p id="display-name-hint" className="govuk-hint">
-            Enter your name as you'd like it to appear in the game
+            Enter your name as you&apos;d like it to appear in the game
           </p>
           
           {hasDisplayNameError && (

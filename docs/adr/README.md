@@ -16,7 +16,7 @@ numbers are cited from the Blueprint, the CHANGELOG and commit messages.
 | [006](ADR-006-build-quality-gates.md) | Build quality gates | Accepted (amended 2026-08-18, 2026-08-19, 2026-08-20, 2026-08-23, 2026-08-24) | Yes |
 | [007](ADR-007-versioning-strategy.md) | Semantic Versioning | Accepted | Yes |
 | [008](ADR-008-database-migration-liquibase.md) | Database migrations with Liquibase | Accepted (amended 2026-08-10, 2026-08-19, 2026-08-23, 2026-08-23) | Yes — autoconfiguration fixed and the first changeset applies; the H2 console consequence is withdrawn and the Context labels row is glossed by ADR-043; XML over formatted-SQL rationale added (EOP-162), then its schema-validation, "silently" and file-forking claims narrowed and rollback trust grounded in executing the inverse (EOP-165) |
-| [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted (amended 2026-08-19, 2026-08-20) | Yes — `ui/` scaffolded, built and served |
+| [009](ADR-009-frontend-react-typescript.md) | React + TypeScript + Vite + GOV.UK Frontend | Accepted (amended 2026-08-19, 2026-08-20, 2026-09-04) | Yes — `ui/` scaffolded, built and served |
 | [010](ADR-010-continuous-flow-over-sprints.md) | Continuous flow over sprint timeboxes | Accepted | Yes |
 | [011](ADR-011-graphify-knowledge-graph.md) | Graphify knowledge graph via repo-local MCP server | Accepted | Yes |
 | [012](ADR-012-deployment-target.md) | Deployment to a single EC2 instance with Terraform | Accepted (deployment target withdrawn 2026-08-10) | Partly — image and Compose run locally; Terraform validates but no `apply` has run |
