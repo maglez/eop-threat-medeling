@@ -9,6 +9,13 @@
 #
 # What it checks, in order of how much it would actually tell you:
 #
+#   0. ITS OWN PARSER, before it opens a single file. Every other check here compares two things and
+#      reports the difference, so it fails loudly. The reference parse is the one step that can fail
+#      SILENTLY: a pin the regex never matches is a pin this script never mentions, and the run goes
+#      green. So REF_CASES pins nine readings -- including a registry host with a port, which an
+#      earlier revision misparsed, and a bare "sha256:..." in a comment, which must NOT be read as a
+#      reference. A mismatch fails the run before any discovery output is printed.
+#
 #   1. ROSTER DRIFT, bidirectionally, and without touching the network. Every "name@sha256:..."
 #      reference in a tracked file must have a baseline entry, and every baseline entry must still
 #      be referenced. The second direction is not symmetry for its own sake: replacing a digest with
@@ -102,12 +109,62 @@ baseline_path, workdir = sys.argv[1], sys.argv[2]
 # clipped mid-token. Bare "sha256:..." digests are deliberately NOT matched: compose.sonar.yml and
 # ADR-055 both quote child platform digests that way, and they are records of what an index
 # contains rather than references anything runs.
+#
+# The leading "host:port/" alternative is load-bearing and was added after review (EOP-159). A
+# registry host is otherwise indistinguishable from a path component -- "ghcr.io/owner/name" needs
+# no special case, because a dot is already legal in a path component -- but a host carrying an
+# explicit PORT does, because the colon is not. Without that alternative,
+# "registry.example.com:5000/img@sha256:..." parsed as image "5000/img" with no tag: a wrong name
+# rather than a silent miss, so the roster check would have failed loudly on an image nobody
+# declared, but with a finding naming something that does not exist. The alternative demands
+# ":<digits>/" so it can never swallow an ordinary first path component: "grafana/k6" has no colon
+# and is unaffected. REF_CASES below pins every one of these readings.
 REF = re.compile(
     rb"(?<![\w./@-])"
-    rb"([a-z0-9][a-z0-9._-]*(?:/[a-z0-9][a-z0-9._-]*)*)"
+    rb"((?:[a-z0-9][a-z0-9.-]*:[0-9]+/)?"
+    rb"[a-z0-9][a-z0-9._-]*(?:/[a-z0-9][a-z0-9._-]*)*)"
     rb"(?::([A-Za-z0-9_][A-Za-z0-9._-]*))?"
     rb"@(sha256:[0-9a-f]{64})"
 )
+
+# The parse is the one part of this audit that can fail SILENTLY -- every other check compares two
+# things and says so when they differ, but a reference the regex does not see is a pin the audit
+# never mentions. So the readings are pinned here as a table and asserted on every run, before any
+# file is opened. Cheap enough to be unconditional, and unconditional is the point: a table that
+# only runs when someone remembers to ask is a table that rots.
+_D = b"sha256:" + b"0" * 64
+REF_CASES = (
+    # blob                                              image                            tag
+    (b"    image: sonarqube@" + _D,                      "sonarqube",                     None),
+    (b"  grafana/k6:2.2.0@" + _D,                        "grafana/k6",                    "2.2.0"),
+    (b'IMG="ghcr.io/maglez/eop@' + _D + b'"',            "ghcr.io/maglez/eop",            None),
+    (b'IMG="ghcr.io/maglez/eop:1.2.3@' + _D + b'"',      "ghcr.io/maglez/eop",            "1.2.3"),
+    (b"  registry.example.com:5000/img@" + _D,           "registry.example.com:5000/img",  None),
+    (b"  registry.example.com:5000/ns/img:v1@" + _D,     "registry.example.com:5000/ns/img", "v1"),
+    (b"  localhost:5000/img@" + _D,                      "localhost:5000/img",            None),
+    (b"  a/b/c/d@" + _D,                                 "a/b/c/d",                       None),
+    # A bare child-platform digest, as compose.sonar.yml and ADR-055 quote them: not a reference.
+    (b"  #   linux/arm64 -> " + _D,                      None,                            None),
+)
+_self_test_failures = []
+for _blob, _want_image, _want_tag in REF_CASES:
+    _m = REF.search(_blob)
+    _got_image = _m.group(1).decode() if _m else None
+    _got_tag = _m.group(2).decode() if (_m and _m.group(2)) else None
+    if (_got_image, _got_tag) != (_want_image, _want_tag):
+        _self_test_failures.append(
+            f"reference parse regressed on {_blob.decode()!r}: "
+            f"expected image={_want_image!r} tag={_want_tag!r}, got image={_got_image!r} tag={_got_tag!r}"
+        )
+if _self_test_failures:
+    print("=== REFERENCE PARSER SELF-TEST FAILED ===")
+    for _f in _self_test_failures:
+        print(f"  - {_f}")
+    print()
+    print("  The discovery regex no longer reads references the way this audit documents. Every")
+    print("  other check is downstream of it, so a PASS below would mean nothing. Fix the regex")
+    print("  or, if a reading genuinely changed, change REF_CASES in the same reviewed commit.")
+    sys.exit(1)
 
 # docs/jira-export/ is a frozen third-party dump of the decommissioned Jira instance; it is history,
 # not configuration. The baseline itself is skipped so that a note may quote a full reference as

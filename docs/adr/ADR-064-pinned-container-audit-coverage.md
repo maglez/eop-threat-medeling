@@ -154,6 +154,47 @@ for a five-second script, and the job name `supply-chain` already generalises.
 - Two layers remain uncovered and are now named as uncovered rather than merely unnoticed,
   which is a smaller improvement than closing them but a real one.
 
+### Amended 2026-09-04 (EOP-159, gate round) — the parser is the part that can fail silently
+
+`@code-reviewer` rejected the first revision on the discovery regex, and the finding was
+correct. The pattern could not match a registry-qualified reference carrying an explicit
+port: `registry.example.com:5000/img@sha256:…` parsed as the image `5000/img`, because the
+character class for a path component excludes `:` and so the host was consumed by the
+optional-tag group. `ghcr.io/owner/name@sha256:…` was never affected — a dot is already
+legal inside a path component, and only the colon is not.
+
+The precise failure mode is worth recording, because it is narrower than it first looks and
+the narrowness is what makes the *second* change below the important one. A misparse yields
+a **wrong name**, not a silent miss: `5000/img` has no baseline entry, so roster drift fails
+loudly, just with a finding naming an image that does not exist. The fix is an optional
+leading `(?:[a-z0-9][a-z0-9.-]*:[0-9]+/)?` alternative, which demands `:<digits>/` and so
+cannot swallow an ordinary first path component.
+
+Two decisions follow from that.
+
+**The regex now carries a self-test that runs before any file is opened.** `REF_CASES` pins
+nine readings — the three port-qualified cases the old pattern failed, `ghcr.io/…`, a
+tagless single-segment name, a tagged two-segment name, and a negative case proving a bare
+`sha256:…` in a comment is *not* read as a reference (the form `compose.sonar.yml` and
+ADR-055 both use for child-platform digests, so a regex that matched it would report
+phantom images). The reasoning is the asymmetry above: every other check in this script
+compares two things and reports a difference, so it cannot fail quietly, whereas a
+reference the parser never sees is a pin the audit never mentions and the run still goes
+green. That is the only silent-failure path in the design, and it is now closed by a check
+that costs microseconds and fails the run before the discovery section prints anything.
+
+**The self-test was proven to fire, not merely written.** The regex was reverted to the
+defective form and the script run: it printed `=== REFERENCE PARSER SELF-TEST FAILED ===`
+with the three per-case expected-vs-got lines and exited 1, before any image was listed.
+This is the same standard ADR-055 amendment 6 arrived at the hard way — a check nobody has
+watched fail is a check nobody knows works.
+
+Two of the seven gates independently observed that the script has no automated test harness
+and judged its hand-run negative suite an accepted limitation rather than a blocker. That
+judgement stands for the checks that compare two artefacts. The self-test is not a
+substitute for it; it is the one part of the script where hand-verification was genuinely
+insufficient, because the thing being verified is what the script is able to *see*.
+
 ## Related
 
 - [ADR-055](ADR-055-k6-performance-check-in-ci.md) — introduced the k6 pin and recorded the
