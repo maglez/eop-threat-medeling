@@ -47,7 +47,7 @@
     "SECURITY": 0
   },
   "coverage": 90.8,
-  "generatedAt": "2026-09-04T09:46:23Z",
+  "generatedAt": "2026-09-04T10:23:54Z",
   "issues": [
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/FollowSuitHint.tsx|f0c715412bbc4555cd76e5d6b664ffd4",
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameOverScreen.tsx|5b89c7407eeb795475a0d05f003ccf72",
@@ -102,6 +102,6 @@
   },
   "sonarQubeVersion": "26.8.0.126808",
   "sourceFileCount": 30,
-  "sourceHash": "3cade5f44b456461644ec2ad34f427e49d62954a06e8bf67284f66045b9318c5",
+  "sourceHash": "76b5b349820d6b9dc9c860922c87c67d04c936c120a35ea2599d33cf7e134767",
   "tests": null
 }

@@ -574,4 +574,36 @@ describe('LobbyScreen', () => {
       expect(screen.getByText('The game has started')).toBeInTheDocument();
     });
   });
+
+  it('separates the assistive "Warning" prefix from the notice text', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/events')) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockInProgressSession)
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+      />
+    );
+
+    // The stock GOV.UK warning-text markup relies on HTML collapsing the newline
+    // between the visually-hidden "Warning" span and the notice text into a
+    // space. JSX strips that newline instead, so without an explicit {' '} the
+    // accessible text concatenates as "WarningThe game has started". Pin the
+    // space: eslint-plugin-react is not enabled in ui/eslint.config.js, so
+    // nothing in `npm run verify` would otherwise catch its removal.
+    const notice = await screen.findByText('The game has started');
+    expect(notice).toHaveClass('govuk-warning-text__text');
+    expect(notice.textContent).toBe('Warning The game has started');
+  });
 });
