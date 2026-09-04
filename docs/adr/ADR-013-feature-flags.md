@@ -226,11 +226,11 @@ longer "unconditional", and it is no longer "left for its own commit" because th
 which also strengthens the mandate in its last two lines.)*
 
 **2026-08-14, later the same day — EOP-48: the explicit form on both flags, and the beans were
-the deeper half of the defect.** `SessionController.java:63` (anchor: `havingValue`) now reads
+the deeper half of the defect.** `SessionController.java:69` (anchor: `havingValue`) now reads
 `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle", havingValue = "true")`,
 and the four use cases that open or mutate a session — `createSessionUseCase`,
 `joinSessionUseCase`, `getSessionStateUseCase`, `startSessionUseCase` — each carry the same
-condition (`UseCaseConfiguration.java:120` (anchor: `session-lifecycle`), `:143`, `:187`, `:202`). The two spellings in the tree,
+condition (`UseCaseConfiguration.java:121` (anchor: `session-lifecycle`), `:144`, `:188`, `:203`). The two spellings in the tree,
 `prefix` + `name` on the controllers and the single dotted `name = "eop.features.…"` on the beans,
 resolve to the same property and the same condition; the inconsistency is cosmetic and is recorded
 here so that nobody reads it as two mechanisms.

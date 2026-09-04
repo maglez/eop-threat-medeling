@@ -238,11 +238,7 @@ class DealHandsUseCaseTest {
         final var sessionRepository = new InMemorySessionRepository(order, session);
         return new DealHandsUseCase(
                 new ResolvePlayerUseCase(sessionRepository, java.time.Clock.systemUTC()),
-                cardRepository,
-                shuffler,
-                handRepository,
-                identifiers,
-                publisher,
-                FIXED);
+                new HandDealer(
+                        cardRepository, shuffler, handRepository, identifiers, publisher, FIXED));
     }
 }

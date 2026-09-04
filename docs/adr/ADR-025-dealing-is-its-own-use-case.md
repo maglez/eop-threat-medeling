@@ -183,8 +183,10 @@ the publisher into the use cases and calling it on each write — so the stream 
 whole trick, and a client still learns of a deal, a play or a resolution only by re-reading.
 
 **2026-08-14, EOP-14 Slice E.** The second half is discharged, and the two paragraphs above are now
-history rather than description. All three use cases take a `SessionEventPublisher` as a constructor
-parameter and publish on the write: `DealHandsUseCase.java:162` emits `HAND_DEALT`,
+history rather than description. All three writes take a `SessionEventPublisher` as a constructor
+parameter and publish on the write: `HandDealer.java:143` (anchor: `HAND_DEALT`) emits `HAND_DEALT`
+— EOP-190 moved the deal, and with it the publisher, out of `DealHandsUseCase` and into that
+collaborator so `NewGameUseCase` could stop holding a second copy of it —
 `PlayCardUseCase.java:253` emits `CARD_PLAYED` and `ResolveTrickUseCase.java:195` emits
 `TRICK_RESOLVED`. Read the present tense of decision 8 as "as at Slice C2"; the stream is no longer
 silent for a whole trick, and the three names are no longer **reserved** in the contract. Two
@@ -277,7 +279,10 @@ that follow it, the private constructor (`:37-102` → `:38-103`) and its two `r
 most: `:140`, `:147-149`, `:156`, `:168-170` and `:181-190` had all come to land inside that method's
 javadoc `@throws` block, roughly forty lines above the code they name, so a reader following one to
 confirm a pre-flight arrived at documentation and could confirm nothing. Only `Trick.java:372` and
-`:378`, `Hand.java:115` and `DealHandsUseCase.java:162` were still right, and those are untouched.
+`:378`, `Hand.java:115` and the deal's publish were still right, and those are untouched. The last
+of them now reads `HandDealer.java:143` (anchor: `HAND_DEALT`): EOP-190 moved the line rather than
+changing it, and this sentence is re-pointed rather than rewritten because the audit it records
+found the claim sound.
 The enumeration itself was re-checked while the anchors were: the constructor still makes nine
 refusals, and the two whose predicates first become live at one play are still the leading-seat guard
 and the rotation loop. Prefer regenerating to trusting any of these numbers next time —

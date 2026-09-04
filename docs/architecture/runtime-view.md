@@ -608,6 +608,7 @@ sequenceDiagram
     participant CL as TrickController — POST /api/v1/sessions/{sessionId}/deal
     participant DH as DealHandsUseCase
     participant RP as ResolvePlayerUseCase
+    participant HD as HandDealer
     participant CRA as CardRepositoryAdapter
     participant SH as SecureRandomDeckShuffler
     participant IDG as IdentifierGenerator
@@ -620,42 +621,49 @@ sequenceDiagram
     CL->>DH: execute(sessionId, playerToken)
 
     DH->>RP: execute(sessionId, playerToken)
-    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:133. Nothing is<br/>read, shuffled or written before it.
+    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:88. Nothing is<br/>read, shuffled or written before it.
     RP-->>DH: ResolvedPlayer, or 404 SessionNotFoundException<br/>or 403 PlayerNotRecognisedException
 
     alt not the facilitator
         DH-->>CL: 403 NotFacilitatorException
-    else fewer than three seated
-        DH-->>CL: 409 TooFewPlayersException
     else may deal
-        DH->>CRA: findWholeDeck()
-        CRA->>DB: SELECT from card ORDER BY suit, rank
-        DB-->>CRA: every row, canonical order
-        CRA-->>DH: the whole deck as domain Cards
-        DH->>SH: shuffle(deck)
-        Note over SH: SecureRandom, no seed anywhere.<br/>Copies the list — the input is never mutated.
-        SH-->>DH: a permuted copy
-        loop each seated player, in seat order
-            DH->>IDG: nextIdentifier()
-        end
-        DH->>DH: Hands.deal(shuffled, seats)
-        Note over DH: Pure domain. The remainder rule and the<br/>opening leader come from the entity,<br/>not from this use case (ADR-023).
-
-        DH->>TPRA: recordDeal(sessionId, hands, openingLeaderSeat, now)
-        TPRA->>DB: UPDATE game_session SET current_leader_seat = ?<br/>WHERE id = ? AND status = IN_PROGRESS<br/>AND current_leader_seat IS NULL
-        Note over TPRA,DB: The compare-and-set. "current_leader_seat IS NULL"<br/>*is* "not yet dealt", and this UPDATE takes the<br/>session row lock before any hand row — which is<br/>what serialises two simultaneous deals (ADR-020).
-        alt 0 rows affected
-            TPRA->>DB: one disambiguating read
-            TPRA-->>DH: SessionNotFoundException, SessionNotJoinableException<br/>or HandAlreadyDealtException
-            DH-->>CL: 404 or 409
-        else 1 row affected
-            loop each dealt seat
-                TPRA->>DB: INSERT hand, then one INSERT per card held
+        DH->>HD: deal(session)
+        Note over DH,HD: EOP-190 moved the deal itself into HandDealer,<br/>which NewGameUseCase calls too. DealHandsUseCase<br/>authorises and delegates and does nothing else.<br/>HandDealer authorises nobody, so it is never<br/>reached from an adapter (ADR-024).
+        alt fewer than three seated
+            HD-->>DH: TooFewPlayersException
+            DH-->>CL: 409 TooFewPlayersException
+        else enough seated
+            HD->>CRA: findWholeDeck()
+            CRA->>DB: SELECT from card ORDER BY suit, rank
+            DB-->>CRA: every row, canonical order
+            CRA-->>HD: the whole deck as domain Cards
+            HD->>SH: shuffle(deck)
+            Note over SH: SecureRandom, no seed anywhere.<br/>Copies the list — the input is never mutated.
+            SH-->>HD: a permuted copy
+            loop each seated player, in seat order
+                HD->>IDG: nextIdentifier()
             end
-            TPRA-->>DH: void
-            DH->>EV: publish(HAND_DEALT, sessionId, now)
-            Note over DH,EV: EOP-14 Slice E, DealHandsUseCase.java:162.<br/>After the write returns, so the broadcast can only<br/>describe a durable deal. Carries no card and no seat:<br/>a subscriber learns *that* hands exist and re-reads<br/>sequence 1 or GET /hand to learn what it holds (ADR-027).
-            DH-->>CL: nothing — the deal returns void
+            HD->>HD: Hands.deal(shuffled, seats)
+            Note over HD: Pure domain. The remainder rule and the<br/>opening leader come from the entity,<br/>not from this collaborator (ADR-023).
+
+            HD->>TPRA: recordDeal(sessionId, hands, openingLeaderSeat, now)
+            TPRA->>DB: UPDATE game_session SET current_leader_seat = ?<br/>WHERE id = ? AND status = IN_PROGRESS<br/>AND current_leader_seat IS NULL
+            Note over TPRA,DB: The compare-and-set. "current_leader_seat IS NULL"<br/>*is* "not yet dealt", and this UPDATE takes the<br/>session row lock before any hand row — which is<br/>what serialises two simultaneous deals (ADR-020).
+            alt 0 rows affected
+                TPRA->>DB: one disambiguating read
+                TPRA-->>HD: SessionNotFoundException, SessionNotJoinableException<br/>or HandAlreadyDealtException
+                HD-->>DH: the same exception, unwrapped
+                DH-->>CL: 404 or 409
+            else 1 row affected
+                loop each dealt seat
+                    TPRA->>DB: INSERT hand, then one INSERT per card held
+                end
+                TPRA-->>HD: void
+                HD->>EV: publish(HAND_DEALT, sessionId, now)
+                Note over HD,EV: EOP-14 Slice E, HandDealer.java:143.<br/>After the write returns, so the broadcast can only<br/>describe a durable deal. Carries no card and no seat:<br/>a subscriber learns *that* hands exist and re-reads<br/>sequence 1 or GET /hand to learn what it holds (ADR-027).
+                HD-->>DH: nothing — the deal returns void
+                DH-->>CL: nothing — the deal returns void
+            end
         end
     end
 ```
@@ -678,7 +686,7 @@ the write it justifies (ADR-020).
 
 **The shuffle is drawn as a participant because it is a security control.** Deck
 composition is published reference data, so a predictable permutation is a predictable
-hand. `SecureRandomDeckShuffler` takes no seed in any constructor, and the use case holds
+hand. `SecureRandomDeckShuffler` takes no seed in any constructor, and `HandDealer` holds
 the `DeckShuffler` port rather than a `java.util.Random`, so no caller can weaken the
 choice by passing a seeded generator.
 
@@ -687,9 +695,12 @@ every card in canonical order (suit, then ascending rank); randomising is the us
 job. A paginated deal would be one forgotten loop away from a truncated deck, and a
 canonical order means a test can pin a deal by pinning the shuffler.
 
-**The deal is broadcast, after it is durable.** `DealHandsUseCase` takes a
-`SessionEventPublisher` and publishes `HAND_DEALT` at `DealHandsUseCase.java:162`, on the
-line after `recordDeal` returns. The ordering is the decision: a broadcast that preceded
+**The deal is broadcast, after it is durable.** `HandDealer` takes a
+`SessionEventPublisher` and publishes `HAND_DEALT` at `HandDealer.java:143` (anchor:
+`HAND_DEALT`), on the line after `recordDeal` returns. EOP-190 moved both the write and the
+announcement out of `DealHandsUseCase` and into that collaborator, so `NewGameUseCase` deals
+by calling it rather than by holding a second copy of these six lines — the ordering below is
+therefore now asserted once and relied on twice. The ordering is the decision: a broadcast that preceded
 the write could announce a deal that then rolled back, and a publisher that threw could
 fail a request whose write had already succeeded. What the event does *not* carry is any
 part of the deal — no seat, no card, no count — so a subscriber still re-reads to learn

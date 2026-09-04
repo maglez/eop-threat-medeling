@@ -1,15 +1,10 @@
 package org.maglez.eop.usecase;
 
-import java.time.Clock;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.maglez.eop.entity.GameSession;
-import org.maglez.eop.entity.Hands;
 import org.maglez.eop.entity.NoTamperingCardDealtException;
 import org.maglez.eop.entity.NotFacilitatorException;
-import org.maglez.eop.entity.Player;
 import org.maglez.eop.entity.TooFewPlayersException;
 
 /**
@@ -35,76 +30,36 @@ import org.maglez.eop.entity.TooFewPlayersException;
  * deal and one refusal, decided by the database rather than by a check up here. A status or
  * already-dealt pre-check in this method would read the state, let go of it, and then write &mdash;
  * an illusion of safety that duplicates the only check that actually holds (ADR-020). What this
- * class owes the port instead is the thing the port cannot do for itself: establishing who is
+ * class owes instead is the thing no port and no collaborator can do for itself: establishing who is
  * asking, before anything else happens.
  *
- * <p>Authorisation is therefore the first statement in {@link #execute}. {@link HandRepository}
- * takes no acting player and its javadoc says plainly that authorising the requester is the caller's
+ * <p>Authorisation is therefore the first statement in {@link #execute}, and once it has passed,
+ * this class does nothing else of its own &mdash; the deal itself belongs to {@link HandDealer},
+ * which {@link NewGameUseCase} needs in exactly the same form and which carried a verbatim second
+ * copy of it until EOP-190. Read {@link HandDealer} for why the shuffle, the seat count, the silent
+ * return and the card-free announcement are shaped the way they are. {@link HandRepository} takes no
+ * acting player and its javadoc says plainly that authorising the requester is the caller's
  * obligation, so this method is the only place it can happen. The refusals underneath it are
  * informative by design &mdash; they distinguish a session that has not started from one already
  * dealt &mdash; which is the right answer for a member of the table and an information leak for
  * anybody else (ADR-024).
- *
- * <p>The seat count is checked here as well, because {@link Hands#deal} answers too few players with
- * an {@link IllegalArgumentException}: correct for a programming error, but a 500 for what is really
- * an ordinary "wait for one more player". {@link TooFewPlayersException} says so with a 409, and the
- * domain's own check remains behind it.
- *
- * <p>Nothing is returned. A result carrying every hand is exactly the shape that leaks private
- * information &mdash; the reason {@link Hands#toString()} names no card &mdash; and a facilitator
- * has no more right to see the table's cards than anyone else. Each player reads their own hand
- * through their own query.
- *
- * <p>The same reasoning is what makes announcing the deal safe. {@link SessionEvent} carries a type,
- * a session and an instant and nothing else, so {@code hand-dealt} reaches every subscriber saying
- * that the deal happened without saying what anybody was dealt; each player then reads their own
- * hand through their own query, authorised as their own request (ADR-014). The announcement is made
- * after the write returns, so a refused deal announces nothing, and it is made through the port
- * rather than guarded here because publishing must not fail a request &mdash; an obligation
- * {@link SessionEventPublisher} places on its implementation.
- *
- * <p>Shuffling happens here, through {@link DeckShuffler}, because {@link Hands#deal} is
- * deliberately a pure function of an ordered deck (ADR-023).
  */
 public class DealHandsUseCase {
 
     private final ResolvePlayerUseCase resolvePlayerUseCase;
-    private final CardRepository cardRepository;
-    private final DeckShuffler deckShuffler;
-    private final HandRepository handRepository;
-    private final IdentifierGenerator identifierGenerator;
-    private final SessionEventPublisher sessionEventPublisher;
-    private final Clock clock;
+    private final HandDealer handDealer;
 
     /**
      * Creates the use case.
      *
      * @param resolvePlayerUseCase resolves the identity token into a seated player
-     * @param cardRepository reads the whole deck
-     * @param deckShuffler randomises the deck before it is dealt
-     * @param handRepository records the deal and the opening lead
-     * @param identifierGenerator mints one hand identifier per seat
-     * @param sessionEventPublisher announces that the deal happened, naming no card
-     * @param clock supplies the instant the deal is recorded at
+     * @param handDealer shuffles, deals, records the opening lead and announces the deal
      */
     public DealHandsUseCase(
-            final ResolvePlayerUseCase resolvePlayerUseCase,
-            final CardRepository cardRepository,
-            final DeckShuffler deckShuffler,
-            final HandRepository handRepository,
-            final IdentifierGenerator identifierGenerator,
-            final SessionEventPublisher sessionEventPublisher,
-            final Clock clock) {
+            final ResolvePlayerUseCase resolvePlayerUseCase, final HandDealer handDealer) {
         this.resolvePlayerUseCase =
                 Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
-        this.cardRepository = Objects.requireNonNull(cardRepository, "cardRepository is required");
-        this.deckShuffler = Objects.requireNonNull(deckShuffler, "deckShuffler is required");
-        this.handRepository = Objects.requireNonNull(handRepository, "handRepository is required");
-        this.identifierGenerator =
-                Objects.requireNonNull(identifierGenerator, "identifierGenerator is required");
-        this.sessionEventPublisher =
-                Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
-        this.clock = Objects.requireNonNull(clock, "clock is required");
+        this.handDealer = Objects.requireNonNull(handDealer, "handDealer is required");
     }
 
     /**
@@ -138,27 +93,6 @@ public class DealHandsUseCase {
             throw new NotFacilitatorException(sessionId, actingPlayer.playerId());
         }
 
-        final var seated = session.players().size();
-        if (seated < GameSession.MINIMUM_PLAYERS_TO_START) {
-            throw new TooFewPlayersException(
-                    sessionId, seated, GameSession.MINIMUM_PLAYERS_TO_START);
-        }
-
-        final List<Hands.Seat> seats =
-                session.players().stream()
-                        .sorted(Comparator.comparingInt(Player::seatOrder))
-                        .map(
-                                player ->
-                                        new Hands.Seat(
-                                                player.seatOrder(),
-                                                player.playerId(),
-                                                identifierGenerator.nextIdentifier()))
-                        .toList();
-
-        final var hands = Hands.deal(deckShuffler.shuffle(cardRepository.findWholeDeck()), seats);
-
-        final var now = clock.instant();
-        handRepository.recordDeal(sessionId, hands, hands.openingLeaderSeat(), now);
-        sessionEventPublisher.publish(new SessionEvent(SessionEventType.HAND_DEALT, sessionId, now));
+        handDealer.deal(session);
     }
 }

@@ -448,7 +448,7 @@ job:
 - **Every trick-play write now also broadcasts, and the edge direction is the point.** The three new
   `--> SessionEventPublisher` edges are outward from `usecase` to a port `usecase` owns, so the
   dependency still points inward; `SseSessionEventPublisher` in `adapter/web` implements it. Each
-  `publish` sits *after* the port write returns — `DealHandsUseCase.java:162`,
+  `publish` sits *after* the port write returns — `HandDealer.java:143` (anchor: `HAND_DEALT`),
   `PlayCardUseCase.java:253` (anchor: `CARD_PLAYED`), `ResolveTrickUseCase.java:195` (anchor: `TRICK_RESOLVED`) — so a broadcast can only describe a
   durable change and a throwing publisher cannot fail a request whose write succeeded. None of the
   three events carries any part of the change, which is what keeps a per-player hand off a fan-out
@@ -458,7 +458,7 @@ job:
   `GetTrickStateUseCase` from Slice E, `GetScoreUseCase` from EOP-15 Slice B and `EndSessionUseCase` from EOP-15 Slice C into
   `ResolvePlayerUseCase` are drawn as first-class
   edges rather than left implicit because the *ordering* is the slice's main security property, and
-  a component view that omitted them would hide it: `DealHandsUseCase.java:133`,
+  a component view that omitted them would hide it: `DealHandsUseCase.java:88`,
   `PlayCardUseCase.java:165`, `ResolveTrickUseCase.java:154`, `ReadOwnHandUseCase.java:64`,
   `GetTrickStateUseCase.java:83`, `GetScoreUseCase.java:72` and `EndSessionUseCase.java:70` are
   each the first port call of their `execute` method, before any read of a hand or a trick and before
@@ -487,7 +487,7 @@ job:
 The class is annotated `@ConditionalOnProperty(prefix = "eop.features", name = "session-lifecycle",
 havingValue = "true")` with **`matchIfMissing` left at its default of `false`** — so an absent
 property and any present value other than `true` both leave the bean unregistered
-(`SessionController.java:63`, anchor: `havingValue`). This is drawn as one node
+(`SessionController.java:69`, anchor: `havingValue`). This is drawn as one node
 rather than two because there is no second state to draw: with the flag off **the bean
 does not exist**, no handler is mapped, and Spring's own no-handler response — already
 rendered as a problem detail — returns 404 for all five paths.
@@ -507,8 +507,13 @@ nothing failed the context to say so: the off position was a property of the URL
 the application behind it could still create and mutate sessions. EOP-48 closed both halves —
 `havingValue = "true"` on the controller, and the same condition on `createSessionUseCase`,
 `joinSessionUseCase`, `getSessionStateUseCase` and `startSessionUseCase`
-(`UseCaseConfiguration.java:120` (anchor: `session-lifecycle`), `:143`, `:187`, `:202`) — so the flag now withholds **five beans
-in all**, matching the arrangement `TrickController` has had since Slice D. `resolvePlayerUseCase`
+(`UseCaseConfiguration.java:121` (anchor: `session-lifecycle`), `:144`, `:188`, `:203`) — so the flag then withheld **five beans
+in all**, matching the arrangement `TrickController` has had since Slice D. It withholds **six** as of
+EOP-190 (2026-09-04), which moved the SSE route out of `SessionController` into
+`SessionStreamController` to bring the controller's constructor under the `java:S107` parameter
+threshold, and **repeated** the same condition on the new bean rather than letting it inherit one —
+`SessionStreamController.java:53` (anchor: `havingValue`). The route count is unchanged at five;
+only the number of beans serving them moved. `resolvePlayerUseCase`
 stays ungated on purpose: it writes nothing and is shared with all six trick-play use cases, so
 gating it would make lobby-off/trick-play-on an unsatisfiable context rather than a withheld
 feature — the same reasoning as the ungated `DeckShuffler` (ADR-013 records both the mandate and

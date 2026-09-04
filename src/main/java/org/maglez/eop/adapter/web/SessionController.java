@@ -13,11 +13,9 @@ import org.maglez.eop.entity.DisplayName;
 import org.maglez.eop.usecase.CreateSessionUseCase;
 import org.maglez.eop.usecase.GetSessionStateUseCase;
 import org.maglez.eop.usecase.JoinSessionUseCase;
-import org.maglez.eop.usecase.ResolvePlayerUseCase;
 import org.maglez.eop.usecase.SessionCreationLimiter;
 import org.maglez.eop.usecase.StartSessionUseCase;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,22 +24,30 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * HTTP access to the session lifecycle: create a lobby, join one, read its state,
  * close it and begin play.
+ *
+ * <p>The change-notification stream for a session is not here. It lives in
+ * {@link SessionStreamController}, moved there by EOP-190 because it was the only one
+ * of the five routes holding {@code ResolvePlayerUseCase} or
+ * {@link SseSessionEventPublisher} and the only one holding nothing else, so the cut
+ * left no collaborator on both sides. Read that class for why a stream held open for
+ * the length of a game does not belong beside four short-lived handlers.
  *
  * <p>This bean only exists when {@code eop.features.session-lifecycle} is true
  * (ADR-013, ADR-019). That is the whole of the feature flag: while the flag is off
  * there are no handlers registered for these paths, so Spring's own no-handler
  * response answers them, and that response is already a problem detail. Nothing
  * branches on the flag at request time, because behaviour that is switched off by
- * the absence of code cannot be switched on by accident.
+ * the absence of code cannot be switched on by accident. The same condition is
+ * repeated on {@link SessionStreamController}, so the flag withholds the whole
+ * lifecycle rather than most of it.
  *
  * <p>{@code havingValue = "true"} is not decoration. Without it the condition matches
  * any present value that is not literally {@code false}, so {@code off}, {@code no},
- * {@code 0} and {@code disabled} would all switch these five routes <em>on</em> — and
+ * {@code 0} and {@code disabled} would all switch these four routes <em>on</em> — and
  * {@code off} is both the spelling an operator reaching for a kill switch is likeliest
  * to use and a boolean false in YAML 1.1. A flag whose off position depends on picking
  * one of several synonyms for off is fail-open, which
@@ -82,10 +88,6 @@ public class SessionController {
 
     private final StartSessionUseCase startSessionUseCase;
 
-    private final ResolvePlayerUseCase resolvePlayerUseCase;
-
-    private final SseSessionEventPublisher sessionEventPublisher;
-
     private final ClientAddressResolver clientAddressResolver;
 
     private final SessionCreationLimiter sessionCreationLimiter;
@@ -95,16 +97,12 @@ public class SessionController {
             final JoinSessionUseCase joinSessionUseCase,
             final GetSessionStateUseCase getSessionStateUseCase,
             final StartSessionUseCase startSessionUseCase,
-            final ResolvePlayerUseCase resolvePlayerUseCase,
-            final SseSessionEventPublisher sessionEventPublisher,
             final ClientAddressResolver clientAddressResolver,
             final SessionCreationLimiter sessionCreationLimiter) {
         this.createSessionUseCase = Objects.requireNonNull(createSessionUseCase, "createSessionUseCase is required");
         this.joinSessionUseCase = Objects.requireNonNull(joinSessionUseCase, "joinSessionUseCase is required");
         this.getSessionStateUseCase = Objects.requireNonNull(getSessionStateUseCase, "getSessionStateUseCase is required");
         this.startSessionUseCase = Objects.requireNonNull(startSessionUseCase, "startSessionUseCase is required");
-        this.resolvePlayerUseCase = Objects.requireNonNull(resolvePlayerUseCase, "resolvePlayerUseCase is required");
-        this.sessionEventPublisher = Objects.requireNonNull(sessionEventPublisher, "sessionEventPublisher is required");
         this.clientAddressResolver = Objects.requireNonNull(clientAddressResolver, "clientAddressResolver is required");
         this.sessionCreationLimiter = Objects.requireNonNull(sessionCreationLimiter, "sessionCreationLimiter is required");
     }
@@ -224,45 +222,5 @@ public class SessionController {
             @PathVariable final UUID sessionId,
             @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
         return SessionStateDto.from(startSessionUseCase.execute(sessionId, playerToken));
-    }
-
-    /**
-     * Opens a stream of change notifications for one session.
-     *
-     * <p>The credential is resolved before the stream is opened, so an unrecognised
-     * caller receives a problem detail rather than an empty stream that would look
-     * like a session where nothing ever happens.
-     *
-     * <p>The credential arrives in the same header as everywhere else, and there is
-     * no query-parameter alternative — not because one was rejected during review,
-     * but because no code path here reads one. The browser's {@code EventSource} API
-     * cannot set request headers, so the client uses {@code fetch}-based streaming
-     * instead; that cost is accepted because a credential in a query string is a
-     * credential in the access log, in the browser history, and on screen during a
-     * shared call (ADR-019).
-     *
-     * <p>What arrives on this stream is notification, never state. Each frame says
-     * that the session changed; the client then re-reads
-     * {@code GET /api/v1/sessions/{sessionId}}. There is no history, so
-     * {@code Last-Event-ID} is not honoured.
-     *
-     * @param sessionId   the session to watch
-     * @param playerToken the caller's identity credential
-     * @return an open server-sent event stream
-     */
-    @GetMapping(value = "/{sessionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @Operation(summary = "Stream notifications that the session changed")
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "The stream is open and will emit a frame on every change."),
-        @ApiResponse(responseCode = "400", description = "The identifier is not a UUID."),
-        @ApiResponse(responseCode = "403", description = "The credential is missing, unrecognised, or belongs to another session."),
-        @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
-        @ApiResponse(responseCode = "429", description = "This session already has the maximum number of subscribers.")
-    })
-    public SseEmitter streamSessionEvents(
-            @PathVariable final UUID sessionId,
-            @RequestHeader(name = PLAYER_TOKEN_HEADER, required = false) final String playerToken) {
-        resolvePlayerUseCase.execute(sessionId, playerToken);
-        return sessionEventPublisher.subscribe(sessionId);
     }
 }
