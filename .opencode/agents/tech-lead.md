@@ -4,6 +4,18 @@ mode: all
 temperature: 0.1
 permission:
   task: allow
+  # The orchestrator commits; the Prompter publishes. `bash` stays broadly allowed
+  # -- this agent runs the whole verification suite and is the one agent permitted
+  # to `git commit` -- but the commands that make work public or irreversible are
+  # denied, so a push, a pull request and a release are always a human act
+  # (ADR-065). A blocklist, and honestly weaker than an allow-list: see ADR-065
+  # for the three ways the friction can still be lifted.
+  bash:
+    "*": allow
+    "git push*": deny
+    "gh pr create*": deny
+    "gh pr merge*": deny
+    "gh release*": deny
 ---
 
 # Tech Lead Orchestrator Agent

@@ -3,6 +3,29 @@ description: Conducts benchmarks, runs load tests (k6/Locust), tracks historical
 mode: subagent
 temperature: 0.2
 permission:
+  # Delivery is the role; publishing is not. `bash` stays broadly allowed because
+  # these agents must run ./mvnw verify, the SonarQube ratchets, npm run verify
+  # and the Trivy scan, and their Sign-off Contract obliges them to paste real
+  # command output. That makes this a blocklist -- weaker than an allow-list and
+  # a deliberate, argued departure from security.md's preference (ADR-065).
+  # Denied: publishing the work, and rewriting or discarding the worktree.
+  bash:
+    "*": allow
+    "git commit*": deny
+    "git push*": deny
+    "git reset*": deny
+    "git checkout*": deny
+    "git restore*": deny
+    "gh pr create*": deny
+    "gh pr merge*": deny
+    "gh release*": deny
+  # This agent owns the scheduled k6 load-test job, so the job lifecycle tools
+  # (schedule_job, run_job, update_job, delete_job, list_jobs, get_job, job_logs)
+  # stay available -- it is the one agent that genuinely needs them. The two that
+  # are not part of running a load test are denied: cleanup_global deletes job
+  # definitions across every scope, install_skill writes into .opencode/skill.
+  cleanup_global: deny
+  install_skill: deny
   task: deny
   atlassian_jira_*: allow
   atlassian_jira_create_*: deny
