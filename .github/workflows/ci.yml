@@ -34,8 +34,11 @@ permissions:
   contents: read
 
 jobs:
-  # The only required status check on `main`. Keep it fast and keep it
-  # about the code.
+  # One of the three required status checks on `main`, and the only one that
+  # compiles anything: `sonar-ratchet` and `sonar-ratchet-ui` joined it on
+  # 2026-09-04 (ADR-060 as amended). It was the sole required check until
+  # then, so treat any comment in this file still saying so as stale rather
+  # than as a second opinion. Keep it fast and keep it about the code.
   build:
     name: build
     runs-on: ubuntu-latest
@@ -72,7 +75,10 @@ jobs:
       # a lost `<excludes>` block in `pom.xml` and H2's 13 `org.h2.server.web`
       # classes going back inside the artifact that runs on a server. It sits
       # before `Upload artifact` on purpose, so nothing unverified is published,
-      # and inside `build` because that is the only required check on `main`.
+      # and inside `build` because that is the required check that compiles
+      # the artifact in question - the two Sonar ratchets are required too
+      # since 2026-09-04, but neither builds a jar, so neither could host
+      # this assertion.
       # See docs/adr/ADR-047-h2-excluded-from-deployable-artifact.md.
       - name: Assert no H2 in the deployable artifact
         run: tools/artifact/assert-no-h2-in-jar.sh
@@ -84,8 +90,9 @@ jobs:
           path: target/*.jar
 
   # The front end gets its own gate rather than being bolted onto `build`.
-  # Two reasons: `build` is the single required check protecting `main`, so
-  # it should stay Java-only and fast and must not fail for a lint rule in
+  # Two reasons: `build` is the required check that protects `main` by
+  # compiling and testing the Java, so it should stay Java-only and fast and
+  # must not fail for a lint rule in
   # a TypeScript file; and a front-end failure should report as a front-end
   # failure rather than as a mysterious red mark on the Java job.
   ui:
@@ -744,8 +751,9 @@ jobs:
   # and no sandbox. That is a wider blast radius than anything in `pom.xml`,
   # and until now it was the only dependency set with no automated check.
   #
-  # Deliberately NOT a required status check. `build` is the single required
-  # gate on `main` and must stay about the code: a new advisory published
+  # Deliberately NOT a required status check. The required gates on `main` -
+  # `build` and, since 2026-09-04, the two Sonar ratchets - are all about the
+  # code that ships: a new advisory published
   # against a transitive dependency of a developer tool is a thing to know
   # about, not a reason to block a merge of unrelated application code. Let
   # it run as an ordinary job, watch it, and promote it only if that
@@ -1058,17 +1066,32 @@ jobs:
   # `pom.xml`, so a local build stays fast and a source edit cannot turn
   # `./mvnw verify` red for want of a rescan.
   #
-  # Deliberately NOT a required status check when it lands, and for a reason
-  # specific to this gate rather than inherited from its neighbours. The
-  # failure mode we have not yet lived with is the stale-report block: the
-  # first few times someone pushes a one-line Java fix and is told to boot a
-  # container and rescan, we want that to be an annoyance rather than a
-  # merge blocker, so the friction can be measured before it is mandatory.
-  # The same two honest caveats as the job above apply: branch protection is
-  # configured outside this file, so no comment here can make the job
-  # required or stop it being required; and the job exits non-zero and shows
-  # red on a regression either way, so "not required" affects whether a
-  # merge is blocked, never whether the regression is visible.
+  # A REQUIRED status check since 2026-09-04, having arrived as an advisory
+  # one. The original reasoning was that the failure mode nobody had lived
+  # with was the stale-report block - the first few times someone pushes a
+  # one-line Java fix and is told to boot a container and rescan, we wanted
+  # that to be an annoyance rather than a merge blocker, so the friction
+  # could be measured before it was mandatory. The friction was then
+  # measured, and what the measurement produced was not an over-strict gate
+  # but the opposite failure: PR #362 merged with this job red, and `main`
+  # stayed red across two further merges for about a day, because nothing
+  # blocked. A gate that is visible but not binding was rescued by whoever
+  # happened to look. See ADR-060 as amended 2026-09-04.
+  #
+  # The same two honest caveats apply, and the first is sharper now that the
+  # check is required. Branch protection is configured outside this file, so
+  # no comment here can make the job required or stop it being required -
+  # this paragraph records an intent that only the repository settings
+  # enforce, and the two can drift apart silently. And the job exits
+  # non-zero and shows red on a regression either way, so "required"
+  # affects whether a merge is blocked, never whether the regression is
+  # visible.
+  #
+  # Note the job carries no `if:` condition and so runs on every event. That
+  # is a precondition of being required rather than an incidental detail: a
+  # required check that can be skipped leaves a pull request permanently
+  # unmergeable, so adding a path filter or an event guard here would break
+  # branch protection rather than merely narrowing the job.
   #
   # The exit-code contract (0 clean, 1 regression or stale report, 2 could
   # not run) and the whole comparison live in the script, so the same one
@@ -1136,8 +1159,17 @@ jobs:
   # a `setup-java` would be above - analysis belongs in `tools/sonar/
   # scan-ui.sh`, which needs a live server and therefore runs locally.
   #
-  # Deliberately NOT a required status check, for the same
-  # measure-the-friction-first reason. See ADR-063.
+  # A REQUIRED status check since 2026-09-04, for the same reason as its Java
+  # twin and on the same evidence, which is worth stating plainly because
+  # this project has not itself suffered the failure: the measurement that
+  # ended the advisory period was taken on the Java ratchet, and this job
+  # was made required alongside it rather than waiting for its own incident.
+  # The two gates stay symmetrical deliberately - an asymmetry here would
+  # mean a front-end regression merges while the equivalent Java one does
+  # not, for no reason a contributor could infer. Both caveats in the Java
+  # block apply verbatim, above all that branch protection lives outside
+  # this file and can drift from this comment silently. See ADR-063 and
+  # ADR-060 as amended 2026-09-04.
   sonar-ratchet-ui:
     name: sonar-ratchet-ui
     runs-on: ubuntu-latest
