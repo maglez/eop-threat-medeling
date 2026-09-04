@@ -756,6 +756,13 @@ paths:
 
         Scoring is not part of this operation.
 
+        There is no `200` on this operation. `POST /plays` auto-resolves a trick
+        the moment its last card is played, so by the time a client can call this
+        endpoint the trick is already resolved and the server always answers `409`.
+        The endpoint is kept because the auto-resolve behaviour is an implementation
+        detail that may change, and removing the route would be a breaking API
+        change (EOP-183).
+
         There is no `422` on this operation, and its absence is deliberate. The
         caller sends no body, so there is nothing about the request that can be
         well-formed and yet unprocessable: every refusal is either a matter of
@@ -776,13 +783,6 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
-          description: |
-            The trick is resolved. `winningSeat` is now present.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Trick'
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':

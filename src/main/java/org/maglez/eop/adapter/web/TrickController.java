@@ -237,14 +237,20 @@ public class TrickController {
      * follows entirely from cards already played, so there is nothing to decide and
      * no reason to make the table wait on one person.
      *
+     * <p>{@link org.maglez.eop.usecase.PlayCardUseCase} auto-resolves a trick the moment its last
+     * card is played, so by the time this endpoint is reachable the trick is already resolved and
+     * {@link org.maglez.eop.usecase.ResolveTrickUseCase} always throws
+     * {@code TrickAlreadyResolvedException}. A 200 is therefore unreachable in practice; the
+     * endpoint is kept because the auto-resolve behaviour is an implementation detail that may
+     * change, and removing the route would be a breaking API change (EOP-183).
+     *
      * @param sessionId   the session whose current trick to resolve
      * @param playerToken the caller's credential, absent if it sent none
-     * @return 200 with the resolved trick, now carrying a winning seat
+     * @return the resolved trick — unreachable today because auto-resolution always wins the race
      */
     @PostMapping("/{sessionId}/tricks/current/resolve")
     @Operation(summary = "Resolve the current trick")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "The trick is resolved and winningSeat is now present."),
         @ApiResponse(responseCode = "400", description = "The session identifier is not a UUID."),
         @ApiResponse(responseCode = "403", description = "No credential, or one that does not belong to this session."),
         @ApiResponse(responseCode = "404", description = "No session exists with that identifier."),
