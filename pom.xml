@@ -314,23 +314,31 @@
               at the Maven layer. Maven's default policy compares a .sha1 and only warns, there
               is no maven.config so no strict-checksums, and maven-wrapper.properties carries
               no distributionSha256Sum, so a Maven plugin runs arbitrary code in the build JVM.
-              The figures below come from parsing the effective pom, not from reading this file.
-              We DECLARE six plugins and this is one of them: spring-boot, checkstyle, javadoc,
-              spotbugs, jacoco, enforcer. Only FIVE of the six carry a version element here;
-              spring-boot-maven-plugin carries none and takes 4.1.0 from the Boot parent, so do
-              not write that all six are pinned in this file. Liquibase is not one of the six and
+              The figures below come from parsing the effective pom, not from reading this file,
+              and they are re-derived the same way rather than trusted: count the top-level
+              <plugin> elements of `./mvnw -q help:effective-pom` (a regex over <artifactId>
+              over-counts, because h2 sits inside spring-boot's <dependencies> and
+              maven-project-info-reports-plugin recurs across report sets). An earlier revision
+              of this comment said six declarations and FOURTEEN bound entries while the file
+              held seven and fifteen, because it had gone on omitting maven-failsafe-plugin
+              (EOP-151, 2026-09-04) - so re-measure before citing any figure here.
+              We DECLARE seven plugins and this is one of them: spring-boot, failsafe,
+              checkstyle, javadoc, spotbugs, jacoco, enforcer. Only FIVE of the seven carry a
+              version element here; spring-boot-maven-plugin and maven-failsafe-plugin carry
+              none and take theirs from the Boot parent, so do not write that all seven are
+              pinned in this file. Liquibase is not one of the seven and
               never executes, but do not say it is unmanaged either: liquibase-maven-plugin sits
-              in the effective pluginManagement at 5.0.3, parent-managed with no lifecycle
+              in the effective pluginManagement, parent-managed with no lifecycle
               binding, and liquibase-core runs during tests as an application dependency, which
-              is a different thing again. The layer is also much larger than the six: the
-              effective build/plugins binds FOURTEEN entries, among them maven-compiler-plugin
-              3.15.0 and maven-surefire-plugin 3.5.6, which execute in the build JVM on exactly
+              is a different thing again. The layer is also much larger than the seven: the
+              effective build/plugins binds FIFTEEN entries, among them maven-compiler-plugin
+              and maven-surefire-plugin, which execute in the build JVM on exactly
               these terms, and the effective pluginManagement carries THIRTY-ONE entries, almost
               all from the Boot parent. So bumping the parent coordinates near the top of this
-              file moves about thirty plugin versions in one line, and that, rather than the six
+              file moves about thirty plugin versions in one line, and that, rather than the seven
               declarations, is the real uncovered surface. Accepted knowingly; moving a pin is a
               supply-chain change. Extending tools/supply-chain/ to the Maven layer means the
-              fourteen bound entries plus the wrapper, and belongs behind its own ADR.
+              fifteen bound entries plus the wrapper, and belongs behind its own ADR.
 
               Incremental runs, stated as what has actually been verified and no further.
               CI is always the cold path: .github/workflows/ci.yml checks out a fresh runner
