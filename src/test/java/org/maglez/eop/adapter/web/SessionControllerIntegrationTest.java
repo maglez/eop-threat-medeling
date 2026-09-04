@@ -236,7 +236,9 @@ class SessionControllerIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(nameRequest("   ")))
                     .andExpect(status().isBadRequest())
-                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.detail").isNotEmpty());
         }
 
         @Test
@@ -246,7 +248,9 @@ class SessionControllerIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(nameRequest("A".repeat(41))))
                     .andExpect(status().isBadRequest())
-                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.detail").isNotEmpty());
         }
 
         @Test
@@ -397,7 +401,9 @@ class SessionControllerIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(nameRequest("")))
                     .andExpect(status().isBadRequest())
-                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.detail").isNotEmpty());
         }
     }
 
@@ -413,7 +419,9 @@ class SessionControllerIntegrationTest {
             readState(facilitator.sessionId(), "not-a-credential-anyone-holds")
                     .andExpect(status().isForbidden())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
-                    .andExpect(jsonPath("$.title").value("Player not recognised"));
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.title").value("Player not recognised"))
+                    .andExpect(jsonPath("$.detail").isNotEmpty());
         }
 
         @Test
@@ -442,7 +450,9 @@ class SessionControllerIntegrationTest {
         void shouldRejectAMalformedIdentifier() throws Exception {
             readState("not-a-uuid", "not-a-credential-anyone-holds")
                     .andExpect(status().isBadRequest())
-                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.detail").isNotEmpty());
         }
 
         @Test
@@ -459,6 +469,7 @@ class SessionControllerIntegrationTest {
             readState(facilitator.sessionId(), facilitator.playerToken())
                     .andExpect(status().isForbidden())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(403))
                     .andExpect(jsonPath("$.title").value("Session expired"))
                     .andExpect(jsonPath("$.detail")
                             .value("The session has expired. Please start a new session."));
@@ -595,7 +606,9 @@ class SessionControllerIntegrationTest {
                             .content(nameRequest("Hopeful")))
                     .andExpect(status().isTooManyRequests())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(429))
                     .andExpect(jsonPath("$.title").value("Too many join attempts"))
+                    .andExpect(jsonPath("$.detail").isNotEmpty())
                     .andReturn()
                     .getResponse();
 
@@ -717,7 +730,9 @@ class SessionControllerIntegrationTest {
                             .content(nameRequest("Bob")))
                     .andExpect(status().isTooManyRequests())
                     .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.status").value(429))
                     .andExpect(jsonPath("$.title").value("Too many requests"))
+                    .andExpect(jsonPath("$.detail").isNotEmpty())
                     .andReturn()
                     .getResponse();
 
