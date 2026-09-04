@@ -50,3 +50,10 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Explicit log levels (EOP-117). Overrides the DEBUG default in application.yml.
+# logback-spring.xml sets the same level via a <logger> element for the prod
+# <springProfile> block; both must agree.
+logging:
+  level:
+    org.maglez.eop: INFO
