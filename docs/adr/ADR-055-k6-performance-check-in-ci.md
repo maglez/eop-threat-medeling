@@ -308,6 +308,40 @@ Per amendment 6's lesson — "a step that only ever runs in CI is only ever prov
 
 The separation from `docs/performance/TRENDS.md` is unaffected. Nothing in this change writes there, and CI figures still must not be appended to it.
 
+**2026-09-05 — EOP-206 adds a build gate against latency assertions inside k6 `check()` calls:**
+
+### 1. The defect class
+
+EOP-157 deleted a predicate named `"response time < 100ms"` from `test/k6/health-check.js`. Its predicate was `(r) => r.timings.duration < 100`. The predicate read as a latency gate while gating nothing: a k6 `check()` never affects the process exit code, and no threshold over `checks` or `checks_failed` exists in either `options.js` or `options-ci.js`. A response between 100 ms and the real ceiling failed that check silently while every threshold passed, so the shape was worse than absent — it looked like enforcement while enforcing nothing, and it moved the `checks` ratio that the `perf-trend` job records into `ci-history.jsonl` for reasons unrelated to correctness.
+
+What EOP-157 left behind was a *prose* prohibition — a comment block in the scenario, the body of commit `7965de6`, and a `### Removed` entry in `CHANGELOG.md`. Prose does not fail a build, so nothing stopped the shape being reintroduced. This amendment adds the mechanism.
+
+### 2. What the gate does
+
+`K6LatencyCheckTest` (the sixteenth documentation-integrity gate, the third to gate `test/k6/`) scans every `.js` file directly in `test/k6/` (non-recursive, so `config/` is excluded by construction). It extracts each `check(` argument list by paren-depth scanning — necessary because predicates nest calls like `r.json("content")` and wrap across lines — over a *sanitised* copy of the file in which comment bodies and string-literal *contents* are blanked while preserving length and newlines. It then fails if the k6 `timings` object is read *inside* any extracted body.
+
+`TIMING_READ` is `\btimings\b` — the whole object rather than any one of its seven fields, so a predicate asserting on a phase other than the total (`r.timings.waiting < 50`) is caught by the same rule. Matching the bare word also catches destructuring (`const { duration } = r.timings`). The lookbehind `(?<![A-Za-z0-9_$.])check\s*\(` excludes `recheck(` and `client.check(`.
+
+Two anti-vacuity floors: `MINIMUM_SCENARIOS = 2` (file count) and `MINIMUM_CHECKS_PER_SCENARIO = 1` (per-file extracted body count). The second is the more important one — if the extractor broke, every file would yield zero bodies and the rule would pass while proving nothing.
+
+### 3. Why the read is bound to a `check()` block rather than banned outright
+
+Reading `r.timings.duration` is legitimate *outside* a check — logging a slow response, or exporting a custom `Trend`, both of which end up somewhere a human reads rather than in a predicate whose verdict is discarded. Banning the word outright would forbid the honest use along with the dishonest one, so the matcher extracts each `check(` argument text and searches only inside it.
+
+### 4. What the gate does not prove
+
+- It proves no `check()` asserts on the k6 `timings` object. It does **not** prove the remaining predicates are meaningful — that is the bound `K6ScenarioWiringTest` already records, namely that a scenario whose checks are all trivially true passes every gate.
+- It does not recognise a latency assertion written without `timings` at all, such as arithmetic over `Date.now()`. That form is reviewer-enforced, the same bound the two adjacent k6 gates carry.
+- Its sanitiser is a scanner and not a JavaScript parser: a regular-expression literal containing a quote character, and an interpolated `${...}` expression inside a template literal, are both blanked or mis-read rather than analysed. Neither form appears in either scenario today, and each would be visible to a reviewer reading the diff that introduced it. Those stay reviewer-enforced.
+
+Gating check *counts* or check *names* was considered by the ticket and explicitly rejected. A count gate is the same tautology problem one step weaker (if there are checks, they pass — trivially true). A name is prose, not a contract, and would face the same prose-gate problem this test exists to close.
+
+### 5. Evidence
+
+The test was demonstrated to fire on the exact predicate EOP-157 deleted, on bracket access (`r.timings["duration"]`), on a phase other than total (`r.timings.waiting`), on destructuring, on a wrapped multi-line body, and on a predicate name containing `)`. It was demonstrated to pass on timing reads *outside* a check (logging, custom metrics), on the scenarios' own prose documenting the deleted predicate, and on a predicate name mentioning the word (a string literal, not an assertion on it).
+
+Those cases are synthetic text held in the test itself, which proves the matcher and not the wiring, so the gate was also demonstrated against the real tree: the deleted predicate was reinserted verbatim into `test/k6/health-check.js` in a throwaway `git worktree` checkout, and `./mvnw test -Dtest=K6LatencyCheckTest` there failed one of its six tests and the build with it, naming the offending file, why a `check()` cannot gate, and where latency does belong. The ticket asked for that reintroduce-and-observe step by name rather than accepting an argument that the guard must work, and it is the reason the two floors above are asserted separately — a guard that passes because it inspected nothing fails in exactly the way it was built to prevent.
+
 ## Related
 
 - ADR-016 (Colima as local container runtime)
@@ -317,4 +351,5 @@ The separation from `docs/performance/TRENDS.md` is unaffected. Nothing in this 
 - `test/k6/card-catalogue.js` (the database-backed scenario added by EOP-156)
 - `test/k6/config/options.js` (existing thresholds)
 - `test/k6/config/options-ci.js` (the relaxed CI thresholds this ADR mandates)
+- `src/test/java/org/maglez/eop/docs/K6LatencyCheckTest.java` (the gate added by EOP-206)
 - `docs/performance/TRENDS.md` (local baseline, not CI results)
