@@ -34,11 +34,12 @@ permissions:
   contents: read
 
 jobs:
-  # One of the three required status checks on `main`, and the only one that
+  # One of the four required status checks on `main`, and the only one that
   # compiles anything: `sonar-ratchet` and `sonar-ratchet-ui` joined it on
-  # 2026-09-04 (ADR-060 as amended). It was the sole required check until
-  # then, so treat any comment in this file still saying so as stale rather
-  # than as a second opinion. Keep it fast and keep it about the code.
+  # 2026-09-04 (ADR-060 as amended) and `dependency-cve` on 2026-09-05
+  # (ADR-050 as amended). It was the sole required check until the first of
+  # those dates, so treat any comment in this file still saying so as stale
+  # rather than as a second opinion. Keep it fast and keep it about the code.
   build:
     name: build
     runs-on: ubuntu-latest
@@ -76,9 +77,9 @@ jobs:
       # classes going back inside the artifact that runs on a server. It sits
       # before `Upload artifact` on purpose, so nothing unverified is published,
       # and inside `build` because that is the required check that compiles
-      # the artifact in question - the two Sonar ratchets are required too
-      # since 2026-09-04, but neither builds a jar, so neither could host
-      # this assertion.
+      # the artifact in question - the other three required checks are the two
+      # Sonar ratchets and `dependency-cve`, and not one of them builds a jar,
+      # so not one of them could host this assertion.
       # See docs/adr/ADR-047-h2-excluded-from-deployable-artifact.md.
       - name: Assert no H2 in the deployable artifact
         run: tools/artifact/assert-no-h2-in-jar.sh
@@ -91,8 +92,9 @@ jobs:
 
   # The front end gets its own gate rather than being bolted onto `build`.
   # Two reasons: `build` is the required check that protects `main` by
-  # compiling and testing the Java, so it should stay Java-only and fast and
-  # must not fail for a lint rule in
+  # compiling and testing the Java - three further required checks stand
+  # beside it, listed in the `build` header - so it should stay Java-only and
+  # fast and must not fail for a lint rule in
   # a TypeScript file; and a front-end failure should report as a front-end
   # failure rather than as a mysterious red mark on the Java job.
   ui:
@@ -751,12 +753,16 @@ jobs:
   # and no sandbox. That is a wider blast radius than anything in `pom.xml`,
   # and until now it was the only dependency set with no automated check.
   #
-  # Deliberately NOT a required status check. The required gates on `main` -
-  # `build` and, since 2026-09-04, the two Sonar ratchets - are all about the
-  # code that ships: a new advisory published
+  # Deliberately NOT a required status check, and since 2026-09-05 the only
+  # dependency gate that is not. The required gates on `main` - `build`, the
+  # two Sonar ratchets since 2026-09-04, and `dependency-cve` since
+  # 2026-09-05 - are all about the code that ships: a new advisory published
   # against a transitive dependency of a developer tool is a thing to know
-  # about, not a reason to block a merge of unrelated application code. Let
-  # it run as an ordinary job, watch it, and promote it only if that
+  # about, not a reason to block a merge of unrelated application code. Read
+  # that as a statement about blast radius and not as one about CVE gates
+  # being unfit to block, because `dependency-cve` reads the same kind of
+  # advisory feed against dependencies that users execute, and it blocks. Let
+  # this one run as an ordinary job, watch it, and promote it only if that
   # judgement turns out to be wrong.
   #
   # Failure conditions are drift and severity, in that order of interest:
@@ -841,24 +847,58 @@ jobs:
   # two gating scanners over one tree would mean two allowlists to keep in
   # step, and the first divergence would be silent.
   #
-  # Deliberately NOT a required status check when it lands - but for a
-  # weaker reason than the `supply-chain` job's, and the difference is worth
-  # keeping straight rather than inheriting. That job's argument is that an
-  # advisory against a developer tool "is a thing to know about, not a
-  # reason to block a merge"; that argument does not transfer here, because
-  # these dependencies are executed in production by users. The reason this
-  # one is not required yet is narrower: a CVE gate goes red on a
-  # publication by a third party against code that has not changed, so
-  # making it required means an unrelated PR can be blocked by someone
-  # else's release schedule. `tools/supply-chain/accepted-cves.json` exists
-  # precisely so that situation has an answer other than disabling the
-  # scanner, and once that mechanism has been exercised in anger a couple of
-  # times, promoting this to required is the intended end state. Two honest
-  # caveats on that: branch protection is configured outside this file, so
-  # no comment here can make the job required or stop it being required;
-  # and the job exits non-zero and shows red on a gating finding either way,
-  # so "not required" affects whether a merge is blocked, never whether the
-  # finding is visible.
+  # A REQUIRED status check since 2026-09-05, having arrived on 2026-08-22 as
+  # an advisory one. The four preconditions the promotion was made to wait on
+  # (EOP-149) were all met, and two of them were met by events rather than by
+  # argument. The failure policy was exercised in anger on 2026-09-03, when
+  # three freshly disclosed CRITICALs against embedded Tomcat turned `main`
+  # red on two unrelated merges - one of them documentation-only - and were
+  # closed by a `<tomcat.version>11.0.25</tomcat.version>` override rather
+  # than by an allowlist entry (EOP-189), which is the order of preference
+  # ADR-050 states. And the false-positive rate is measured rather than
+  # assumed: over the 60 runs of this job on `main` between 2026-08-22 and
+  # 2026-09-05, 58 passed and the only two failures were that one genuine
+  # disclosure. Nought false positives, including nought from the one known
+  # false-positive class - an H2 advisory, which this scanner would gate on
+  # because it reads the resolved tree and so does not honour ADR-047's
+  # exclusion of H2 from the deployable jar.
+  #
+  # That 2026-09-03 incident is also, honestly, an instance of the hazard
+  # that kept this job advisory in the first place, and promoting it does not
+  # dissolve that hazard: a CVE gate goes red on a publication by a third
+  # party against code that has not changed, so a required one lets someone
+  # else's release schedule block an unrelated pull request. What changed is
+  # the judgement about which risk is worse. `main` stood red for roughly
+  # seven hours that day with nothing blocking a merge on top of it, and the
+  # sibling `sonar-ratchet` case recorded in ADR-060 shows where that ends:
+  # a gate that is visible but not binding gets rescued by whoever happens
+  # to look.
+  #
+  # The escape hatch is therefore a documented one, and it is the allowlist
+  # rather than a person: `tools/supply-chain/accepted-cves.json`, whose
+  # entries carry a reachability trace, a reviewer, a date and a mandatory
+  # `expires`, so a suppression is reviewable in the diff and retires itself.
+  # The order of preference is the upgrade first (ADR-050), then a time-boxed
+  # allowlist entry, and only if a fix and a defensible trace are both out of
+  # reach, an administrator lifting the requirement - recorded in the pull
+  # request, because nothing else would record it. That last route is last on
+  # purpose: it leaves no artefact in the repository, and the token available
+  # to contributors and agents here cannot even read the branch-protection
+  # settings, so a lift that was never reinstated would be invisible.
+  #
+  # Note the job carries no `if:` condition and so runs on every event. That
+  # is a precondition of being required rather than an incidental detail: a
+  # required check that can be skipped leaves a pull request permanently
+  # unmergeable, so adding a path filter or an event guard here would break
+  # branch protection rather than merely narrowing the job.
+  #
+  # Two honest caveats, the first sharper now that the check is required.
+  # Branch protection is configured outside this file, so no comment here can
+  # make the job required or stop it being required - this paragraph records
+  # an intent that only the repository settings enforce, and the two can
+  # drift apart silently. And the job exits non-zero and shows red on a
+  # gating finding either way, so "required" affects whether a merge is
+  # blocked, never whether the finding is visible.
   #
   # Failure policy, in full, is HIGH and CRITICAL only. That matches the
   # `audit-plugins.sh` gating set exactly and diverges from the SpotBugs
@@ -867,7 +907,8 @@ jobs:
   # and is always actionable, whereas a medium CVE in a third-party
   # transitive is frequently unreachable, often has no in-range fix, and
   # arrives at a volume set by other people's release cadence. Medium and
-  # low findings are printed in their own non-gating section. See ADR-050.
+  # low findings are printed in their own non-gating section. See ADR-050 as
+  # amended 2026-09-05.
   dependency-cve:
     name: dependency-cve
     runs-on: ubuntu-latest
@@ -1013,18 +1054,23 @@ jobs:
       # CRITICAL CVE blocks a merge, and it enforces six distinct failure modes
       # over tools/supply-chain/accepted-cves.json. All six were demonstrated by
       # hand once during EOP-89 and nothing re-ran them (EOP-147); this harness
-      # does, against synthetic Trivy JSON fixtures.
+      # does, against synthetic Trivy JSON fixtures. EOP-146 added five further
+      # cases that drive the shipped script end to end with a stub `trivy` on
+      # PATH to hold its documented 0/1/2 exit contract - the shell control flow
+      # the extracted-heredoc cases cannot reach. Sixteen cases in total.
       #
-      # It runs BEFORE the scan deliberately. The harness needs neither Trivy nor
-      # the vulnerability database -- it awk-extracts the gate's Python heredoc
-      # out of the shipped script and drives it with fixture reports -- so a
-      # broken policy fails here in seconds rather than after the scan.
+      # It runs BEFORE the scan deliberately. The harness needs neither the real
+      # Trivy binary nor the vulnerability database -- it awk-extracts the gate's
+      # Python heredoc out of the shipped script and drives it with fixture
+      # reports, and stubs `trivy` for the exit-contract cases -- so a broken
+      # policy fails here in seconds rather than after the scan.
       #
       # Extraction rather than duplication is the load-bearing choice: it is what
       # makes a deliberate break of scan-dependencies.sh turn these tests red,
       # demonstrated by changing GATING to {"CRITICAL"} and watching the harness
-      # drop from 11/11 to 5/11. A harness holding its own copy would have stayed
-      # green, which is exactly the limitation of test-audit-plugins.sh above.
+      # drop from 11/11 to 5/11 back when it had eleven cases. A harness holding
+      # its own copy would have stayed green, which is exactly the limitation of
+      # test-audit-plugins.sh above.
       - name: Test the CVE-gating logic
         run: tools/supply-chain/test-scan-dependencies.sh
 
