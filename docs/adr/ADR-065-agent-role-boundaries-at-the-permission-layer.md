@@ -317,6 +317,36 @@ describes a five-agent sign-off where there are now seven.
 > corollary: prose and permissions can also disagree with *the tracker itself*, which is the
 > failure this reversal had to reconcile before it could grant anything.
 
+> **Amended 2026-09-05 (EOP-000) — the Tech Lead now publishes as far as review.** The
+> section "The Tech Lead — commits, but does not publish" above, and the chain "delivery
+> agents produce changes, the Tech Lead commits them, and only the operator publishes", are
+> **superseded in one respect**: `@tech-lead` now holds `git push*` and `gh pr create*` as
+> allows, so it takes a story from a topic branch to an open pull request without an operator
+> relay. The operator was doing two mechanical steps between a green seven-gate round and a
+> reviewable PR, and under `/goal` that stalled an otherwise autonomous run on a human who
+> may not be watching. **The boundary is not removed, it is moved**, and where it now sits is
+> the load-bearing part: `gh pr merge*` and `gh release*` remain denied, so nothing reaches
+> `main` and nothing ships without a human. Everything the Tech Lead can now do is reversible
+> — a topic branch can be deleted and a pull request closed — while the two steps still
+> denied are the irreversible ones.
+>
+> Three things this does **not** change. The eleven delivery agents keep their full blocklist
+> including `git commit`, so the Tech Lead is still the only agent that commits and the only
+> one that can now push; the Product Owner's read-only `bash` is untouched, so the EOP-117
+> breach this ADR was written from remains closed at the tool layer. `git push --force*` and
+> `git push -f *` are **denied** in the same block, repeated from the global ruleset because a
+> per-agent block replaces rather than merges with it — without them the broad `git push*`
+> allow would have silently granted a history rewrite, which is a strictly worse grant than
+> the one being asked for. And branch protection on `main` is unchanged and is the real
+> backstop: the EOP-117 push to `main` was refused by it, not by any permission here.
+>
+> **The honest cost.** This widens the blast radius of a mistaken autonomous run from the
+> local worktree to the remote: a wrong branch and a wrong pull request are now things the
+> Tech Lead can create unattended, and the "speed bump, not a boundary" caveat below applies
+> to the two remaining denials exactly as it applied to the four. Closing this amendment means
+> deciding the operator should be the one to open a pull request again, which is a one-line
+> revert of the two allows in `.opencode/agents/tech-lead.md`.
+
 ## Related
 
 - [ADR-022](ADR-022-agent-model-tier-governance.md) — agent model tier governance; the

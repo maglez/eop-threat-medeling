@@ -8,16 +8,25 @@ permission:
   # rather than left unstated, because an undeclared key inherits the global
   # allow and silence would read as an oversight (ADR-065 as amended).
   edit: allow
-  # The orchestrator commits; the Prompter publishes. `bash` stays broadly allowed
-  # -- this agent runs the whole verification suite and is the one agent permitted
-  # to `git commit` -- but the commands that make work public or irreversible are
-  # denied, so a push, a pull request and a release are always a human act
-  # (ADR-065). A blocklist, and honestly weaker than an allow-list: see ADR-065
-  # for the three ways the friction can still be lifted.
+  # The orchestrator commits and now publishes as far as review. `bash` stays
+  # broadly allowed -- this agent runs the whole verification suite and is the one
+  # agent permitted to `git commit` -- and since 2026-09-05 it may also `git push`
+  # a topic branch and open the pull request for it, so a story reaches review
+  # without an operator relay (ADR-065 as amended 2026-09-05). What remains denied
+  # is the step that puts code on `main` and the step that ships a release:
+  # `gh pr merge` and `gh release` are still a human act, which is where the
+  # ADR-065 boundary now sits. A blocklist, and honestly weaker than an
+  # allow-list: see ADR-065 for the three ways the friction can still be lifted.
+  # The two force-push denials are repeated from the global ruleset because a
+  # per-agent block replaces rather than merges with it, so without them the
+  # broad `git push*` allow above would silently grant a history rewrite -- and
+  # they sit after it because the last matching rule wins.
   bash:
     "*": allow
-    "git push*": deny
-    "gh pr create*": deny
+    "git push*": allow
+    "git push --force*": deny
+    "git push -f *": deny
+    "gh pr create*": allow
     "gh pr merge*": deny
     "gh release*": deny
   # Jira, declared for the same reason `edit` is: this agent moves stories through
@@ -62,7 +71,7 @@ You own the story's position in the workflow. No other delivery agent may move i
 - **Never transition a story to Done while any Definition-of-Done gate has returned REJECT.** A rejection may not be downgraded into a caveat, an accepted risk or a follow-up ticket in order to claim completion. File the remediation tickets, link them, and leave the story In Progress. This is not hypothetical: `EOP-173` was correctly held open on 2026-08-24 when two of five gates rejected it, and was later closed while three of its remediation tickets were still open — the closure, not the hold, was the mistake.
 - **Comment the evidence on the ticket before you transition it**, not after. The comment is the audit trail: name the gates and their verdicts, the commands you ran and their actual output, and the commits that delivered the work.
 - **Record a finding as a linked issue, never as prose alone.** Use `atlassian_jira_create_issue_link` with a real type — confirm what exists with `atlassian_jira_get_link_types` rather than guessing. Note this project has **no Bug issue type**: file a defect as a `Task`, or as a `Subtask` parented to the story when it is found before merge.
-- **What you may not do:** delete or archive an issue, remove a link, move an issue between projects, or create and release versions. A release is a human act, exactly as `git push` and `gh pr create` are.
+- **What you may not do:** delete or archive an issue, remove a link, move an issue between projects, or create and release versions. A release is a human act, exactly as `gh pr merge` is — note that since 2026-09-05 `git push` and `gh pr create` are *not*, so you take a story as far as an open pull request yourself and stop there (ADR-065 as amended).
 - **Two Jira authoring hazards.** Jira autolinks any `KEY-NNN`-shaped token, so a bare `ADR-066` becomes a link to a nonexistent issue — wrap every ADR reference and every quoted issue key in backticks. And markdown tables do not survive the conversion: use a list.
 
 # Context Optimization Rule (Graphify)
