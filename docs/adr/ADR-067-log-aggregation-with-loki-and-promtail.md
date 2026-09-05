@@ -53,15 +53,22 @@ existing Grafana from `docker-compose.yml`.
 **Promtail** (`grafana/promtail:3.3.2` digest-pinned):
 - Docker service discovery against `/var/run/docker.sock` with a 5-second refresh and name
   filter `["eop*"]`.
-- Two mutually exclusive branches, selected by a line filter:
-  - `'{container="eop-app"} |= "timestamp"'` → JSON branch: extracts `level`, `loggerName`
+- Two mutually exclusive branches, selected by a line filter on whether the line begins with
+  `{`:
+  - ``'{container="eop-app"} |~ `^\{`'`` → JSON branch: extracts `level`, `loggerName`
     (not `logger`), and `mdc.correlationId` via JMESPath, labels `level` and `logger`, and
     stores `correlationId` as **structured metadata**.
-  - `'{container="eop-app"} != "timestamp"'` → plain-text branch: regex parser for Spring
+  - ``'{container="eop-app"} !~ `^\{`'`` → plain-text branch: regex parser for Spring
     Boot's DEFAULT console pattern, same labels.
 - The discriminator exists because `logback-spring.xml` (EOP-117) selects the JSON encoder
   under the `prod` profile and a plain pattern otherwise, and the container runs
   `SPRING_PROFILES_ACTIVE=prod`, so the JSON branch is the live path.
+- **Anchoring on `{` rather than testing for a word is deliberate.** An earlier revision
+  discriminated on `|= "timestamp"`, which misroutes any plain-text line that merely mentions
+  the word — and `timestamp` is a SQL column type, so Liquibase and Hibernate startup messages
+  really can contain it, at which point the `json` stage fails and the line arrives unlabelled.
+  A JSON line from `JsonEncoder` always opens with `{` and the plain pattern always opens with
+  a date, so the brace is a property of the format rather than of the message. Do not weaken it.
 
 **Grafana datasource** (`tools/monitoring/grafana/datasources/datasource.yml`):
 - Extends the existing InfluxDB provisioning rather than replacing it.
@@ -93,6 +100,29 @@ accepted residual consistent with the existing position in `SETUP.md`.
 - **Security control.** `auth_enabled: false` and Loki bound to loopback. Do not describe
   loopback binding as a security boundary beyond what it is.
 
+### Two privilege and disclosure facts this decision accepts
+
+Neither is mitigated here. Both are recorded so that a later reader does not have to rediscover
+them, and both are reasons this stack is local-only and must not be lifted into a deployed
+environment unchanged.
+
+- **Promtail holds the Docker socket.** `/var/run/docker.sock:/var/run/docker.sock:ro` is a real
+  privilege concentration: read access to the socket is effectively host-level read access to
+  every container's logs, environment and metadata on the machine — not only the containers the
+  `["eop*"]` filter selects, because the filter is applied by Promtail *after* the socket has
+  already granted it the full view. The `:ro` flag bounds writes, so it prevents container
+  creation and command execution through the socket, but it does not narrow what can be read.
+  Anything able to execute inside the Promtail container inherits that read access.
+- **The `["eop*"]` filter scoops far more than the application.** It matches every running
+  container whose name starts with `eop`, which today means `eop-postgres`, `eop-caddy`,
+  `eop-grafana`, `eop-influxdb` and `eop-sonarqube` as well as `eop-app`. So Postgres logs and
+  Caddy access logs — request paths, client addresses, timings — are shipped into an
+  unauthenticated queryable store, even though the application itself never emitted them.
+  `.opencode/rules/observability.md` forbids logging PII or secrets *from the application*;
+  this pipeline can carry such data in from third-party containers regardless of that rule, so
+  the rule does not bound the exposure. Only the two branch *parsers* are scoped to
+  `{container="eop-app"}`; ingestion is not.
+
 ### Coupling to implicit Compose naming
 
 Both Loki and Promtail join `networks: eop-monitoring_default` declared `external: true`.
@@ -112,6 +142,9 @@ This is a coupling to an implicit Compose naming convention — record it as a r
 - The external network coupling requires the base stack to be running before the observability
   stack.
 - No authentication on Loki; loopback binding is the only boundary.
+- Promtail's read access to the Docker socket, and the `["eop*"]` filter's reach beyond the
+  application into Postgres and Caddy logs, are accepted unmitigated — see the two facts above.
+  Both are load-bearing reasons this stack stays local.
 - Nothing is wired into CI — this is a local developer tool only.
 
 ## Related
