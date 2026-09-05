@@ -164,3 +164,34 @@ The corrected sequence is:
   15 s, including empty ones. Growth is bounded by the number of distinct sessions ever
   created (rate-limited to 5/address/60s), so the practical ceiling is low, but this is
   a known trade-off of the never-remove invariant that prevents the lock-identity race.
+
+> **Amended 2026-09-05 (EOP-174).** A security audit of the full stack noted that the SSE
+> stream is excluded from the read rate limiter and dismissed that exclusion as compensated
+> by the subscriber caps this ADR establishes. The dismissal was constructed during the
+> audit and appeared nowhere in this ADR, so it is recorded here — but it is recorded with
+> its limit, because the compensation is *partial* and stating it without that qualifier
+> would repeat the audit's overstatement.
+>
+> **The exclusion is deliberate.** `ReadRateLimitInterceptor.java:42-44` exempts the stream
+> route, because a long-lived connection consumes one slot for its whole life and counting
+> it against a per-minute read budget would throttle a client that is behaving exactly as
+> designed.
+>
+> **What the caps do compensate for.** The two limits in the Decision above — 12 subscribers
+> per session and 500 in total — bound the number of *concurrent* subscribers, so the
+> exclusion cannot be used to open unbounded simultaneous streams. That much of the audit's
+> argument holds.
+>
+> **What they do not compensate for, and this is the part that matters.** A cap on
+> concurrency is not a cap on *rate*. A client that cycles connect → disconnect → reconnect
+> stays within both caps at every instant while consuming an async dispatch per attempt, and
+> nothing here bounds how fast it may do so. That gap is real, is low severity (a resource
+> DoS with no disclosure component), and is not newly discovered: the codebase already says
+> so at `WebInterceptorConfiguration.java:32-36`, which records the reconnect rate as a
+> remaining gap held in [ADR-051](ADR-051-read-route-rate-limit.md) rather than half-solved
+> at the interceptor.
+>
+> So the correct statement of the position is three-part, not one-part: the exclusion is
+> intentional, the caps bound concurrency, and reconnect rate remains an accepted gap under
+> ADR-051. An auditor who reads only the second clause will over-credit this ADR, which is
+> what happened.
