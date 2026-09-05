@@ -30,6 +30,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
 source_script="tools/supply-chain/scan-dependencies.sh"
+allowlist_real="tools/supply-chain/accepted-cves.json"
 workdir=".tmp/test-scan-dependencies"
 
 rm -rf "$workdir"
@@ -398,6 +399,191 @@ run_case "no analysed manifests fails rather than reporting clean" \
     "$workdir/allowlist-empty.json" \
     1 \
     "analysed no dependency manifests at all"
+
+# ---------------------------------------------------------------------------
+# Shell-level cases: the 0/1/2 exit contract (EOP-146)
+#
+# Everything above tests the extracted gate in isolation, which is precisely
+# what it cannot cover: the script's own control flow. The header promises
+# 0 = clean, 1 = a gating finding or allowlist drift, 2 = could not run, and
+# under `set -e` an unguarded informational step can pre-empt that -- python3
+# exiting 1 on a malformed report would surface as the code the contract
+# reserves for a CVE, with the final `exit "$gate_status"` never reached.
+#
+# These cases therefore run the SHIPPED script end to end with trivy stubbed
+# on PATH. Stubbing is not a convenience: the failure modes live between the
+# two trivy invocations and the final exit, so no python-fixture harness can
+# reach them, and a real trivy run needs the network and cannot be made to
+# emit a truncated report on demand.
+#
+# The discriminating case is a CLEAN shipped tree paired with a malformed
+# informational report. A gating finding would also exit 1, so pairing the
+# malformed report with a finding proves nothing -- only a tree that must
+# exit 0 can show the informational pass no longer overriding the verdict.
+# ---------------------------------------------------------------------------
+
+echo
+echo "=== scan-dependencies.sh exit-contract tests (shell level) ==="
+
+mkdir -p "$workdir/bin"
+
+# The stub answers --version, then writes whichever fixture the case names to
+# the --output path. --include-dev-deps identifies the informational pass, so a
+# case can fail that invocation alone and leave the gating one healthy.
+cat > "$workdir/bin/trivy" <<'STUB'
+#!/usr/bin/env bash
+set -uo pipefail
+if [[ "${1:-}" == "--version" ]]; then
+    echo "Version: 0.0.0-stub (test-scan-dependencies.sh)"
+    exit 0
+fi
+out=""
+dev=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) out="$2"; shift 2 ;;
+        --include-dev-deps) dev=1; shift ;;
+        *) shift ;;
+    esac
+done
+if [[ "$dev" -eq 1 ]]; then
+    if [[ "${STUB_ALL_FAIL:-0}" -eq 1 ]]; then
+        echo "stub: simulated trivy failure on the informational pass" >&2
+        exit 3
+    fi
+    cp "$STUB_ALL_FIXTURE" "$out"
+else
+    cp "$STUB_SHIPS_FIXTURE" "$out"
+fi
+STUB
+chmod +x "$workdir/bin/trivy"
+
+# A malformed informational report: valid UTF-8, invalid JSON, exactly what a
+# truncated write leaves behind. json.load raises, python3 exits 1.
+printf '%s' '{"Results": [' > "$workdir/report-truncated.json"
+
+# The shipped script reads the REAL tools/supply-chain/accepted-cves.json and
+# offers no way to redirect it -- deliberately, since an env-var override would
+# be a documented way to point the gate at a permissive allowlist. So the clean
+# fixture is generated to satisfy whatever that file currently says: one
+# matching finding per live entry, which is a findings-free report today and
+# stays a clean gate result if entries are ever added. Without this, the first
+# real suppression would trip the anti-rot branch and turn these cases red for
+# a reason that has nothing to do with the exit contract.
+python3 - "$allowlist_real" "$workdir/report-clean-live.json" <<'PY'
+import json, sys
+
+allowlist_path, out_path = sys.argv[1], sys.argv[2]
+advisories = json.load(open(allowlist_path))["advisories"]
+
+vulns = []
+for key, entry in advisories.items():
+    vuln_id, _, module = key.partition("@")
+    vulns.append({
+        "VulnerabilityID": vuln_id,
+        "PkgName": module or entry.get("module", ""),
+        "Severity": entry.get("severity", "HIGH"),
+        "InstalledVersion": entry.get("installed", ""),
+        "FixedVersion": entry.get("fixed_version", ""),
+        "Title": entry.get("title", ""),
+        "PrimaryURL": "",
+    })
+
+result = {"Target": "pom.xml", "Type": "pom"}
+if vulns:
+    result["Vulnerabilities"] = vulns
+json.dump({"Results": [result]}, open(out_path, "w"))
+PY
+
+# ---------------------------------------------------------------------------
+# run_shell_case <label> <ships fixture> <all fixture> <all-fails 0|1>
+#                <expected exit> <expected substring>
+# ---------------------------------------------------------------------------
+run_shell_case() {
+    local label="$1" ships="$2" all_fixture="$3" all_fail="$4"
+    local expected_exit="$5" expected_text="$6"
+    local actual_exit=0
+
+    PATH="$repo_root/$workdir/bin:$PATH" \
+    STUB_SHIPS_FIXTURE="$repo_root/$ships" \
+    STUB_ALL_FIXTURE="$repo_root/$all_fixture" \
+    STUB_ALL_FAIL="$all_fail" \
+        "$source_script" >"$workdir/shell-out.txt" 2>"$workdir/shell-err.txt" \
+        || actual_exit=$?
+
+    local problems=()
+    if [[ "$actual_exit" -ne "$expected_exit" ]]; then
+        problems+=("expected exit $expected_exit, got $actual_exit")
+    fi
+    if ! grep -qF "$expected_text" "$workdir/shell-out.txt" "$workdir/shell-err.txt"; then
+        problems+=("output does not contain '$expected_text'")
+    fi
+
+    if [[ "${#problems[@]}" -eq 0 ]]; then
+        pass=$(( pass + 1 ))
+        echo "  PASS  $label"
+    else
+        fail=$(( fail + 1 ))
+        echo "  FAIL  $label"
+        local problem
+        for problem in "${problems[@]}"; do
+            echo "          $problem"
+        done
+        echo "        --- stdout (tail) ---"
+        tail -25 "$workdir/shell-out.txt" | sed 's/^/        /'
+        echo "        --- stderr (tail) ---"
+        tail -25 "$workdir/shell-err.txt" | sed 's/^/        /'
+    fi
+}
+
+echo
+echo "--- A failing informational pass must not pre-empt the gating verdict ---"
+
+run_shell_case "clean tree, malformed informational report: still exit 0" \
+    "$workdir/report-clean-live.json" \
+    "$workdir/report-truncated.json" \
+    0 \
+    0 \
+    "clean, or fully accounted for"
+
+run_shell_case "gating finding, malformed informational report: still exit 1" \
+    "$workdir/report-high.json" \
+    "$workdir/report-truncated.json" \
+    0 \
+    1 \
+    "a HIGH finding with no entry"
+
+run_shell_case "clean tree, informational trivy fails: exit 0, not 2" \
+    "$workdir/report-clean-live.json" \
+    "$workdir/report-truncated.json" \
+    1 \
+    0 \
+    "WARNING: trivy failed on the informational pass"
+
+run_shell_case "gating finding, informational trivy fails: exit 1, not 2" \
+    "$workdir/report-high.json" \
+    "$workdir/report-truncated.json" \
+    1 \
+    1 \
+    "a HIGH finding with no entry"
+
+echo
+echo "--- A scan that could not run is still exit 2 ---"
+
+# The contract's 2 must survive the change above. Removing trivy from PATH
+# entirely is the one condition every other case shares a code with.
+actual_exit=0
+env -i PATH="/usr/bin:/bin" HOME="$HOME" \
+    "$repo_root/$source_script" >"$workdir/shell-out.txt" 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 2 ]] && grep -qF "trivy is not on PATH" "$workdir/shell-out.txt"; then
+    pass=$(( pass + 1 ))
+    echo "  PASS  trivy absent from PATH still exits 2"
+else
+    fail=$(( fail + 1 ))
+    echo "  FAIL  trivy absent from PATH still exits 2"
+    echo "          expected exit 2, got $actual_exit"
+    tail -10 "$workdir/shell-out.txt" | sed 's/^/        /'
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

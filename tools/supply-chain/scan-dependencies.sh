@@ -53,6 +53,12 @@
 #
 # Usage:  tools/supply-chain/scan-dependencies.sh
 # Exit:   0 = clean, 1 = a gating finding or allowlist drift, 2 = could not run.
+#         That contract holds on every reachable path, and the informational pass cannot
+#         contribute to it at all: it can only warn, never change the code. Guarding that
+#         was EOP-146 -- under `set -e` a malformed report made python3 exit 1 from the
+#         informational block, which reads identically to a CVE, and the final
+#         `exit "$gate_status"` was never reached. The shell-level cases in
+#         test-scan-dependencies.sh hold this.
 
 set -euo pipefail
 
@@ -78,8 +84,13 @@ command -v python3 >/dev/null 2>&1 || { echo "FATAL: python3 is not on PATH"; ex
     exit 2
 }
 
-rm -rf "$workdir"
-mkdir -p "$workdir"
+# Guarded because a permissions failure here is could-not-run, not a clean tree. Under
+# `set -e` an unguarded failure exits with the shell's own code -- typically 1, which this
+# script's contract reserves for a gating finding -- so an unwritable workspace would read
+# as a CVE. audit-plugins.sh and audit-containers.sh carry the same guards for the same
+# reason; the three were fixed together rather than one at a time (EOP-146).
+rm -rf "$workdir" || { echo "FATAL: could not remove $workdir"; exit 2; }
+mkdir -p "$workdir" || { echo "FATAL: could not create $workdir"; exit 2; }
 
 # Skipped directories are argued for in the header. Keep the two invocations below identical
 # apart from --include-dev-deps, so that any difference in their output is attributable to
@@ -124,9 +135,16 @@ fi
 
 echo
 echo "=== Pass 2 of 2: including build-time dependencies (informational only) ==="
+# This pass never gates, so its failure must not pre-empt the gating verdict below. Trivy
+# keeps no cache and re-resolves the whole Maven tree on every invocation, so a second fetch
+# can earn a 429 the first did not; exiting 2 here would let that transient redden the job
+# over findings that are explicitly not merge blockers (EOP-146).
+informational_ok=1
 if ! run_trivy "$workdir/all.json" --include-dev-deps; then
-    echo "FATAL: trivy failed on the informational pass"
-    exit 2
+    echo "WARNING: trivy failed on the informational pass. The gating verdict below still"
+    echo "         stands -- it is computed from pass 1 alone -- but build-time findings"
+    echo "         are unknown for this run."
+    informational_ok=0
 fi
 
 echo
@@ -293,7 +311,17 @@ PY
 
 echo
 echo "=== Build-time dependencies (informational, never gates) ==="
-python3 - "$workdir/all.json" "$workdir/ships.json" <<'PY'
+if [[ "$informational_ok" -eq 0 ]]; then
+    echo "Skipped: the informational pass produced no report. See the WARNING above."
+    exit "$gate_status"
+fi
+
+# `|| true` on purpose. This block is informational, so a malformed report or any unhandled
+# exception in it must not pre-empt $gate_status: under `set -e` the script would exit here
+# with python3's own code -- 1, which the contract reserves for a gating finding -- and the
+# final `exit "$gate_status"` would never run. A gating finding must never be reported by
+# the same number as a crash in a block that cannot gate (EOP-146).
+python3 - "$workdir/all.json" "$workdir/ships.json" <<'PY' || true
 import json
 import sys
 
