@@ -199,6 +199,45 @@ future audits without new evidence.
   (`osascript`/`afplay`/`notify-send`) for desktop notifications; attack
   surface not justified by utility. See Blueprint §12.6.
 
+### GitHub Actions supply chain (`.github/workflows/` — CI only, never in the shipped image)
+
+*Recorded 2026-09-05 (EOP-174), after a full-stack security audit raised it as an
+informational finding.* This is the **third** dependency surface in the repository, and
+until now the only one with no stated position — the seven OpenCode npm plugins are
+digest-audited by `tools/supply-chain/audit-plugins.sh` against an expected baseline, the
+three pinned containers by `audit-containers.sh` ([ADR-064](docs/adr/ADR-064-pinned-container-audit-coverage.md)),
+and the whole Maven plugin layer is an acknowledged gap documented under build quality.
+
+- **Every Actions reference is pinned by a mutable major tag, and none by commit SHA.**
+  The workflow carries **22 `uses:` references across 9 distinct actions**: `actions/checkout@v4`,
+  `actions/setup-java@v4`, `actions/setup-node@v4`, `actions/cache@v4`,
+  `actions/upload-artifact@v4`, `actions/download-artifact@v4`,
+  `docker/setup-buildx-action@v3`, `docker/build-push-action@v6` and
+  `docker/login-action@v3`. Note the count of *references* is not the count of *actions* —
+  `actions/checkout@v4` alone appears eight times.
+- **Do not confuse this with the container pins in the same file.** The k6 and Trivy steps
+  and the SonarQube scanner are digest-pinned **container images**, not `uses:` actions, so
+  no `uses:` line in the workflow is SHA-pinned. An earlier reading that cited them as a
+  SHA-pinned contrast was wrong.
+- **Why the residual risk is assessed low.** Every publisher is first-party — the `actions`
+  and `docker` organisations, both GitHub-operated or GitHub-partnered. A malicious release
+  would require compromising one of those organisations' release process, and would be a
+  broad ecosystem event rather than an attack on this repository. The workflow's default
+  token is `permissions: contents: read`, with the single `contents: write` scoped to the
+  `perf-trend` job, so the blast radius of a compromised action is bounded well short of
+  the repository's contents.
+- **What is accepted, precisely.** A retag of `v4` to a different commit would execute
+  attacker-controlled code in CI on the next run, with no signal. That is accepted for
+  first-party publishers only.
+- **What would change this assessment.** Any third-party action entering the workflow —
+  anything outside `actions/*` and `docker/*` — invalidates the reasoning above and must be
+  SHA-pinned from its first commit, because the publisher-trust argument does not extend to
+  it. Two pinning disciplines coexisting is acceptable; an unpinned third-party action is not.
+- **Open remediation:** **EOP-202** tracks SHA-pinning all 22 references with version
+  comments (so Dependabot can still propose bumps) and extending `tools/supply-chain/` to
+  audit the workflow layer, so a pin cannot silently drift back to a tag. Until that lands,
+  this section *is* the control: it is a documented acceptance, not an oversight.
+
 ### OpenCode dev tooling (`.opencode/` — not shipped, never in production)
 - **`tiktoken`** (transitive via `@anthropic-ai/tokenizer`) — offline WASM
   tokenizer, makes no network calls. No drop-in replacement exists without

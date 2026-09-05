@@ -215,6 +215,27 @@ consumer that does not exist yet rather than a fix for a live defect.
   degrading. That is the intended trade, but it makes client and server versions more
   tightly coupled than assertions did.
 
+> **Amended 2026-09-05 (EOP-174).** A security audit of the full stack dismissed the
+> identity token's presence in `sessionStorage` as an accepted design decision and cited
+> *this* ADR as the authority. That citation is wrong, and the correction is recorded here
+> so the next reviewer does not have to relitigate it.
+>
+> **Credential storage is outside this ADR's boundary.** What this ADR governs is one
+> direction of one boundary: the shape of a response body arriving from the API, parsed in
+> `ui/src/api.ts` rather than asserted. It says nothing about where the client *keeps* a
+> credential, and the Decision above is explicit that even within its own scope it is not a
+> security control — so it cannot be the authority for a security dismissal of anything,
+> let alone of a question it never addressed.
+>
+> **The ADR that owns the question is [ADR-015](ADR-015-player-identity.md)**, whose
+> 2026-08-20 amendment (EOP-107) re-examined `sessionStorage` against precisely this XSS
+> exposure and upheld it, stating the exposure being accepted in those terms. The audit's
+> conclusion was therefore right on the merits and wrong in its citation. Cite ADR-015 for
+> credential storage; cite this ADR only for response parsing.
+>
+> Nothing in the Decision or the Consequences above changes. This amendment adds a scope
+> boundary that was implicit and got misread.
+
 ## Related
 
 - [ADR-009](ADR-009-frontend-react-typescript.md) — front-end stack; hand-maintained DTO
