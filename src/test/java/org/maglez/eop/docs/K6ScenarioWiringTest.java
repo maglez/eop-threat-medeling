@@ -38,9 +38,11 @@ import org.junit.jupiter.api.Test;
  * <p><strong>What this test does not do.</strong> It proves each scenario is invoked and each
  * invocation names a scenario that exists. It does not prove the invoking step belongs to a job that
  * runs, that the job is required, or that the scenario asserts anything worth asserting -- a wired
- * scenario whose {@code check()} calls are all trivially true would pass here. Those stay
- * reviewer-enforced, the same bound {@code K6ThresholdCouplingTest} carries: a declared value is not
- * a sensible one. See EOP-204 and ADR-055.
+ * scenario whose {@code check()} calls are all trivially true would pass here. It also assumes the
+ * invocation names its scenario as a bare literal, which is what the workflow does today; the
+ * {@code INVOCATION} Javadoc records the forms that assumption excludes and why each excluded form
+ * fails safely. Those stay reviewer-enforced, the same bound {@code K6ThresholdCouplingTest}
+ * carries: a declared value is not a sensible one. See EOP-204 and ADR-055.
  */
 @DisplayName("Every k6 scenario is invoked by the CI workflow")
 class K6ScenarioWiringTest {
@@ -59,6 +61,22 @@ class K6ScenarioWiringTest {
      * caught its absence. Without it the greedy character class backtracks: given
      * {@code run_canary health-check.js.bak} the group happily settles on the {@code health-check.js}
      * prefix, so an invocation of some adjacent file would report the real scenario as wired.
+     *
+     * <p><strong>Two forms it deliberately does not match</strong>, both raised in review (EOP-204):
+     * a path-prefixed argument such as {@code run_canary test/k6/health-check.js}, because {@code /}
+     * is outside the filename class, and a variable such as {@code run_canary "$SCRIPT"}. The
+     * workflow passes bare literals and the {@code run_canary} function prepends the mount point
+     * itself, so neither form is correct there. Both also fail in the <em>safe</em> direction: an
+     * unmatched invocation leaves a real scenario looking unwired, which reddens the build, rather
+     * than letting an unwired one look invoked. Widening the class to admit them would trade that
+     * asymmetry away for nothing.
+     *
+     * <p><strong>One form it matches that looks like it should not.</strong>
+     * {@code run_canary health-check.js#comment} yields {@code health-check.js}, because {@code #}
+     * terminates the class rather than being consumed by it. This is harmless and must not be
+     * "fixed": no file of that name can exist, since {@code #} is not in the class the directory
+     * listing is filtered against, so {@code shouldNotInvokeMissingScenarios} would fail on the
+     * extracted name anyway.
      */
     private static final Pattern INVOCATION =
             Pattern.compile("^\\s*run_canary\\s+\"?([A-Za-z0-9._-]+\\.js)\"?(?![A-Za-z0-9._-])", Pattern.MULTILINE);
@@ -186,6 +204,16 @@ class K6ScenarioWiringTest {
         assertThat(invokesScenario("run_canary health-check.js.bak \"\"", "health-check.js"))
                 .as("a longer filename sharing a prefix must not satisfy the shorter one")
                 .isFalse();
+
+        assertThat(invokedScenarios("run_canary test/k6/health-check.js \"\""))
+                .as("a path-prefixed argument is not the form the workflow uses, and must fail safely by matching nothing")
+                .isEmpty();
+        assertThat(invokedScenarios("run_canary \"$SCRIPT\" \"\""))
+                .as("a variable argument is not the form the workflow uses, and must fail safely by matching nothing")
+                .isEmpty();
+        assertThat(invokedScenarios("run_canary health-check.js#comment"))
+                .as("a trailing '#' terminates the filename class rather than being consumed by it")
+                .containsExactly("health-check.js");
     }
 
     /**
