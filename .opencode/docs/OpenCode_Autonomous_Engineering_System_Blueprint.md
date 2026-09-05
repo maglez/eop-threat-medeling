@@ -1122,7 +1122,7 @@ graph TB
 Teams looking to build a similar system can customise this blueprint with three key adaptations:
 
 - **Cloud Platform**: Swap AWS OIDC roles for GCP Workload Identity Federation or Azure Managed Identities in `@devops-engineer.md`.
-- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`.
+- **Issue Tracker**: Replace Jira API configuration with GitHub Issues or Linear in `@product-owner.md`. This project has made that substitution in both directions and the round trip is documented, so treat it as a worked example rather than a hypothetical: the backlog moved to GitHub Issues on 2026-08-26 when the Jira account was expected to lapse, and moved back on 2026-09-05 when it had not ([ADR-066](../../docs/adr/ADR-066-jira-restored-as-the-tracker.md)). The lesson for anyone attempting it is that the tracker's API is the easy half. The **issue key** is the hard half, because it is cited in commit messages, CI and prose that no migration can rewrite — two trackers that both allocate keys will fork the keyspace within days, and a key already spent in `main` can never be reused for different work. Decide which system allocates keys before you move a single issue, and never let both do it.
 - **UI Standards**: Customise `@ui-builder.md` to enforce your company's design system (e.g., Tailwind, Material UI, Salesforce Lightning) instead of GOV.UK standards.
 
 ---
