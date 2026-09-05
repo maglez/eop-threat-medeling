@@ -71,9 +71,13 @@ baseline="tools/supply-chain/expected-containers.json"
 workdir=".tmp/supply-chain-containers"
 
 # Inside the worktree on purpose: .tmp/ is gitignored and needs no external_directory grant,
-# unlike /tmp. See AGENTS.md.
-rm -rf "$workdir"
-mkdir -p "$workdir"
+# unlike /tmp. See AGENTS.md. Guarded because a permissions failure here is could-not-run,
+# not a clean tree: under `set -e` an unguarded failure exits with the shell's own code --
+# typically 1, which this script's contract reserves for drift or a malformed pin -- so an
+# unwritable workspace would read as a finding. scan-dependencies.sh and audit-plugins.sh
+# carry the same guards for the same reason; the three were fixed together (EOP-146).
+rm -rf "$workdir" || { echo "FATAL: could not remove $workdir"; exit 2; }
+mkdir -p "$workdir" || { echo "FATAL: could not create $workdir"; exit 2; }
 
 command -v git >/dev/null 2>&1 || { echo "FATAL: git is not on PATH"; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "FATAL: python3 is not on PATH"; exit 2; }

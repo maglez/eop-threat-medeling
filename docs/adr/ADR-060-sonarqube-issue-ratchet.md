@@ -360,6 +360,13 @@ required" affects whether a merge is blocked, never whether the regression is vi
 > requiring it would let an unrelated pull request be blocked by someone else's release
 > schedule. The ratchets cannot do that — their inputs are two committed files and a hash of
 > the tree, so they only go red because of the change in front of them.
+>
+> *Superseded in part on 2026-09-05 (EOP-149): `dependency-cve` is now a required status check
+> too.* The paragraph above is left standing because its reasoning was sound and is still the
+> best statement of the hazard — what changed is the judgement about which risk is worse, once
+> that hazard had been lived through once and the false-positive rate measured at nought over
+> sixty runs. See [ADR-050](ADR-050-dependency-cve-scanning.md) as amended 2026-09-05. `ui` and
+> `supply-chain` remain optional on the reasons given above, which are untouched.
 
 ### Verification
 

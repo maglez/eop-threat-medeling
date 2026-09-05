@@ -54,8 +54,13 @@ command -v python3 >/dev/null 2>&1 || { echo "FATAL: python3 is not on PATH"; ex
 [[ -f "$baseline" ]] || { echo "FATAL: $baseline not found"; exit 2; }
 [[ -f "$allowlist" ]] || { echo "FATAL: $allowlist not found"; exit 2; }
 
-rm -rf "$workdir"
-mkdir -p "$workdir"
+# Guarded because a permissions failure here is could-not-run, not a clean tree. Under
+# `set -e` an unguarded failure exits with the shell's own code -- typically 1, which this
+# script's contract reserves for drift or a gating advisory -- so an unwritable workspace
+# would read as a finding. scan-dependencies.sh and audit-containers.sh carry the same
+# guards for the same reason; the three were fixed together (EOP-146).
+rm -rf "$workdir" || { echo "FATAL: could not remove $workdir"; exit 2; }
+mkdir -p "$workdir" || { echo "FATAL: could not create $workdir"; exit 2; }
 
 echo "=== Plugin specs declared in $config ==="
 python3 - "$config" "$workdir/specs.txt" <<'PY'
