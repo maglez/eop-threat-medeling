@@ -800,6 +800,21 @@ jobs:
       # `if: always()` so that a container finding above cannot hide plugin
       # drift here. The two audits are independent populations and a reader
       # needs both verdicts from one run, not the first one to fail.
+      # The gating logic inside audit-plugins.sh decides whether an npm advisory
+      # blocks this job, and until 2026-09-04 nothing re-ran the transcript that
+      # demonstrated it working. tools/supply-chain/test-audit-plugins.sh has
+      # existed since that audit landed but was never wired into any workflow, so
+      # it was a control nobody ran. It needs only python3 and the checked-out
+      # tree -- no npm, no network -- so it costs seconds and runs before the
+      # audit it guards, failing fast when the policy itself is broken.
+      #
+      # Caveat worth knowing: this harness carries its own copy of the Python
+      # block rather than extracting it from audit-plugins.sh, so it cannot
+      # detect a break in the shipped script. Converting it to the extraction
+      # used by test-scan-dependencies.sh is a tracked follow-up (EOP-147).
+      - name: Test the advisory-gating logic
+        run: tools/supply-chain/test-audit-plugins.sh
+
       - name: Audit pinned OpenCode plugins
         if: always()
         run: tools/supply-chain/audit-plugins.sh
@@ -994,6 +1009,25 @@ jobs:
       # scheduled-only treatment - though the workflow's weekly cron covers
       # this job too, which is the trigger that catches an advisory
       # published against dependencies we have not touched.
+      # The gating logic inside scan-dependencies.sh decides whether a HIGH or
+      # CRITICAL CVE blocks a merge, and it enforces six distinct failure modes
+      # over tools/supply-chain/accepted-cves.json. All six were demonstrated by
+      # hand once during EOP-89 and nothing re-ran them (EOP-147); this harness
+      # does, against synthetic Trivy JSON fixtures.
+      #
+      # It runs BEFORE the scan deliberately. The harness needs neither Trivy nor
+      # the vulnerability database -- it awk-extracts the gate's Python heredoc
+      # out of the shipped script and drives it with fixture reports -- so a
+      # broken policy fails here in seconds rather than after the scan.
+      #
+      # Extraction rather than duplication is the load-bearing choice: it is what
+      # makes a deliberate break of scan-dependencies.sh turn these tests red,
+      # demonstrated by changing GATING to {"CRITICAL"} and watching the harness
+      # drop from 11/11 to 5/11. A harness holding its own copy would have stayed
+      # green, which is exactly the limitation of test-audit-plugins.sh above.
+      - name: Test the CVE-gating logic
+        run: tools/supply-chain/test-scan-dependencies.sh
+
       - name: Scan application dependency trees for known CVEs
         run: tools/supply-chain/scan-dependencies.sh
 
