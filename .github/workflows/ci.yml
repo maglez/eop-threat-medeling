@@ -334,92 +334,145 @@ jobs:
           # postgres:5432 directly over the Compose network, bypassing the proxy.
           # That was equally true under `--network host`, which could route to the
           # same 172.28.0.0/24 subnet, so this is a narrowing with no new reach.
-          k6_exit=0
-          docker run --network "container:eop-caddy" \
-            --user "$(id -u):$(id -g)" \
-            -v "${{ github.workspace }}/test/k6:/scripts:ro" \
-            -v "$RESULTS:/results" \
-            -e K6_ENV=ci \
-            -e BASE_URL=https://localhost:8080 \
-            grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6 \
-            run --insecure-skip-tls-verify \
-            --out json=/results/raw.json \
-            --summary-export /results/summary.json \
-            /scripts/health-check.js || k6_exit=$?
-
-          # Two independent signals. k6's own exit code is captured above rather
-          # than left to `set -e`, so the summary assertion below always runs; the
-          # exit code alone is not sufficient, as the InfluxDB write failure
-          # recorded in ADR-016 logs one error per flush interval and still exits 0.
-          SUMMARY="$RESULTS/summary.json"
-
-          if [[ ! -s "$SUMMARY" ]]; then
-            echo "::error::k6 summary export is missing or empty: $SUMMARY"
-            exit 1
-          fi
-
-          if ! jq -e 'type == "object" and has("metrics")' "$SUMMARY" >/dev/null; then
-            echo "::error::k6 summary export is not a JSON object carrying a .metrics key"
-            exit 1
-          fi
-
-          # Flatten every threshold in the document rather than naming each one.
-          # Hardcoding `.thresholds."p(95) < 500"` would silently disarm this gate
-          # the moment that string changed in options-ci.js: `jq -r` emits `null`
-          # for a missing key, which is not "true", so the breach test would pass
-          # forever. In this export a threshold value of `false` means NOT
-          # breached. Note http_req_failed also reports "passes": 0, "fails": 221
-          # on a fully healthy run -- an inverted Rate metric whose real error rate
-          # lives in "value" -- so the threshold booleans are the only sound signal.
-          thresholds=$(jq -r '
-            .metrics
-            | to_entries[]
-            | select(.value.thresholds != null)
-            | . as $m
-            | $m.value.thresholds
-            | to_entries[]
-            | "\($m.key)\t\(.key)\t\(.value)"
-          ' "$SUMMARY")
-
-          # Tied to test/k6/config/options-ci.js, where http_req_duration carries
+          # Two scenarios, two invocations, two summary exports (EOP-156).
+          # health-check.js loads a static string that touches no database, no
+          # repository and no business code, so on its own the canary could not
+          # catch the N+1 query, missing index or 50x slowdown that ADR-055 gives
+          # as its motivation. card-catalogue.js adds a request that crosses
+          # Postgres, the Liquibase schema, the catalogue query, JPA mapping and
+          # Page<T> serialisation.
+          #
+          # Deliberately not merged into one script or one k6 run.
+          # http_req_duration is a single aggregate metric, so measuring both
+          # endpoints together would dilute a cards regression behind health's
+          # much faster responses. Keeping them apart also keeps the trend series
+          # honest: perf-trend reads summary.json, and every point recorded in
+          # ci-history.jsonl so far measures /health alone, so widening what that
+          # one file covers would introduce a step change caused by scope rather
+          # than by code. health therefore keeps the unprefixed filenames and
+          # cards is written beside it. The artifact uploads the whole results
+          # directory, so both exports arrive with no further wiring.
+          #
+          # Declared once and shared by both invocations: a second
+          # EXPECTED_THRESHOLD_COUNT= assignment would shadow this one, which
+          # K6ThresholdCouplingTest (EOP-158) fails the build over. Tied to
+          # test/k6/config/options-ci.js, where http_req_duration carries
           # `p(95) < 500` and `max < 2000` and http_req_failed carries
           # `rate < 0.001`. Move the two together: a mismatch fails here by design,
           # which is what stops a renamed or deleted threshold going unnoticed.
+          # Both scenarios import the same THRESHOLDS_CI, so this is a count per
+          # summary export and not a total across the two.
           EXPECTED_THRESHOLD_COUNT=3
-          actual_count=$(printf '%s\n' "$thresholds" | grep -c . || true)
-          if [[ "$actual_count" -ne "$EXPECTED_THRESHOLD_COUNT" ]]; then
-            echo "::error::Expected $EXPECTED_THRESHOLD_COUNT thresholds in the k6 summary, found $actual_count -- has options-ci.js changed?"
-            printf '%s\n' "$thresholds"
+
+          run_canary() {
+            local script="$1"
+            local prefix="$2"
+            local k6_exit=0
+
+            echo "--- k6 scenario: $script ---"
+
+            docker run --network "container:eop-caddy" \
+              --user "$(id -u):$(id -g)" \
+              -v "${{ github.workspace }}/test/k6:/scripts:ro" \
+              -v "$RESULTS:/results" \
+              -e K6_ENV=ci \
+              -e BASE_URL=https://localhost:8080 \
+              grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6 \
+              run --insecure-skip-tls-verify \
+              --out "json=/results/${prefix}raw.json" \
+              --summary-export "/results/${prefix}summary.json" \
+              "/scripts/$script" || k6_exit=$?
+
+            # Two independent signals. k6's own exit code is captured above rather
+            # than left to `set -e`, so the summary assertion below always runs; the
+            # exit code alone is not sufficient, as the InfluxDB write failure
+            # recorded in ADR-016 logs one error per flush interval and still exits 0.
+            local summary="$RESULTS/${prefix}summary.json"
+
+            if [[ ! -s "$summary" ]]; then
+              echo "::error::k6 summary export is missing or empty: $summary"
+              return 1
+            fi
+
+            if ! jq -e 'type == "object" and has("metrics")' "$summary" >/dev/null; then
+              echo "::error::$script summary export is not a JSON object carrying a .metrics key"
+              return 1
+            fi
+
+            # Flatten every threshold in the document rather than naming each one.
+            # Hardcoding `.thresholds."p(95) < 500"` would silently disarm this gate
+            # the moment that string changed in options-ci.js: `jq -r` emits `null`
+            # for a missing key, which is not "true", so the breach test would pass
+            # forever. In this export a threshold value of `false` means NOT
+            # breached. Note http_req_failed also reports "passes": 0, "fails": 221
+            # on a fully healthy run -- an inverted Rate metric whose real error rate
+            # lives in "value" -- so the threshold booleans are the only sound signal.
+            local thresholds
+            thresholds=$(jq -r '
+              .metrics
+              | to_entries[]
+              | select(.value.thresholds != null)
+              | . as $m
+              | $m.value.thresholds
+              | to_entries[]
+              | "\($m.key)\t\(.key)\t\(.value)"
+            ' "$summary")
+
+            local actual_count
+            actual_count=$(printf '%s\n' "$thresholds" | grep -c . || true)
+            if [[ "$actual_count" -ne "$EXPECTED_THRESHOLD_COUNT" ]]; then
+              echo "::error::Expected $EXPECTED_THRESHOLD_COUNT thresholds in the $script summary, found $actual_count -- has options-ci.js changed?"
+              printf '%s\n' "$thresholds"
+              return 1
+            fi
+
+            local breached=0
+            local metric threshold value
+            while IFS=$'\t' read -r metric threshold value; do
+              case "$value" in
+                false)
+                  echo "  PASS  $metric  $threshold"
+                  ;;
+                true)
+                  echo "::error::Threshold breached in $script: $metric $threshold"
+                  breached=1
+                  ;;
+                *)
+                  echo "::error::Non-boolean threshold result in $script for $metric $threshold: '$value'"
+                  breached=1
+                  ;;
+              esac
+            done <<< "$thresholds"
+
+            if [[ "$breached" -ne 0 ]]; then
+              return 1
+            fi
+
+            if [[ "$k6_exit" -ne 0 ]]; then
+              echo "::error::k6 exited $k6_exit for $script although every exported threshold passed -- inspect the k6-results artifact"
+              return 1
+            fi
+
+            echo "All $EXPECTED_THRESHOLD_COUNT k6 thresholds passed for $script"
+          }
+
+          # Both scenarios always run, even when the first breaches, so the
+          # artifact and the run summary describe the whole run that went red --
+          # the same reasoning as the `if: always()` render step below.
+          #
+          # errexit is suppressed inside a function invoked as the left operand of
+          # `||`, so every failure path in run_canary is an explicit `return 1`
+          # rather than a bare command left to `set -e`. The one unguarded command
+          # is the jq filling `thresholds`; a failure there leaves the variable
+          # empty, which the count comparison rejects.
+          failures=0
+          run_canary health-check.js "" || failures=$((failures + 1))
+          run_canary card-catalogue.js "cards-" || failures=$((failures + 1))
+
+          if [[ "$failures" -ne 0 ]]; then
+            echo "::error::$failures of 2 k6 canary scenarios failed"
             exit 1
           fi
-
-          breached=0
-          while IFS=$'\t' read -r metric threshold value; do
-            case "$value" in
-              false)
-                echo "  PASS  $metric  $threshold"
-                ;;
-              true)
-                echo "::error::Threshold breached: $metric $threshold"
-                breached=1
-                ;;
-              *)
-                echo "::error::Non-boolean threshold result for $metric $threshold: '$value'"
-                breached=1
-                ;;
-            esac
-          done <<< "$thresholds"
-
-          if [[ "$breached" -ne 0 ]]; then
-            exit 1
-          fi
-
-          if [[ "$k6_exit" -ne 0 ]]; then
-            echo "::error::k6 exited $k6_exit although every exported threshold passed -- inspect the k6-results artifact"
-            exit 1
-          fi
-
-          echo "All $EXPECTED_THRESHOLD_COUNT k6 thresholds passed"
 
       # Rendered in a step of its own rather than appended to the step above, and
       # deliberately `if: always()`. The k6 step `exit 1`s the instant a threshold
@@ -434,37 +487,58 @@ jobs:
         run: |
           set -euo pipefail
 
-          SUMMARY="${{ github.workspace }}/test/k6/results/summary.json"
-
-          if [[ ! -s "$SUMMARY" ]]; then
-            echo "No k6 summary export found -- nothing to render"
-            exit 0
-          fi
+          RESULTS="${{ github.workspace }}/test/k6/results"
 
           # Key spellings verified against a real export before use: the document
           # is flat, with no `.values` wrapper at any level. `http_req_failed` is
           # an inverted Rate whose real figure is `.value` -- its `passes`/`fails`
           # read 0/221 on a fully healthy run, so those two are never rendered.
-          # `p(50)`/`p(95)`/`p(99)` exist only because health-check.js asks for
-          # them in `summaryTrendStats`; they are not k6 defaults.
-          jq -r '
-            .metrics as $m
-            | "### k6 performance canary",
-              "",
-              "| Metric | Value |",
-              "| --- | --- |",
-              "| p50 latency | \($m.http_req_duration["p(50)"] * 100 | round / 100) ms |",
-              "| p95 latency | \($m.http_req_duration["p(95)"] * 100 | round / 100) ms |",
-              "| p99 latency | \($m.http_req_duration["p(99)"] * 100 | round / 100) ms |",
-              "| max latency | \($m.http_req_duration.max * 100 | round / 100) ms |",
-              "| Requests / sec | \($m.http_reqs.rate * 100 | round / 100) |",
-              "| Error rate | \($m.http_req_failed.value * 10000 | round / 100)% |",
-              "| Iterations | \($m.iterations.count) |",
-              "| Checks passed | \($m.checks.passes)/\($m.checks.passes + $m.checks.fails) |"
-          ' "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          # `p(50)`/`p(95)`/`p(99)` exist only because both scenarios ask for them
+          # in `summaryTrendStats`; they are not k6 defaults.
+          rendered=0
+
+          render_summary() {
+            local summary="$1"
+            local heading="$2"
+
+            if [[ ! -s "$summary" ]]; then
+              echo "No k6 summary export at $summary -- nothing to render for $heading"
+              return 0
+            fi
+
+            jq -r --arg heading "$heading" '
+              .metrics as $m
+              | "### k6 performance canary -- \($heading)",
+                "",
+                "| Metric | Value |",
+                "| --- | --- |",
+                "| p50 latency | \($m.http_req_duration["p(50)"] * 100 | round / 100) ms |",
+                "| p95 latency | \($m.http_req_duration["p(95)"] * 100 | round / 100) ms |",
+                "| p99 latency | \($m.http_req_duration["p(99)"] * 100 | round / 100) ms |",
+                "| max latency | \($m.http_req_duration.max * 100 | round / 100) ms |",
+                "| Requests / sec | \($m.http_reqs.rate * 100 | round / 100) |",
+                "| Error rate | \($m.http_req_failed.value * 10000 | round / 100)% |",
+                "| Iterations | \($m.iterations.count) |",
+                "| Checks passed | \($m.checks.passes)/\($m.checks.passes + $m.checks.fails) |",
+                ""
+            ' "$summary" >> "$GITHUB_STEP_SUMMARY"
+
+            rendered=$((rendered + 1))
+          }
+
+          # One table per scenario rather than one merged table, for the same
+          # reason the two scenarios are measured separately in the step above: a
+          # single set of figures spanning a static string and a database-backed
+          # page would describe neither endpoint (EOP-156).
+          render_summary "$RESULTS/summary.json" "GET /health"
+          render_summary "$RESULTS/cards-summary.json" "GET /api/v1/cards?size=1"
+
+          if [[ "$rendered" -eq 0 ]]; then
+            echo "No k6 summary exports found -- nothing to render"
+            exit 0
+          fi
 
           {
-            echo ""
             echo "Measured on a 2-vCPU GitHub runner against the Compose stack through Caddy."
             echo "Not comparable with the local baselines in \`docs/performance/TRENDS.md\`."
           } >> "$GITHUB_STEP_SUMMARY"

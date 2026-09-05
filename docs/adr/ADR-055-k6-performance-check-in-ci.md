@@ -260,11 +260,61 @@ k6 can still reach `app:8080` and `postgres:5432` directly over the Compose netw
 
 `test/k6/run.sh` is untouched: the local path runs the brew-installed k6 binary natively, so no `--network` value reaches it.
 
+**2026-09-05 — EOP-156 adds a database-backed canary scenario:**
+
+### 1. What this amendment supersedes
+
+Two claims in this ADR were wider than what the canary actually loaded, and both are corrected here rather than deleted.
+
+- The §3 threshold table says `p(95) < 500` is "immune to 2-vCPU jitter while still catching gross regressions (N+1 queries, missing indexes, 50× slowdown)". True of the threshold, false of the scenario it was applied to: `GET /health` returns a static string and touches no `DataSource`, no repository and no business code, so no N+1 query and no missing index could ever have shown up in it. The threshold was sound; the coverage claim was not.
+- Amendment 3's `### 6. Limits` says "the canary is still a smoke test of `GET /health` under `SMOKE_STAGES`, so the trend tracks one endpoint". The endpoint count is now two. The rest of that bullet stands, and its second sentence stands unchanged: `LOAD_STAGES` and `STRESS_STAGES` remain local-only.
+
+What the `/health` scenario alone genuinely proved is narrower and worth stating plainly, because it is still what the trend series measures: the JVM is alive, Tomcat accepts connections, Caddy proxies, and the stack serves under ten VUs.
+
+### 2. What is added
+
+`test/k6/card-catalogue.js` loads `GET /api/v1/cards?size=1` under `SMOKE_STAGES`, selecting `THRESHOLDS_CI` by the same `__ENV.K6_ENV === "ci"` test as `health-check.js`. That request traverses Caddy, Tomcat, the controller, the catalogue query, the JPA mapping, the Liquibase-managed schema and Postgres, and serialises a `Page<T>`. It was chosen because the smoke test immediately before it in the same job already asserts on its `totalElements`, so the request was known reachable in CI before it was load-tested.
+
+`size=1` is deliberate: the point is to traverse the persistence path, not to move bytes. Its four `check`s assert correctness only — status, that the body is a `Page`, that one element came back, and that the catalogue is non-empty — with no per-request latency assertion, because the thresholds own latency and a millisecond check would report shared-runner noise as a failed check without failing the build. The seeded deck size is asserted by the smoke test and deliberately not restated in the script, so a legitimate catalogue change needs one edit rather than two.
+
+### 3. Two scenarios, two exports — and why they were not merged
+
+The obvious shapes were both rejected.
+
+- **One script issuing both requests**, or one k6 run with two scenarios, would put both endpoints behind a single `http_req_duration`. A cards regression would then be diluted by health's much faster responses — measured here at roughly a 3× gap on an idle machine — so the aggregate would move less than the regression, in the direction of hiding it.
+- **Widening what `summary.json` measures** is worse than untidy. `perf-trend` reads that one file, and every point in `ci-history.jsonl` so far measures `/health` alone. Changing its scope would inject a step change caused by measurement rather than by code — the same error this ADR's amendment 3 and `.opencode/rules/performance-testing.md` both warn against for local-versus-CI figures, applied within the CI series itself.
+
+So `health-check.js` keeps the unprefixed `raw.json` / `summary.json`, `card-catalogue.js` writes `cards-raw.json` / `cards-summary.json` beside it, and both are uploaded because the `k6-results` artifact's `path:` is the whole results directory. **`perf-trend` and `ci-history.jsonl` therefore remain `/health`-only and their history stays comparable.** Extending the trend to a second series is a separate decision, not a side effect of this one.
+
+The two invocations share one shell function, `run_canary`, and one `EXPECTED_THRESHOLD_COUNT=3`. That is a constraint rather than a style choice: `K6ThresholdCouplingTest` (EOP-158) fails the build if that constant is assigned more than once, since a second assignment would shadow the first and silently disarm the count comparison. Because both scenarios import the same `THRESHOLDS_CI`, the constant is a count **per summary export**, not a total — adding a third scenario does not change it, but editing `options-ci.js` does.
+
+Both scenarios always run, even when the first breaches: the caller accumulates `failures` instead of exiting, for the same reason the render step is `if: always()` — a breach is precisely when the other scenario's numbers are wanted. Note that `errexit` is suppressed inside a function invoked as the left operand of `||`, so every failure path inside `run_canary` is an explicit `return 1` rather than a bare command relying on `set -e`.
+
+The run summary now renders one table per scenario, headed by the request each measured, and degrades to whichever exports exist.
+
+### 4. Verification
+
+The two step bodies were extracted from the workflow verbatim — only `${{ github.workspace }}` substituted — and run against the live Compose stack with the real digest-pinned k6 container and `--network container:eop-caddy`. The step exited 0 with all three thresholds passing for both scenarios. On a warm stack, `/health` reported `p(50)=2.23ms`, `p(95)=3.79ms`, `p(99)=4.36ms`, `max=12.43ms` over 663 of 663 checks, and `/api/v1/cards?size=1` reported `p(50)=7.21ms`, `p(95)=11.43ms`, `p(99)=12.13ms`, `max=23.3ms` over 884 of 884 checks, both across 221 iterations. A cold first run of the cards scenario reached `p(95)=26.58ms` with `max=244.82ms` — still two orders of magnitude inside the 500ms threshold, and the figure to remember when judging whether that threshold has enough headroom for a shared runner.
+
+That the cards path is consistently several times slower than `/health` is the whole point: there is now a number in the series that a persistence regression can move.
+
+The gate was then negative-tested with a stub `docker` first on `PATH`, writing a doctored summary export in place of running k6, with **every fault applied only to the cards scenario** so that a healthy `/health` run could not be credited with the failure. Five modes: healthy (exit 0, six `PASS` lines), a threshold flipped to `true`, a missing export, a threshold row deleted so the count read 2, and a non-zero k6 exit with all thresholds passing. All four faults exited 1 with an error naming `card-catalogue.js`, and each also emitted the aggregate `1 of 2 k6 canary scenarios failed`. **This is the specific risk of the `|| failures=$((failures + 1))` shape discharged by test rather than by inspection: the new scenario is load-bearing, and a green `/health` does not mask a red cards run.** The render step was separately run with `cards-summary.json` absent and exited 0, logging the missing export and still emitting the `/health` table in full — which is the case that matters, since it is `if: always()` and so runs in exactly the runs where a scenario produced nothing.
+
+Per amendment 6's lesson — "a step that only ever runs in CI is only ever proven in CI" — none of that substitutes for this change's own CI run, and nothing less should be accepted as proof of the end-to-end path on a runner.
+
+### 5. What is unchanged
+
+`test/k6/config/options-ci.js` and `test/k6/config/options.js` are untouched, so the threshold count stays 3 and the local SLOs stay where they are. `test/k6/run.sh` is untouched too, and needs no change to run the new scenario locally: it already takes the script as `$1` and derives the result filename from `$2` or the script's basename, so `test/k6/run.sh test/k6/card-catalogue.js` works as-is and writes its own timestamped files under `docs/performance/history/`.
+
+The separation from `docs/performance/TRENDS.md` is unaffected. Nothing in this change writes there, and CI figures still must not be appended to it.
+
 ## Related
 
 - ADR-016 (Colima as local container runtime)
 - ADR-017 (Front-end delivery via Caddy on a single origin)
 - `.github/workflows/ci.yml` (the file this ADR modifies)
+- `test/k6/health-check.js` (the `/health` scenario, whose figures the trend series tracks)
+- `test/k6/card-catalogue.js` (the database-backed scenario added by EOP-156)
 - `test/k6/config/options.js` (existing thresholds)
 - `test/k6/config/options-ci.js` (the relaxed CI thresholds this ADR mandates)
 - `docs/performance/TRENDS.md` (local baseline, not CI results)
