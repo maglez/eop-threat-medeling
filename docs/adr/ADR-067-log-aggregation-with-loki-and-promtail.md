@@ -55,10 +55,10 @@ existing Grafana from `docker-compose.yml`.
   filter `["eop*"]`.
 - Two mutually exclusive branches, selected by a line filter on whether the line begins with
   `{`:
-  - ``'{container="eop-app"} |~ `^\{`'`` → JSON branch: extracts `level`, `loggerName`
+  - `'{container="eop-app"} |~ "^\\{"'` → JSON branch: extracts `level`, `loggerName`
     (not `logger`), and `mdc.correlationId` via JMESPath, labels `level` and `logger`, and
     stores `correlationId` as **structured metadata**.
-  - ``'{container="eop-app"} !~ `^\{`'`` → plain-text branch: regex parser for Spring
+  - `'{container="eop-app"} !~ "^\\{"'` → plain-text branch: regex parser for Spring
     Boot's DEFAULT console pattern, same labels.
 - The discriminator exists because `logback-spring.xml` (EOP-117) selects the JSON encoder
   under the `prod` profile and a plain pattern otherwise, and the container runs
@@ -69,6 +69,13 @@ existing Grafana from `docker-compose.yml`.
   really can contain it, at which point the `json` stage fails and the line arrives unlabelled.
   A JSON line from `JsonEncoder` always opens with `{` and the plain pattern always opens with
   a date, so the brace is a property of the format rather than of the message. Do not weaken it.
+- **The quoting is not a matter of taste and the obvious form does not work.** The escape in
+  `"^\\{"` is escaped for LogQL, not for YAML. The backtick raw-string form that LogQL
+  documentation tends to show is rejected outright by Promtail's match-stage selector parser,
+  which refuses to start with `invalid selector syntax for match stage: parse error at line 1,
+  col 26: syntax error: unexpected IDENTIFIER, expecting STRING`. The selector must be a
+  double-quoted LogQL string. This is commented in the config file as well as here, because it
+  is the kind of detail a later edit reintroduces by tidying.
 
 **Grafana datasource** (`tools/monitoring/grafana/datasources/datasource.yml`):
 - Extends the existing InfluxDB provisioning rather than replacing it.
