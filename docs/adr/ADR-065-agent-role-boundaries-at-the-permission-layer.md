@@ -299,6 +299,24 @@ describes a five-agent sign-off where there are now seven.
 > be internally correct while disagreeing about the world they describe, and only the prose
 > half names the tracker.
 
+> **Amended 2026-09-05 (EOP-000).** The premise of the amendment above no longer holds:
+> Jira is the tracker again, and the Product Owner writes to it. See
+> [ADR-066](ADR-066-jira-restored-as-the-tracker.md) for why the GitHub Issues interlude
+> ended and what it cost. Three consequences for *this* decision. The Product Owner's
+> `atlassian_jira_*: deny` is replaced by an allow with the delivery-side writes denied
+> individually — `transition_issue`, `assign_issue`, `add_worklog`, the sprint and version
+> tools, `delete_issue` and `remove_*` — so the role boundary this ADR establishes is
+> preserved while the requirements-side write it needs is granted. The "drafts, does not
+> file" resolution is therefore withdrawn for issues; it still stands for PRDs, which remain
+> a `docs/requirements/**` edit the operator commits. And the "dead configuration" paragraph
+> above is now wrong in one direction and right in the other: the `atlassian` MCP server and
+> the global `atlassian_jira_*` rules are live again, while the identical read-only block in
+> the ten other agent files is live too and no longer dead — it is exactly the read access
+> those agents need. The follow-up to delete it is closed as unnecessary rather than done.
+> The lesson from the 2026-09-04 amendment survives its own reversal intact, and gains a
+> corollary: prose and permissions can also disagree with *the tracker itself*, which is the
+> failure this reversal had to reconcile before it could grant anything.
+
 ## Related
 
 - [ADR-022](ADR-022-agent-model-tier-governance.md) — agent model tier governance; the
@@ -309,6 +327,8 @@ describes a five-agent sign-off where there are now seven.
   own model tier
 - [ADR-061](ADR-061-two-new-dod-gates-sonar-ratchet-and-cve.md) — the two 2026-09-02 gates,
   whose `edit: deny` this change preserves unmodified
+- [ADR-066](ADR-066-jira-restored-as-the-tracker.md) — Jira restored as the tracker, which
+  reverses this ADR's 2026-09-04 amendment and grants the Product Owner issue writes
 - [ADR-003](ADR-003-github-mcp-integration.md) — the read-only GitHub MCP configuration,
   which was already closed and was not the vector here
 - Blueprint §3.3 (orchestration topology and the `task` permission) and §7.8 (local tool

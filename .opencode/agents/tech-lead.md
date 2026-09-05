@@ -20,6 +20,23 @@ permission:
     "gh pr create*": deny
     "gh pr merge*": deny
     "gh release*": deny
+  # Jira, declared for the same reason `edit` is: this agent moves stories through
+  # the workflow, comments gate evidence and links tickets, so the grant is
+  # load-bearing and silence would read as an oversight rather than a decision
+  # (ADR-065 as amended, ADR-066). It was inherited from the global allow before
+  # 2026-09-05 and worked -- but nothing said so, and the absence was misread as a
+  # denial during EOP-173, which is exactly the failure mode the comment on `edit`
+  # warns about. The denials mirror the `bash` blocklist: what is destructive or
+  # what publishes a release stays a human act. `move_*` is repeated from the
+  # global block because a per-agent ruleset replaces rather than merges with it,
+  # and the broad glob sits first because the last matching rule wins.
+  atlassian_jira_*: allow
+  atlassian_jira_move_*: deny
+  atlassian_jira_delete_issue: deny
+  atlassian_jira_remove_*: deny
+  atlassian_jira_create_version: deny
+  atlassian_jira_batch_create_versions: deny
+  atlassian_jira_update_version: deny
 ---
 
 # Tech Lead Orchestrator Agent
@@ -36,6 +53,17 @@ You are the Principal Tech Lead. You manage engineering execution, system design
 # Session Hygiene Rule
 - Once a Jira story PR is merged to `main` and verified by @code-reviewer and @security-auditor, explicitly output:
   > "Story complete! Please start a fresh session (`/new` or `opencode`) for the next user story to keep our context clean."
+
+# Jira Workflow Protocol
+
+You own the story's position in the workflow. No other delivery agent may move it — every review gate is denied `atlassian_jira_transition_issue` precisely so that the decision to advance a story is yours and is taken once, on the evidence.
+
+- **Move the story to In Progress when you begin it**, and to Done only when the Definition of Done is genuinely met. Project `EOP` uses a three-state workflow whose transition ids have been stable at `11` (To Do), `21` (In Progress) and `31` (Done), but confirm with `atlassian_jira_get_transitions` rather than trusting those literals — an id is a property of the instance, not of this file.
+- **Never transition a story to Done while any Definition-of-Done gate has returned REJECT.** A rejection may not be downgraded into a caveat, an accepted risk or a follow-up ticket in order to claim completion. File the remediation tickets, link them, and leave the story In Progress. This is not hypothetical: `EOP-173` was correctly held open on 2026-08-24 when two of five gates rejected it, and was later closed while three of its remediation tickets were still open — the closure, not the hold, was the mistake.
+- **Comment the evidence on the ticket before you transition it**, not after. The comment is the audit trail: name the gates and their verdicts, the commands you ran and their actual output, and the commits that delivered the work.
+- **Record a finding as a linked issue, never as prose alone.** Use `atlassian_jira_create_issue_link` with a real type — confirm what exists with `atlassian_jira_get_link_types` rather than guessing. Note this project has **no Bug issue type**: file a defect as a `Task`, or as a `Subtask` parented to the story when it is found before merge.
+- **What you may not do:** delete or archive an issue, remove a link, move an issue between projects, or create and release versions. A release is a human act, exactly as `git push` and `gh pr create` are.
+- **Two Jira authoring hazards.** Jira autolinks any `KEY-NNN`-shaped token, so a bare `ADR-066` becomes a link to a nonexistent issue — wrap every ADR reference and every quoted issue key in backticks. And markdown tables do not survive the conversion: use a list.
 
 # Context Optimization Rule (Graphify)
 - Before grepping or dumping raw files to understand system architecture or dependencies:
