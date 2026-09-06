@@ -1,0 +1,18 @@
+# Playwright and npm working directories.
+#
+# The repository root .gitignore deliberately carries no blanket node_modules
+# rule — it ignores only tools/graphify/node_modules/ — so each Node package
+# in the tree ignores its own. ui/ does the same.
+node_modules/
+
+# Per-run output. test-results/ holds traces, screenshots and videos for failed
+# tests; playwright-report/ is the HTML report. Both are regenerated on every run
+# and the report is published from CI (EOP-221), never from a developer's tree.
+test-results/
+playwright-report/
+blob-report/
+results.json
+
+# Playwright's downloaded browser binaries, when PLAYWRIGHT_BROWSERS_PATH=0 puts
+# them inside the package rather than in the shared per-user cache.
+playwright/.cache/

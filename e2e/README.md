@@ -1,0 +1,191 @@
+# End-to-end UI tests
+
+Playwright suite that drives the real application through a real browser against a
+real container stack. It is the fourth test tier in this repository, alongside the
+JUnit unit tests, the Spring integration/API tests and the k6 load tests.
+
+See [ADR-068](../docs/adr/ADR-068-playwright-e2e-testing.md) for the decisions
+behind this directory. How the suite runs in CI and publishes its report is ADR-069's
+subject, which is not yet written — it is due with `EOP-220`.
+
+## What it tests
+
+The suite exercises the **shipped artefacts**, not a test-only assembly. It runs the
+production `Dockerfile` app image and the production `ui/Dockerfile` image with its
+own `ui/Caddyfile` baked in, so the security headers (ADR-035), the 16 KB request
+body cap (ADR-033), the source-map refusal (EOP-107) and the SPA fallback are all
+live and under test rather than stubbed out.
+
+## Prerequisites
+
+| Requirement | Why |
+|---|---|
+| A container runtime, started | The suite starts `compose.e2e.yml`. `colima start` — Docker Desktop is deliberately not used (ADR-016) |
+| Node >= 22.12 | The repository floor, set by `ui/package.json`. Enforced by `engines` in `package.json` |
+| Browser binaries | `npm run browsers` (a wrapper for `playwright install --with-deps`) |
+
+`npm install` in this directory installs `@playwright/test` itself; the browser
+binaries are a separate, larger download cached in your home directory.
+
+## Building the two images
+
+The compose file has **no `build:` section**, matching `compose.app.yml`. Build both
+images from the repository root first:
+
+```bash
+docker build -t eop-threat-modeling:local .
+docker build -t eop-ui:e2e --build-arg VITE_GAME_SCREEN_ENABLED=true ui
+```
+
+Two things about the second command are load-bearing.
+
+**The `--build-arg` is required, not optional.** `ui/Dockerfile` defaults all three
+`VITE_*` feature flags to `false` (fail-closed, ADR-037), and these flags are
+resolved at *build* time and substituted into the bundle — there is no runtime
+environment variable that can turn the game screen on afterwards. An image built
+without it serves an application whose game screen never renders, so every scenario
+past the lobby fails for a reason that looks nothing like its cause.
+
+**The tag is `eop-ui:e2e`, not `eop-ui:local`.** The two are not interchangeable, and
+the distinct tag is what makes that visible in `docker images`. `eop-ui:local` is the
+flags-off image that `compose.app.yml` uses.
+
+## Running
+
+```bash
+npm test                  # all three browsers
+npm run test:chromium     # one browser, for a fast local loop
+npm run test:headed       # watch it happen
+npm run report            # open the HTML report from the last run
+npm run typecheck         # tsc --noEmit
+npm run verify            # typecheck, then the full suite
+```
+
+`npm test` is self-contained: `global-setup.ts` starts the stack and waits for it,
+the tests run, and `global-teardown.ts` destroys the stack **and its volumes**. You
+do not need to start anything by hand, and a run leaves nothing behind.
+
+### The health gate
+
+`global-setup.ts` does not trust `docker compose up --wait` on its own. That flag
+proves each container's *internal* healthcheck passed — the app probes
+`http://127.0.0.1:8080/health` from inside itself, the UI image probes its own
+`https://localhost:8080/index.html` — which says nothing about whether the port is
+published to the host or whether the TLS handshake the browsers depend on actually
+completes. So setup additionally polls `https://localhost:8443/health` from the host
+until it returns 200 **with a trimmed body of exactly `OK`**.
+
+The body check is not belt-and-braces. A Caddy instance that matched the wrong route,
+or no site block at all, answers `200` with an empty body — so a status-only check
+would wave through precisely the misconfiguration most likely to occur.
+
+## Escape hatches
+
+Three environment variables, all off by default. Each is read with a strict parser
+that accepts only `1`, `true`, `yes` or `on` (case-insensitively) and fails closed on
+anything else, so a typo disables the hatch rather than silently enabling it.
+
+| Variable | Effect |
+|---|---|
+| `E2E_REUSE_STACK` | Skip `up` **and** skip teardown; assume a stack is already running. The health wait still runs. This is what CI uses, so that it owns the stack and can collect container logs *after* the tests — a teardown here would delete the evidence |
+| `E2E_KEEP_STACK` | Start the stack normally but skip teardown, to inspect a failure. The next run starts against a dirty database |
+| `E2E_BASE_URL` | Point the suite somewhere else entirely. See the constraint below before changing it |
+
+### Why the URL is `https://localhost:8443`
+
+Every part of that is constrained.
+
+**`https`, not `http`.** Nothing listens on plain HTTP. `ui/Caddyfile` sets
+`auto_https disable_redirects` and its only site block serves `tls internal`, and
+that Caddyfile is `COPY`d into the image — so plain HTTP is not a configuration
+choice, it is absent from the artefact. The suite sets `ignoreHTTPSErrors: true`,
+which is the same trade the repository already makes four times over: `curl -fsSk`
+in the CI smoke test, `--insecure-skip-tls-verify` in the k6 canary and
+`wget --no-check-certificate` in the image's own `HEALTHCHECK`.
+
+**`localhost`, not `127.0.0.1`.** Caddy aborts the handshake server-side on a
+non-matching non-empty SNI, and `default_sni` does not rescue it — a client-side
+insecure flag cannot help, because the failure is on the server. This constraint was
+established the hard way in EOP-160 (an ADR-055 amendment), which found four dead
+alternatives before settling on addressing the target as `localhost`.
+
+**`8443`, not `443` or `8080`.** Host `443` is `compose.app.yml`'s, so using it would
+collide with a developer's running stack. Host `8080` is what a local
+`./mvnw spring-boot:run` binds. Publishing on `8443` while the container still listens
+on `8080` is safe because Caddy matches a site block on **hostname alone and ignores
+the port** — verified empirically, both here and by CI's own smoke test, which curls
+`https://localhost/health` on port 443 against the same `localhost:8080` site block.
+
+## Isolation from the other stacks
+
+`compose.e2e.yml` is a third, standalone stack, deliberately not an override of
+`compose.app.yml`. An override would inherit its project name, network and volumes,
+so starting the tests would destroy a developer's running application. Instead:
+
+- project name `eop-e2e` (vs `eop-app`)
+- subnet `172.29.0.0/24` (vs `172.28.0.0/24`)
+- volumes `eop_e2e_postgres_data` / `eop_e2e_caddy_data`
+- containers `eop-e2e-*`
+- host port `8443` (vs `443`)
+
+Both stacks can run at once. Teardown's `down -v` guarantees a fresh database per
+run, which the leaderboard scenarios in EOP-219 require rather than merely prefer.
+
+## Two deliberate omissions
+
+These are decisions, not oversights.
+
+**No `"type": "module"` in `package.json`.** Playwright's TypeScript loader emits
+CommonJS, which is what lets `__dirname` resolve in `stack.ts`. `tsconfig.json`
+declares `module: CommonJS` to match, so a typecheck exercises the same module
+system the suite actually runs under. Declaring ESM would move a `__dirname` failure
+from build time to run time.
+
+**No ESLint.** `ui/` has one; this directory does not. The strict `tsconfig.json` —
+which mirrors `ui/`'s full strictness block, including `noUncheckedIndexedAccess` and
+`exactOptionalPropertyTypes` — plus `npm run typecheck` is the quality gate here.
+
+## Layout
+
+```
+e2e/
+  package.json          # @playwright/test, scripts, engines.node >= 22.12
+  tsconfig.json         # strict, CommonJS; consumed only by npm run typecheck
+  playwright.config.ts  # three browser projects, serial, baseURL, reporters
+  stack.ts              # shared compose helpers and the env-var parsers
+  global-setup.ts       # compose up --wait, then the host-side health poll
+  global-teardown.ts    # compose down -v
+  tests/
+    smoke.spec.ts       # asserts the home screen h1 renders
+```
+
+`stack.ts` exists so setup and teardown cannot drift apart on which compose file or
+project they act against. It shells out with `execFileSync` rather than `execSync`,
+so no shell can misinterpret a metacharacter arriving from an environment variable.
+
+## Why the suite runs serially
+
+`playwright.config.ts` sets `fullyParallel: false` and `workers: 1`. There is one
+application instance and one database; the leaderboard reads whole-session history
+(ADR-030); and — the binding constraint — both rate limiters key on the resolved
+client address, which is identical for every browser Playwright launches, so all
+projects share a single bucket.
+
+This is a starting position, not a permanent one. The cost is honest: wall-clock time
+is roughly the sum of the three browsers rather than the maximum. To relax it, opt
+individual files in with `test.describe.configure({ mode: 'parallel' })` and measure,
+rather than flipping the global switch.
+
+### Rate limits in the test stack
+
+`compose.e2e.yml` raises `EOP_WEB_SESSION_CREATION_LIMIT` and
+`EOP_WEB_READ_RATE_LIMIT_LIMIT` to `Integer.MAX_VALUE`. At shipped values the whole
+suite would share 5 session creations and 300 reads per 60 seconds, against a
+two-player game that alone peaks near 100 reads a minute. This mirrors what
+`src/test/resources/application.properties` already does for the Java integration
+tests, and for the same reason.
+
+**So this suite must never be cited as evidence that rate limiting works.** The
+limiters still execute and still count — only the ceiling moved, so the code path is
+exercised rather than bypassed — but the production thresholds are verified by the
+Java integration tests, which pin a low limit per class with `@DirtiesContext`.
