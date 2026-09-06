@@ -1173,8 +1173,8 @@ paragraph said no controller injected any of them and no route existed, and call
 work; Slice D did it, so containment by absence of a caller is over twice over — once because the
 callers exist and once because the caller of the callers does. What replaces it is
 `eop.features.trick-play`. `application.yml` declares **three** flags, and as of EOP-82 all three
-are `true`: `session-lifecycle` (on since EOP-25, 2026-08-16, `application.yml:140` (anchor: `session-lifecycle`)), `trick-play`
-(on since EOP-70, `application.yml:157` (anchor: `trick-play`), ADR-040) and `game-over` (on since EOP-82, `application.yml:169` (anchor: `game-over`), ADR-042). The seven
+are `true`: `session-lifecycle` (on since EOP-25, 2026-08-16, `application.yml:195` (anchor: `session-lifecycle`)), `trick-play`
+(on since EOP-70, `application.yml:212` (anchor: `trick-play`), ADR-040) and `game-over` (on since EOP-82, `application.yml:224` (anchor: `game-over`), ADR-042). The seven
 use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
 `matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:264-373`), as do
