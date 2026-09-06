@@ -359,3 +359,127 @@ ADR-068 designed a suite that drives the application only through the browser. T
 all consequences of that choice meeting the real domain: the suite must discover state (whose turn,
 which suit) rather than assume it, must respect real domain minimums, and must treat a
 legitimately-transient error as transient without blunting a real one.
+
+## Amendment, 2026-09-06 (EOP-218)
+
+EOP-218 delivered a boundary-scenario suite (`e2e/tests/boundary.spec.ts`) that exercises error
+paths and edge conditions through three real browsers. The ticket's original scenarios were
+factually wrong in four places, and the suite was rewritten against the source before any test was
+written. Those corrections are recorded here because they constrain every future E2E scenario.
+
+### Finding 1 — the table holds six, so the *seventh* join is refused
+
+The ticket's Scenario 1 asserted "4th player is rejected". That was wrong on both counts.
+
+`GameSession.java:35` declares `MAXIMUM_PLAYERS = 6`, and `GameSession.java:38` declares
+`MINIMUM_PLAYERS_TO_START = 3`. The **seventh** join is refused, with 409 `SessionFullException`
+→ detail "This session has no available seats. Try a different join code."
+
+The capacity rule is stated twice on purpose — in `nextSeatOrder()` and in `join(Player, Instant)` —
+and the javadoc on the former records that returning the count regardless once made the seventh
+join a 400 quoting an internal invariant instead of the 409 the caller is owed.
+
+**Consequence for the suite:** the boundary scenario drives the seventh player through the join
+form rather than asserting a disabled control, because no front-end copy of the maximum exists.
+`e2e/game.ts:42` exports `MAXIMUM_PLAYERS = 6` as a mirror of the domain constant, and the test
+asserts the refusal message rather than a UI state.
+
+### Finding 2 — duplicate display names are admitted, not rejected
+
+The ticket's Scenario 2 asserted "Duplicate display name is rejected". No such check exists
+anywhere in the domain. `DisplayName` appears in only two use cases (`JoinSessionUseCase`,
+`CreateSessionUseCase`) and is never compared against seated players; no repository method looks
+a player up by name. A second "Alice" is **admitted** at a new seat.
+
+This is pinned as *observed behaviour*, not endorsed. **EOP-230** owns the decision of whether
+duplicate names should be rejected, and will update this scenario in the same change if it does.
+The test is written to fail loudly if a uniqueness rule is ever introduced without revisiting it:
+the assertion is that the duplicate *is* seated.
+
+### Finding 3 — a player who closes their tab mid-game is locked out permanently
+
+The ticket's Scenario 3 asserted "Browser-close reconnect returns the player to the lobby or game
+screen". The domain refuses this.
+
+`GameSession.java:196` opens `join(Player, Instant)` with `if (!status.acceptsNewPlayers())`,
+and `SessionStatus.java:52-54` returns `true` only in `LOBBY`. An `IN_PROGRESS` session therefore
+throws `SessionNotJoinableException` → 409 "This session is no longer in the lobby."
+
+`sessionStorage` (`eop_session`, tab-scoped) is the only place the token lives, and
+`ResolvePlayerUseCase` resolves a caller *only* by `IdentityTokenHash`. A player who closes their
+tab mid-game is permanently locked out. In `LOBBY` they can re-join, but `nextSeatOrder()` returns
+`players.size()`, so they consume a **new** seat and leave a ghost player behind.
+
+This is pinned as *observed behaviour*, not endorsed. **EOP-231** owns the decision of whether a
+player who loses their token should be able to return to their seat, and will update both
+scenarios in the same change if it does.
+
+### Finding 4 — the minimum-player boundary is unreachable through the UI
+
+The ticket's Scenario 6 asserted "Start with only one player". That is not false, but it tests a
+weak boundary, and the server path is unreachable from a browser: `LobbyScreen.tsx:37` computes
+`canStartGame = isFacilitator && session !== null && session.players.length >= 3` and line 281
+disables the button, so `TooFewPlayersException` can never be provoked through the UI.
+
+The real boundary a user meets is the disabled attribute at two players and enabled at three.
+Scenario 6 therefore asserts the control's state rather than the 409, which belongs to the Java
+unit tests. **EOP-232** covers the duplicated literal: `LobbyScreen.tsx:37` hard-codes `3`,
+`e2e/game.ts:31` is a third copy, and the domain is the single source of truth.
+
+### Finding 5 — the anti-oracle property is pinned at the E2E tier
+
+Scenario 4 drives `JoinCode.parse` through the browser to assert that an unknown code and a
+malformed code receive identical error messages. This is the **anti-enumeration-oracle** property
+stated in `JoinCode.java:65-72`:
+
+> Returns an empty optional rather than throwing, because the caller's response to "that is not a
+> code" and to "no session has that code" must be identical. Distinguishing them would turn the
+> join endpoint into an oracle that confirms which codes are real, which is exactly the help an
+> attacker enumerating the keyspace needs.
+
+The test drives `ZZZZZZZZ` (well-formed, all chars in the Crockford base32 `ALPHABET`, no such
+session) and `UUUUUUUU` (unparseable — `U` is excluded from the alphabet and deliberately *not*
+folded, unlike `O`→`0`, `I`→`1`, `L`→`1`) and asserts the two rendered messages are equal.
+
+This property is asserted nowhere else at the E2E tier. The Java unit tests cover the parsing
+logic, but only a browser test proves the end-to-end path: the HTTP layer, the use case, the
+exception handler and the front-end's rendering of the `detail` field all participate, and any
+rewiring that broke the equality would be invisible to a unit test.
+
+### Finding 6 — the flag-OFF scenario is out of scope at this tier
+
+The ticket's original Scenario 6 asked for an E2E run with `VITE_GAME_SCREEN_ENABLED` OFF. That
+was **dropped**, not rewritten. The flag is a build-time Vite variable (ADR-037), substituted into
+the bundle at build time, so a flag-off scenario would need a second UI image and a second stack
+per run. The behaviour is already asserted at `ui/src/App.test.tsx:190` in milliseconds; the E2E
+tier adds nothing there.
+
+### Design decision — `expectJoinRefused` as a sibling, not a flag
+
+`e2e/game.ts:252` exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
+*sibling* of `joinSession` rather than a flag on it. `joinSession` asserts the `Game Lobby`
+heading, and the happy-path suite (EOP-217) depends on it staying strict. `expectJoinRefused`
+returns the rendered message rather than asserting it, so callers can compare two refusals for
+equality — the anti-oracle scenario uses exactly this to prove the unknown-code and malformed-code
+messages are identical.
+
+### Test evidence
+
+`cd e2e && npx playwright test --reporter=list` → **33 passed (2.0m)**, 1 worker, zero
+failures/flakes/skips. 11 tests per project across chromium, firefox, webkit: 6 boundary + 4
+happy-path + 1 smoke. Slowest boundary test 4.5s (WebKit). The pre-existing happy-path and smoke
+specs still pass, evidencing that leaving `joinSession` strict regressed nothing.
+
+Every rewritten scenario passes against **unmodified production code** — that is the proof the
+rewrite describes actual behaviour rather than aspiration.
+
+### Follow-up tasks
+
+Three findings were filed as Jira Tasks (the project has no Bug type), all linked `Relates` to
+EOP-218:
+
+- **EOP-230** — decide whether duplicate display names should be rejected.
+- **EOP-231** — a player who loses their session token cannot return to their seat (covers both
+  the mid-game lockout and the LOBBY ghost seat).
+- **EOP-232** — `LobbyScreen.tsx:37` duplicates the minimum-players rule as a hardcoded `3`;
+  `e2e/game.ts:31` is a legitimate third copy.

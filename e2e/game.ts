@@ -31,6 +31,17 @@ import { expect, type Browser, type BrowserContext, type Locator, type Page } fr
 export const MINIMUM_PLAYERS_TO_START = 3;
 
 /**
+ * Seats the domain allows before a table is full.
+ *
+ * Mirrors `GameSession.MAXIMUM_PLAYERS`. Unlike the minimum above, this limit has
+ * no copy in the front end — nothing in the UI hides or disables the join form at
+ * six players, so the refusal is the server's alone and reaches the browser as a
+ * 409. That is why the boundary scenario drives it through the join form rather
+ * than asserting a disabled control: there is no control to assert.
+ */
+export const MAXIMUM_PLAYERS = 6;
+
+/**
  * Cards in the printed deck (ADR-041), every one of which is dealt.
  *
  * `Hands.deal` runs to the end of the deck and discards nothing, so this is also
@@ -213,6 +224,52 @@ export async function joinSession(seat: Seat, joinCode: string): Promise<void> {
 }
 
 /**
+ * Attempts a join that the server is expected to refuse, and returns the message shown.
+ *
+ * A sibling of {@link joinSession} rather than a flag on it. `joinSession` asserts the
+ * `Game Lobby` heading, which is exactly the assertion a refused join must not make, and
+ * the happy-path suite depends on it staying strict — loosening it there would let a
+ * silently refused join pass as a successful one everywhere it is used.
+ *
+ * The refusal arrives as an RFC 9457 problem document whose `detail` the front end renders
+ * verbatim: `api.ts`'s `problemMessage` prefers `detail`, and `JoinSessionForm` pushes the
+ * resulting `ApiError.message` into the error summary unprefixed, because a server error is
+ * not field-specific. So the text this returns is the server's own `detail` string, which is
+ * what makes it worth comparing between two different refusals.
+ *
+ * Returns the text rather than asserting it so that a caller can compare two refusals for
+ * equality. That matters for the unknown-code scenario: `JoinCode.parse` returns an empty
+ * optional instead of throwing precisely so that "that is not a code" and "no session has
+ * that code" are indistinguishable, and `JoinSessionUseCase.execute` honours it by throwing
+ * the same no-argument `UnknownJoinCodeException` on both paths. A test that asserted one
+ * message would pass while that property quietly broke.
+ *
+ * @param seat the joining seat, on the home screen
+ * @param joinCode the code to submit — need not be well formed; the client validates only
+ *     that it is non-empty, so anything else is the server's decision
+ * @return the text rendered in the error summary
+ */
+export async function expectJoinRefused(seat: Seat, joinCode: string): Promise<string> {
+    await seat.page.getByRole('button', { name: 'Join a session' }).click();
+    const heading = seat.page.getByRole('heading', { level: 1, name: 'Join a session' });
+    await expect(heading).toBeVisible();
+    await seat.page.locator('#join-code').fill(joinCode);
+    await seat.page.locator('#display-name').fill(seat.displayName);
+    await seat.page.getByRole('button', { name: 'Join a session' }).click();
+
+    const summary = seat.page.getByRole('alert');
+    await expect(summary, `${seat.displayName}'s refused join showed no error summary`).toBeVisible();
+    await expect(
+        heading,
+        `${seat.displayName} left the join screen despite the join being refused`,
+    ).toBeVisible();
+
+    const message = await summary.locator('li').first().textContent();
+    expect(message, `${seat.displayName}'s error summary listed no message`).not.toBeNull();
+    return (message ?? '').trim();
+}
+
+/**
  * Waits until every seat's lobby lists the given number of players.
  *
  * The player count is inside the `h2`'s accessible name — `Players (3)` — which
@@ -231,6 +288,26 @@ export async function expectPlayerCount(seats: readonly Seat[], expectedPlayers:
             `${seat.displayName}'s lobby does not list ${expectedPlayers} players`,
         ).toBeVisible();
     }
+}
+
+/**
+ * Reads the display names listed in a lobby, in seat order.
+ *
+ * The lobby renders players as a GOV.UK summary list whose `dt` holds the display name,
+ * followed by a `Facilitator` tag on the one row that has it. That tag is part of the
+ * element's text, so a name is read off the front of the cell rather than by matching the
+ * cell exactly — matching exactly would silently skip the facilitator's row.
+ *
+ * Returning names rather than asserting them is what lets a caller check for a *duplicate*.
+ * The player count in the heading cannot: two seats and two distinctly named seats render
+ * the same `Players (2)`, so the count alone cannot tell a second Alice from a Bob.
+ *
+ * @param page a page showing the lobby
+ * @return the display names, ordered by seat, with the facilitator tag removed
+ */
+export async function lobbyPlayerNames(page: Page): Promise<string[]> {
+    const cells = await page.locator('dt.govuk-summary-list__key').allTextContents();
+    return cells.map(cell => cell.replace(/Facilitator$/, '').trim());
 }
 
 /**
