@@ -86,12 +86,15 @@ Let `T` be the instant the server registers the subscriber; it necessarily prece
 
 - **The same investigation revealed a separate, unfixed defect.** Requests belonging to a single game session block for up to a full 15-second SSE heartbeat period and are released together on the heartbeat tick. This is tracked separately and is **not** resolved by this ADR. The E2E happy-path suite does not go green on this fix alone.
 
+  **Amended 2026-09-06 (EOP-227).** That defect is now root-caused and fixed by [ADR-070](ADR-070-jdbc-connection-leak-via-open-in-view.md), so this bullet no longer describes an open issue. Two corrections to it are worth recording, because both were reasoned and both were wrong. The blocking was **not** "requests belonging to a single game session": it was global, and a request belonging to no session at all (`GET /api/v1/cards`) stalled for 25 seconds in the same window. The appearance of per-session clustering was an artefact of `e2e/playwright.config.ts` setting `workers: 1` and `fullyParallel: false`, so only one session was ever in flight — the clusters carried no information about what the blocked resource was keyed on, and reading them as evidence of per-session keying is what excluded the connection pool from suspicion for as long as it did. Nor was the heartbeat the *cause*; it was the release mechanism, which is why it set the period so cleanly. The actual cause was one JDBC connection leaked per open SSE stream, and with that fixed the suite goes green 15 of 15.
+
 ## Related
 
 - [ADR-014](ADR-014-realtime-transport.md) — SSE doorbell design
 - [ADR-015](ADR-015-player-identity.md) — why `fetch` rather than `EventSource`
 - [ADR-034](ADR-034-sse-subscriber-cap-and-emitter-timeout.md) — subscriber cap and emitter timeout
 - [ADR-045](ADR-045-frontend-response-validation.md) — client-side response validation, the other boundary this fix touches
+- [ADR-070](ADR-070-jdbc-connection-leak-via-open-in-view.md) — the separate defect disclosed above, root-caused and fixed under EOP-227
 - `ui/src/api.ts` — the `subscribeToSession` helper
 - `ui/src/components/LobbyScreen.tsx` — one call site
 - `ui/src/components/GameScreen.tsx` — the other call site

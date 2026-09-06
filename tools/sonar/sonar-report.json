@@ -33,7 +33,7 @@
     "SECURITY": 0
   },
   "coverage": 95.3,
-  "generatedAt": "2026-09-06T11:51:12Z",
+  "generatedAt": "2026-09-06T18:19:51Z",
   "issues": [
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/PlayerJpaEntity.java|fa6ce9e24507b54e004c9a9f51b35f8f",
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/TrickPlayJpaEntity.java|fe1fa84d615bf6f12059ceb7a83f5eca",
@@ -92,6 +92,6 @@
   },
   "sonarQubeVersion": "26.8.0.126808",
   "sourceFileCount": 319,
-  "sourceHash": "dc08294d145c30bc248c9dabb2776b357fd1b261a6471cee314ca996bab7efcf",
-  "tests": 1471
+  "sourceHash": "ef6e1d557a099047b079169c331bbd3bbe9d72bd2d1ed135864faeba842925a1",
+  "tests": 1472
 }

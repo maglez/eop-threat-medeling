@@ -3,6 +3,8 @@ package org.maglez.eop.adapter.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,9 +18,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
@@ -42,6 +46,15 @@ import org.springframework.boot.test.web.server.LocalServerPort;
  * <p>The heartbeat is turned down from fifteen seconds to two hundred milliseconds for this context
  * alone. A test that waited out the production interval would be the slowest in the suite by two
  * orders of magnitude and would tell us nothing extra.
+ *
+ * <p>One test here is not about the wire at all. {@code shouldNotHoldAJdbcConnectionForTheLifetimeOfAStream}
+ * asserts that an open stream costs no JDBC connection, and it lives in this class because it needs
+ * exactly what this class already provides: a real server, so that returning an {@code SseEmitter}
+ * really does start async processing. With {@code spring.jpa.open-in-view} at Spring's default of
+ * {@code true} the {@code EntityManager} opened to validate the player token stayed bound until the
+ * request completed — which for a stream means until the stream ended — so each watcher held one of
+ * the pool's ten connections and a handful of watchers stalled every database-backed request in the
+ * application for as long as it took a heartbeat to reap a dead stream (EOP-227, ADR-070).
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -58,8 +71,14 @@ class SessionStreamIntegrationTest {
     /** How many beats must arrive before the keep-alive is believed to be periodic rather than lucky. */
     private static final int BEATS_EXPECTED = 3;
 
+    /** How many streams the connection-hold assertion opens at once. */
+    private static final int STREAMS_WATCHED = 3;
+
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private DataSource dataSource;
 
     private final HttpClient client = HttpClient.newHttpClient();
 
@@ -138,6 +157,30 @@ class SessionStreamIntegrationTest {
 
         assertThat(response.statusCode()).isEqualTo(403);
         assertThat(response.body()).contains("Player not recognised").doesNotContain("subscribed");
+    }
+
+    @Test
+    @DisplayName("holds no JDBC connection while a stream is open, so watchers cannot exhaust the pool")
+    void shouldNotHoldAJdbcConnectionForTheLifetimeOfAStream() throws Exception {
+        final HikariPoolMXBean pool = dataSource.unwrap(HikariDataSource.class).getHikariPoolMXBean();
+        final Admission facilitator = createSession("Ada");
+        final Admission second = join(facilitator.joinCode(), "Grace");
+        final Admission third = join(facilitator.joinCode(), "Alan");
+
+        final List<String> firstWire = watch(facilitator);
+        final List<String> secondWire = watch(second);
+        final List<String> thirdWire = watch(third);
+        awaitFrame(firstWire, ":subscribed");
+        awaitFrame(secondWire, ":subscribed");
+        awaitFrame(thirdWire, ":subscribed");
+
+        // All three streams are live and being read, so nothing here is waiting on a reaper: if a
+        // stream costs a connection, these three are checked out right now and stay that way.
+        await().atMost(PATIENCE)
+                .pollInterval(GLANCE)
+                .untilAsserted(() -> assertThat(pool.getActiveConnections())
+                        .describedAs("JDBC connections still checked out while %d streams are open", STREAMS_WATCHED)
+                        .isZero());
     }
 
     /**
