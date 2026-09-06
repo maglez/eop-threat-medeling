@@ -288,3 +288,74 @@ Two deliberate divergences, recorded here so neither reads as an oversight:
 - [ADR-051](ADR-051-read-route-rate-limit.md) — the read limiter and its per-minute arithmetic
 - [ADR-055](ADR-055-k6-performance-check-in-ci.md) — as amended by EOP-160, source of the SNI constraint
 - Epic `EOP-215`; stories `EOP-216` (this scaffold), `EOP-217`, `EOP-218`, `EOP-219`
+
+## Amendment, 2026-09-06 (EOP-217)
+
+Three findings from the EOP-217 happy-path delivery contradict premises the ticket was written on, and are recorded here because they constrain every future E2E scenario. They keep the numbering of the EOP-217 pre-delivery comment, so the sequence below is 1, 3, 4: findings 2, 5 and 6 there concerned the mechanics of one story — which image carries `VITE_GAME_SCREEN_ENABLED`, how a reload re-enters the game screen, and the re-scoping of a single scenario — and constrain no later work, so they are not repeated here. A fourth finding, on the leaderboard's persistence window, was established during the gate round and is recorded below as an addendum.
+
+### Finding 1 — minimum player count is three, not two
+
+The epic and the ticket both assumed a two-player happy path. `GameSession.java:38` declares
+`MINIMUM_PLAYERS_TO_START = 3` and `GameSession.java:246-247` enforces it by throwing
+`TooFewPlayersException`, mapped to HTTP 409 in `GlobalExceptionHandler.java:308-309`. The front end
+agrees independently: `LobbyScreen.tsx:37` hard-codes `session.players.length >= 3` to enable the
+start control. The maximum is six (`GameSession.java:35`).
+
+**Consequence for the suite:** the happy-path scenario is a three-player game, not two. The two
+independent hard-coded 3s are a drift hazard worth naming.
+
+### Finding 3 — a full game is 68 card plays, and the opening leader is not seat 0
+
+The entire 68-card printed deck is dealt and nothing is discarded (`Hands.java:169-176`; its
+javadoc at `Hands.java:106` gives the three-player split as 23/23/22). Three players means 23 tricks
+and 68 plays. The *play* count is invariant at 68 for any seat count, while the *trick* count varies
+(17 at four players, 12 at six). There is no shortcut to the terminal screen — there is no
+`endSession` function in `ui/src/api.ts` and no such control in any component — so the E2E happy
+path must genuinely play all 68 cards, which is why that scenario raises its own timeout with
+`test.setTimeout()` rather than relying on the 60-second global in `e2e/playwright.config.ts`.
+
+The opening leader is whoever was dealt the lowest-ranked Tampering card (`Hands.java:216-233`),
+**not** seat 0, so the test must discover whose turn it is rather than assume.
+
+### Finding 4 — follow-suit is enforced server-side only, and the UI does not prevent an illegal play
+
+`Trick.java:208-215` enforces follow-suit, and trump grants no exemption. The UI never disables
+illegal cards: `GameScreen.tsx:815` uses `disabled={!isMyTurn || isPlayingCard}` and never consults
+suit.
+
+**Consequence for the suite:** a test driving only the UI must itself choose a legal card, which is
+why `e2e/game.ts` has a `chooseLegalCard` helper that reads the led suit from the trick zone. A
+stale read is harmless specifically when leading, because leading permits any card.
+
+### Addendum — the leaderboard is not readable the instant the game ends
+
+Established during EOP-217's gate round rather than before delivery, and recorded because it
+constrains every future scenario that asserts on the game-over screen.
+
+Completing a game and recording its result are two steps, and only the first is guaranteed.
+`TrickJournal` marks the session completed (`TrickJournal.java:173`), then persists the final
+standings on a best-effort basis — the call is wrapped so that a `RuntimeException` is logged and
+swallowed (`TrickJournal.java:180-186`) — and then publishes `GAME_COMPLETED`
+(`TrickJournal.java:193`, anchor: `GAME_COMPLETED`) whether or not that persist succeeded. A client
+woken by that event may therefore read the leaderboard before the result row exists, and
+`GetLeaderboardUseCase.java:81` (anchor: `GameResultNotRecordedException`) throws
+`GameResultNotRecordedException` for exactly that case, which `GlobalExceptionHandler.java:1017`
+maps to **404** — deliberately the same status an absent session gets.
+
+So a 404 from the leaderboard is a legitimate transient, not a failure. The front end already treats
+it as one, offering a `Retry loading results` control
+(`GameOverScreen.tsx:207`, anchor: `Retry loading results`).
+
+**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:411`) asserts the `Game over` heading
+first, because that heading renders unconditionally, and only then looks for the leaderboard table —
+falling back to the screen's own retry control. The distinction that keeps this honest is that the
+fallback is conditional on the retry control being present: a genuine 500, or a selector that has
+rotted, produces no retry control and the original failure is re-thrown rather than being retried
+into a false pass.
+
+### What these mean for the design
+
+ADR-068 designed a suite that drives the application only through the browser. These findings are
+all consequences of that choice meeting the real domain: the suite must discover state (whose turn,
+which suit) rather than assume it, must respect real domain minimums, and must treat a
+legitimately-transient error as transient without blunting a real one.
