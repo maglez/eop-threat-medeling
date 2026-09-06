@@ -16,6 +16,21 @@ own `ui/Caddyfile` baked in, so the security headers (ADR-035), the 16 KB reques
 body cap (ADR-033), the source-map refusal (EOP-107) and the SPA fallback are all
 live and under test rather than stubbed out.
 
+### One consequence for whoever writes the first error-path scenario
+
+The stack runs with `SPRING_PROFILES_ACTIVE=prod`, and `application-prod.yml` sets
+`server.error.include-message: never` and `server.error.include-binding-errors: never`.
+Spring therefore injects no message text of its own, so an error response body carries
+**only** what `GlobalExceptionHandler` authored — the RFC 9457 `type`, `title` and
+`status`, plus any field-level messages a `ValidationProblemDetail` supplies.
+
+This matters because it diverges from what a default-profile `@SpringBootTest` sees. An
+assertion written against a Spring-generated message string will pass in the Java suite
+and fail here, and the failure will look like a missing element rather than a wrong
+expectation. Assert against domain-authored text, which does survive. This is the
+production behaviour and testing against it is the point — it is only a trap if you
+did not know about it.
+
 ## Prerequisites
 
 | Requirement | Why |
