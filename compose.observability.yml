@@ -1,0 +1,55 @@
+# Loki + Promtail observability stack for EOP application logs.
+#
+# This compose file defines a separate observability stack that can be run
+# independently of the main application stack (compose.app.yml).
+#
+# Startup Order:
+# 1. Start this stack first: docker compose -f compose.observability.yml up -d
+# 2. Then start the application stack: docker compose -f compose.app.yml up -d
+#
+# Networking:
+# - Both stacks must be on the same Docker network to allow Promtail to scrape
+#   container logs from the application stack.
+# - The 'eop-monitoring' network is defined in docker-compose.yml and is used
+#   by both stacks.
+# - Grafana is defined in docker-compose.yml and will connect to Loki using
+#   the service name 'loki' on the shared network.
+
+name: eop-observability
+
+services:
+  loki:
+    image: grafana/loki:3.3.2@sha256:8af2de1abbdd7aa92b27c9bcc96f0f4140c9096b507c77921ffddf1c6ad6c48f
+    container_name: eop-loki
+    ports:
+      - "127.0.0.1:3100:3100"  # Bind to loopback only
+    volumes:
+      - ./tools/monitoring/loki:/etc/loki
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - eop-monitoring_default
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:3.3.2@sha256:cb4990801ec58975c5e231057c2bcf204c85fac428eec65ad66e0016c64b9608
+    container_name: eop-promtail
+    volumes:
+      - ./tools/monitoring/promtail:/etc/promtail
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/promtail-config.yml
+    networks:
+      - eop-monitoring_default
+    depends_on:
+      - loki
+
+networks:
+  eop-monitoring_default:
+    external: true
+
+volumes:
+  loki_data:
