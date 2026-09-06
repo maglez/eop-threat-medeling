@@ -428,6 +428,52 @@ describe('GameScreen', () => {
     expect(screen.queryByTestId('error-summary')).not.toBeInTheDocument();
   });
 
+  /*
+   * EOP-224. The regression test for the lost doorbell.
+   *
+   * The observed failure: a participant's `GET /hand` was refused 409 twenty-five
+   * milliseconds before the deal committed, and the `cards-dealt` doorbell was
+   * published while that participant's stream was still being established. The
+   * 409 branch has no retry, so the client sat at "Waiting for cards to be
+   * dealt..." for ever. Before the `onOpen` catch-up read this test fails: the
+   * hand never appears, because nothing re-reads once the stream is live.
+   */
+  it('re-reads when the stream opens, recovering a doorbell published before it was live', async () => {
+    const notDealtError = new api.ApiError(409, 'Hands not dealt');
+    vi.spyOn(api, 'fetchHand')
+      .mockRejectedValueOnce(notDealtError)
+      .mockResolvedValue(makeHand([spoofingKing]));
+    vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+    vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+
+    let announceOpen: (() => void) | undefined;
+    vi.spyOn(api, 'subscribeToSession').mockImplementation((_sessionId, _token, _onEvent, _onError, onOpen) => {
+      announceOpen = onOpen;
+      return { abort: vi.fn() } as unknown as AbortController;
+    });
+
+    const onSessionEnd = vi.fn();
+    render(<GameScreen {...defaultProps} onSessionEnd={onSessionEnd} />);
+
+    // The 409 read lands first, exactly as it did in the trace.
+    await waitFor(() => {
+      expect(screen.getByText('Waiting for cards to be dealt...')).toBeInTheDocument();
+    });
+
+    // The stream goes live. No further doorbell will ever arrive for the deal.
+    expect(announceOpen).toBeDefined();
+    act(() => {
+      announceOpen?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByAltText('K of spoofing')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Waiting for cards to be dealt...')).not.toBeInTheDocument();
+    expect(onSessionEnd).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('error-summary')).not.toBeInTheDocument();
+  });
+
   it('calls onSessionEnd when getSession returns 404 (session genuinely gone)', async () => {
     const sessionGoneError = new api.ApiError(404, 'Session not found');
     vi.spyOn(api, 'getSession').mockRejectedValue(sessionGoneError);

@@ -17,6 +17,27 @@ spring:
     driver-class-name: org.h2.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      # Log the borrower's stack trace when a connection is held this long (EOP-227,
+      # ADR-070). This is the observability half of that fix, not the fix: it exists
+      # because the defect it diagnosed produced fifteen-second stalls across three
+      # full suite runs with *zero* WARN and zero ERROR lines. A connection that had
+      # been checked out and forgotten looked exactly like an idle one, and the pool
+      # waits its full thirty-second connection-timeout before it complains, so every
+      # stall finished just quietly enough to leave no trace.
+      #
+      # Ten seconds is chosen to be far above any legitimate hold. No request in this
+      # application keeps a connection for even one second: the adapters under
+      # org.maglez.eop.adapter.persistence each carry their own @Transactional and do
+      # one query, so a warning here always means a genuine leak rather than a slow
+      # query. It cannot fire on a long-lived SSE stream any more, which is precisely
+      # what open-in-view: false below guarantees.
+      #
+      # This is a diagnostic, not a guard: HikariCP logs and moves on, it does not
+      # reclaim the connection. Raising it hides real leaks; lowering it towards
+      # ordinary query latency would turn it into noise, and a warning nobody reads
+      # is worse than no warning at all.
+      leak-detection-threshold: 10000
   h2:
     console:
       # Fail closed (EOP-27). This said `true` until now, which read as an
@@ -49,6 +70,40 @@ spring:
       ddl-auto: validate
     show-sql: false
     database-platform: org.hibernate.dialect.H2Dialect
+    # A JDBC connection must not be held for the lifetime of an SSE stream (EOP-227,
+    # ADR-070). Spring's default here is `true`, and with a long-lived async request
+    # that default is a connection leak rather than a convenience.
+    #
+    # The measured chain: GET /api/v1/sessions/{id}/events validates the player token
+    # by reading the session (SessionStreamController -> ResolvePlayerUseCase ->
+    # SessionRepositoryAdapter.findById, which is @Transactional), and only then
+    # returns an SseEmitter, which starts async processing. With open-in-view enabled
+    # the EntityManager bound at the start of the request is not closed until the
+    # request completes, and an SSE request does not complete until the stream ends —
+    # up to the ten-minute spring.mvc.async.request-timeout below. HikariCP's leak
+    # detector recorded exactly one unreturned connection per open stream.
+    #
+    # The pool holds ten connections. Three browser contexts each open a lobby stream
+    # and then a game-screen stream, and a context torn down mid-stream keeps its
+    # stream registered until the heartbeat sweep writes to it and discovers the peer
+    # has gone, so a handful of scenarios is enough to check out all ten. Every
+    # request that needed the database then blocked in HikariPool.getConnection until
+    # a heartbeat freed one, which is why the stalls landed on a fifteen-second grid
+    # and why requests were released in batches. GET /health, which touches no
+    # database, was served throughout in under a tenth of a second.
+    #
+    # With this false, each @Transactional adapter call opens and closes its own
+    # EntityManager, so the connection goes back to the pool as soon as the query
+    # commits and nothing survives into the async phase. Three streams then leak zero
+    # connections, measured the same way.
+    #
+    # Nothing here relies on lazy loading outside a transaction — cross-boundary data
+    # is DTOs, never entities, so there is no view rendering that could touch an
+    # uninitialised association. Do not set this back to true to fix a
+    # LazyInitializationException: that exception means a mapping or a use case needs
+    # the association fetched inside its transaction, and hiding it here reinstates
+    # this defect.
+    open-in-view: false
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
