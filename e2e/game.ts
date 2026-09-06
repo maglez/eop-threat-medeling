@@ -273,26 +273,37 @@ export async function startGame(facilitator: Seat, seats: readonly Seat[]): Prom
  * count is checked first — at three players the final trick is played by two
  * seats, the third having run out.
  *
+ * Reading turn ownership from the UI rather than from the API is deliberate, and
+ * is the property under test rather than a shortcut. An enabled card *is* the
+ * UI's claim that it is that seat's turn, so cross-checking the claim against
+ * `GET /api/v1/sessions/{id}` would mask precisely the defect this suite exists
+ * to catch — the UI entitling a seat the server has not. The claim is instead
+ * held to the invariant above: every seat is polled and **exactly one** may be
+ * entitled, so a UI that enables two hands fails here with both names rather
+ * than silently handing back whichever sorted first and failing later, deep in
+ * {@link playLegalCard}, as an opaque rule violation from the server.
+ *
  * @param seats the seats in the session
  * @return the seat entitled to play
+ * @throws Error if more than one seat is simultaneously entitled to play
  */
 export async function waitForSeatToPlay(seats: readonly Seat[]): Promise<Seat> {
-    let active: Seat | undefined;
+    let entitled: readonly Seat[] = [];
     await expect
         .poll(
             async () => {
+                const found: Seat[] = [];
                 for (const seat of seats) {
                     const cards = handCards(seat.page);
                     if (await cards.count() === 0) {
                         continue;
                     }
                     if (await cards.first().getAttribute('aria-disabled') === 'false') {
-                        active = seat;
-                        return seat.displayName;
+                        found.push(seat);
                     }
                 }
-                active = undefined;
-                return null;
+                entitled = found;
+                return found.length === 0 ? null : found.map(seat => seat.displayName).join(', ');
             },
             {
                 message: 'no seat became entitled to play',
@@ -302,6 +313,11 @@ export async function waitForSeatToPlay(seats: readonly Seat[]): Promise<Seat> {
         )
         .not.toBeNull();
 
+    if (entitled.length > 1) {
+        const names = entitled.map(seat => seat.displayName).join(', ');
+        throw new Error(`more than one seat was entitled to play at once: ${names}`);
+    }
+    const [active] = entitled;
     if (active === undefined) {
         throw new Error('the poll resolved without recording a seat');
     }
