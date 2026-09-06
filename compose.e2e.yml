@@ -1,0 +1,209 @@
+# End-to-end test stack: PostgreSQL + application + Caddy, for Playwright.
+#
+#   docker compose -f compose.e2e.yml up -d --wait
+#   docker compose -f compose.e2e.yml down -v
+#
+# Normally you do not run those by hand — e2e/global-setup.ts and
+# e2e/global-teardown.ts do it around the Playwright run. See e2e/README.md.
+#
+# This is a THIRD stack, alongside compose.app.yml (the real application, which
+# also runs on EC2) and docker-compose.yml (the k6 / InfluxDB / Grafana load-test
+# stack). It is deliberately a separate file rather than an override on
+# compose.app.yml: an override would share that file's project name, network and
+# volumes, so starting a test run would tear down or corrupt a stack a developer
+# was using. Everything here is namespaced away from both. See
+# docs/adr/ADR-068-playwright-e2e-testing.md.
+#
+# There is no `build:` section, matching compose.app.yml — the artefact is the
+# image. Build both first:
+#
+#   docker build -t eop-threat-modeling:local .
+#   docker build -t eop-ui:e2e --build-arg VITE_GAME_SCREEN_ENABLED=true ui
+#
+# Note the UI image tag differs from compose.app.yml's `eop-ui:local` and is NOT
+# interchangeable with it. ui/Dockerfile defaults all three VITE_* feature flags
+# to false (fail-closed, ADR-037), so an image built without that --build-arg
+# ships with the game screen absent and every gameplay scenario would fail on a
+# missing element rather than on a real defect. A distinct tag makes that
+# difference visible in `docker images` instead of hiding it inside a layer.
+#
+# The site is served at https://localhost:8443/ over TLS with a self-signed
+# certificate, exactly as in production. It is NOT plain HTTP: TLS is baked into
+# the shipped image (ui/Dockerfile COPYs the Caddyfile, whose only site block
+# carries `tls internal`, and `auto_https disable_redirects` means nothing listens
+# on :80 at all). Serving plain HTTP here would mean testing a web server that
+# does not ship. Playwright sets `ignoreHTTPSErrors: true` instead, which is the
+# same trade the CI smoke test (`curl -fsSk`) and the k6 canary
+# (`--insecure-skip-tls-verify`) already make.
+
+# Project namespace, set explicitly. Without it Compose derives the project name
+# from the directory and all three stacks collide, each reporting the others'
+# containers as orphans — so `docker compose down --remove-orphans` on one file
+# would destroy the others.
+name: eop-e2e
+
+# A different subnet from compose.app.yml's 172.28.0.0/24, so both stacks can run
+# at once. Pinned rather than dynamic for the same reason as there: the
+# application allow-lists the proxy by fixed address.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+          ip_range: 172.29.0.128/25
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    container_name: eop-e2e-postgres
+    # `no`, not `unless-stopped`. A test database that resurrects itself after the
+    # run has finished is a leak, not resilience. Quoted because YAML would
+    # otherwise read the bare word as the boolean false.
+    restart: "no"
+    environment:
+      # Defaulted, where compose.app.yml uses `:?` to fail if unset. That
+      # difference is deliberate: this database is created empty, populated only
+      # by Liquibase and the tests, and destroyed by `down -v` minutes later, so
+      # there is no credential here worth protecting and nothing to configure per
+      # environment. Requiring a .env file would mean a fresh clone could not run
+      # the E2E suite until someone had written one — and CI would need a secret
+      # for a throwaway container. These are still overridable for the rare case
+      # of a port or image clash.
+      POSTGRES_DB: ${E2E_POSTGRES_DB:-eop_e2e}
+      POSTGRES_USER: ${E2E_POSTGRES_USER:-eop_e2e}
+      POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:-eop_e2e}
+    # No `ports:`, as in compose.app.yml. Nothing outside this network reaches the
+    # database. A test that needs to seed or assert on data does so through the
+    # API, or via `docker compose -f compose.e2e.yml exec postgres psql`.
+    volumes:
+      - eop_e2e_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    image: ${APP_IMAGE:-eop-threat-modeling:local}
+    container_name: eop-e2e-app
+    restart: "no"
+    depends_on:
+      postgres:
+        # Liquibase runs at startup and `ddl-auto: validate` checks the schema, so
+        # the application must never race the database to readiness.
+        condition: service_healthy
+    environment:
+      # `prod`, the same profile the deployed container runs, because there are
+      # only two profiles and no test profile exists (ADR-012). Running anything
+      # else here would mean the E2E suite exercised configuration that never
+      # ships.
+      SPRING_PROFILES_ACTIVE: prod
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/${E2E_POSTGRES_DB:-eop_e2e}
+      DATASOURCE_USER: ${E2E_POSTGRES_USER:-eop_e2e}
+      DATASOURCE_PASSWORD: ${E2E_POSTGRES_PASSWORD:-eop_e2e}
+      # Must match the ipv4_address pinned on the caddy service below. A /32 so
+      # only Caddy is trusted, not the Postgres container.
+      EOP_WEB_TRUSTED_PROXIES: 172.29.0.10/32
+
+      # Rate limits raised out of the way, for the same reason and by the same
+      # precedent as src/test/resources/application.properties, which raises both
+      # of these for the Java suite. Read the two comments in application.yml
+      # (eop.web.session-creation-limit, eop.web.read-rate-limit.limit): both
+      # limiters key on the *resolved client address*, and because Caddy sets
+      # X-Forwarded-For to {remote_host} while EOP_WEB_TRUSTED_PROXIES above tells
+      # the app to believe it, every browser Playwright launches resolves to the
+      # one host address. So all three browser projects and every scenario in the
+      # suite share a single bucket. At the shipped production values that is 5
+      # session creations and 300 reads per 60 seconds for the whole run — a
+      # two-player game alone peaks near 100 reads a minute, so a suite of any size
+      # would spend most of its time asserting against HTTP 429.
+      #
+      # Be clear about what this costs: the E2E suite therefore does NOT exercise
+      # the production throttle values, and must never be cited as evidence that
+      # rate limiting works. That is covered where it belongs — the Java
+      # integration tests that assert the 429 pin a low limit per class with
+      # @DirtiesContext rather than forging the key. E2E asserts user-visible game
+      # behaviour; a throttle is infrastructure, and one shared bucket makes it
+      # untestable here anyway.
+      #
+      # The limiters still run and still count, so their code path is not bypassed
+      # — only their ceiling is moved. max-tracked-keys is deliberately left at its
+      # shipped 10000: the suite produces one key, so the eviction path this stack
+      # would exercise is the empty one.
+      EOP_WEB_SESSION_CREATION_LIMIT: 2147483647
+      EOP_WEB_READ_RATE_LIMIT_LIMIT: 2147483647
+
+      # No EOP_FEATURES_* overrides, deliberately. All three back-end flags
+      # (session-lifecycle, trick-play, game-over) already ship `true` in
+      # application.yml — verified against src/test/resources/feature-flag-registry.yml,
+      # where each carries `shipped-default: true`. Setting them here would be
+      # redundant, and worse than redundant: it would read as though the E2E stack
+      # needs a non-shipped configuration to work, when the point of running
+      # SPRING_PROFILES_ACTIVE=prod is that it does not.
+      #
+      # Do not confuse this with the UI image's VITE_GAME_SCREEN_ENABLED build arg
+      # above, which genuinely IS required. Those are a different mechanism — a
+      # build-time Vite substitution, not a Spring @ConditionalOnProperty — and
+      # they ship `false` from ui/Dockerfile. See .opencode/rules/feature-flags.md.
+      # If a back-end flag's shipped default ever moves to false, an override
+      # belongs here and the registry is the place to check.
+    # No `ports:`. The application is reachable only through Caddy, on one
+    # origin, which is what keeps ADR-017's no-CORS property true. Publishing
+    # 8080 here would also collide with a developer's `./mvnw spring-boot:run`.
+    healthcheck:
+      # The image already defines a HEALTHCHECK (Dockerfile:50-51, the same wget
+      # probe). This overrides it only to shorten the cadence: the image uses
+      # interval=15s start-period=45s, tuned for a long-lived deployment, which
+      # makes `up -d --wait` sit for at least 15s after the app is actually
+      # serving. Every test run pays that, so a 5s interval is worth the
+      # duplication. The command is kept identical on purpose — if the image's
+      # probe changes, this should change with it.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+
+  caddy:
+    image: ${UI_IMAGE:-eop-ui:e2e}
+    container_name: eop-e2e-caddy
+    restart: "no"
+    depends_on:
+      app:
+        # Unlike compose.app.yml, which orders on start only, this waits for the
+        # application to be healthy. `up -d --wait` returns when every service
+        # with a healthcheck is healthy, and that is the signal global-setup
+        # relies on to know the stack is ready. Ordering alone would let it
+        # return while /api still 502s.
+        condition: service_healthy
+    ports:
+      # Host 8443 -> container 8080. Not 443: that is compose.app.yml's port, and
+      # both stacks must be able to run at once. Not 8080 either, which a local
+      # `./mvnw spring-boot:run` binds. Bound to 127.0.0.1 — this stack has no
+      # deployed counterpart and must never be reachable off the machine.
+      #
+      # The port mismatch against the Caddyfile's `localhost:8080` site block is
+      # not a problem: Caddy matches a site block on hostname, ignoring the port,
+      # which the CI smoke test already proves by curling https://localhost/health
+      # on host 443 against that same block.
+      - "127.0.0.1:8443:8080"
+    volumes:
+      # Persist Caddy's local CA across container recreates within a run. The
+      # HSTS hazard that makes this critical for compose.app.yml does not apply
+      # to Playwright, whose browser profiles are fresh per run and which ignores
+      # certificate errors anyway — but `down -v` removes this volume, so a
+      # developer who points their own browser at :8443 gets a new CA each run.
+      # Trust the certificate for a session at most; never add it to a keychain.
+      - eop_e2e_caddy_data:/data
+    networks:
+      default:
+        ipv4_address: 172.29.0.10
+
+volumes:
+  # Prefixed, so `docker volume ls` shows at a glance which stack owns what and a
+  # stray volume after a crashed run is unambiguous to remove. Both are recreated
+  # empty on every `up`, because global-teardown runs `down -v`: a fresh database
+  # per run is a requirement of the suite, not a side effect.
+  eop_e2e_postgres_data:
+  eop_e2e_caddy_data:

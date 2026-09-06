@@ -1,0 +1,29 @@
+{
+  "//": "Typecheck-only config for the Playwright suite. Playwright transpiles the",
+  "//1": "TypeScript itself at run time and never reads this file's emit settings, so",
+  "//2": "`npm run typecheck` is the only consumer -- hence `noEmit`.",
+  "//3": "`module: CommonJS` is not arbitrary: e2e/package.json deliberately omits",
+  "//4": "`type: module` so Playwright's loader emits CJS and `__dirname` resolves in",
+  "//5": "stack.ts. Declaring ESM here would typecheck a module system the suite does",
+  "//6": "not actually run under, so a `__dirname` error would appear only at run time.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "types": ["node"],
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["*.ts", "tests"]
+}
