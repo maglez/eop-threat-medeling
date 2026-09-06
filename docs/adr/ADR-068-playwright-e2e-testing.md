@@ -346,7 +346,7 @@ So a 404 from the leaderboard is a legitimate transient, not a failure. The fron
 it as one, offering a `Retry loading results` control
 (`GameOverScreen.tsx:207`, anchor: `Retry loading results`).
 
-**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:513`) asserts the `Game over` heading
+**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:513`, anchor: `expectGameOver`) asserts the `Game over` heading
 first, because that heading renders unconditionally, and only then looks for the leaderboard table —
 falling back to the screen's own retry control. The distinction that keeps this honest is that the
 fallback is conditional on the retry control being present: a genuine 500, or a selector that has
@@ -381,7 +381,7 @@ join a 400 quoting an internal invariant instead of the 409 the caller is owed.
 
 **Consequence for the suite:** the boundary scenario drives the seventh player through the join
 form rather than asserting a disabled control, because no front-end copy of the maximum exists.
-`e2e/game.ts:42` exports `MAXIMUM_PLAYERS = 6` as a mirror of the domain constant, and the test
+`e2e/game.ts:42` (anchor: `MAXIMUM_PLAYERS`) exports `MAXIMUM_PLAYERS = 6` as a mirror of the domain constant, and the test
 asserts the refusal message rather than a UI state.
 
 ### Finding 2 — duplicate display names are admitted, not rejected
@@ -424,7 +424,7 @@ disables the button, so `TooFewPlayersException` can never be provoked through t
 The real boundary a user meets is the disabled attribute at two players and enabled at three.
 Scenario 6 therefore asserts the control's state rather than the 409, which belongs to the Java
 unit tests. **EOP-232** covers the duplicated literal: `LobbyScreen.tsx:37` hard-codes `3`,
-`e2e/game.ts:31` is a third copy, and the domain is the single source of truth.
+`e2e/game.ts:31` (anchor: `MINIMUM_PLAYERS_TO_START`) is a third copy, and the domain is the single source of truth.
 
 ### Finding 5 — the anti-oracle property is pinned at the E2E tier
 
@@ -456,7 +456,7 @@ tier adds nothing there.
 
 ### Design decision — `expectJoinRefused` as a sibling, not a flag
 
-`e2e/game.ts:252` exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
+`e2e/game.ts:252` (anchor: `expectJoinRefused`) exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
 *sibling* of `joinSession` rather than a flag on it. `joinSession` asserts the `Game Lobby`
 heading, and the happy-path suite (EOP-217) depends on it staying strict. `expectJoinRefused`
 returns the rendered message rather than asserting it, so callers can compare two refusals for
@@ -482,4 +482,4 @@ EOP-218:
 - **EOP-231** — a player who loses their session token cannot return to their seat (covers both
   the mid-game lockout and the LOBBY ghost seat).
 - **EOP-232** — `LobbyScreen.tsx:37` duplicates the minimum-players rule as a hardcoded `3`;
-  `e2e/game.ts:31` is a legitimate third copy.
+  `e2e/game.ts:31` (anchor: `MINIMUM_PLAYERS_TO_START`) is a legitimate third copy.
