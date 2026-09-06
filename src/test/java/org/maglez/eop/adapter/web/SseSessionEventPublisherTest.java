@@ -207,7 +207,19 @@ class SseSessionEventPublisherTest {
 
             publisher.publish(playerJoined());
 
-            assertThat(publisher.subscriberCount(SESSION_ID)).isEqualTo(1);
+            // The fan-out now runs on a send-pool thread (EOP-223), so the write
+            // completes asynchronously. We wait until the pool thread has finished
+            // rather than asserting immediately, which would be a race.
+            //
+            // The sibling test (shouldForgetADepartedSubscriberWithoutFailingTheCaller)
+            // also uses await() for the same reason: it waits for the count to reach
+            // zero after a departed subscriber is evicted. Here we wait for the count
+            // to stabilise at one after a successful write. An immediate assertion
+            // would pass today only because SseEmitter.send() happens not to throw
+            // without a servlet container — a coincidence, not a guarantee.
+            await().atMost(Duration.ofSeconds(5))
+                    .pollInterval(BEAT)
+                    .untilAsserted(() -> assertThat(publisher.subscriberCount(SESSION_ID)).isEqualTo(1));
         }
 
         @Test
@@ -218,7 +230,13 @@ class SseSessionEventPublisherTest {
 
             assertThatCode(() -> publisher.publish(playerJoined())).doesNotThrowAnyException();
 
-            assertThat(publisher.subscriberCount(SESSION_ID)).isZero();
+            // The write that discovers the departure now happens on a send-pool
+            // thread rather than on the publishing thread (EOP-223), so eviction
+            // is eventually consistent with the call rather than complete by the
+            // time it returns.
+            await().atMost(Duration.ofSeconds(5))
+                    .pollInterval(BEAT)
+                    .untilAsserted(() -> assertThat(publisher.subscriberCount(SESSION_ID)).isZero());
         }
 
         @Test

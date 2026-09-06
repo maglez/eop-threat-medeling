@@ -33,7 +33,7 @@
     "SECURITY": 0
   },
   "coverage": 95.3,
-  "generatedAt": "2026-09-06T05:39:03Z",
+  "generatedAt": "2026-09-06T11:51:12Z",
   "issues": [
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/PlayerJpaEntity.java|fa6ce9e24507b54e004c9a9f51b35f8f",
     "MAINTAINABILITY|java:S107|src/main/java/org/maglez/eop/adapter/persistence/TrickPlayJpaEntity.java|fe1fa84d615bf6f12059ceb7a83f5eca",
@@ -63,7 +63,7 @@
     "MAINTAINABILITY|java:S2629|src/main/java/org/maglez/eop/adapter/web/TrickController.java|b93b37d02812ef89d2dd7d164dbca921",
     "RELIABILITY|java:S6218|src/main/java/org/maglez/eop/adapter/web/TrustedProxies.java|fb9503e79ba3740bac86eda902b058db"
   ],
-  "ncloc": 7414,
+  "ncloc": 7436,
   "scannerGav": "org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751",
   "scope": {
     "ALL": {
@@ -91,7 +91,7 @@
     }
   },
   "sonarQubeVersion": "26.8.0.126808",
-  "sourceFileCount": 317,
-  "sourceHash": "59140d3393c0499fbb5c1020cc4e6fe8f19c4413b3c5ba6f4b1a13970e069ad8",
-  "tests": 1466
+  "sourceFileCount": 319,
+  "sourceHash": "dc08294d145c30bc248c9dabb2776b357fd1b261a6471cee314ca996bab7efcf",
+  "tests": 1471
 }

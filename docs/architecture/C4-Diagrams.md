@@ -580,11 +580,18 @@ Implements the `SessionEventPublisher` port and `DisposableBean`. Its state:
   check and increment.
 - A single-threaded scheduler on a **daemon** thread named `sse-heartbeat`, firing at
   `eop.realtime.heartbeat-interval`. Daemon so it can never hold the JVM open.
-- A bounded `ThreadPoolExecutor` (`sse-send-N`, 4 threads, queue capacity 1000) that
-  receives one task per emitter per heartbeat sweep. The heartbeat thread enqueues
-  tasks and returns immediately; the pool threads do the actual `emitter.send()`.
-  Oldest tasks are discarded when the queue is full — a dropped heartbeat is
-  harmless because the next sweep retries.
+- An elastic `ThreadPoolExecutor` (`sse-send-N`, 4–500 threads, 60s keepalive,
+  `SynchronousQueue`, `LoggingDiscardPolicy`) that receives one task per emitter per
+  heartbeat sweep and per `publish()` call. The calling thread enqueues tasks and returns
+  immediately; the pool threads do the actual `emitter.send()`. The pool grows on demand
+  rather than queueing, so a healthy subscriber never waits behind a stalled one. A
+  `SynchronousQueue` never accepts a task no thread is ready to take, so the pool creates
+  a thread instead of queueing. Growth is bounded by `MAX_TOTAL_SUBSCRIBERS = 500`, the same
+  number that already bounds subscribers and file descriptors. When every thread up to that
+  ceiling is already parked on a write, `LoggingDiscardPolicy` logs at WARN and drops the
+  task — a dropped heartbeat is harmless (the next sweep retries), but a dropped *event*
+  means a subscriber can miss a notification outright and recovers only on its next read.
+  No event history is kept and `Last-Event-ID` is not honoured.
 - Every emitter is constructed `new SseEmitter(EMITTER_TIMEOUT_MILLIS)` — a
   **10-minute container timeout** (ADR-034). The heartbeat keeps live connections
   alive within that window; stale connections that have silently dropped are
