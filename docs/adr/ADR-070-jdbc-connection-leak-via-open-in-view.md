@@ -72,6 +72,16 @@ This codebase never renders a view from a JPA entity, because `clean-architectur
 - **`spring.jpa.open-in-view: false` is a global setting.** It applies to every request, not only SSE streams. If a future use case legitimately needs lazy loading outside a transaction, the fix is to refactor the use case to fetch eagerly, not to revert this setting.
 - **The leak-detection threshold is a diagnostic, not a protection.** It logs and continues. A truly stuck connection still holds its JDBC handle until the request completes.
 
+## Severity of the pre-fix state
+
+Recorded because this ADR was first written as a performance defect, and the security review of EOP-227 concluded it was more than that. The pre-fix state was a **remotely triggerable denial of service against every user of the application**, not a localised stall, and the reasoning is worth keeping so that a future change to any of its three ingredients is recognised as security-relevant.
+
+The exhausted resource was the **global** JDBC connection pool, so exhausting it stopped every database-touching request regardless of which session it belonged to — a session-less `GET /api/v1/cards` stalled 25 seconds in the same window. Nothing bounded the leak anywhere near the pool's ten connections: `SseSessionEventPublisher.java:84` (anchor: `MAX_TOTAL_SUBSCRIBERS`) caps total subscribers at 500 and `SseSessionEventPublisher.java:77` (anchor: `MAX_SUBSCRIBERS_PER_SESSION`) caps a single session at twice the maximum player count, both far above ten. Nor was stream opening rate-limited: `WebInterceptorConfiguration.java:38` (anchor: `EVENT_STREAM_PATTERN`) excludes the stream endpoint from the read rate limiter, correctly — a long-lived stream is not a read to be throttled — but the effect was that the one endpoint which leaked a connection per call was also the one endpoint with no request budget.
+
+The only barrier was that opening a stream requires a valid player token. That is a weak barrier here rather than a strong one, because there is no authentication (ADR-015): a token identifies a seat in a session, so any participant in any session held everything needed. The correct reading is therefore *authenticated-participant-triggerable, application-wide* denial of service.
+
+Two things follow for whoever changes this area next. First, the fix closes the exposure **structurally** rather than by capacity — the acquisition path is gone, so no subscriber cap, pool size or rate limit is load-bearing for it, and the SSE endpoint is the only async or streaming endpoint in the application. Second, reintroducing `open-in-view: true`, or adding a second streaming endpoint that reads through a `@Transactional` collaborator before returning its emitter, reintroduces the vulnerability and not merely the latency.
+
 ## Cross-reference notes
 
 - **ADR-034** (SSE subscriber cap, emitter timeout, and heartbeat stall fix): The 15-second release grid described here is the same heartbeat mechanism ADR-034 configures. This ADR fixes the *cause* of the stalls that ADR-034's Decision 4 amendment addressed for the *write* path. No amendment needed.
