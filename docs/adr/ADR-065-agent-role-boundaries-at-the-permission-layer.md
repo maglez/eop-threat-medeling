@@ -347,6 +347,34 @@ describes a five-agent sign-off where there are now seven.
 > deciding the operator should be the one to open a pull request again, which is a one-line
 > revert of the two allows in `.opencode/agents/tech-lead.md`.
 
+> **Amended 2026-09-06 (EOP-000) — one of the Product Owner's Jira denies was decorative, and
+> is now an allow.** The amendment above lists `transition_issue` among the delivery-side writes
+> denied individually to `@product-owner`. That deny never held, and it has been removed:
+> the agent may now transition an issue. See
+> [ADR-066](ADR-066-jira-restored-as-the-tracker.md) as amended for the traced mechanism.
+> In short, `atlassian_jira_update_issue` — granted by the same `atlassian_jira_*` wildcard, and
+> the tool the requirements role actually needs — accepts a `status` key in its `fields` JSON
+> and the MCP server routes it to `set_issue_status_by_transition_id`, so the transition was
+> reachable in one call from a tool that could not be denied without revoking issue writes
+> altogether.
+>
+> **What this ADR establishes is unaffected.** The boundary narrows by one capability, not by a
+> category: `assign_issue`, `add_worklog`, the sprint and version tools, `delete_issue`,
+> `remove_*` and `move_*` remain denied, the read-only `bash` block that closes the EOP-117
+> breach is untouched, and `edit` outside `docs/requirements/**` is still denied. The Product
+> Owner still cannot edit source, run a build, commit, push or open a pull request.
+>
+> **The lesson generalises once more, in a direction the two earlier amendments did not cover.**
+> Those recorded that a permission block and the prose beside it can disagree, and that both can
+> disagree with the tracker. This one records that *two entries inside a single permission block*
+> can disagree with each other, with the allow silently winning — the deny is not overridden by
+> precedence but circumvented, because the layer matches tool names and cannot see a field name
+> inside a JSON argument. The operational rule that follows: when auditing a block like this,
+> ask of every deny not merely whether it is present but whether some sibling allow reaches the
+> same endpoint by another route. A deny that fails that test must be either enforced properly
+> or deleted, and deleting it is often the honest choice, because leaving it in place documents
+> an intention while a reader takes it for a boundary and reasons from it.
+
 ## Related
 
 - [ADR-022](ADR-022-agent-model-tier-governance.md) — agent model tier governance; the
