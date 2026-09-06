@@ -346,7 +346,7 @@ So a 404 from the leaderboard is a legitimate transient, not a failure. The fron
 it as one, offering a `Retry loading results` control
 (`GameOverScreen.tsx:207`, anchor: `Retry loading results`).
 
-**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:411`) asserts the `Game over` heading
+**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:513`) asserts the `Game over` heading
 first, because that heading renders unconditionally, and only then looks for the leaderboard table —
 falling back to the screen's own retry control. The distinction that keeps this honest is that the
 fallback is conditional on the retry control being present: a genuine 500, or a selector that has

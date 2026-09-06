@@ -264,7 +264,20 @@ export async function expectJoinRefused(seat: Seat, joinCode: string): Promise<s
         `${seat.displayName} left the join screen despite the join being refused`,
     ).toBeVisible();
 
-    const message = await summary.locator('li').first().textContent();
+    /*
+     * Exactly one item, asserted rather than assumed. Reading `.first()` from a summary that
+     * had grown a second entry would silently return the wrong string, and a caller comparing
+     * two refusals for equality would then be comparing something other than what it meant to.
+     * A server problem document carries a single `detail`, so more than one item here means the
+     * front end has started combining errors and the comparison needs rethinking, not patching.
+     */
+    const items = summary.locator('li');
+    await expect(
+        items,
+        `${seat.displayName}'s error summary did not list exactly one message`,
+    ).toHaveCount(1);
+
+    const message = await items.first().textContent();
     expect(message, `${seat.displayName}'s error summary listed no message`).not.toBeNull();
     return (message ?? '').trim();
 }
@@ -294,20 +307,32 @@ export async function expectPlayerCount(seats: readonly Seat[], expectedPlayers:
  * Reads the display names listed in a lobby, in seat order.
  *
  * The lobby renders players as a GOV.UK summary list whose `dt` holds the display name,
- * followed by a `Facilitator` tag on the one row that has it. That tag is part of the
- * element's text, so a name is read off the front of the cell rather than by matching the
- * cell exactly — matching exactly would silently skip the facilitator's row.
+ * followed by a `Facilitator` tag on the one row that has it. The tag is a child *element*,
+ * so the name is the cell's own text nodes and is read structurally by excluding the child.
+ *
+ * Stripping a trailing `Facilitator` off the cell's full text would be shorter and was
+ * rejected: it silently truncates a participant who chooses that word as a display name to
+ * the empty string, and nothing in the domain forbids the name — `DisplayName` bounds length
+ * and blankness, not vocabulary. Reading text nodes cannot confuse a name with a tag at all,
+ * so the fragile case stops existing rather than being documented.
  *
  * Returning names rather than asserting them is what lets a caller check for a *duplicate*.
  * The player count in the heading cannot: two seats and two distinctly named seats render
  * the same `Players (2)`, so the count alone cannot tell a second Alice from a Bob.
  *
  * @param page a page showing the lobby
- * @return the display names, ordered by seat, with the facilitator tag removed
+ * @return the display names, ordered by seat, without the facilitator tag
  */
 export async function lobbyPlayerNames(page: Page): Promise<string[]> {
-    const cells = await page.locator('dt.govuk-summary-list__key').allTextContents();
-    return cells.map(cell => cell.replace(/Facilitator$/, '').trim());
+    return page.locator('dt.govuk-summary-list__key').evaluateAll(cells =>
+        cells.map(cell =>
+            Array.from(cell.childNodes)
+                .filter(node => node.nodeType === Node.TEXT_NODE)
+                .map(node => node.textContent ?? '')
+                .join('')
+                .trim(),
+        ),
+    );
 }
 
 /**

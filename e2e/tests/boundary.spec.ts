@@ -217,7 +217,16 @@ test.describe('Boundary: losing a seat', () => {
                 ).toBeVisible();
             }
         } finally {
-            await closeSeats(returning === undefined ? [facilitator, stayer] : [facilitator, stayer, returning]);
+            /*
+             * `leaver` is closed again here on purpose. Closing a context twice is a no-op, and
+             * listing it means a failure before the deliberate close still cleans it up rather
+             * than leaning on Playwright's process teardown.
+             */
+            await closeSeats(
+                returning === undefined
+                    ? [facilitator, leaver, stayer]
+                    : [facilitator, leaver, stayer, returning],
+            );
         }
     });
 
@@ -254,7 +263,7 @@ test.describe('Boundary: losing a seat', () => {
                 `Bob was restored to his seat instead of taking a new one: ${JSON.stringify(names)}`,
             ).toHaveLength(2);
         } finally {
-            await closeSeats(returning === undefined ? [facilitator] : [facilitator, returning]);
+            await closeSeats(returning === undefined ? [facilitator, leaver] : [facilitator, leaver, returning]);
         }
     });
 });
