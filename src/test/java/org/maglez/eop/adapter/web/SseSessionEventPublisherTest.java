@@ -218,7 +218,13 @@ class SseSessionEventPublisherTest {
 
             assertThatCode(() -> publisher.publish(playerJoined())).doesNotThrowAnyException();
 
-            assertThat(publisher.subscriberCount(SESSION_ID)).isZero();
+            // The write that discovers the departure now happens on a send-pool
+            // thread rather than on the publishing thread (EOP-223), so eviction
+            // is eventually consistent with the call rather than complete by the
+            // time it returns.
+            await().atMost(Duration.ofSeconds(5))
+                    .pollInterval(BEAT)
+                    .untilAsserted(() -> assertThat(publisher.subscriberCount(SESSION_ID)).isZero());
         }
 
         @Test

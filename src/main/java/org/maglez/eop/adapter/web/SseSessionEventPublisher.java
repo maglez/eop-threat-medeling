@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -47,9 +48,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * replay. Keeping a replayable log would mean a second source of truth, and the
  * database is the only authority.
  *
- * <p><strong>Publishing never fails the request that triggered it.</strong> A
- * departed subscriber is the normal case, not an error: a player whose join
- * succeeded must not receive a failure because somebody else closed a tab.
+ * <p><strong>Publishing never fails <em>or delays</em> the request that triggered
+ * it.</strong> A departed subscriber is the normal case, not an error: a player
+ * whose join succeeded must not receive a failure because somebody else closed a
+ * tab. Nor may it receive a slow one. Swallowing {@code IOException} only ever
+ * covered half of that promise, because a peer that has stopped draining its
+ * socket makes the write <em>block</em> instead of throwing; until EOP-223 the
+ * fan-out ran on the triggering request's own thread, so one such peer stalled
+ * that request for tens of seconds while logging nothing at all. Per-subscriber
+ * writes are handed to a bounded pool and the caller does not wait for them.
  *
  * <p><strong>Subscriber caps prevent unbounded resource consumption (EOP-20, ADR-034).</strong>
  * A per-session cap of {@value #MAX_SUBSCRIBERS_PER_SESSION} (2× MAXIMUM_PLAYERS to allow
@@ -98,8 +105,12 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
 
     /**
      * Bounded queue capacity for the send pool — approximately two heartbeat sweeps of
-     * the maximum subscriber count. Oldest tasks are discarded when the queue is full
-     * (a dropped heartbeat is harmless; the next sweep retries).
+     * the maximum subscriber count. Oldest tasks are discarded when the queue is full.
+     *
+     * <p>Discarding was self-evidently harmless while the queue carried heartbeats only,
+     * because the next sweep retries. Since EOP-223 it also carries event notifications,
+     * which are not retried, so the discard is logged rather than silent — see
+     * {@code LoggingDiscardOldestPolicy}.
      */
     private static final int SEND_POOL_QUEUE_CAPACITY = 1000;
 
@@ -178,7 +189,7 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
                     thread.setDaemon(true);
                     return thread;
                 },
-                new ThreadPoolExecutor.DiscardOldestPolicy()
+                new LoggingDiscardOldestPolicy()
         );
         final long period = this.heartbeatInterval.toMillis();
         this.heartbeats.scheduleAtFixedRate(this::beat, period, period, TimeUnit.MILLISECONDS);
@@ -208,7 +219,7 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         // from sessionLocks, so the identity of the lock object is stable forever.
         final Object lock = sessionLocks.computeIfAbsent(sessionId, key -> new Object());
 
-        final SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
+        final SseEmitter emitter = newEmitter();
 
         synchronized (lock) {
             // Get or create the subscriber list inside the lock — also never removed,
@@ -245,6 +256,45 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         return emitter;
     }
 
+    /**
+     * Creates the emitter handed back to one subscriber.
+     *
+     * <p>Package-private and overridable so a test can substitute an emitter whose write
+     * blocks, which is the only way to reproduce the stall EOP-223 fixed without a real
+     * peer that has stopped reading its socket. Production has one implementation.
+     *
+     * @return a new emitter with the ten-minute timeout in {@code EMITTER_TIMEOUT_MILLIS}
+     */
+    SseEmitter newEmitter() {
+        return new SseEmitter(EMITTER_TIMEOUT_MILLIS);
+    }
+
+    /**
+     * Announces one event to every stream registered for its session.
+     *
+     * <p><strong>Each per-subscriber write is handed to the send pool, and this method does
+     * not wait for it.</strong> Writing on the calling thread was a latency defect rather
+     * than an untidy one: a peer that has stopped draining its socket — a browser tab
+     * mid-reload, or a context being torn down — makes the write block instead of throwing,
+     * so the fan-out ran to tens of seconds and the HTTP request that triggered the event
+     * hung with it, silently, because a blocked write logs nothing and raises nothing.
+     * Handing the writes to the pool bounds the caller's cost to the submissions themselves
+     * and stops one stalled reader delaying either the caller or the other subscribers
+     * (EOP-223). It is what {@code beat()} already did for the heartbeat sweep, and for the
+     * same reason (EOP-20, ADR-034).
+     *
+     * <p>The payload is built once, on the calling thread, so a serialisation fault remains
+     * the caller's to see rather than a warning nobody reads on a pool thread.
+     *
+     * <p>Two consequences of the hand-off are worth knowing. Eviction of a departed
+     * subscriber now happens on a pool thread, so {@code subscriberCount} is eventually
+     * rather than immediately consistent after a publish. And a write that fails for a
+     * reason other than a departed peer can no longer reach the caller, so it is logged
+     * here — otherwise it would escape a pool thread and reach {@code System.err}, which
+     * the observability rules forbid.
+     *
+     * @param event the change to announce
+     */
     @Override
     public void publish(final SessionEvent event) {
         Objects.requireNonNull(event, "event is required");
@@ -256,14 +306,20 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
 
         final SessionEventDto payload = SessionEventDto.from(event);
         for (final SseEmitter emitter : forSession) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name(event.type().wireName())
-                        .data(payload));
-            }
-            catch (final IOException | IllegalStateException gone) {
-                forgetOne(forSession, emitter);
-            }
+            sendPool.execute(() -> {
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name(event.type().wireName())
+                            .data(payload));
+                }
+                catch (final IOException | IllegalStateException gone) {
+                    forgetOne(forSession, emitter);
+                }
+                catch (final RuntimeException unexpected) {
+                    LOG.warn("Could not announce {} to a subscriber of session {}; the stream stays open",
+                            event.type().wireName(), event.sessionId(), unexpected);
+                }
+            });
         }
     }
 
@@ -357,6 +413,32 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         }
         catch (final RuntimeException alreadyGone) {
             LOG.debug("Stream was already closed when shutting down", alreadyGone);
+        }
+    }
+
+    /**
+     * Discards the oldest queued write when the send pool saturates, and says so.
+     *
+     * <p>Spring's own {@code DiscardOldestPolicy} is silent, which was defensible while the
+     * queue carried heartbeats only: a dropped heartbeat costs nothing because the next
+     * sweep retries. Since EOP-223 the queue also carries event notifications, and this
+     * class keeps no event history and does not honour {@code Last-Event-ID}, so a
+     * discarded notification is a client that never learns its session changed until
+     * something else prompts it to re-read. Saturation takes a thousand queued writes and
+     * should never happen in ordinary play — which is precisely why it must be visible
+     * when it does, rather than inferred later from a lobby that did not update.
+     */
+    private static final class LoggingDiscardOldestPolicy implements RejectedExecutionHandler {
+
+        private final ThreadPoolExecutor.DiscardOldestPolicy delegate =
+                new ThreadPoolExecutor.DiscardOldestPolicy();
+
+        @Override
+        public void rejectedExecution(final Runnable task, final ThreadPoolExecutor executor) {
+            LOG.warn("SSE send queue saturated with {} pending writes; discarding the oldest. "
+                    + "A subscriber may miss one notification and recovers on its next read.",
+                    executor.getQueue().size());
+            delegate.rejectedExecution(task, executor);
         }
     }
 }
