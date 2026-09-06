@@ -536,12 +536,30 @@ export async function startGame(sessionId: string, playerToken: string): Promise
  * `data:` frame signals that session state has changed; the caller is
  * responsible for re-fetching via `getSession`.
  *
+ * **A doorbell is only heard by a subscriber that already exists, so `onOpen`
+ * is not optional in spirit (EOP-224).** The server publishes to whoever is
+ * subscribed at that instant and keeps no history — there is no
+ * `Last-Event-ID` replay — so an event published before this stream was
+ * registered is lost to this caller for ever. Every mount therefore has a
+ * window, and a screen transition that swaps one stream for another has two.
+ * `onOpen` closes it: let T be the instant the server registers this
+ * subscriber, which necessarily precedes the response headers observed here.
+ * Everything published after T arrives as a `data:` frame; everything
+ * published before T is visible to a read issued after the headers. So a
+ * caller that re-reads its state in `onOpen` has no interval in which a change
+ * can be both undelivered and unobserved. No polling and no timers.
+ *
  * @param sessionId  The session to subscribe to.
  * @param playerToken  The caller's credential (sent as `PLAYER_TOKEN_HEADER`).
  * @param onEvent  Called whenever a `data:` frame arrives.
  * @param onError  Called when the stream ends with a non-ok response or an
  *                 unexpected error. Receives the `ApiError` (for 4xx/5xx) or
  *                 a plain `Error` (for network failures).
+ * @param onOpen  Called once, as soon as the server has accepted the
+ *                subscription, and never again for the life of this stream.
+ *                Callers MUST use it to re-read the state they care about —
+ *                see the reconnect-gap argument above. Optional only so that
+ *                a caller with genuinely nothing to re-read may omit it.
  * @returns An `AbortController` whose `abort()` method tears down the stream.
  */
 export function subscribeToSession(
@@ -549,6 +567,7 @@ export function subscribeToSession(
   playerToken: string,
   onEvent: (eventType: string | null) => void,
   onError: (err: ApiError | Error) => void,
+  onOpen?: () => void,
 ): AbortController {
   const controller = new AbortController();
 
@@ -568,6 +587,12 @@ export function subscribeToSession(
       onError(new ApiError(res.status, message));
       return;
     }
+
+    // The subscription is live from here: the server registered this subscriber
+    // before it sent these headers. Announced before the body is touched so the
+    // caller's catch-up read overlaps the first frames rather than following
+    // them — see the reconnect-gap argument on this function.
+    onOpen?.();
 
     if (!res.body) return;
 

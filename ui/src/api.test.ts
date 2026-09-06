@@ -240,6 +240,77 @@ describe('subscribeToSession', () => {
 
     controller.abort();
   });
+
+  /*
+   * EOP-224. The server keeps no event history, so a doorbell published before a
+   * subscriber existed is lost to that subscriber for ever. `onOpen` is the only
+   * signal a caller gets that the stream is live and that a catch-up read is now
+   * guaranteed to observe everything published earlier.
+   */
+  it('calls onOpen exactly once when the stream is accepted, before any data frame', async () => {
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+    const onOpen = vi.fn();
+
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve(makeResponse(true, 200, streamOf('event: cards-dealt\ndata: {}\n\n')))
+    ));
+
+    const controller = subscribeToSession('session-1', 'token-abc', onEvent, onError, onOpen);
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledOnce();
+    });
+
+    expect(onOpen).toHaveBeenCalledOnce();
+    // Ordering matters: a catch-up read issued after the first frame would not be
+    // a catch-up at all.
+    expect(onOpen.mock.invocationCallOrder[0]).toBeLessThan(onEvent.mock.invocationCallOrder[0] ?? 0);
+    expect(onError).not.toHaveBeenCalled();
+
+    controller.abort();
+  });
+
+  it('does not call onOpen when the subscription is refused', async () => {
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+    const onOpen = vi.fn();
+
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve(makeResponse(false, 403, null, () =>
+        Promise.resolve({ title: 'Forbidden', detail: 'The session has expired. Please start a new session.' })
+      ))
+    ));
+
+    const controller = subscribeToSession('session-1', 'token-abc', onEvent, onError, onOpen);
+
+    await vi.waitFor(() => {
+      expect(onError).toHaveBeenCalledOnce();
+    });
+
+    expect(onOpen).not.toHaveBeenCalled();
+
+    controller.abort();
+  });
+
+  it('remains usable without an onOpen callback', async () => {
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve(makeResponse(true, 200, streamOf('data: {}\n\n')))
+    ));
+
+    const controller = subscribeToSession('session-1', 'token-abc', onEvent, onError);
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledOnce();
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+
+    controller.abort();
+  });
 });
 
 describe('dealHands', () => {

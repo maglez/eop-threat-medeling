@@ -122,6 +122,15 @@ export function LobbyScreen({ sessionId, playerId, playerToken, onSessionEnd, on
             onSessionEnd();
           }
         },
+        () => {
+          // The stream is live. Re-read, because a doorbell published between the
+          // initial load above and this moment was delivered to nobody — the
+          // lobby's own `game-started` transition is exactly such an event
+          // (EOP-224).
+          if (!abandoned) {
+            void refreshSession();
+          }
+        },
       );
 
       return () => {

@@ -549,6 +549,58 @@ describe('LobbyScreen', () => {
     expect(eventsCallCount).toBeGreaterThanOrEqual(1);
   });
 
+  /*
+   * EOP-224. The lobby's half of the lost-doorbell regression.
+   *
+   * The stream carries no history, so a `game-started` doorbell published between
+   * the initial read and the moment this subscriber is registered reaches nobody.
+   * Here the stream opens and then stays silent for ever: the only way the lobby
+   * can learn the game began is the catch-up read that `onOpen` triggers. Before
+   * that read existed this test fails, and the player sits in the lobby of a game
+   * already under way.
+   */
+  it('re-reads when the stream opens, so a game-started event published before it is not lost', async () => {
+    const mockOnGameStarted = vi.fn();
+    let sessionCallCount = 0;
+
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/events')) {
+        // A live stream that never delivers a frame.
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: new ReadableStream<Uint8Array>({ pull() { /* never resolves */ } }),
+          json: () => Promise.resolve({}),
+        } as unknown as Response);
+      }
+      sessionCallCount++;
+      // The first read happens before the game starts; every later one sees it.
+      const session = sessionCallCount === 1 ? mockSession : mockInProgressSession;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(session)
+      } as Response);
+    }));
+
+    render(
+      <LobbyScreen
+        sessionId={sessionId}
+        playerId={playerId}
+        playerToken={playerToken}
+        onSessionEnd={mockOnSessionEnd}
+        onGameStarted={mockOnGameStarted}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockOnGameStarted).toHaveBeenCalledWith(mockInProgressSession);
+    });
+    // Proof the recovery came from a second read rather than from a doorbell.
+    expect(sessionCallCount).toBeGreaterThanOrEqual(2);
+  });
+
   it('shows game in progress message when session status is IN_PROGRESS', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/events')) {

@@ -491,7 +491,18 @@ export function GameScreen({
     }
   }, [sessionId, playerToken, onSessionEnd]);
 
-  // Initial load + SSE subscription
+  /*
+   * Initial load + SSE subscription.
+   *
+   * The read below deliberately precedes the subscribe, so first paint does not
+   * wait on the stream handshake — measured at six seconds under EOP-224's
+   * pathological contention. That ordering used to be a defect: an event
+   * published in the gap between this read and the subscription was lost for
+   * ever, and the `409` waiting state below has no retry, so a player whose
+   * `cards-dealt` doorbell fell in that gap sat at "Waiting for cards to be
+   * dealt..." indefinitely. The `onOpen` catch-up read closes the gap, which is
+   * what makes this ordering safe rather than merely fast.
+   */
   useEffect(() => {
     let abandoned = false;
 
@@ -517,6 +528,11 @@ export function GameScreen({
           if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
             onSessionEnd();
           }
+        },
+        () => {
+          // Catch up on anything published before this stream existed.
+          if (abandoned) return;
+          void refreshGameState();
         },
       );
 
