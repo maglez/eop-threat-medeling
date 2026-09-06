@@ -5,12 +5,13 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,9 +48,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * replay. Keeping a replayable log would mean a second source of truth, and the
  * database is the only authority.
  *
- * <p><strong>Publishing never fails the request that triggered it.</strong> A
- * departed subscriber is the normal case, not an error: a player whose join
- * succeeded must not receive a failure because somebody else closed a tab.
+ * <p><strong>Publishing never fails <em>or delays</em> the request that triggered
+ * it.</strong> A departed subscriber is the normal case, not an error: a player
+ * whose join succeeded must not receive a failure because somebody else closed a
+ * tab. Nor may it receive a slow one. Swallowing {@code IOException} only ever
+ * covered half of that promise, because a peer that has stopped draining its
+ * socket makes the write <em>block</em> instead of throwing; until EOP-223 the
+ * fan-out ran on the triggering request's own thread, so one such peer stalled
+ * that request for tens of seconds while logging nothing at all. Per-subscriber
+ * writes are handed to a bounded pool and the caller does not wait for them.
  *
  * <p><strong>Subscriber caps prevent unbounded resource consumption (EOP-20, ADR-034).</strong>
  * A per-session cap of {@value #MAX_SUBSCRIBERS_PER_SESSION} (2× MAXIMUM_PLAYERS to allow
@@ -94,14 +101,22 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
      */
     private static final long RECONNECT_HINT_MILLIS = 3000L;
 
-    private static final int SEND_POOL_THREAD_COUNT = 4;
+    /**
+     * Threads the send pool keeps alive whether or not there is anything to write.
+     *
+     * <p>Four carries a heartbeat sweep of an ordinary lobby without creating anything.
+     * The pool grows past this on demand rather than queueing — see the constructor.
+     */
+    private static final int SEND_POOL_CORE_THREADS = 4;
 
     /**
-     * Bounded queue capacity for the send pool — approximately two heartbeat sweeps of
-     * the maximum subscriber count. Oldest tasks are discarded when the queue is full
-     * (a dropped heartbeat is harmless; the next sweep retries).
+     * How long a thread created above {@code SEND_POOL_CORE_THREADS} waits for further
+     * work before retiring, in seconds.
+     *
+     * <p>Long enough that a burst of play does not churn threads, short enough that the
+     * pool returns to its resting size well within a single game.
      */
-    private static final int SEND_POOL_QUEUE_CAPACITY = 1000;
+    private static final long SEND_POOL_KEEP_ALIVE_SECONDS = 60L;
 
     private static final Logger LOG = LoggerFactory.getLogger(SseSessionEventPublisher.class);
 
@@ -153,6 +168,22 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
     /**
      * Package-private constructor for tests that need a reduced per-session and/or global cap.
      *
+     * <p><strong>The send pool grows rather than queues, and its ceiling is the subscriber
+     * ceiling.</strong> A fixed pool of four was tried first and failed: a peer that has
+     * stopped draining its socket occupies a thread for as long as the write blocks, so four
+     * such peers starved every healthy subscriber behind them and notifications arrived
+     * minutes late or not at all (EOP-223). A {@code SynchronousQueue} never accepts a task
+     * that no thread is ready to take, so the pool creates a thread instead of making a
+     * healthy subscriber wait behind a sick one, and {@code maxTotalSubscribers} bounds that
+     * growth by the same number that already bounds file descriptors. Threads above the core
+     * size retire again once play goes quiet. The {@code Math.max} is not decoration: the
+     * test constructors pass ceilings below the core size, and a maximum pool size below the
+     * core size is an {@code IllegalArgumentException}.
+     *
+     * <p>The rejection policy therefore fires only when every thread up to that ceiling is
+     * already parked on a write, which means as many stalled peers as the deployment allows
+     * subscribers. It is logged rather than silent — see {@code LoggingDiscardPolicy}.
+     *
      * @param properties             heartbeat configuration
      * @param maxPerSessionSubscribers override for the per-session subscriber ceiling
      * @param maxTotalSubscribers    override for the global subscriber ceiling
@@ -169,16 +200,16 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
             return thread;
         });
         this.sendPool = new ThreadPoolExecutor(
-                SEND_POOL_THREAD_COUNT,
-                SEND_POOL_THREAD_COUNT,
-                0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(SEND_POOL_QUEUE_CAPACITY),
+                SEND_POOL_CORE_THREADS,
+                Math.max(SEND_POOL_CORE_THREADS, maxTotalSubscribers),
+                SEND_POOL_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
                 r -> {
                     final Thread thread = new Thread(r, "sse-send-" + sendThreadCounter.incrementAndGet());
                     thread.setDaemon(true);
                     return thread;
                 },
-                new ThreadPoolExecutor.DiscardOldestPolicy()
+                new LoggingDiscardPolicy()
         );
         final long period = this.heartbeatInterval.toMillis();
         this.heartbeats.scheduleAtFixedRate(this::beat, period, period, TimeUnit.MILLISECONDS);
@@ -208,7 +239,7 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         // from sessionLocks, so the identity of the lock object is stable forever.
         final Object lock = sessionLocks.computeIfAbsent(sessionId, key -> new Object());
 
-        final SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
+        final SseEmitter emitter = newEmitter();
 
         synchronized (lock) {
             // Get or create the subscriber list inside the lock — also never removed,
@@ -245,6 +276,53 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         return emitter;
     }
 
+    /**
+     * Creates the emitter handed back to one subscriber.
+     *
+     * <p>Package-private and overridable so a test can substitute an emitter whose write
+     * blocks, which is the only way to reproduce the stall EOP-223 fixed without a real
+     * peer that has stopped reading its socket. Production has one implementation.
+     *
+     * @return a new emitter with the ten-minute timeout in {@code EMITTER_TIMEOUT_MILLIS}
+     */
+    SseEmitter newEmitter() {
+        return new SseEmitter(EMITTER_TIMEOUT_MILLIS);
+    }
+
+    /**
+     * Announces one event to every stream registered for its session.
+     *
+     * <p><strong>Each per-subscriber write is handed to the send pool, and this method does
+     * not wait for it.</strong> Writing on the calling thread was a latency defect rather
+     * than an untidy one: a peer that has stopped draining its socket — a browser tab
+     * mid-reload, or a context being torn down — makes the write block instead of throwing,
+     * so the fan-out ran to tens of seconds and the HTTP request that triggered the event
+     * hung with it, silently, because a blocked write logs nothing and raises nothing.
+     * Handing the writes to the pool bounds the caller's cost to the submissions themselves
+     * and stops one stalled reader delaying either the caller or the other subscribers
+     * (EOP-223). It is what {@code beat()} already did for the heartbeat sweep, and for the
+     * same reason (EOP-20, ADR-034).
+     *
+     * <p>The payload is built once, on the calling thread, so a serialisation fault remains
+     * the caller's to see rather than a warning nobody reads on a pool thread.
+     *
+     * <p><strong>Every event gets its own write.</strong> Notifications are deliberately not
+     * coalesced per subscriber: a frame is a doorbell, and only a <em>named</em> frame makes a
+     * client re-read {@code GET /api/v1/sessions/{sessionId}}. Skipping one because another
+     * write happened to be in flight would therefore lose it outright whenever the write in
+     * flight is an unnamed heartbeat comment, which no re-read follows — a client that never
+     * learns its hand was dealt. Coalescing was measured on the EOP-217 suite and moved
+     * nothing, so the lossless shape is kept (EOP-223).
+     *
+     * <p>Two consequences of the hand-off are worth knowing. Eviction of a departed
+     * subscriber now happens on a pool thread, so {@code subscriberCount} is eventually
+     * rather than immediately consistent after a publish. And a write that fails for a
+     * reason other than a departed peer can no longer reach the caller, so it is logged
+     * here — otherwise it would escape a pool thread and reach {@code System.err}, which
+     * the observability rules forbid.
+     *
+     * @param event the change to announce
+     */
     @Override
     public void publish(final SessionEvent event) {
         Objects.requireNonNull(event, "event is required");
@@ -256,14 +334,20 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
 
         final SessionEventDto payload = SessionEventDto.from(event);
         for (final SseEmitter emitter : forSession) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name(event.type().wireName())
-                        .data(payload));
-            }
-            catch (final IOException | IllegalStateException gone) {
-                forgetOne(forSession, emitter);
-            }
+            sendPool.execute(() -> {
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name(event.type().wireName())
+                            .data(payload));
+                }
+                catch (final IOException | IllegalStateException gone) {
+                    forgetOne(forSession, emitter);
+                }
+                catch (final RuntimeException unexpected) {
+                    LOG.warn("Could not announce {} to a subscriber of session {}; the stream stays open",
+                            event.type().wireName(), event.sessionId(), unexpected);
+                }
+            });
         }
     }
 
@@ -328,12 +412,16 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         try {
             subscribers.forEach((sessionId, forSession) -> {
                 for (final SseEmitter emitter : forSession) {
-                    sendPool.submit(() -> {
+                    sendPool.execute(() -> {
                         try {
                             emitter.send(SseEmitter.event().comment("heartbeat"));
                         }
                         catch (final IOException | IllegalStateException gone) {
                             forgetOne(forSession, emitter);
+                        }
+                        catch (final RuntimeException unexpected) {
+                            LOG.warn("Heartbeat to a subscriber of session {} failed; the stream stays open",
+                                    sessionId, unexpected);
                         }
                     });
                 }
@@ -357,6 +445,31 @@ public class SseSessionEventPublisher implements SessionEventPublisher, Disposab
         }
         catch (final RuntimeException alreadyGone) {
             LOG.debug("Stream was already closed when shutting down", alreadyGone);
+        }
+    }
+
+    /**
+     * Drops a write the send pool has no thread for, and says so.
+     *
+     * <p>Rejection means every thread up to the subscriber ceiling is already parked on a
+     * write, which should not happen in ordinary play — which is precisely why it must be
+     * visible when it does, rather than inferred later from a lobby that did not update.
+     * This class keeps no event history and does not honour {@code Last-Event-ID}, so a
+     * dropped notification is a client that learns nothing until something else prompts it
+     * to re-read.
+     *
+     * <p>Dropping outright rather than reusing Spring's {@code DiscardOldestPolicy} is
+     * forced by the queue: that policy polls the queue and then re-enters
+     * {@code execute}, and a {@code SynchronousQueue} holds nothing to poll, so the
+     * re-entry would be rejected again and recurse.
+     */
+    private static final class LoggingDiscardPolicy implements RejectedExecutionHandler {
+
+        @Override
+        public void rejectedExecution(final Runnable task, final ThreadPoolExecutor executor) {
+            LOG.warn("No SSE send thread available among {}; dropping one write. "
+                    + "A subscriber may miss one notification and recovers on its next read.",
+                    executor.getMaximumPoolSize());
         }
     }
 }
