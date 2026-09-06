@@ -195,3 +195,54 @@ The corrected sequence is:
 > intentional, the caps bound concurrency, and reconnect rate remains an accepted gap under
 > ADR-051. An auditor who reads only the second clause will over-credit this ADR, which is
 > what happened.
+>
+> **Amendment, 2026-09-06 (EOP-223, EOP-225).** Decision 4 described a fixed-size pool for
+> `beat()` alone, with the implication that `publish()` ran on the caller's HTTP thread. That
+> implication was the defect: a peer that has stopped draining its socket makes the write
+> **block** rather than throw, so the fan-out ran for tens of seconds and the HTTP request that
+> triggered it hung silently. The EOP-217 Playwright suite caught this as a join `POST` that
+> had not returned after ten seconds.
+>
+> **Decision 4 is amended as follows.** Both `beat()` and `publish()` now hand every
+> per-subscriber write to the send pool and return immediately. The class javadoc's promise
+> strengthened from "never fails the request that triggered it" to "never fails **or delays**"
+> it. The payload is still built once on the calling thread, so a serialisation fault stays
+> the caller's to see.
+>
+> **The pool is now elastic, not fixed-size.** The constructor changed from
+> `ThreadPoolExecutor(4, 4, 0ms, ArrayBlockingQueue(1000), DiscardOldestPolicy)` to
+> `ThreadPoolExecutor(4, max(4, MAX_TOTAL_SUBSCRIBERS), 60s, SynchronousQueue,
+> daemon factory "sse-send-N", LoggingDiscardPolicy)`. A `SynchronousQueue` never accepts a
+> task no thread is ready to take, so the pool creates a thread rather than making a healthy
+> subscriber wait behind a sick one. Growth is bounded by `MAX_TOTAL_SUBSCRIBERS = 500`, the
+> same number that already bounds subscribers and therefore file descriptors, and threads
+> above the core four retire when play goes quiet.
+>
+> **Why `DiscardOldestPolicy` is not merely a different choice but unusable here.** That
+> policy polls the queue and then re-enters `execute`. On a `SynchronousQueue` there is
+> nothing to poll, so the re-entry is rejected again and the policy recurses to
+> `StackOverflowError`. This was verified independently against the JDK contract by
+> `@code-reviewer`, so it is stated as established rather than hedged.
+>
+> **Two observable consequences, which belong in the ADR because they are behaviour rather
+> than implementation detail:**
+>
+> 1. `subscriberCount` is now *eventually* consistent after a publish, because eviction of a
+>    departed subscriber happens on a pool thread rather than synchronously on the caller's
+>    thread.
+> 2. A rejected write is dropped with no event history and no `Last-Event-ID` replay, so a
+>    subscriber can miss a notification outright and recovers only on its next read. This is
+>    why `LoggingDiscardPolicy` logs at WARN: a dropped heartbeat is harmless (the next sweep
+>    retries), but a dropped *event* is not, and the distinction matters.
+>
+> **Why the resource bound is still sound.** The ceiling is `MAX_TOTAL_SUBSCRIBERS = 500`,
+> the same number that already bounds subscribers and file descriptors. Admission is capped
+> before any thread exists, so growth is bounded by the cap rather than unbounded. A thread
+> is created only when a task is submitted and no idle thread is available, which is the
+> definition of demand-driven elasticity.
+>
+> **The dead end is worth recording.** Per-emitter write coalescing was implemented and
+> removed. It measured no improvement and was unsound: only a *named* frame makes a client
+> re-read `GET /api/v1/sessions/{sessionId}`. Skipping one event because another write was in
+> flight would lose it outright whenever the write in flight is an unnamed heartbeat comment,
+> which no re-read follows — a client that never learns its hand was dealt.

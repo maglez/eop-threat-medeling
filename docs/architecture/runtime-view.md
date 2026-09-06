@@ -324,7 +324,7 @@ sequenceDiagram
     loop forever, on a daemon thread
         HB->>PUB: beat()
         loop for each emitter
-            PUB->>POOL: submit(send task)
+            PUB->>POOL: execute(send task)
             POOL->>BR: emitter.send(heartbeat comment)
             alt write succeeds
                 Note over POOL: subscriber still alive
@@ -341,7 +341,8 @@ sequenceDiagram
     JU->>PUB: publish(SessionEvent)
     PUB->>PUB: look up the emitter list for that sessionId
     loop each subscriber of that session only
-        PUB->>BR: event player-joined or game-started
+        PUB->>POOL: execute(send task)
+        POOL->>BR: emitter.send(event)
     end
     Note over BR: The event is a notification, not state.<br/>The client re-reads via sequence 1.
     end
